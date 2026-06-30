@@ -55,7 +55,7 @@ def run_formatter(state: dict) -> dict:
         temperature=0.2,
     )
     formatted = FormatterOutput.model_validate(response)
-    level = _normalize_level(ai_assessment.get("level", "C"))
+    level = _normalize_level(ai_assessment.get("level", "C"), ai_assessment.get("overall_score", 0))
     tier = _normalize_tier(ai_assessment.get("tier", "暂缓 / 需补充信息"))
     evaluation = CandidateEvaluation(
         id=normalized.id,
@@ -79,9 +79,26 @@ def run_formatter(state: dict) -> dict:
     return {**state, "final_output": evaluation.model_dump()}
 
 
-def _normalize_level(value: str) -> str:
+def _normalize_level(value: str, overall_score: int = 0) -> str:
+    text = str(value).strip()
+    # LLM sometimes swaps level and tier; infer from tier text or score.
+    if "强烈" in text:
+        return "A" if overall_score < 90 else "S"
+    if "建议沟通" in text and "暂缓" not in text:
+        return "B"
+    if "暂缓" in text:
+        return "C"
     mapping = {"s": "S", "a": "A", "b": "B", "c": "C"}
-    return mapping.get(str(value).strip().lower(), str(value).strip().upper())
+    normalized = mapping.get(text.lower(), text.upper())
+    if normalized in {"S", "A", "B", "C"}:
+        return normalized
+    if overall_score >= 90:
+        return "S"
+    if overall_score >= 80:
+        return "A"
+    if overall_score >= 70:
+        return "B"
+    return "C"
 
 
 def _normalize_tier(value: str) -> str:
