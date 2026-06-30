@@ -6,21 +6,32 @@ AI 人才潜力初评助手 MVP。它基于 `10_ai_phd_resumes.jsonl` 批量读�
 
 ## 快速运行
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe scripts\run_batch.py
-```
+1. 复制 `.env.example` 为 `.env`，填入 DeepSeek API Key：
+
+   ```powershell
+   cp .env.example .env
+   # 编辑 .env：DEEPSEEK_API_KEY=sk-...
+   ```
+
+2. 安装依赖并运行：
+
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   .\.venv\Scripts\python.exe scripts\run_batch.py
+   ```
 
 运行后会生成：
 
 - `outputs/talent_evaluations.json`：完整结构化结果。
 - `outputs/talent_evaluations.md`：可直接阅读的排序表和候选人明细。
 
+> 如果暂时没有 API Key，可以直接查看 `outputs/` 下的样例输出，或运行单元测试（测试使用 mock）。
+
 测试：
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest tests.test_batch_agent -v
+.\.venv\Scripts\python.exe -m unittest discover tests -v
 ```
 
 启动 Web 工作台：
@@ -36,7 +47,17 @@ $env:FLASK_APP="agi_talent_radar.web.workbench"
 http://127.0.0.1:8502
 ```
 
+工作台支持批量导入 JSONL / Markdown 简历、按分层和导入分类筛选、查看候选人详情与证据链。
+
 ## Agent 流程
+
+批量导入时先经过轻量双节点分类 Agent：
+
+```text
+Import Agent (初评分类) -> Import Agent (回顾确认)
+```
+
+逐人深评流程：
 
 ```text
 Normalizer -> Evidence Extractor -> Cross-Domain Scorer -> Critic -> Formatter
@@ -45,14 +66,14 @@ Normalizer -> Evidence Extractor -> Cross-Domain Scorer -> Critic -> Formatter
 ```
 
 - `Normalizer`：盲化学校与 GPA 等背景信号，统一结构。
-- `Evidence Extractor`：提取具体工具、具体动作、量化结果和 ownership 证据。
-- `Cross-Domain Scorer`：用统一 Rubric 比较不同方向候选人，不比较不可比的单项指标。
-- `Critic`：检查引文是否来自原简历，并拦截证据不足的高分。
-- `Formatter`：输出评分、画像、优势、风险、面谈追问和培养方向。
+- `Evidence Extractor`：调用 LLM 提取具体工具、具体动作、量化结果和 ownership 证据。
+- `Cross-Domain Scorer`：调用 LLM 按统一 Rubric 比较不同方向候选人。
+- `Critic`：调用 LLM 检查引文与评分逻辑，必要时回炉重打分。
+- `Formatter`：调用 LLM 输出评分、画像、优势、风险、面谈追问和培养方向。
 
 ## 当前样例结果
 
-批量评估结果摘要：
+批量评估结果摘要（当前 `outputs/` 为规则版本样例，配置 API Key 后会由 LLM 重新生成）：
 
 | 排名 | 候选人 | 分数 | 等级 | 分层 |
 | ---: | --- | ---: | --- | --- |
