@@ -43,14 +43,11 @@ def create_app() -> Flask:
         suffix = Path(file.filename).suffix.lower()
         if suffix not in {".jsonl", ".md", ".txt"}:
             return jsonify({"detail": "仅支持 .jsonl / .md / .txt 文件"}), 400
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
-            temp_path = Path(handle.name)
-            file.save(handle)
-        try:
-            result = run_batch_from_file(temp_path, ROOT / "outputs")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir) / f"upload{suffix}"
+            file.save(temp_path)
+            result = run_batch_from_file(temp_path, Path(temp_dir))
             return jsonify(result.model_dump())
-        finally:
-            temp_path.unlink(missing_ok=True)
 
     return app
 

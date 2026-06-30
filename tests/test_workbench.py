@@ -4,6 +4,8 @@ import io
 import unittest
 from pathlib import Path
 
+from agi_talent_radar.core.io import load_resumes
+from agi_talent_radar.core.runner import run_batch
 from agi_talent_radar.web.workbench import create_app
 from tests.llm_fixtures import mock_deepseek_json
 
