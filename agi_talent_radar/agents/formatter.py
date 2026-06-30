@@ -13,6 +13,16 @@ class FormatterOutput(BaseModel):
     interview_questions: list[str] = Field(default_factory=list)
     cultivation_direction: list[str] = Field(default_factory=list)
 
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        if isinstance(obj, dict):
+            obj = dict(obj)
+            obj["core_strengths"] = _stringify_items(obj.get("core_strengths", []))
+            obj["potential_risks"] = _stringify_items(obj.get("potential_risks", []))
+            obj["interview_questions"] = _stringify_items(obj.get("interview_questions", []))
+            obj["cultivation_direction"] = _stringify_items(obj.get("cultivation_direction", []))
+        return super().model_validate(obj, **kwargs)
+
 
 FORMATTER_PROMPT = """
 你是 AI 人才潜力初评系统里的【结构化组装与面谈生成器】。
@@ -65,3 +75,24 @@ def run_formatter(state: dict) -> dict:
         screening_tags=normalized.screening_tags,
     )
     return {**state, "final_output": evaluation.model_dump()}
+
+
+def _stringify_items(value):
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            if item.strip():
+                result.append(item)
+        elif isinstance(item, dict):
+            text = item.get("text") or item.get("description") or item.get("strength") or item.get("direction") or " ".join(str(v) for v in item.values() if isinstance(v, str))
+            if text.strip():
+                result.append(text.strip())
+        else:
+            text = str(item).strip()
+            if text:
+                result.append(text)
+    return result

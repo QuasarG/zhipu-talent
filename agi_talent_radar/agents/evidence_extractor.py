@@ -47,11 +47,13 @@ def run_evidence_extractor(state: dict) -> dict:
         temperature=0.1,
     )
     evidence = [EvidenceItem.model_validate(item) for item in response.get("evidence", [])]
-    _ensure_quote_integrity(evidence, normalized.raw_text)
-    return {**state, "evidence": [item.model_dump() for item in evidence]}
+    integrity_flags = _quote_integrity_flags(evidence, normalized.raw_text)
+    return {
+        **state,
+        "evidence": [item.model_dump() for item in evidence],
+        "critic_flags": state.get("critic_flags", []) + integrity_flags,
+    }
 
 
-def _ensure_quote_integrity(evidence: list[EvidenceItem], raw_text: str) -> None:
-    missing = [item.id for item in evidence if item.quote not in raw_text]
-    if missing:
-        raise ValueError(f"AI 证据引文未出现在原简历: {', '.join(missing)}")
+def _quote_integrity_flags(evidence: list[EvidenceItem], raw_text: str) -> list[str]:
+    return [f"疑似幻觉证据：{item.id} 的引文未出现在原简历。" for item in evidence if item.quote not in raw_text]

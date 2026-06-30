@@ -13,6 +13,13 @@ class ScoringOutput(BaseModel):
     tier: str
     dimension_scores: list[DimensionScore]
 
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        if isinstance(obj, dict):
+            obj = dict(obj)
+            obj["overall_score"] = int(round(float(obj.get("overall_score", 0))))
+        return super().model_validate(obj, **kwargs)
+
 
 SCORER_PROMPT = """
 你是 AI 人才潜力初评系统里的【跨领域对齐打分 Agent】。
@@ -53,6 +60,7 @@ def run_scorer(state: dict) -> dict:
         },
         temperature=0.1,
     )
+    _normalize_risk_notes(response.get("dimension_scores", []))
     scoring = ScoringOutput.model_validate(response)
     return {
         **state,
@@ -64,3 +72,12 @@ def run_scorer(state: dict) -> dict:
             "tier": scoring.tier,
         },
     }
+
+
+def _normalize_risk_notes(scores: list[dict]) -> None:
+    for item in scores:
+        risk_notes = item.get("risk_notes", [])
+        if isinstance(risk_notes, str):
+            item["risk_notes"] = [risk_notes] if risk_notes.strip() else []
+        elif not isinstance(risk_notes, list):
+            item["risk_notes"] = []
