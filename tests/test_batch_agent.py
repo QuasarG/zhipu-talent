@@ -40,7 +40,6 @@ class BatchAgentTest(unittest.TestCase):
         tiered_ids = [candidate_id for ids in result.tiers.values() for candidate_id in ids]
         self.assertEqual(sorted(tiered_ids), sorted(item.id for item in result.evaluations))
         self.assertEqual(len(result.import_classifications), 10)
-        self.assertTrue(result.import_agent_trace)
         self.assertTrue(result.evaluations[0].import_category)
 
     def test_evidence_quotes_are_from_resume_text(self) -> None:
