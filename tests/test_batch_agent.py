@@ -5,6 +5,7 @@ from pathlib import Path
 
 from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.runner import run_batch, run_candidate
+from tests.llm_fixtures import mock_deepseek_json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +20,8 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_single_candidate_returns_structured_result(self) -> None:
         resume = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")[0]
-        result = run_candidate(resume)
+        with mock_deepseek_json():
+            result = run_candidate(resume)
         self.assertEqual(result.id, "candidate_01")
         self.assertGreaterEqual(result.overall_score, 60)
         self.assertTrue(result.evidence)
@@ -30,16 +32,21 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_batch_result_is_sorted_and_tiered(self) -> None:
         resumes = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")
-        result = run_batch(resumes)
+        with mock_deepseek_json():
+            result = run_batch(resumes)
         scores = [item.overall_score for item in result.evaluations]
         self.assertEqual(scores, sorted(scores, reverse=True))
         self.assertEqual(len(result.evaluations), 10)
         tiered_ids = [candidate_id for ids in result.tiers.values() for candidate_id in ids]
         self.assertEqual(sorted(tiered_ids), sorted(item.id for item in result.evaluations))
+        self.assertEqual(len(result.import_classifications), 10)
+        self.assertTrue(result.import_agent_trace)
+        self.assertTrue(result.evaluations[0].import_category)
 
     def test_evidence_quotes_are_from_resume_text(self) -> None:
         resume = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")[6]
-        result = run_candidate(resume)
+        with mock_deepseek_json():
+            result = run_candidate(resume)
         raw_text = "\n".join(
             [
                 resume.target_role,
@@ -56,7 +63,8 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_critic_does_not_flag_joined_skill_evidence_as_hallucination(self) -> None:
         resume = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")[9]
-        result = run_candidate(resume)
+        with mock_deepseek_json():
+            result = run_candidate(resume)
         joined_flags = "\n".join(result.critic_flags)
         self.assertNotIn("疑似幻觉证据", joined_flags)
 

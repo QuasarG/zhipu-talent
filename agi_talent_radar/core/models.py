@@ -86,6 +86,19 @@ class CandidateEvaluation(BaseModel):
     critic_flags: list[str] = Field(default_factory=list)
     normalized_education: list[str] = Field(default_factory=list)
     screening_tags: list[str] = Field(default_factory=list)
+    import_category: str = ""
+    import_confidence: float = 0
+    import_review_notes: str = ""
+
+
+class ImportClassification(BaseModel):
+    id: str
+    name: str
+    initial_category: str
+    final_category: str
+    confidence: float = Field(ge=0, le=1)
+    reason: str
+    review_notes: str
 
 
 class BatchResult(BaseModel):
@@ -93,6 +106,9 @@ class BatchResult(BaseModel):
     tiers: dict[str, list[str]]
     dimension_labels: dict[str, str]
     rubric: list[RubricDimension]
+    import_classifications: list[ImportClassification] = Field(default_factory=list)
+    import_agent_trace: list[str] = Field(default_factory=list)
+    evaluation_mode: str = "deepseek_ai_only"
     notes: list[str] = Field(default_factory=list)
 
 
@@ -103,5 +119,6 @@ class TalentState(TypedDict, total=False):
     scores: list[dict[str, Any]]
     critic_flags: list[str]
     critic_needs_rescore: bool
+    ai_assessment: dict[str, Any]
     loop_count: int
     final_output: dict[str, Any]

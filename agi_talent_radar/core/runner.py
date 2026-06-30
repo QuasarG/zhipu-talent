@@ -4,8 +4,9 @@ from pathlib import Path
 from typing import Iterable
 
 from agi_talent_radar.core.graph import build_graph
+from agi_talent_radar.core.import_agent import run_import_agents
 from agi_talent_radar.core.io import load_resumes, render_summary_markdown, save_json
-from agi_talent_radar.core.models import BatchResult, CandidateEvaluation, CandidateResume
+from agi_talent_radar.core.models import BatchResult, CandidateEvaluation, CandidateResume, ImportClassification
 from agi_talent_radar.core.rubric import DIMENSION_LABELS, RUBRIC
 
 
@@ -17,7 +18,16 @@ def run_candidate(resume: CandidateResume | dict) -> CandidateEvaluation:
 
 
 def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
-    evaluations = [run_candidate(resume) for resume in resumes]
+    validated_resumes = [
+        resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
+        for resume in resumes
+    ]
+    import_classifications, import_trace = run_import_agents(validated_resumes)
+    import_by_id = {item.id: item for item in import_classifications}
+    evaluations = [
+        _attach_import_classification(run_candidate(resume), import_by_id[resume.id])
+        for resume in validated_resumes
+    ]
     evaluations.sort(key=lambda item: item.overall_score, reverse=True)
     tiers = {
         "强烈建议沟通": [item.id for item in evaluations if item.tier == "强烈建议沟通"],
@@ -29,12 +39,26 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
         tiers=tiers,
         dimension_labels=DIMENSION_LABELS,
         rubric=RUBRIC,
+        import_classifications=import_classifications,
+        import_agent_trace=import_trace,
         notes=[
-            "评分使用脱敏后的简历内容，学校层级和 GPA 不直接进入综合分。",
-            "所有主观结论必须绑定 EvidenceItem；Critic 会检查引文是否来自原简历。",
+            "批量导入先经过初评分类 Agent 和回顾确认 Agent；分类只用于展示，不筛除候选人。",
+            "逐人深评使用 DeepSeek/OpenAI-compatible JSON 模式；没有配置 DEEPSEEK_API_KEY 会直接失败。",
+            "所有主观结论必须绑定 EvidenceItem；Critic 会检查证据和评分逻辑。",
             "结果用于初筛辅助，不替代人工面谈和论文 / 项目真实性核验。",
         ],
     )
+
+
+def _attach_import_classification(
+    evaluation: CandidateEvaluation,
+    classification: ImportClassification,
+) -> CandidateEvaluation:
+    data = evaluation.model_dump()
+    data["import_category"] = classification.final_category
+    data["import_confidence"] = classification.confidence
+    data["import_review_notes"] = classification.review_notes
+    return CandidateEvaluation.model_validate(data)
 
 
 def run_batch_from_file(input_path: str | Path, output_dir: str | Path = "outputs") -> BatchResult:

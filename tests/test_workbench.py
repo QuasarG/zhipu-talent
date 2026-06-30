@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from agi_talent_radar.web.workbench import create_app
+from tests.llm_fixtures import mock_deepseek_json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,14 +29,16 @@ class WorkbenchTest(unittest.TestCase):
 
     def test_upload_jsonl_runs_batch(self) -> None:
         content = (ROOT / "10_ai_phd_resumes.jsonl").read_bytes()
-        response = self.app.post(
-            "/api/evaluate-upload",
-            data={"file": (io.BytesIO(content), "resumes.jsonl")},
-            content_type="multipart/form-data",
-        )
+        with mock_deepseek_json():
+            response = self.app.post(
+                "/api/evaluate-upload",
+                data={"file": (io.BytesIO(content), "resumes.jsonl")},
+                content_type="multipart/form-data",
+            )
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(len(data["evaluations"]), 10)
+        self.assertEqual(len(data["import_classifications"]), 10)
 
 
 if __name__ == "__main__":

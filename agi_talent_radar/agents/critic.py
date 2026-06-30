@@ -1,42 +1,48 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from pydantic import BaseModel, Field
 
+from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.models import DimensionScore, EvidenceItem, NormalizedResume
+
+
+class CriticOutput(BaseModel):
+    critic_flags: list[str] = Field(default_factory=list)
+    needs_rescore: bool = False
+
+
+CRITIC_PROMPT = """
+你是 AI 人才潜力初评系统里的【逻辑判官与防幻觉节点】。
+只输出 JSON 对象，字段必须是 critic_flags, needs_rescore。
+
+检查规则：
+1. 防幻觉：评分理由和证据引用必须能在 evidence 中找到，不得引用不存在的事实。
+2. 防主观：如果某维度给到 4.5+，但 evidence 中缺少具体技术栈、量化结果、本人动作或验证闭环，必须给 critic_flags。
+3. 防背景偏见：如果理由依赖学校、GPA、排名、名企而不是项目证据，必须给 critic_flags。
+4. 如果问题会影响综合评分，needs_rescore=true；如果只是小的表述问题，needs_rescore=false。
+""".strip()
 
 
 def run_critic(state: dict) -> dict:
     normalized = NormalizedResume.model_validate(state["normalized"])
     evidence = [EvidenceItem.model_validate(item) for item in state.get("evidence", [])]
     scores = [DimensionScore.model_validate(item) for item in state.get("scores", [])]
-    flags: list[str] = []
-
-    for item in evidence:
-        if item.quote not in normalized.raw_text:
-            flags.append(f"疑似幻觉证据：{item.id} 的引文未出现在原简历。")
-
-    evidence_by_dimension: dict[str, list[EvidenceItem]] = defaultdict(list)
-    for item in evidence:
-        evidence_by_dimension[item.dimension].append(item)
-
-    for score in scores:
-        items = evidence_by_dimension.get(score.key, [])
-        if score.score >= 4.5:
-            concrete = [
-                item
-                for item in items
-                if item.has_metric or item.has_specific_tool or item.has_ownership or item.strength >= 4
-            ]
-            if len(items) < 2 or not concrete:
-                flags.append(f"{score.label} 给到 {score.score} 分，但证据数量或硬信号不足。")
-        if score.score >= 4.8 and not any(item.has_metric for item in items):
-            flags.append(f"{score.label} 接近满分，但没有量化结果支撑。")
-
+    response = llm_client.call_llm_json(
+        CRITIC_PROMPT,
+        {
+            "resume_brief": normalized.model_dump(exclude={"raw_text"}),
+            "evidence": [item.model_dump() for item in evidence],
+            "dimension_scores": [item.model_dump() for item in scores],
+            "hard_integrity_flags": _quote_integrity_flags(evidence, normalized.raw_text),
+        },
+        temperature=0,
+    )
+    critic = CriticOutput.model_validate(response)
     loop_count = int(state.get("loop_count", 0))
-    needs_rescore = bool(flags) and loop_count < 1
+    needs_rescore = critic.needs_rescore and loop_count < 1
     return {
         **state,
-        "critic_flags": flags,
+        "critic_flags": critic.critic_flags,
         "critic_needs_rescore": needs_rescore,
         "loop_count": loop_count + 1 if needs_rescore else loop_count,
     }
@@ -44,3 +50,7 @@ def run_critic(state: dict) -> dict:
 
 def route_after_critic(state: dict) -> str:
     return "scorer" if state.get("critic_needs_rescore") else "formatter"
+
+
+def _quote_integrity_flags(evidence: list[EvidenceItem], raw_text: str) -> list[str]:
+    return [f"{item.id} 的 quote 未出现在原简历" for item in evidence if item.quote not in raw_text]
