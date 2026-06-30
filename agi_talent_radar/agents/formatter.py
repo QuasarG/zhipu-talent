@@ -55,14 +55,16 @@ def run_formatter(state: dict) -> dict:
         temperature=0.2,
     )
     formatted = FormatterOutput.model_validate(response)
+    level = _normalize_level(ai_assessment.get("level", "C"))
+    tier = _normalize_tier(ai_assessment.get("tier", "暂缓 / 需补充信息"))
     evaluation = CandidateEvaluation(
         id=normalized.id,
         name=normalized.name,
         target_role=normalized.target_role,
         stage=normalized.stage,
         overall_score=int(ai_assessment["overall_score"]),
-        level=ai_assessment["level"],
-        tier=ai_assessment["tier"],
+        level=level,
+        tier=tier,
         one_liner=formatted.one_liner,
         core_strengths=formatted.core_strengths,
         potential_risks=formatted.potential_risks,
@@ -75,6 +77,22 @@ def run_formatter(state: dict) -> dict:
         screening_tags=normalized.screening_tags,
     )
     return {**state, "final_output": evaluation.model_dump()}
+
+
+def _normalize_level(value: str) -> str:
+    mapping = {"s": "S", "a": "A", "b": "B", "c": "C"}
+    return mapping.get(str(value).strip().lower(), str(value).strip().upper())
+
+
+def _normalize_tier(value: str) -> str:
+    mapping = {
+        "强烈建议沟通": "强烈建议沟通",
+        "建议沟通": "建议沟通",
+        "暂缓/需补充信息": "暂缓 / 需补充信息",
+        "暂缓 / 需补充信息": "暂缓 / 需补充信息",
+        "暂缓": "暂缓 / 需补充信息",
+    }
+    return mapping.get(str(value).strip(), "暂缓 / 需补充信息")
 
 
 def _stringify_items(value):
