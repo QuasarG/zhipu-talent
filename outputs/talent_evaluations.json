@@ -7,8 +7,8 @@
       "stage": "博士在读",
       "overall_score": 82,
       "level": "A",
-      "tier": "建议沟通",
-      "one_liner": "AI4Science研究员 / 生物医学多模态与强化学习方向方向的高潜候选人，突出在问题定义与独立思考、AI 工具 / Agent 使用能力，代表证据是“进行SFT、知识蒸馏和RAG增强，降低幻觉率”。",
+      "tier": "强烈建议沟通",
+      "one_liner": "AI4Science研究员 / 生物医学多模态与强化学习方向的高潜候选人，突出在问题定义与独立思考、AI 工具 / Agent 使用能力，代表证据是“进行SFT、知识蒸馏和RAG增强，降低幻觉率”。",
       "core_strengths": [
         "问题定义与独立思考强：进行SFT、知识蒸馏和RAG增强，降低幻觉率",
         "AI 工具 / Agent 使用能力强：进行SFT、知识蒸馏和RAG增强，降低幻觉率",
@@ -16,9 +16,7 @@
       ],
       "potential_risks": [
         "学习与成长潜力证据偏弱：缺少量化结果，需面谈确认真实效果。；ownership 信号不够强，需确认本人贡献。",
-        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。",
-        "疑似幻觉证据：e017 的引文未出现在原简历。",
-        "疑似幻觉证据：e018 的引文未出现在原简历。"
+        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。"
       ],
       "interview_questions": [
         "你提到“进行SFT、知识蒸馏和RAG增强，降低幻觉率”，baseline、评测集和消融设计分别是什么？",
@@ -67,7 +65,7 @@
           "label": "工程实践能力",
           "score": 4.09,
           "weighted_score": 13.09,
-          "rationale": "e004 体现 技术栈:RAG、动作:降低、量化结果；e018 体现 技术栈:Hugging Face、技术栈:PyTorch、技术栈:RLVR。",
+          "rationale": "e004 体现 技术栈:RAG、动作:降低、量化结果；e018 体现 技术栈:Hugging Face、技术栈:PyTorch、技术栈:RLHF。",
           "evidence_ids": [
             "e004",
             "e018"
@@ -81,7 +79,7 @@
           "label": "AI 工具 / Agent 使用能力",
           "score": 4.61,
           "weighted_score": 12.91,
-          "rationale": "e003 体现 技术栈:RAG、动作:降低、量化结果；e010 体现 动作:设计、动作:验证、Ownership；e017 体现 技术栈:Hugging Face、技术栈:PyTorch、技术栈:RLVR。",
+          "rationale": "e003 体现 技术栈:RAG、动作:降低、量化结果；e010 体现 动作:设计、动作:验证、Ownership；e017 体现 技术栈:Hugging Face、技术栈:PyTorch、技术栈:RLHF。",
           "evidence_ids": [
             "e003",
             "e010",
@@ -94,7 +92,7 @@
           "label": "问题定义与独立思考",
           "score": 4.63,
           "weighted_score": 12.96,
-          "rationale": "e005 体现 技术栈:RAG、动作:降低、量化结果；e013 体现 动作:提升、动作:设计、量化结果；e007 体现 动作:提升、量化结果。",
+          "rationale": "e005 体现 技术栈:RAG、动作:降低、量化结果；e013 体现 动作:设计、动作:提升、量化结果；e007 体现 动作:提升、量化结果。",
           "evidence_ids": [
             "e005",
             "e013",
@@ -108,7 +106,7 @@
           "label": "项目 Ownership",
           "score": 4.55,
           "weighted_score": 10.92,
-          "rationale": "e009 体现 动作:设计、动作:验证、Ownership；e012 体现 动作:提升、动作:设计、量化结果；e002 体现 动作:构建、Ownership。",
+          "rationale": "e009 体现 动作:设计、动作:验证、Ownership；e012 体现 动作:设计、动作:提升、量化结果；e002 体现 动作:构建、Ownership。",
           "evidence_ids": [
             "e009",
             "e012",
@@ -151,68 +149,8 @@
           "has_ownership": false
         },
         {
-          "id": "e004",
-          "dimension": "engineering_practice",
-          "source": "项目：医学多任务大模型适配",
-          "quote": "进行SFT、知识蒸馏和RAG增强，降低幻觉率",
-          "signals": [
-            "技术栈:RAG",
-            "动作:降低",
-            "量化结果"
-          ],
-          "strength": 4,
-          "has_metric": true,
-          "has_specific_tool": true,
-          "has_ownership": false
-        },
-        {
-          "id": "e005",
-          "dimension": "problem_definition",
-          "source": "项目：医学多任务大模型适配",
-          "quote": "进行SFT、知识蒸馏和RAG增强，降低幻觉率",
-          "signals": [
-            "技术栈:RAG",
-            "动作:降低",
-            "量化结果"
-          ],
-          "strength": 4,
-          "has_metric": true,
-          "has_specific_tool": true,
-          "has_ownership": false
-        },
-        {
           "id": "e009",
           "dimension": "ownership",
-          "source": "项目：低成本VLM强化学习训练",
-          "quote": "设计可验证奖励与curriculum sampling策略",
-          "signals": [
-            "动作:设计",
-            "动作:验证",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e010",
-          "dimension": "ai_agent_leverage",
-          "source": "项目：低成本VLM强化学习训练",
-          "quote": "设计可验证奖励与curriculum sampling策略",
-          "signals": [
-            "动作:设计",
-            "动作:验证",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e011",
-          "dimension": "research_exploration",
           "source": "项目：低成本VLM强化学习训练",
           "quote": "设计可验证奖励与curriculum sampling策略",
           "signals": [
@@ -231,24 +169,8 @@
           "source": "项目：低成本VLM强化学习训练",
           "quote": "提升几何推理、医学图像问答和实验设计任务的一致性",
           "signals": [
-            "动作:提升",
             "动作:设计",
-            "量化结果",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": true,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e013",
-          "dimension": "problem_definition",
-          "source": "项目：低成本VLM强化学习训练",
-          "quote": "提升几何推理、医学图像问答和实验设计任务的一致性",
-          "signals": [
             "动作:提升",
-            "动作:设计",
             "量化结果",
             "Ownership"
           ],
@@ -299,19 +221,6 @@
           "has_ownership": true
         },
         {
-          "id": "e015",
-          "dimension": "research_exploration",
-          "source": "代表成果",
-          "quote": "Data-Free Continual Learning for Multimodal LLMs，拟投CVPR 2026，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e017",
           "dimension": "ai_agent_leverage",
           "source": "技能关键词",
@@ -319,8 +228,8 @@
           "signals": [
             "技术栈:Hugging Face",
             "技术栈:PyTorch",
-            "技术栈:RLVR",
             "技术栈:RLHF",
+            "技术栈:RLVR",
             "技术栈:RAG"
           ],
           "strength": 3,
@@ -329,29 +238,64 @@
           "has_ownership": false
         },
         {
-          "id": "e018",
-          "dimension": "engineering_practice",
-          "source": "技能关键词",
-          "quote": "PyTorch、Hugging Face、RLHF/RLVR、medical VLM、RAG、single-cell modeling、data governance",
-          "signals": [
-            "技术栈:Hugging Face",
-            "技术栈:PyTorch",
-            "技术栈:RLVR",
-            "技术栈:RLHF",
-            "技术栈:RAG"
-          ],
-          "strength": 3,
+          "id": "e001",
+          "dimension": "learning_growth",
+          "source": "项目：医学多任务大模型适配",
+          "quote": "医学多任务大模型适配",
+          "signals": [],
+          "strength": 2,
           "has_metric": false,
-          "has_specific_tool": true,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e006",
+          "dimension": "research_exploration",
+          "source": "项目：单细胞身份与表达联合建模",
+          "quote": "单细胞身份与表达联合建模",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e008",
+          "dimension": "problem_definition",
+          "source": "项目：低成本VLM强化学习训练",
+          "quote": "低成本VLM强化学习训练",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e016",
+          "dimension": "research_exploration",
+          "source": "代表成果",
+          "quote": "Masked Discrete Diffusion for Single-Cell Identity and Expression，拟投ICML，三作",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e019",
+          "dimension": "learning_growth",
+          "source": "研究方向",
+          "quote": "医学VLM、单细胞建模、强化学习推理优化、跨模态持续学习",
+          "signals": [
+            "动作:优化"
+          ],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
           "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e017 的引文未出现在原简历。",
-        "疑似幻觉证据：e018 的引文未出现在原简历。",
-        "疑似幻觉证据：e019 的引文未出现在原简历。",
-        "疑似幻觉证据：e020 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "[Research Uni] 人工智能 博士 2024.09-至今",
         "某医学交叉学院 生物医学工程 硕士 2021.09-2024.06",
@@ -372,7 +316,7 @@
       "overall_score": 79,
       "level": "B",
       "tier": "建议沟通",
-      "one_liner": "大模型预训练算法研究员 / 高效推理与长上下文方向方向的高潜候选人，突出在工程实践能力、项目 Ownership，代表证据是“负责训练流水线、LM-Eval评测和ablation分析”。",
+      "one_liner": "大模型预训练算法研究员 / 高效推理与长上下文方向的高潜候选人，突出在工程实践能力、项目 Ownership，代表证据是“负责训练流水线、LM-Eval评测和ablation分析”。",
       "core_strengths": [
         "工程实践能力强：负责训练流水线、LM-Eval评测和ablation分析",
         "项目 Ownership强：负责训练流水线、LM-Eval评测和ablation分析",
@@ -380,9 +324,7 @@
       ],
       "potential_risks": [
         "AI 工具 / Agent 使用能力证据偏弱：缺少可核验证据。",
-        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。",
-        "疑似幻觉证据：e019 的引文未出现在原简历。",
-        "疑似幻觉证据：e020 的引文未出现在原简历。"
+        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。"
       ],
       "interview_questions": [
         "你提到“在4B参数语言模型上完成预训练消融，长上下文检索准确率提升6.8%”，baseline、评测集和消融设计分别是什么？",
@@ -401,7 +343,7 @@
           "label": "学习与成长潜力",
           "score": 4.15,
           "weighted_score": 11.62,
-          "rationale": "e009 体现 技术栈:LM-Eval、动作:负责、动作:评测。",
+          "rationale": "e009 体现 技术栈:LM-Eval、动作:分析、动作:负责。",
           "evidence_ids": [
             "e009"
           ],
@@ -430,7 +372,7 @@
           "label": "工程实践能力",
           "score": 4.65,
           "weighted_score": 14.88,
-          "rationale": "e008 体现 技术栈:LM-Eval、动作:负责、动作:评测；e012 体现 技术栈:Triton、动作:实现、Ownership；e019 体现 技术栈:Transformers、技术栈:TorchTitan、技术栈:LM-Eval。",
+          "rationale": "e008 体现 技术栈:LM-Eval、动作:分析、动作:负责；e012 体现 技术栈:Triton、动作:实现、Ownership；e019 体现 技术栈:Transformers、技术栈:TorchTitan、技术栈:LM-Eval。",
           "evidence_ids": [
             "e008",
             "e012",
@@ -471,7 +413,7 @@
           "label": "项目 Ownership",
           "score": 4.58,
           "weighted_score": 10.99,
-          "rationale": "e010 体现 技术栈:LM-Eval、动作:负责、动作:评测；e013 体现 技术栈:Triton、动作:实现、Ownership；e002 体现 动作:提出、Ownership。",
+          "rationale": "e010 体现 技术栈:LM-Eval、动作:分析、动作:负责；e013 体现 技术栈:Triton、动作:实现、Ownership；e002 体现 动作:提出、Ownership。",
           "evidence_ids": [
             "e010",
             "e013",
@@ -487,7 +429,7 @@
           "label": "长期培养价值",
           "score": 4.15,
           "weighted_score": 11.62,
-          "rationale": "e003 体现 动作:提出、Ownership；e005 体现 动作:提升、量化结果；e008 体现 技术栈:LM-Eval、动作:负责、动作:评测。",
+          "rationale": "e003 体现 动作:提出、Ownership；e005 体现 动作:提升、量化结果；e008 体现 技术栈:LM-Eval、动作:分析、动作:负责。",
           "evidence_ids": [
             "e003",
             "e005",
@@ -507,43 +449,9 @@
           "quote": "负责训练流水线、LM-Eval评测和ablation分析",
           "signals": [
             "技术栈:LM-Eval",
+            "动作:分析",
             "动作:负责",
             "动作:评测",
-            "动作:分析",
-            "Ownership"
-          ],
-          "strength": 5,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": true
-        },
-        {
-          "id": "e009",
-          "dimension": "learning_growth",
-          "source": "项目：面向长文档推理的动态记忆激活机制",
-          "quote": "负责训练流水线、LM-Eval评测和ablation分析",
-          "signals": [
-            "技术栈:LM-Eval",
-            "动作:负责",
-            "动作:评测",
-            "动作:分析",
-            "Ownership"
-          ],
-          "strength": 5,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": true
-        },
-        {
-          "id": "e010",
-          "dimension": "ownership",
-          "source": "项目：面向长文档推理的动态记忆激活机制",
-          "quote": "负责训练流水线、LM-Eval评测和ablation分析",
-          "signals": [
-            "技术栈:LM-Eval",
-            "动作:负责",
-            "动作:评测",
-            "动作:分析",
             "Ownership"
           ],
           "strength": 5,
@@ -554,21 +462,6 @@
         {
           "id": "e012",
           "dimension": "engineering_practice",
-          "source": "项目：Flash Linear Attention算子实现",
-          "quote": "使用Triton实现分块并行扫描和反向传播kernel",
-          "signals": [
-            "技术栈:Triton",
-            "动作:实现",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": true
-        },
-        {
-          "id": "e013",
-          "dimension": "ownership",
           "source": "项目：Flash Linear Attention算子实现",
           "quote": "使用Triton实现分块并行扫描和反向传播kernel",
           "signals": [
@@ -596,36 +489,8 @@
           "has_ownership": true
         },
         {
-          "id": "e003",
-          "dimension": "research_exploration",
-          "source": "项目：低秩衰减线性注意力机制研究",
-          "quote": "提出分块低秩衰减矩阵统一时间衰减、局部窗口和全局记忆",
-          "signals": [
-            "动作:提出",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e004",
           "dimension": "problem_definition",
-          "source": "项目：低秩衰减线性注意力机制研究",
-          "quote": "在4B参数语言模型上完成预训练消融，长上下文检索准确率提升6.8%",
-          "signals": [
-            "动作:提升",
-            "量化结果"
-          ],
-          "strength": 3,
-          "has_metric": true,
-          "has_specific_tool": false,
-          "has_ownership": false
-        },
-        {
-          "id": "e005",
-          "dimension": "research_exploration",
           "source": "项目：低秩衰减线性注意力机制研究",
           "quote": "在4B参数语言模型上完成预训练消融，长上下文检索准确率提升6.8%",
           "signals": [
@@ -694,10 +559,10 @@
           "has_ownership": true
         },
         {
-          "id": "e016",
-          "dimension": "research_exploration",
+          "id": "e017",
+          "dimension": "ownership",
           "source": "代表成果",
-          "quote": "Efficient Decay Memory for Long-Context Language Models，拟投NeurIPS 2026，一作",
+          "quote": "Dynamic Memory Activation for Linear Attention，Under Review，一作",
           "signals": [
             "Ownership"
           ],
@@ -705,13 +570,64 @@
           "has_metric": false,
           "has_specific_tool": false,
           "has_ownership": true
+        },
+        {
+          "id": "e019",
+          "dimension": "engineering_practice",
+          "source": "技能关键词",
+          "quote": "PyTorch、Triton、TorchTitan、Transformers、vLLM、LM-Eval、CUDA基础",
+          "signals": [
+            "技术栈:Transformers",
+            "技术栈:TorchTitan",
+            "技术栈:LM-Eval",
+            "技术栈:PyTorch",
+            "技术栈:Triton",
+            "技术栈:CUDA",
+            "技术栈:vLLM"
+          ],
+          "strength": 3,
+          "has_metric": false,
+          "has_specific_tool": true,
+          "has_ownership": false
+        },
+        {
+          "id": "e020",
+          "dimension": "engineering_practice",
+          "source": "研究方向",
+          "quote": "线性注意力、稀疏注意力、状态空间记忆、长序列建模、Triton Kernel优化",
+          "signals": [
+            "技术栈:Triton",
+            "动作:优化"
+          ],
+          "strength": 3,
+          "has_metric": false,
+          "has_specific_tool": true,
+          "has_ownership": false
+        },
+        {
+          "id": "e001",
+          "dimension": "research_exploration",
+          "source": "项目：低秩衰减线性注意力机制研究",
+          "quote": "低秩衰减线性注意力机制研究",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e006",
+          "dimension": "research_exploration",
+          "source": "项目：面向长文档推理的动态记忆激活机制",
+          "quote": "面向长文档推理的动态记忆激活机制",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e019 的引文未出现在原简历。",
-        "疑似幻觉证据：e020 的引文未出现在原简历。",
-        "疑似幻觉证据：e021 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "[Research Institution] 模式识别与智能系统 博士 2025.09-至今",
         "[Top-Tier Uni] 人工智能 本科 2021.09-2025.06 [Academic Signal] [Academic Signal]"
@@ -731,7 +647,7 @@
       "overall_score": 79,
       "level": "B",
       "tier": "建议沟通",
-      "one_liner": "多模态推理算法研究员 / 数据合成Agent方向方向的高潜候选人，突出在问题定义与独立思考、项目 Ownership，代表证据是“负责benchmark设计、模型评测和错误归因”。",
+      "one_liner": "多模态推理算法研究员 / 数据合成Agent方向的高潜候选人，突出在问题定义与独立思考、项目 Ownership，代表证据是“负责benchmark设计、模型评测和错误归因”。",
       "core_strengths": [
         "问题定义与独立思考强：负责benchmark设计、模型评测和错误归因",
         "项目 Ownership强：设计构图-出题-求解-验证-反思的多智能体闭环系统",
@@ -739,9 +655,7 @@
       ],
       "potential_risks": [
         "工程实践能力证据偏弱：缺少量化结果，需面谈确认真实效果。；ownership 信号不够强，需确认本人贡献。",
-        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。",
-        "疑似幻觉证据：e018 的引文未出现在原简历。",
-        "疑似幻觉证据：e019 的引文未出现在原简历。"
+        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。"
       ],
       "interview_questions": [
         "你提到“自动拦截约47%错误题目，并修复其中60%以上”，baseline、评测集和消融设计分别是什么？",
@@ -878,70 +792,8 @@
           "has_ownership": true
         },
         {
-          "id": "e002",
-          "dimension": "ai_agent_leverage",
-          "source": "项目：可验证几何数据合成框架GeoSynth-Agent",
-          "quote": "设计构图-出题-求解-验证-反思的多智能体闭环系统",
-          "signals": [
-            "动作:设计",
-            "动作:验证",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e004",
-          "dimension": "ownership",
-          "source": "项目：可验证几何数据合成框架GeoSynth-Agent",
-          "quote": "设计构图-出题-求解-验证-反思的多智能体闭环系统",
-          "signals": [
-            "动作:设计",
-            "动作:验证",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e010",
           "dimension": "learning_growth",
-          "source": "项目：多模态训练数据质量评估",
-          "quote": "负责benchmark设计、模型评测和错误归因",
-          "signals": [
-            "动作:设计",
-            "动作:负责",
-            "动作:评测",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e011",
-          "dimension": "ownership",
-          "source": "项目：多模态训练数据质量评估",
-          "quote": "负责benchmark设计、模型评测和错误归因",
-          "signals": [
-            "动作:设计",
-            "动作:负责",
-            "动作:评测",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e012",
-          "dimension": "problem_definition",
           "source": "项目：多模态训练数据质量评估",
           "quote": "负责benchmark设计、模型评测和错误归因",
           "signals": [
@@ -998,48 +850,8 @@
           "has_ownership": true
         },
         {
-          "id": "e009",
-          "dimension": "problem_definition",
-          "source": "项目：多模态训练数据质量评估",
-          "quote": "构建图像、题干、证明链、答案四元一致性指标",
-          "signals": [
-            "动作:构建",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e013",
           "dimension": "ai_agent_leverage",
-          "source": "代表成果",
-          "quote": "GeoSynth-Agent: Verifiable Geometry Data Generation with Multi-Agent Reasoning，拟投ICML 2026，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e014",
-          "dimension": "ownership",
-          "source": "代表成果",
-          "quote": "GeoSynth-Agent: Verifiable Geometry Data Generation with Multi-Agent Reasoning，拟投ICML 2026，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e015",
-          "dimension": "research_exploration",
           "source": "代表成果",
           "quote": "GeoSynth-Agent: Verifiable Geometry Data Generation with Multi-Agent Reasoning，拟投ICML 2026，一作",
           "signals": [
@@ -1062,12 +874,47 @@
           "has_metric": false,
           "has_specific_tool": false,
           "has_ownership": true
+        },
+        {
+          "id": "e018",
+          "dimension": "engineering_practice",
+          "source": "技能关键词",
+          "quote": "Python、SymPy、PyTorch、multimodal LLM、data engine、verifier、prompt engineering",
+          "signals": [
+            "技术栈:PyTorch",
+            "技术栈:SymPy"
+          ],
+          "strength": 3,
+          "has_metric": false,
+          "has_specific_tool": true,
+          "has_ownership": false
+        },
+        {
+          "id": "e019",
+          "dimension": "ai_agent_leverage",
+          "source": "研究方向",
+          "quote": "多模态数学推理、几何图谱、可验证数据合成、Agentic Data Generation",
+          "signals": [
+            "动作:验证"
+          ],
+          "strength": 3,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e005",
+          "dimension": "problem_definition",
+          "source": "项目：混合式几何求解器",
+          "quote": "结合符号求解、数值采样和逻辑一致性检查",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e018 的引文未出现在原简历。",
-        "疑似幻觉证据：e019 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "某人工智能研究院 模式识别与智能系统 博士 2026.09-至今",
         "[Research Uni] 自动化 本科 2022.09-2026.06 [Academic Signal]"
@@ -1084,10 +931,10 @@
       "name": "候选人06",
       "target_role": "大模型系统算法研究员 / 训练推理优化方向",
       "stage": "博士研究生",
-      "overall_score": 78,
+      "overall_score": 79,
       "level": "B",
       "tier": "建议沟通",
-      "one_liner": "大模型系统算法研究员 / 训练推理优化方向方向的高潜候选人，突出在工程实践能力、项目 Ownership，代表证据是“负责模型结构实验、训练脚本维护和评测集扩展”。",
+      "one_liner": "大模型系统算法研究员 / 训练推理优化方向的高潜候选人，突出在工程实践能力、项目 Ownership，代表证据是“负责模型结构实验、训练脚本维护和评测集扩展”。",
       "core_strengths": [
         "工程实践能力强：负责模型结构实验、训练脚本维护和评测集扩展",
         "项目 Ownership强：负责模型结构实验、训练脚本维护和评测集扩展",
@@ -1095,8 +942,7 @@
       ],
       "potential_risks": [
         "AI 工具 / Agent 使用能力证据偏弱：缺少可核验证据。",
-        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。",
-        "疑似幻觉证据：e017 的引文未出现在原简历。"
+        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。"
       ],
       "interview_questions": [
         "围绕“负责模型结构实验、训练脚本维护和评测集扩展”，哪些模块是你独立设计，哪些来自团队已有系统？",
@@ -1114,7 +960,7 @@
           "label": "学习与成长潜力",
           "score": 3.91,
           "weighted_score": 10.95,
-          "rationale": "e004 体现 动作:负责、动作:维护、动作:评测。",
+          "rationale": "e004 体现 动作:维护、动作:负责、动作:评测。",
           "evidence_ids": [
             "e004"
           ],
@@ -1144,7 +990,7 @@
           "label": "工程实践能力",
           "score": 4.65,
           "weighted_score": 14.88,
-          "rationale": "e003 体现 动作:负责、动作:维护、动作:评测；e013 体现 技术栈:Transformers、Ownership；e015 体现 技术栈:Transformers、Ownership。",
+          "rationale": "e003 体现 动作:维护、动作:负责、动作:评测；e013 体现 技术栈:Transformers、Ownership；e015 体现 技术栈:Transformers、Ownership。",
           "evidence_ids": [
             "e003",
             "e013",
@@ -1185,7 +1031,7 @@
           "label": "项目 Ownership",
           "score": 4.58,
           "weighted_score": 10.99,
-          "rationale": "e002 体现 动作:负责、动作:维护、动作:评测；e011 体现 技术栈:Transformers、Ownership；e014 体现 技术栈:Transformers、Ownership。",
+          "rationale": "e002 体现 动作:维护、动作:负责、动作:评测；e011 体现 技术栈:Transformers、Ownership；e014 体现 技术栈:Transformers、Ownership。",
           "evidence_ids": [
             "e002",
             "e011",
@@ -1199,18 +1045,16 @@
         {
           "key": "cultivation_value",
           "label": "长期培养价值",
-          "score": 4.15,
-          "weighted_score": 11.62,
-          "rationale": "e012 体现 技术栈:Transformers、Ownership；e016 体现 技术栈:Transformers、Ownership；e003 体现 动作:负责、动作:维护、动作:评测。",
+          "score": 4.38,
+          "weighted_score": 12.28,
+          "rationale": "e012 体现 技术栈:Transformers、Ownership；e016 体现 技术栈:Transformers、Ownership；e003 体现 动作:维护、动作:负责、动作:评测。",
           "evidence_ids": [
             "e012",
             "e016",
             "e003",
             "e013"
           ],
-          "risk_notes": [
-            "Critic 回炉：高分维度证据数量不足，已封顶。"
-          ]
+          "risk_notes": []
         }
       ],
       "evidence": [
@@ -1220,40 +1064,8 @@
           "source": "项目：文档智能与高效OCR模型实习",
           "quote": "负责模型结构实验、训练脚本维护和评测集扩展",
           "signals": [
-            "动作:负责",
             "动作:维护",
-            "动作:评测",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e003",
-          "dimension": "engineering_practice",
-          "source": "项目：文档智能与高效OCR模型实习",
-          "quote": "负责模型结构实验、训练脚本维护和评测集扩展",
-          "signals": [
             "动作:负责",
-            "动作:维护",
-            "动作:评测",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e004",
-          "dimension": "learning_growth",
-          "source": "项目：文档智能与高效OCR模型实习",
-          "quote": "负责模型结构实验、训练脚本维护和评测集扩展",
-          "signals": [
-            "动作:负责",
-            "动作:维护",
             "动作:评测",
             "Ownership"
           ],
@@ -1265,34 +1077,6 @@
         {
           "id": "e011",
           "dimension": "ownership",
-          "source": "代表成果",
-          "quote": "Transformers without Extreme Activations for FP8 Training，拟投CVPR 2026，一作",
-          "signals": [
-            "技术栈:Transformers",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": true
-        },
-        {
-          "id": "e012",
-          "dimension": "research_exploration",
-          "source": "代表成果",
-          "quote": "Transformers without Extreme Activations for FP8 Training，拟投CVPR 2026，一作",
-          "signals": [
-            "技术栈:Transformers",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": true
-        },
-        {
-          "id": "e013",
-          "dimension": "engineering_practice",
           "source": "代表成果",
           "quote": "Transformers without Extreme Activations for FP8 Training，拟投CVPR 2026，一作",
           "signals": [
@@ -1319,50 +1103,8 @@
           "has_ownership": true
         },
         {
-          "id": "e015",
-          "dimension": "engineering_practice",
-          "source": "代表成果",
-          "quote": "Practical Lightning QAT for Vision Transformers，已接收NeurIPS 2025，一作",
-          "signals": [
-            "技术栈:Transformers",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": true
-        },
-        {
-          "id": "e016",
-          "dimension": "research_exploration",
-          "source": "代表成果",
-          "quote": "Practical Lightning QAT for Vision Transformers，已接收NeurIPS 2025，一作",
-          "signals": [
-            "技术栈:Transformers",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": true
-        },
-        {
           "id": "e006",
           "dimension": "ownership",
-          "source": "项目：Transformer激活异常值消除机制",
-          "quote": "提出基于通道重参数化与归一化前移的结构改造",
-          "signals": [
-            "动作:提出",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e007",
-          "dimension": "research_exploration",
           "source": "项目：Transformer激活异常值消除机制",
           "quote": "提出基于通道重参数化与归一化前移的结构改造",
           "signals": [
@@ -1414,11 +1156,48 @@
           "has_metric": true,
           "has_specific_tool": false,
           "has_ownership": false
+        },
+        {
+          "id": "e017",
+          "dimension": "engineering_practice",
+          "source": "技能关键词",
+          "quote": "PyTorch、DeepSpeed、Megatron、CUDA、quantization、FP8、TensorRT、OCR",
+          "signals": [
+            "技术栈:DeepSpeed",
+            "技术栈:TensorRT",
+            "技术栈:Megatron",
+            "技术栈:PyTorch",
+            "技术栈:CUDA"
+          ],
+          "strength": 3,
+          "has_metric": false,
+          "has_specific_tool": true,
+          "has_ownership": false
+        },
+        {
+          "id": "e001",
+          "dimension": "cultivation_value",
+          "source": "项目：文档智能与高效OCR模型实习",
+          "quote": "文档智能与高效OCR模型实习",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e005",
+          "dimension": "research_exploration",
+          "source": "项目：Transformer激活异常值消除机制",
+          "quote": "Transformer激活异常值消除机制",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e017 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "[General Uni] 计算机科学与技术 博士 2024.09-至今",
         "[Specialized Uni] 人工智能 本科 2020.09-2024.06 拔尖班"
@@ -1438,7 +1217,7 @@
       "overall_score": 77,
       "level": "B",
       "tier": "建议沟通",
-      "one_liner": "Agent研究员 / 软件工程智能体方向方向的高潜候选人，突出在长期培养价值、项目 Ownership，代表证据是“Visual Context Helps Issue Resolving，ACL Findings，一作”。",
+      "one_liner": "Agent研究员 / 软件工程智能体方向的高潜候选人，突出在长期培养价值、项目 Ownership，代表证据是“Visual Context Helps Issue Resolving，ACL Findings，一作”。",
       "core_strengths": [
         "长期培养价值强：Visual Context Helps Issue Resolving，ACL Findings，一作",
         "项目 Ownership强：负责仓库筛选、失败测试复现、patch验证和数据清洗",
@@ -1446,9 +1225,7 @@
       ],
       "potential_risks": [
         "工程实践能力证据偏弱：缺少量化结果，需面谈确认真实效果。；ownership 信号不够强，需确认本人贡献。",
-        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。",
-        "疑似幻觉证据：e017 的引文未出现在原简历。",
-        "疑似幻觉证据：e018 的引文未出现在原简历。"
+        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。"
       ],
       "interview_questions": [
         "围绕“Visual Context Helps Issue Resolving，ACL Findings，一作”，哪些模块是你独立设计，哪些来自团队已有系统？",
@@ -1465,7 +1242,7 @@
           "label": "学习与成长潜力",
           "score": 3.71,
           "weighted_score": 10.39,
-          "rationale": "e005 体现 动作:负责、动作:复现、动作:验证；e009 体现 动作:复现；e021 体现 动作:自动。",
+          "rationale": "e005 体现 动作:复现、动作:负责、动作:验证；e009 体现 动作:复现；e021 体现 动作:自动。",
           "evidence_ids": [
             "e005",
             "e009",
@@ -1509,7 +1286,7 @@
           "label": "AI 工具 / Agent 使用能力",
           "score": 4.19,
           "weighted_score": 11.74,
-          "rationale": "e004 体现 动作:负责、动作:复现、动作:验证；e014 体现 Ownership；e018 体现 技术栈:Playwright、技术栈:Docker、技术栈:Git。",
+          "rationale": "e004 体现 动作:复现、动作:负责、动作:验证；e014 体现 Ownership；e018 体现 技术栈:Playwright、技术栈:Docker、技术栈:Git。",
           "evidence_ids": [
             "e004",
             "e014",
@@ -1540,7 +1317,7 @@
           "label": "项目 Ownership",
           "score": 4.21,
           "weighted_score": 10.1,
-          "rationale": "e003 体现 动作:负责、动作:复现、动作:验证；e001 体现 动作:修复、动作:构建、Ownership；e012 体现 Ownership。",
+          "rationale": "e003 体现 动作:复现、动作:负责、动作:验证；e001 体现 动作:构建、动作:修复、Ownership；e012 体现 Ownership。",
           "evidence_ids": [
             "e003",
             "e001",
@@ -1573,40 +1350,8 @@
           "source": "项目：多语言Issue修复基准构建",
           "quote": "负责仓库筛选、失败测试复现、patch验证和数据清洗",
           "signals": [
-            "动作:负责",
             "动作:复现",
-            "动作:验证",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e004",
-          "dimension": "ai_agent_leverage",
-          "source": "项目：多语言Issue修复基准构建",
-          "quote": "负责仓库筛选、失败测试复现、patch验证和数据清洗",
-          "signals": [
             "动作:负责",
-            "动作:复现",
-            "动作:验证",
-            "Ownership"
-          ],
-          "strength": 4,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e005",
-          "dimension": "learning_growth",
-          "source": "项目：多语言Issue修复基准构建",
-          "quote": "负责仓库筛选、失败测试复现、patch验证和数据清洗",
-          "signals": [
-            "动作:负责",
-            "动作:复现",
             "动作:验证",
             "Ownership"
           ],
@@ -1621,8 +1366,8 @@
           "source": "项目：多语言Issue修复基准构建",
           "quote": "多语言Issue修复基准构建",
           "signals": [
-            "动作:修复",
             "动作:构建",
+            "动作:修复",
             "Ownership"
           ],
           "strength": 3,
@@ -1672,47 +1417,8 @@
           "has_ownership": true
         },
         {
-          "id": "e013",
-          "dimension": "research_exploration",
-          "source": "代表成果",
-          "quote": "Visual Context Helps Issue Resolving，ACL Findings，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e014",
           "dimension": "ai_agent_leverage",
-          "source": "代表成果",
-          "quote": "PaperRepro-Agent: Automated Computational Reproducibility Assessment，Under Review，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e015",
-          "dimension": "ownership",
-          "source": "代表成果",
-          "quote": "PaperRepro-Agent: Automated Computational Reproducibility Assessment，Under Review，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e016",
-          "dimension": "research_exploration",
           "source": "代表成果",
           "quote": "PaperRepro-Agent: Automated Computational Reproducibility Assessment，Under Review，一作",
           "signals": [
@@ -1739,21 +1445,6 @@
           "has_ownership": false
         },
         {
-          "id": "e018",
-          "dimension": "ai_agent_leverage",
-          "source": "技能关键词",
-          "quote": "Python、Java、TypeScript、Docker、Playwright、Git、SWE-bench、multi-agent system",
-          "signals": [
-            "技术栈:Playwright",
-            "技术栈:Docker",
-            "技术栈:Git"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": false
-        },
-        {
           "id": "e006",
           "dimension": "ai_agent_leverage",
           "source": "项目：视觉信息增强的软件修复Agent",
@@ -1765,15 +1456,48 @@
           "has_metric": false,
           "has_specific_tool": false,
           "has_ownership": false
+        },
+        {
+          "id": "e008",
+          "dimension": "ai_agent_leverage",
+          "source": "项目：社科论文可复现性判断Agent",
+          "quote": "社科论文可复现性判断Agent",
+          "signals": [
+            "动作:复现"
+          ],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e010",
+          "dimension": "ai_agent_leverage",
+          "source": "项目：社科论文可复现性判断Agent",
+          "quote": "自动完成论文解析、代码环境配置、依赖安装、结果运行与图表一致性检查",
+          "signals": [
+            "动作:自动"
+          ],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e019",
+          "dimension": "ai_agent_leverage",
+          "source": "研究方向",
+          "quote": "Coding Agent、issue resolving、环境配置、实验自动化、AI Scientist",
+          "signals": [
+            "动作:自动"
+          ],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e017 的引文未出现在原简历。",
-        "疑似幻觉证据：e018 的引文未出现在原简历。",
-        "疑似幻觉证据：e019 的引文未出现在原简历。",
-        "疑似幻觉证据：e020 的引文未出现在原简历。",
-        "疑似幻觉证据：e021 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "[General Uni] 人工智能 博士 2025.09-至今",
         "[General Uni] 人工智能 硕士 2023.09-2025.06",
@@ -1794,7 +1518,7 @@
       "overall_score": 73,
       "level": "B",
       "tier": "暂缓 / 需补充信息",
-      "one_liner": "Agent平台研发研究员 / 多智能体系统方向方向的高潜候选人，突出在长期培养价值、项目 Ownership，代表证据是“在Omniverse场景中实现语言指令到机器人动作的闭环执行”。",
+      "one_liner": "Agent平台研发研究员 / 多智能体系统方向的高潜候选人，突出在长期培养价值、项目 Ownership，代表证据是“在Omniverse场景中实现语言指令到机器人动作的闭环执行”。",
       "core_strengths": [
         "长期培养价值强：在Omniverse场景中实现语言指令到机器人动作的闭环执行",
         "项目 Ownership强：在Omniverse场景中实现语言指令到机器人动作的闭环执行",
@@ -1802,9 +1526,7 @@
       ],
       "potential_risks": [
         "问题定义与独立思考证据偏弱：缺少可核验证据。",
-        "学习与成长潜力证据偏弱：缺少量化结果，需面谈确认真实效果。；ownership 信号不够强，需确认本人贡献。",
-        "疑似幻觉证据：e022 的引文未出现在原简历。",
-        "疑似幻觉证据：e023 的引文未出现在原简历。"
+        "学习与成长潜力证据偏弱：缺少量化结果，需面谈确认真实效果。；ownership 信号不够强，需确认本人贡献。"
       ],
       "interview_questions": [
         "围绕“在Omniverse场景中实现语言指令到机器人动作的闭环执行”，哪些模块是你独立设计，哪些来自团队已有系统？",
@@ -1836,7 +1558,7 @@
           "label": "研究探索能力",
           "score": 3.65,
           "weighted_score": 11.68,
-          "rationale": "e012 体现 动作:探索、动作:开发、Ownership；e021 体现 Ownership。",
+          "rationale": "e012 体现 动作:开发、动作:探索、Ownership；e021 体现 Ownership。",
           "evidence_ids": [
             "e012",
             "e021"
@@ -1937,36 +1659,6 @@
           "has_ownership": true
         },
         {
-          "id": "e017",
-          "dimension": "cultivation_value",
-          "source": "项目：具身智能代码解释器框架",
-          "quote": "在Omniverse场景中实现语言指令到机器人动作的闭环执行",
-          "signals": [
-            "技术栈:Omniverse",
-            "动作:实现",
-            "Ownership"
-          ],
-          "strength": 5,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": true
-        },
-        {
-          "id": "e018",
-          "dimension": "engineering_practice",
-          "source": "项目：具身智能代码解释器框架",
-          "quote": "在Omniverse场景中实现语言指令到机器人动作的闭环执行",
-          "signals": [
-            "技术栈:Omniverse",
-            "动作:实现",
-            "Ownership"
-          ],
-          "strength": 5,
-          "has_metric": false,
-          "has_specific_tool": true,
-          "has_ownership": true
-        },
-        {
           "id": "e004",
           "dimension": "cultivation_value",
           "source": "项目：大规模人-Agent协同工作平台",
@@ -1992,52 +1684,8 @@
           "has_ownership": false
         },
         {
-          "id": "e003",
-          "dimension": "ownership",
-          "source": "项目：大规模人-Agent协同工作平台",
-          "quote": "设计面向混合组织的通信与任务管理系统",
-          "signals": [
-            "动作:设计",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e005",
           "dimension": "ownership",
-          "source": "项目：大规模人-Agent协同工作平台",
-          "quote": "负责后端架构、sandbox集群和事件总线设计",
-          "signals": [
-            "动作:设计",
-            "动作:负责",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e006",
-          "dimension": "engineering_practice",
-          "source": "项目：大规模人-Agent协同工作平台",
-          "quote": "负责后端架构、sandbox集群和事件总线设计",
-          "signals": [
-            "动作:设计",
-            "动作:负责",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e007",
-          "dimension": "cultivation_value",
           "source": "项目：大规模人-Agent协同工作平台",
           "quote": "负责后端架构、sandbox集群和事件总线设计",
           "signals": [
@@ -2065,42 +1713,13 @@
           "has_ownership": true
         },
         {
-          "id": "e010",
-          "dimension": "ownership",
-          "source": "项目：图形化Spec-Driven Development工具",
-          "quote": "将需求、测试、实现、评审和部署节点串成可视化Agent工作流",
-          "signals": [
-            "动作:实现",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e011",
           "dimension": "ownership",
           "source": "项目：图形化Spec-Driven Development工具",
           "quote": "探索规格文档作为唯一事实来源的软件开发范式",
           "signals": [
-            "动作:探索",
             "动作:开发",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e012",
-          "dimension": "research_exploration",
-          "source": "项目：图形化Spec-Driven Development工具",
-          "quote": "探索规格文档作为唯一事实来源的软件开发范式",
-          "signals": [
             "动作:探索",
-            "动作:开发",
             "Ownership"
           ],
           "strength": 3,
@@ -2120,12 +1739,73 @@
           "has_metric": false,
           "has_specific_tool": false,
           "has_ownership": true
+        },
+        {
+          "id": "e022",
+          "dimension": "engineering_practice",
+          "source": "技能关键词",
+          "quote": "Python、Rust、Node.js、React、FastAPI、Docker、sandbox、Omniverse",
+          "signals": [
+            "技术栈:Omniverse",
+            "技术栈:FastAPI",
+            "技术栈:Node.js",
+            "技术栈:Docker",
+            "技术栈:React",
+            "技术栈:Rust"
+          ],
+          "strength": 3,
+          "has_metric": false,
+          "has_specific_tool": true,
+          "has_ownership": false
+        },
+        {
+          "id": "e008",
+          "dimension": "ai_agent_leverage",
+          "source": "项目：图形化Spec-Driven Development工具",
+          "quote": "图形化Spec-Driven Development工具",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e013",
+          "dimension": "ai_agent_leverage",
+          "source": "项目：具身智能代码解释器框架",
+          "quote": "具身智能代码解释器框架",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e014",
+          "dimension": "ai_agent_leverage",
+          "source": "项目：具身智能代码解释器框架",
+          "quote": "复现视觉语言模型、代码解释器和机器人仿真环境三端交互流程",
+          "signals": [
+            "动作:复现"
+          ],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e023",
+          "dimension": "ai_agent_leverage",
+          "source": "研究方向",
+          "quote": "Human-Agent Collaboration、多智能体通信拓扑、具身智能、图形化工作流",
+          "signals": [],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e022 的引文未出现在原简历。",
-        "疑似幻觉证据：e023 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "[Top-Tier Uni] 计算机科学 博士 2025.09-至今",
         "[General Uni] 数学与应用数学 本科 2021.09-2025.06 [Academic Signal]"
@@ -2145,7 +1825,7 @@
       "overall_score": 72,
       "level": "B",
       "tier": "暂缓 / 需补充信息",
-      "one_liner": "大模型Agent研究员 / 模型路由与协作方向方向的高潜候选人，突出在长期培养价值、AI 工具 / Agent 使用能力，代表证据是“Cost-Aware Meta Routing for Large Language Models，Under Review，一作”。",
+      "one_liner": "大模型Agent研究员 / 模型路由与协作方向的高潜候选人，突出在长期培养价值、AI 工具 / Agent 使用能力，代表证据是“Cost-Aware Meta Routing for Large Language Models，Under Review，一作”。",
       "core_strengths": [
         "长期培养价值强：Cost-Aware Meta Routing for Large Language Models，Under Review，一作",
         "AI 工具 / Agent 使用能力强：将任务拆为感知、规划、执行、验证四类步骤",
@@ -2155,8 +1835,7 @@
         "学习与成长潜力证据偏弱：缺少可核验证据。",
         "工程实践能力证据偏弱：缺少量化结果，需面谈确认真实效果。；ownership 信号不够强，需确认本人贡献。",
         "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。",
-        "ownership 需要进一步确认，避免把团队平台成果误判为个人能力。",
-        "疑似幻觉证据：e016 的引文未出现在原简历。"
+        "ownership 需要进一步确认，避免把团队平台成果误判为个人能力。"
       ],
       "interview_questions": [
         "你提到“相比单模型Agent任务成功率提升9.5%”，baseline、评测集和消融设计分别是什么？",
@@ -2314,20 +1993,6 @@
           "has_ownership": false
         },
         {
-          "id": "e007",
-          "dimension": "problem_definition",
-          "source": "项目：面向GUI Agent的分步路由机制",
-          "quote": "相比单模型Agent任务成功率提升9.5%",
-          "signals": [
-            "动作:提升",
-            "量化结果"
-          ],
-          "strength": 3,
-          "has_metric": true,
-          "has_specific_tool": false,
-          "has_ownership": false
-        },
-        {
           "id": "e010",
           "dimension": "problem_definition",
           "source": "项目：小模型协作推理",
@@ -2354,47 +2019,8 @@
           "has_ownership": true
         },
         {
-          "id": "e012",
-          "dimension": "research_exploration",
-          "source": "代表成果",
-          "quote": "Cost-Aware Meta Routing for Large Language Models，Under Review，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e013",
           "dimension": "ai_agent_leverage",
-          "source": "代表成果",
-          "quote": "Stepwise Model Routing for GUI Agents，Under Review，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e014",
-          "dimension": "ownership",
-          "source": "代表成果",
-          "quote": "Stepwise Model Routing for GUI Agents，Under Review，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e015",
-          "dimension": "research_exploration",
           "source": "代表成果",
           "quote": "Stepwise Model Routing for GUI Agents，Under Review，一作",
           "signals": [
@@ -2446,21 +2072,34 @@
           "has_ownership": false
         },
         {
-          "id": "e004",
-          "dimension": "research_exploration",
-          "source": "项目：面向GUI Agent的分步路由机制",
-          "quote": "面向GUI Agent的分步路由机制",
-          "signals": [],
+          "id": "e008",
+          "dimension": "problem_definition",
+          "source": "项目：小模型协作推理",
+          "quote": "改进sampling-voting，引入置信度校准和错误互补性约束",
+          "signals": [
+            "动作:引入",
+            "动作:改进"
+          ],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
+        },
+        {
+          "id": "e017",
+          "dimension": "ai_agent_leverage",
+          "source": "研究方向",
+          "quote": "LLM routing、multi-agent collaboration、test-time scaling、成本-效果联合优化",
+          "signals": [
+            "动作:优化"
+          ],
           "strength": 2,
           "has_metric": false,
           "has_specific_tool": false,
           "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e016 的引文未出现在原简历。",
-        "疑似幻觉证据：e017 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "[Emerging Uni] 计算机科学 博士 2024.09-至今",
         "[Specialized Uni] 计算机技术 硕士 2021.09-2024.06 [Academic Signal]00",
@@ -2481,7 +2120,7 @@
       "overall_score": 72,
       "level": "B",
       "tier": "暂缓 / 需补充信息",
-      "one_liner": "多模态安全算法研究员 / 内容理解与评测方向方向的高潜候选人，突出在项目 Ownership、长期培养价值，代表证据是“构建面向meme、短视频截图和新闻配图的风险理解benchmark”。",
+      "one_liner": "多模态安全算法研究员 / 内容理解与评测方向的高潜候选人，突出在项目 Ownership、长期培养价值，代表证据是“构建面向meme、短视频截图和新闻配图的风险理解benchmark”。",
       "core_strengths": [
         "项目 Ownership强：构建面向meme、短视频截图和新闻配图的风险理解benchmark",
         "长期培养价值强：提出先定位候选目标、再判断语义反转关系的两阶段范式",
@@ -2490,9 +2129,7 @@
       "potential_risks": [
         "AI 工具 / Agent 使用能力证据偏弱：缺少可核验证据。",
         "工程实践能力证据偏弱：缺少量化结果，需面谈确认真实效果。；ownership 信号不够强，需确认本人贡献。",
-        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。",
-        "疑似幻觉证据：e014 的引文未出现在原简历。",
-        "疑似幻觉证据：e015 的引文未出现在原简历。"
+        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。"
       ],
       "interview_questions": [
         "你提到“低资源场景下F1提升约5%”，baseline、评测集和消融设计分别是什么？",
@@ -2619,19 +2256,6 @@
           "has_ownership": false
         },
         {
-          "id": "e002",
-          "dimension": "learning_growth",
-          "source": "项目：上下文感知的多模态危害评测平台",
-          "quote": "上下文感知的多模态危害评测平台",
-          "signals": [
-            "动作:评测"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": false
-        },
-        {
           "id": "e003",
           "dimension": "ownership",
           "source": "项目：上下文感知的多模态危害评测平台",
@@ -2646,50 +2270,8 @@
           "has_ownership": true
         },
         {
-          "id": "e004",
-          "dimension": "learning_growth",
-          "source": "项目：上下文感知的多模态危害评测平台",
-          "quote": "构建面向meme、短视频截图和新闻配图的风险理解benchmark",
-          "signals": [
-            "动作:构建",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e005",
-          "dimension": "problem_definition",
-          "source": "项目：上下文感知的多模态危害评测平台",
-          "quote": "构建面向meme、短视频截图和新闻配图的风险理解benchmark",
-          "signals": [
-            "动作:构建",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e006",
           "dimension": "ownership",
-          "source": "项目：粗到细的多模态讽刺目标识别",
-          "quote": "提出先定位候选目标、再判断语义反转关系的两阶段范式",
-          "signals": [
-            "动作:提出",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e007",
-          "dimension": "research_exploration",
           "source": "项目：粗到细的多模态讽刺目标识别",
           "quote": "提出先定位候选目标、再判断语义反转关系的两阶段范式",
           "signals": [
@@ -2730,35 +2312,8 @@
           "has_ownership": true
         },
         {
-          "id": "e011",
-          "dimension": "research_exploration",
-          "source": "项目：安全模型在线误报分析",
-          "quote": "提出数据重采样与hard negative mining策略",
-          "signals": [
-            "动作:提出",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e012",
           "dimension": "ownership",
-          "source": "代表成果",
-          "quote": "Context-Aware Harmfulness Evaluation for Multimodal Models，拟投ACL 2026，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e013",
-          "dimension": "research_exploration",
           "source": "代表成果",
           "quote": "Context-Aware Harmfulness Evaluation for Multimodal Models，拟投ACL 2026，一作",
           "signals": [
@@ -2797,12 +2352,22 @@
           "has_metric": false,
           "has_specific_tool": false,
           "has_ownership": false
+        },
+        {
+          "id": "e009",
+          "dimension": "problem_definition",
+          "source": "项目：安全模型在线误报分析",
+          "quote": "安全模型在线误报分析",
+          "signals": [
+            "动作:分析"
+          ],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e014 的引文未出现在原简历。",
-        "疑似幻觉证据：e015 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "[Research Institution] 人工智能 博士 2025.09-至今",
         "[Specialized Uni] 人工智能 硕士 2022.09-2025.06 [Academic Signal]00",
@@ -2823,7 +2388,7 @@
       "overall_score": 71,
       "level": "C",
       "tier": "暂缓 / 需补充信息",
-      "one_liner": "计算机视觉研究员 / 3D重建与多模态感知方向方向的高潜候选人，突出在项目 Ownership、长期培养价值，代表证据是“提出基于状态空间模型的跨模态融合模块”。",
+      "one_liner": "计算机视觉研究员 / 3D重建与多模态感知方向的高潜候选人，突出在项目 Ownership、长期培养价值，代表证据是“提出基于状态空间模型的跨模态融合模块”。",
       "core_strengths": [
         "项目 Ownership强：提出基于状态空间模型的跨模态融合模块",
         "长期培养价值强：提出基于状态空间模型的跨模态融合模块",
@@ -2832,9 +2397,7 @@
       "potential_risks": [
         "AI 工具 / Agent 使用能力证据偏弱：缺少可核验证据。",
         "学习与成长潜力证据偏弱：缺少量化结果，需面谈确认真实效果。",
-        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。",
-        "疑似幻觉证据：e014 的引文未出现在原简历。",
-        "疑似幻觉证据：e015 的引文未出现在原简历。"
+        "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。"
       ],
       "interview_questions": [
         "围绕“提出基于状态空间模型的跨模态融合模块”，哪些模块是你独立设计，哪些来自团队已有系统？",
@@ -2964,34 +2527,6 @@
           "has_ownership": true
         },
         {
-          "id": "e003",
-          "dimension": "learning_growth",
-          "source": "项目：跨模态小样本目标检测",
-          "quote": "提出基于状态空间模型的跨模态融合模块",
-          "signals": [
-            "动作:提出",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e004",
-          "dimension": "research_exploration",
-          "source": "项目：跨模态小样本目标检测",
-          "quote": "提出基于状态空间模型的跨模态融合模块",
-          "signals": [
-            "动作:提出",
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e005",
           "dimension": "problem_definition",
           "source": "项目：跨模态小样本目标检测",
@@ -3060,34 +2595,8 @@
           "has_ownership": true
         },
         {
-          "id": "e011",
-          "dimension": "research_exploration",
-          "source": "代表成果",
-          "quote": "Fusion State Space Models for Cross-Modality Object Detection，CCF-A会议，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e012",
           "dimension": "ownership",
-          "source": "代表成果",
-          "quote": "Scalable Gaussian Reconstruction for Urban Scenes，拟投ICLR 2026，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e013",
-          "dimension": "research_exploration",
           "source": "代表成果",
           "quote": "Scalable Gaussian Reconstruction for Urban Scenes，拟投ICLR 2026，一作",
           "signals": [
@@ -3140,12 +2649,22 @@
           "has_metric": false,
           "has_specific_tool": false,
           "has_ownership": false
+        },
+        {
+          "id": "e009",
+          "dimension": "problem_definition",
+          "source": "项目：城市级Gaussian Splatting重建",
+          "quote": "解决大场景显存高、几何不准和边界伪影问题",
+          "signals": [
+            "动作:解决"
+          ],
+          "strength": 2,
+          "has_metric": false,
+          "has_specific_tool": false,
+          "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e014 的引文未出现在原简历。",
-        "疑似幻觉证据：e015 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "[Specialized Uni] 人工智能 博士 2024.09-至今",
         "[Specialized Uni] 物理学 本科 2020.09-2024.06 [Academic Signal]",
@@ -3166,7 +2685,7 @@
       "overall_score": 65,
       "level": "C",
       "tier": "暂缓 / 需补充信息",
-      "one_liner": "文档智能算法研究员 / 多模态应用方向方向的高潜候选人，突出在长期培养价值、项目 Ownership，代表证据是“Robust Layout Analysis through Diverse Document Synthesis，Under Review，共同一作”。",
+      "one_liner": "文档智能算法研究员 / 多模态应用方向的高潜候选人，突出在长期培养价值、项目 Ownership，代表证据是“Robust Layout Analysis through Diverse Document Synthesis，Under Review，共同一作”。",
       "core_strengths": [
         "长期培养价值强：Robust Layout Analysis through Diverse Document Synthesis，Under Review，共同一作",
         "项目 Ownership强：负责复杂PDF、论文、教材、财报场景的版面分析模型迭代",
@@ -3176,8 +2695,7 @@
         "学习与成长潜力证据偏弱：缺少可核验证据。",
         "AI 工具 / Agent 使用能力证据偏弱：缺少可核验证据。",
         "部分成果仍处在拟投或审稿阶段，需要确认论文、实验和本人贡献。",
-        "ownership 需要进一步确认，避免把团队平台成果误判为个人能力。",
-        "疑似幻觉证据：e010 的引文未出现在原简历。"
+        "ownership 需要进一步确认，避免把团队平台成果误判为个人能力。"
       ],
       "interview_questions": [
         "你提到“在手写、扫描、拍照和排版公式混合数据上提升准确率”，baseline、评测集和消融设计分别是什么？",
@@ -3261,7 +2779,7 @@
           "label": "项目 Ownership",
           "score": 3.87,
           "weighted_score": 9.29,
-          "rationale": "e002 体现 动作:负责、动作:分析、Ownership；e006 体现 Ownership；e008 体现 Ownership。",
+          "rationale": "e002 体现 动作:分析、动作:负责、Ownership；e006 体现 Ownership；e008 体现 Ownership。",
           "evidence_ids": [
             "e002",
             "e006",
@@ -3304,8 +2822,8 @@
           "source": "项目：开放文档智能平台实习",
           "quote": "负责复杂PDF、论文、教材、财报场景的版面分析模型迭代",
           "signals": [
-            "动作:负责",
             "动作:分析",
+            "动作:负责",
             "Ownership"
           ],
           "strength": 3,
@@ -3354,34 +2872,8 @@
           "has_ownership": true
         },
         {
-          "id": "e007",
-          "dimension": "research_exploration",
-          "source": "代表成果",
-          "quote": "Robust Layout Analysis through Diverse Document Synthesis，Under Review，共同一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
           "id": "e008",
           "dimension": "ownership",
-          "source": "代表成果",
-          "quote": "Universal Mathematical Expression Recognition Network，拟投CVPR，一作",
-          "signals": [
-            "Ownership"
-          ],
-          "strength": 3,
-          "has_metric": false,
-          "has_specific_tool": false,
-          "has_ownership": true
-        },
-        {
-          "id": "e009",
-          "dimension": "research_exploration",
           "source": "代表成果",
           "quote": "Universal Mathematical Expression Recognition Network，拟投CVPR，一作",
           "signals": [
@@ -3424,9 +2916,7 @@
           "has_ownership": false
         }
       ],
-      "critic_flags": [
-        "疑似幻觉证据：e010 的引文未出现在原简历。"
-      ],
+      "critic_flags": [],
       "normalized_education": [
         "[Research Institution] 计算机科学与技术 博士 2024.09-至今",
         "[STEM Uni] 人工智能 本科 2020.09-2024.06 [Academic Signal]"
@@ -3440,9 +2930,10 @@
     }
   ],
   "tiers": {
-    "强烈建议沟通": [],
+    "强烈建议沟通": [
+      "candidate_10"
+    ],
     "建议沟通": [
-      "candidate_10",
       "candidate_01",
       "candidate_02",
       "candidate_06",

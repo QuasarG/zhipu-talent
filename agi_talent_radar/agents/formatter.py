@@ -37,7 +37,7 @@ def run_formatter(state: dict) -> dict:
         interview_questions=_questions(top_scores, weak_scores, evidence_by_id, normalized),
         cultivation_direction=_cultivation_direction(normalized, top_scores),
         dimension_scores=scores,
-        evidence=sorted(evidence, key=lambda item: (-item.strength, item.id))[:14],
+        evidence=_display_evidence(evidence),
         critic_flags=state.get("critic_flags", []),
         normalized_education=normalized.education_blind,
         screening_tags=normalized.screening_tags,
@@ -56,7 +56,7 @@ def _level(score: int) -> str:
 
 
 def _tier(score: int) -> str:
-    if score >= 86:
+    if score >= 80:
         return "强烈建议沟通"
     if score >= 74:
         return "建议沟通"
@@ -76,7 +76,21 @@ def _selected_evidence(top_scores: list[DimensionScore], evidence_by_id: dict[st
 def _one_liner(normalized: NormalizedResume, top_scores: list[DimensionScore], evidence: list[EvidenceItem]) -> str:
     labels = "、".join(score.label for score in top_scores[:2])
     strongest = evidence[0].quote if evidence else (normalized.directions[0] if normalized.directions else normalized.target_role)
-    return f"{normalized.target_role}方向的高潜候选人，突出在{labels}，代表证据是“{strongest}”。"
+    return f"{normalized.target_role}的高潜候选人，突出在{labels}，代表证据是“{strongest}”。"
+
+
+def _display_evidence(evidence: list[EvidenceItem]) -> list[EvidenceItem]:
+    selected: list[EvidenceItem] = []
+    seen: set[tuple[str, str]] = set()
+    for item in sorted(evidence, key=lambda one: (-one.strength, one.id)):
+        key = (item.source, item.quote)
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(item)
+        if len(selected) >= 14:
+            break
+    return selected
 
 
 def _core_strengths(top_scores: list[DimensionScore], evidence_by_id: dict[str, EvidenceItem]) -> list[str]:
