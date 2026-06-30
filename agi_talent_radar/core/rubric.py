@@ -1,0 +1,222 @@
+from __future__ import annotations
+
+from agi_talent_radar.core.models import RubricDimension
+
+
+RUBRIC: list[RubricDimension] = [
+    RubricDimension(
+        key="learning_growth",
+        label="学习与成长潜力",
+        weight=0.14,
+        why_it_matters="AGI 时代技术栈更新很快，候选人是否能跨工具、跨任务持续迁移，比当前头衔更关键。",
+        evidence_rule="关注跨领域迁移、快速复现、从错误中迭代、维护评测或数据闭环的描述。",
+    ),
+    RubricDimension(
+        key="research_exploration",
+        label="研究探索能力",
+        weight=0.16,
+        why_it_matters="高潜人才需要能提出可检验的新假设，而不是只跟随已有 benchmark 刷点。",
+        evidence_rule="关注提出机制、范式、约束建模、消融分析、错误归因和一作研究线索。",
+    ),
+    RubricDimension(
+        key="engineering_practice",
+        label="工程实践能力",
+        weight=0.16,
+        why_it_matters="优秀 AI 研究正在工程化，能不能把想法跑成系统会直接影响成长上限。",
+        evidence_rule="关注训练流水线、kernel、分布式、Docker、CI、评测脚本、平台架构等可运行产物。",
+    ),
+    RubricDimension(
+        key="ai_agent_leverage",
+        label="AI 工具 / Agent 使用能力",
+        weight=0.14,
+        why_it_matters="会用 Agent 组织任务、验证结果和降低成本的人，会更早形成复利。",
+        evidence_rule="关注多智能体闭环、路由、自动验证、RAG、代码执行、软件修复与工具链自动化。",
+    ),
+    RubricDimension(
+        key="problem_definition",
+        label="问题定义与独立思考",
+        weight=0.14,
+        why_it_matters="黑马通常不是简历背景最亮的人，而是能把真实问题拆成可验证假设的人。",
+        evidence_rule="关注候选人是否描述了痛点、约束、失败模式、baseline、评价指标和任务边界。",
+    ),
+    RubricDimension(
+        key="ownership",
+        label="项目 Ownership",
+        weight=0.12,
+        why_it_matters="培养价值来自可托付程度，能否独立负责闭环比参与项目更重要。",
+        evidence_rule="关注负责、设计、提出、维护、构建、开发、负责人、一作等动作信号。",
+    ),
+    RubricDimension(
+        key="cultivation_value",
+        label="长期培养价值",
+        weight=0.14,
+        why_it_matters="最终筛选目标是长期成长为研究者、工程师或技术 leader 的可能性。",
+        evidence_rule="综合技术深度、工程闭环、方向稀缺性、可迁移性和待验证风险。",
+    ),
+]
+
+
+DIMENSION_LABELS = {item.key: item.label for item in RUBRIC}
+
+TECH_STACK_TERMS = {
+    "PyTorch",
+    "Triton",
+    "CUDA",
+    "TorchTitan",
+    "Transformers",
+    "vLLM",
+    "LM-Eval",
+    "SymPy",
+    "Ray",
+    "Docker",
+    "Kubernetes",
+    "CLIP",
+    "LLaVA",
+    "Qwen-VL",
+    "OpenCV",
+    "Gaussian Splatting",
+    "Mamba",
+    "MMDetection",
+    "DeepSpeed",
+    "Megatron",
+    "TensorRT",
+    "Playwright",
+    "Git",
+    "FastAPI",
+    "React",
+    "Rust",
+    "Node.js",
+    "Omniverse",
+    "PaddleOCR",
+    "LayoutLM",
+    "Donut",
+    "PDF parsing",
+    "Hugging Face",
+    "RAG",
+    "RLHF",
+    "RLVR",
+    "scikit-learn",
+}
+
+ACTION_TERMS = {
+    "提出",
+    "设计",
+    "构建",
+    "负责",
+    "实现",
+    "复现",
+    "维护",
+    "开发",
+    "优化",
+    "改进",
+    "自动",
+    "验证",
+    "评测",
+    "分析",
+    "降低",
+    "提升",
+    "修复",
+    "探索",
+    "引入",
+    "解决",
+}
+
+METRIC_MARKERS = {"提升", "降低", "减少", "达到", "覆盖", "%", "倍", "star", "F1", "mAP", "128K", "4B", "300+"}
+
+OWNERSHIP_MARKERS = {"负责", "提出", "设计", "构建", "实现", "维护", "开发", "一作", "负责人", "队长"}
+
+DIMENSION_KEYWORDS: dict[str, set[str]] = {
+    "learning_growth": {
+        "复现",
+        "跨模态",
+        "跨领域",
+        "错误归因",
+        "持续学习",
+        "多任务",
+        "实验自动化",
+        "评测",
+        "benchmark",
+        "ablation",
+    },
+    "research_exploration": {
+        "提出",
+        "机制",
+        "范式",
+        "建模",
+        "消融",
+        "拟投",
+        "Under Review",
+        "一作",
+        "逻辑一致性",
+        "约束",
+        "奖励",
+        "谱正则化",
+    },
+    "engineering_practice": {
+        "Triton",
+        "CUDA",
+        "kernel",
+        "流水线",
+        "Docker",
+        "Kubernetes",
+        "FastAPI",
+        "React",
+        "Playwright",
+        "TensorRT",
+        "DeepSpeed",
+        "Megatron",
+        "sandbox",
+        "事件总线",
+        "训练脚本",
+    },
+    "ai_agent_leverage": {
+        "Agent",
+        "多智能体",
+        "路由",
+        "验证",
+        "反思",
+        "RAG",
+        "代码解释器",
+        "SWE",
+        "工具",
+        "自动完成",
+        "任务订阅",
+        "工作流",
+    },
+    "problem_definition": {
+        "针对",
+        "问题",
+        "约束",
+        "错误",
+        "一致性",
+        "baseline",
+        "评测指标",
+        "风险",
+        "误报",
+        "漏召",
+        "低资源",
+        "低成本",
+        "长尾",
+    },
+    "ownership": OWNERSHIP_MARKERS,
+    "cultivation_value": {
+        "闭环",
+        "平台",
+        "系统",
+        "高效",
+        "长期",
+        "稀缺",
+        "leader",
+        "架构",
+        "自动化",
+        "数据治理",
+        "开源",
+    },
+}
+
+
+def rubric_as_markdown() -> str:
+    rows = ["| 维度 | 权重 | 为什么重要 | 取证方式 |", "| --- | ---: | --- | --- |"]
+    for item in RUBRIC:
+        rows.append(f"| {item.label} | {item.weight:.0%} | {item.why_it_matters} | {item.evidence_rule} |")
+    return "\n".join(rows)
