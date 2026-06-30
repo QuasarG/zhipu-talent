@@ -36,6 +36,7 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
         "建议沟通": [item.id for item in evaluations if item.tier == "建议沟通"],
         "暂缓 / 需补充信息": [item.id for item in evaluations if item.tier == "暂缓 / 需补充信息"],
     }
+    _persist_evaluations(evaluations)
     return BatchResult(
         evaluations=evaluations,
         tiers=tiers,
@@ -47,9 +48,23 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
             "逐人深评使用 DeepSeek/OpenAI-compatible JSON 模式；没有配置 DEEPSEEK_API_KEY 会直接失败。",
             "潜力维度（70%）关注证据：技术栈、动作动词、量化结果、ownership、验证闭环。",
             "履历维度（30%）低权重参考：学校/GPA、论文、项目丰富度、影响力、方向匹配度。",
+            "如果配置了 MySQL，结果会同时持久化到数据库；数据库失败不会中断评估流程。",
             "结果用于初筛辅助，不替代人工面谈和论文 / 项目真实性核验。",
         ],
     )
+
+
+def _persist_evaluations(evaluations: list[CandidateEvaluation]) -> None:
+    try:
+        from agi_talent_radar.core.database import get_session, save_evaluation
+
+        with get_session() as session:
+            for evaluation in evaluations:
+                save_evaluation(session, evaluation)
+    except Exception as exc:
+        import warnings
+
+        warnings.warn(f"保存评估结果到数据库失败: {exc}", stacklevel=2)
 
 
 def _attach_import_classification(
