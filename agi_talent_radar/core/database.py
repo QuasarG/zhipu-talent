@@ -5,7 +5,7 @@ import os
 from typing import Any
 
 from dotenv import load_dotenv
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func, text
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume, ImportClassification
@@ -24,6 +24,8 @@ class CandidateORM(Base):
     target_role = Column(String(256), default="")
     stage = Column(String(128), default="")
     raw_text = Column(Text, default="")
+    group = Column(String(32), default="pending")
+    import_level = Column(String(8), default="")
     import_category = Column(String(128), default="")
     import_confidence = Column(Float, default=0.0)
     education = Column(Text, default="")
@@ -83,8 +85,22 @@ def get_session():
 
 
 def init_db() -> None:
+    create_database()
     engine = get_engine()
     Base.metadata.create_all(engine)
+
+
+def create_database() -> None:
+    url = _database_url()
+    engine = create_engine(url)
+    db_name = engine.url.database
+    if not db_name:
+        return
+    root_url = url.replace(f"/{db_name}", "/") if f"/{db_name}" in url else url
+    root_engine = create_engine(root_url)
+    with root_engine.connect() as conn:
+        conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+        conn.commit()
 
 
 def _json_list(value: list[Any]) -> str:
@@ -112,6 +128,7 @@ def save_candidate(session, resume: CandidateResume, classification: ImportClass
 
     if classification:
         candidate.import_category = classification.category
+        candidate.import_level = classification.level
         candidate.import_confidence = classification.confidence
 
     session.commit()
@@ -149,6 +166,37 @@ def save_evaluation(session, evaluation: CandidateEvaluation) -> EvaluationORM:
 
 def list_candidates(session):
     return session.query(CandidateORM).order_by(CandidateORM.created_at.desc()).all()
+
+
+def list_candidates_by_group(session, group: str):
+    return (
+        session.query(CandidateORM)
+        .filter_by(group=group)
+        .order_by(
+            CandidateORM.import_level.desc(),
+            CandidateORM.created_at.desc(),
+        )
+        .all()
+    )
+
+
+def move_candidate_group(session, candidate_id: str, group: str) -> CandidateORM | None:
+    candidate = session.query(CandidateORM).filter_by(id=candidate_id).first()
+    if not candidate:
+        return None
+    candidate.group = group
+    session.commit()
+    return candidate
+
+
+def delete_candidate(session, candidate_id: str) -> CandidateORM | None:
+    candidate = session.query(CandidateORM).filter_by(id=candidate_id).first()
+    if not candidate:
+        return None
+    session.query(EvaluationORM).filter_by(candidate_id=candidate_id).delete()
+    session.delete(candidate)
+    session.commit()
+    return candidate
 
 
 def get_candidate_with_latest_evaluation(session, candidate_id: str):

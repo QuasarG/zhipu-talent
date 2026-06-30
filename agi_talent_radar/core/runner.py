@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Iterable
 
 from agi_talent_radar.agents.resume_parser import ensure_structured_resume
-from agi_talent_radar.core.graph import build_graph
+from agi_talent_radar.core.graph import NODE_LABELS, build_graph
 from agi_talent_radar.core.import_agent import run_import_agent
 from agi_talent_radar.core.io import load_resumes, render_summary_markdown, save_json
 from agi_talent_radar.core.models import BatchResult, CandidateEvaluation, CandidateResume, ImportClassification
@@ -17,6 +17,58 @@ def run_candidate(resume: CandidateResume | dict) -> CandidateEvaluation:
     graph = build_graph()
     state = graph.invoke({"resume": structured.model_dump(), "loop_count": 0})
     return CandidateEvaluation.model_validate(state["final_output"])
+
+
+def run_candidate_stream(resume: CandidateResume | dict):
+    """流式执行单候选人评估，边执行边 yield 节点事件和最终结果。"""
+    validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
+    structured = ensure_structured_resume(validated)
+    graph = build_graph()
+    state: dict = {"resume": structured.model_dump(), "loop_count": 0}
+
+    for event in graph.stream(state):
+        for node_key, update in event.items():
+            if node_key in NODE_LABELS:
+                summary = _node_summary(node_key, update)
+                yield {
+                    "type": "node",
+                    "node": node_key,
+                    "label": NODE_LABELS[node_key],
+                    "status": "done",
+                    "message": summary,
+                }
+            state.update(update)
+
+            # 检测 critic 触发的回炉重打
+            if state.get("critic_needs_rescore"):
+                loop_count = int(state.get("loop_count", 0))
+                yield {
+                    "type": "rescore",
+                    "loop_count": loop_count,
+                    "message": f"逻辑判官发现评分问题，第 {loop_count + 1} 轮回炉重打…",
+                }
+
+    evaluation = CandidateEvaluation.model_validate(state["final_output"])
+    yield {"type": "result", "result": evaluation.model_dump()}
+
+
+def _node_summary(node_key: str, update: dict) -> str:
+    if node_key == "normalizer":
+        normalized = update.get("normalized", {})
+        education = normalized.get("education_raw", [])
+        return f"完成简历脱敏与标准化，保留 {len(education)} 条教育背景信号。"
+    if node_key == "evidence_extractor":
+        evidence = update.get("evidence", [])
+        return f"从简历中挖掘出 {len(evidence)} 条可验证证据。"
+    if node_key == "scorer":
+        scores = update.get("scores", [])
+        return f"完成 {len(scores)} 个维度的跨领域对齐打分。"
+    if node_key == "critic":
+        flags = update.get("critic_flags", [])
+        return f"完成逻辑复核，发现 {len(flags)} 个需要关注的点。"
+    if node_key == "formatter":
+        return "结构化组装完成，生成最终评价与面谈追问。"
+    return "已完成"
 
 
 def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
