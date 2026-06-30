@@ -23,6 +23,19 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m unittest tests.test_batch_agent -v
 ```
 
+启动 Web 工作台：
+
+```powershell
+$env:FLASK_APP="agi_talent_radar.web.workbench"
+.\.venv\Scripts\python.exe -m flask run --host 127.0.0.1 --port 8502
+```
+
+打开：
+
+```text
+http://127.0.0.1:8502
+```
+
 ## Agent 流程
 
 ```text

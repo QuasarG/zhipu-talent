@@ -92,7 +92,7 @@
           "label": "问题定义与独立思考",
           "score": 4.63,
           "weighted_score": 12.96,
-          "rationale": "e005 体现 技术栈:RAG、动作:降低、量化结果；e013 体现 动作:设计、动作:提升、量化结果；e007 体现 动作:提升、量化结果。",
+          "rationale": "e005 体现 技术栈:RAG、动作:降低、量化结果；e013 体现 动作:提升、动作:设计、量化结果；e007 体现 动作:提升、量化结果。",
           "evidence_ids": [
             "e005",
             "e013",
@@ -106,7 +106,7 @@
           "label": "项目 Ownership",
           "score": 4.55,
           "weighted_score": 10.92,
-          "rationale": "e009 体现 动作:设计、动作:验证、Ownership；e012 体现 动作:设计、动作:提升、量化结果；e002 体现 动作:构建、Ownership。",
+          "rationale": "e009 体现 动作:设计、动作:验证、Ownership；e012 体现 动作:提升、动作:设计、量化结果；e002 体现 动作:构建、Ownership。",
           "evidence_ids": [
             "e009",
             "e012",
@@ -169,8 +169,8 @@
           "source": "项目：低成本VLM强化学习训练",
           "quote": "提升几何推理、医学图像问答和实验设计任务的一致性",
           "signals": [
-            "动作:设计",
             "动作:提升",
+            "动作:设计",
             "量化结果",
             "Ownership"
           ],
@@ -343,7 +343,7 @@
           "label": "学习与成长潜力",
           "score": 4.15,
           "weighted_score": 11.62,
-          "rationale": "e009 体现 技术栈:LM-Eval、动作:分析、动作:负责。",
+          "rationale": "e009 体现 技术栈:LM-Eval、动作:分析、动作:评测。",
           "evidence_ids": [
             "e009"
           ],
@@ -372,7 +372,7 @@
           "label": "工程实践能力",
           "score": 4.65,
           "weighted_score": 14.88,
-          "rationale": "e008 体现 技术栈:LM-Eval、动作:分析、动作:负责；e012 体现 技术栈:Triton、动作:实现、Ownership；e019 体现 技术栈:Transformers、技术栈:TorchTitan、技术栈:LM-Eval。",
+          "rationale": "e008 体现 技术栈:LM-Eval、动作:分析、动作:评测；e012 体现 技术栈:Triton、动作:实现、Ownership；e019 体现 技术栈:Transformers、技术栈:TorchTitan、技术栈:LM-Eval。",
           "evidence_ids": [
             "e008",
             "e012",
@@ -413,7 +413,7 @@
           "label": "项目 Ownership",
           "score": 4.58,
           "weighted_score": 10.99,
-          "rationale": "e010 体现 技术栈:LM-Eval、动作:分析、动作:负责；e013 体现 技术栈:Triton、动作:实现、Ownership；e002 体现 动作:提出、Ownership。",
+          "rationale": "e010 体现 技术栈:LM-Eval、动作:分析、动作:评测；e013 体现 技术栈:Triton、动作:实现、Ownership；e002 体现 动作:提出、Ownership。",
           "evidence_ids": [
             "e010",
             "e013",
@@ -429,7 +429,7 @@
           "label": "长期培养价值",
           "score": 4.15,
           "weighted_score": 11.62,
-          "rationale": "e003 体现 动作:提出、Ownership；e005 体现 动作:提升、量化结果；e008 体现 技术栈:LM-Eval、动作:分析、动作:负责。",
+          "rationale": "e003 体现 动作:提出、Ownership；e005 体现 动作:提升、量化结果；e008 体现 技术栈:LM-Eval、动作:分析、动作:评测。",
           "evidence_ids": [
             "e003",
             "e005",
@@ -450,8 +450,8 @@
           "signals": [
             "技术栈:LM-Eval",
             "动作:分析",
-            "动作:负责",
             "动作:评测",
+            "动作:负责",
             "Ownership"
           ],
           "strength": 5,
@@ -673,7 +673,7 @@
           "label": "学习与成长潜力",
           "score": 3.91,
           "weighted_score": 10.95,
-          "rationale": "e010 体现 动作:设计、动作:负责、动作:评测。",
+          "rationale": "e010 体现 动作:设计、动作:评测、动作:负责。",
           "evidence_ids": [
             "e010"
           ],
@@ -733,7 +733,7 @@
           "label": "问题定义与独立思考",
           "score": 4.31,
           "weighted_score": 12.07,
-          "rationale": "e012 体现 动作:设计、动作:负责、动作:评测；e007 体现 动作:自动、动作:修复、量化结果；e009 体现 动作:构建、Ownership。",
+          "rationale": "e012 体现 动作:设计、动作:评测、动作:负责；e007 体现 动作:修复、动作:自动、量化结果；e009 体现 动作:构建、Ownership。",
           "evidence_ids": [
             "e012",
             "e007",
@@ -747,7 +747,7 @@
           "label": "项目 Ownership",
           "score": 4.28,
           "weighted_score": 10.28,
-          "rationale": "e004 体现 动作:设计、动作:验证、Ownership；e011 体现 动作:设计、动作:负责、动作:评测；e008 体现 动作:构建、Ownership。",
+          "rationale": "e004 体现 动作:设计、动作:验证、Ownership；e011 体现 动作:设计、动作:评测、动作:负责；e008 体现 动作:构建、Ownership。",
           "evidence_ids": [
             "e004",
             "e011",
@@ -798,8 +798,8 @@
           "quote": "负责benchmark设计、模型评测和错误归因",
           "signals": [
             "动作:设计",
-            "动作:负责",
             "动作:评测",
+            "动作:负责",
             "Ownership"
           ],
           "strength": 4,
@@ -826,8 +826,8 @@
           "source": "项目：混合式几何求解器",
           "quote": "自动拦截约47%错误题目，并修复其中60%以上",
           "signals": [
-            "动作:自动",
             "动作:修复",
+            "动作:自动",
             "量化结果"
           ],
           "strength": 3,
@@ -960,7 +960,7 @@
           "label": "学习与成长潜力",
           "score": 3.91,
           "weighted_score": 10.95,
-          "rationale": "e004 体现 动作:维护、动作:负责、动作:评测。",
+          "rationale": "e004 体现 动作:维护、动作:评测、动作:负责。",
           "evidence_ids": [
             "e004"
           ],
@@ -990,7 +990,7 @@
           "label": "工程实践能力",
           "score": 4.65,
           "weighted_score": 14.88,
-          "rationale": "e003 体现 动作:维护、动作:负责、动作:评测；e013 体现 技术栈:Transformers、Ownership；e015 体现 技术栈:Transformers、Ownership。",
+          "rationale": "e003 体现 动作:维护、动作:评测、动作:负责；e013 体现 技术栈:Transformers、Ownership；e015 体现 技术栈:Transformers、Ownership。",
           "evidence_ids": [
             "e003",
             "e013",
@@ -1031,7 +1031,7 @@
           "label": "项目 Ownership",
           "score": 4.58,
           "weighted_score": 10.99,
-          "rationale": "e002 体现 动作:维护、动作:负责、动作:评测；e011 体现 技术栈:Transformers、Ownership；e014 体现 技术栈:Transformers、Ownership。",
+          "rationale": "e002 体现 动作:维护、动作:评测、动作:负责；e011 体现 技术栈:Transformers、Ownership；e014 体现 技术栈:Transformers、Ownership。",
           "evidence_ids": [
             "e002",
             "e011",
@@ -1047,7 +1047,7 @@
           "label": "长期培养价值",
           "score": 4.38,
           "weighted_score": 12.28,
-          "rationale": "e012 体现 技术栈:Transformers、Ownership；e016 体现 技术栈:Transformers、Ownership；e003 体现 动作:维护、动作:负责、动作:评测。",
+          "rationale": "e012 体现 技术栈:Transformers、Ownership；e016 体现 技术栈:Transformers、Ownership；e003 体现 动作:维护、动作:评测、动作:负责。",
           "evidence_ids": [
             "e012",
             "e016",
@@ -1065,8 +1065,8 @@
           "quote": "负责模型结构实验、训练脚本维护和评测集扩展",
           "signals": [
             "动作:维护",
-            "动作:负责",
             "动作:评测",
+            "动作:负责",
             "Ownership"
           ],
           "strength": 4,
@@ -1164,8 +1164,8 @@
           "quote": "PyTorch、DeepSpeed、Megatron、CUDA、quantization、FP8、TensorRT、OCR",
           "signals": [
             "技术栈:DeepSpeed",
-            "技术栈:TensorRT",
             "技术栈:Megatron",
+            "技术栈:TensorRT",
             "技术栈:PyTorch",
             "技术栈:CUDA"
           ],
@@ -1302,7 +1302,7 @@
           "label": "问题定义与独立思考",
           "score": 3.71,
           "weighted_score": 10.39,
-          "rationale": "e002 体现 量化结果；e007 体现 动作:提升、动作:修复、量化结果；e011 体现 动作:自动。",
+          "rationale": "e002 体现 量化结果；e007 体现 动作:修复、动作:提升、量化结果；e011 体现 动作:自动。",
           "evidence_ids": [
             "e002",
             "e007",
@@ -1317,7 +1317,7 @@
           "label": "项目 Ownership",
           "score": 4.21,
           "weighted_score": 10.1,
-          "rationale": "e003 体现 动作:复现、动作:负责、动作:验证；e001 体现 动作:构建、动作:修复、Ownership；e012 体现 Ownership。",
+          "rationale": "e003 体现 动作:复现、动作:负责、动作:验证；e001 体现 动作:修复、动作:构建、Ownership；e012 体现 Ownership。",
           "evidence_ids": [
             "e003",
             "e001",
@@ -1366,8 +1366,8 @@
           "source": "项目：多语言Issue修复基准构建",
           "quote": "多语言Issue修复基准构建",
           "signals": [
-            "动作:构建",
             "动作:修复",
+            "动作:构建",
             "Ownership"
           ],
           "strength": 3,
@@ -1394,8 +1394,8 @@
           "source": "项目：视觉信息增强的软件修复Agent",
           "quote": "提升前端bug修复成功率",
           "signals": [
-            "动作:提升",
             "动作:修复",
+            "动作:提升",
             "量化结果"
           ],
           "strength": 3,
