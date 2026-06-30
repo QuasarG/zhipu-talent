@@ -39,10 +39,10 @@ def create_app() -> Flask:
     def evaluate_upload():
         file = request.files.get("file")
         if not file or not file.filename:
-            return jsonify({"detail": "请上传 .jsonl 或 .md 简历文件"}), 400
+            return jsonify({"detail": "请上传 .jsonl / .md / .txt 简历文件"}), 400
         suffix = Path(file.filename).suffix.lower()
-        if suffix not in {".jsonl", ".md"}:
-            return jsonify({"detail": "仅支持 .jsonl 或 .md 文件"}), 400
+        if suffix not in {".jsonl", ".md", ".txt"}:
+            return jsonify({"detail": "仅支持 .jsonl / .md / .txt 文件"}), 400
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
             temp_path = Path(handle.name)
             file.save(handle)

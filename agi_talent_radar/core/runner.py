@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
+from agi_talent_radar.agents.resume_parser import ensure_structured_resume
 from agi_talent_radar.core.graph import build_graph
 from agi_talent_radar.core.import_agent import run_import_agent
 from agi_talent_radar.core.io import load_resumes, render_summary_markdown, save_json
@@ -12,8 +13,9 @@ from agi_talent_radar.core.rubric import DIMENSION_LABELS, RUBRIC
 
 def run_candidate(resume: CandidateResume | dict) -> CandidateEvaluation:
     validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
+    structured = ensure_structured_resume(validated)
     graph = build_graph()
-    state = graph.invoke({"resume": validated.model_dump(), "loop_count": 0})
+    state = graph.invoke({"resume": structured.model_dump(), "loop_count": 0})
     return CandidateEvaluation.model_validate(state["final_output"])
 
 

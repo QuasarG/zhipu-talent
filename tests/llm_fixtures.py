@@ -14,6 +14,21 @@ def mock_deepseek_json():
 
 
 def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1) -> dict[str, Any]:
+    if "简历解析 Agent" in system_prompt:
+        # 从 raw_text 中简单提取第一段作为 name/title 的 fallback
+        lines = [line.strip() for line in payload.get("raw_text", "").splitlines() if line.strip()]
+        first_line = lines[0] if lines else "候选人"
+        return {
+            "name": "候选人",
+            "target_role": "AI 研究员",
+            "stage": "博士在读",
+            "education": [],
+            "directions": [],
+            "projects": [{"name": first_line[:40], "details": ["从文本解析的项目摘要"]}],
+            "publications": [],
+            "skills": [],
+            "screening_tags": [],
+        }
     if "人才库批量导入 Agent" in system_prompt:
         return {
             "items": [

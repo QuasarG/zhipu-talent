@@ -40,6 +40,19 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(len(data["evaluations"]), 10)
         self.assertEqual(len(data["import_classifications"]), 10)
 
+    def test_upload_txt_parses_raw_text(self) -> None:
+        raw_text = (ROOT / "10_ai_phd_resumes.md").read_text(encoding="utf-8").split("\n---\n")[0]
+        with mock_deepseek_json():
+            response = self.app.post(
+                "/api/evaluate-upload",
+                data={"file": (io.BytesIO(raw_text.encode("utf-8")), "candidate.txt")},
+                content_type="multipart/form-data",
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(len(data["evaluations"]), 1)
+        self.assertEqual(len(data["import_classifications"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
