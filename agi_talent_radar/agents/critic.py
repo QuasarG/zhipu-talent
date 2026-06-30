@@ -10,6 +10,18 @@ class CriticOutput(BaseModel):
     critic_flags: list[str] = Field(default_factory=list)
     needs_rescore: bool = False
 
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        if isinstance(obj, dict):
+            obj = dict(obj)
+            flags = obj.get("critic_flags", [])
+            if isinstance(flags, bool):
+                obj["critic_flags"] = []
+            elif not isinstance(flags, list):
+                obj["critic_flags"] = [str(flags)] if flags else []
+            obj["needs_rescore"] = bool(obj.get("needs_rescore", False))
+        return super().model_validate(obj, **kwargs)
+
 
 CRITIC_PROMPT = """
 你是 AI 人才潜力初评系统里的【逻辑判官与防幻觉节点】。
