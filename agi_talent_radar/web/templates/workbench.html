@@ -4,158 +4,76 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AGI Talent Radar</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Raleway:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='workbench.css') }}">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand-block">
-      <div class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path d="M4 5h16M4 12h16M4 19h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <path d="M17 16l3 3 3-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <div>
-        <h1>AGI Talent Radar</h1>
-        <p>Evidence-first AI talent screening workbench</p>
-      </div>
-    </div>
-    <div class="toolbar">
-      <label class="upload-button" title="上传 JSONL 或 Markdown 简历合集">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>批量导入</span>
-        <input id="fileInput" type="file" accept=".jsonl,.md">
-      </label>
-      <button id="rerunButton" class="primary-button" type="button" title="重新评估内置 10 份简历">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>重跑样本</span>
-      </button>
-    </div>
+    <div class="brand">AGI Talent Radar</div>
+    <label for="import-file-input" id="import-file-button" class="import-button" title="上传 JSONL / Markdown / TXT 简历">导入简历</label>
+    <input id="import-file-input" type="file" accept=".jsonl,.md,.txt" hidden>
   </header>
 
-  <main class="app-shell">
-    <aside class="library-panel">
-      <section class="metric-strip" aria-label="批量概览">
-        <div>
-          <span>候选人</span>
-          <strong id="metricCount">0</strong>
-        </div>
-        <div>
-          <span>最高分</span>
-          <strong id="metricTop">-</strong>
-        </div>
-        <div>
-          <span>强沟通</span>
-          <strong id="metricStrong">0</strong>
-        </div>
-      </section>
-      <div class="panel-title-row">
-        <div>
-          <h2>人才库</h2>
-          <p id="statusText">加载中</p>
-        </div>
-        <button id="sortButton" class="icon-button" type="button" title="按分数排序">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M8 7h12M8 12h9M8 17h6M4 7h.01M4 12h.01M4 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
+  <main class="workspace">
+    <aside class="library" aria-label="人才库">
+      <div class="import-progress hidden" id="import-progress">
+        <div class="progress-pulse"></div>
+        <span id="import-progress-text">正在解析上传文件…</span>
+      </div>
+
+      <section class="drawer is-open" data-group="pending" id="drawer-pending">
+        <button class="drawer-toggle is-open" type="button" aria-expanded="true">
+          <span>待评价库</span>
+          <span class="drawer-count" id="count-pending">0</span>
         </button>
-      </div>
-      <div class="tier-tabs" role="tablist" aria-label="候选人分层">
-        <button class="tier-tab is-active" data-tier="all" type="button">全部</button>
-        <button class="tier-tab" data-tier="强烈建议沟通" type="button">强烈</button>
-        <button class="tier-tab" data-tier="建议沟通" type="button">建议</button>
-        <button class="tier-tab" data-tier="暂缓 / 需补充信息" type="button">暂缓</button>
-      </div>
-      <label class="category-filter">
-        <span>导入分类</span>
-        <select id="categorySelect">
-          <option value="all">全部分类</option>
-        </select>
-      </label>
-      <div id="candidateList" class="candidate-list"></div>
+        <div class="drawer-body" id="list-pending"></div>
+      </section>
+
+      <section class="drawer" data-group="shortlisted" id="drawer-shortlisted">
+        <button class="drawer-toggle" type="button" aria-expanded="false">
+          <span>优选库</span>
+          <span class="drawer-count" id="count-shortlisted">0</span>
+        </button>
+        <div class="drawer-body" id="list-shortlisted"></div>
+      </section>
+
+      <section class="drawer" data-group="alternative" id="drawer-alternative">
+        <button class="drawer-toggle" type="button" aria-expanded="false">
+          <span>备选库</span>
+          <span class="drawer-count" id="count-alternative">0</span>
+        </button>
+        <div class="drawer-body" id="list-alternative"></div>
+      </section>
     </aside>
 
-    <section class="detail-panel">
-      <div class="detail-header">
-        <div>
-          <p id="selectedTier" class="eyebrow">-</p>
-          <h2 id="selectedName">请选择候选人</h2>
-          <p id="selectedRole">批量导入后可查看结构化初评。</p>
-          <p id="selectedImportCategory" class="import-line">导入分类：-</p>
-        </div>
-        <div class="score-dial">
-          <span id="selectedScore">--</span>
-          <small id="selectedLevel">等级</small>
-        </div>
+    <section class="resume-pane" aria-label="简历原文" id="resume-pane">
+      <div class="empty-state" id="empty-resume">
+        <p>从左侧选择一位候选人</p>
+        <p class="sub">导入简历后，候选人将按分组出现在左栏抽屉中</p>
       </div>
+    </section>
 
-      <section class="summary-band">
-        <h3>人才画像</h3>
-        <p id="oneLiner">等待评估结果。</p>
-      </section>
-
-      <section class="content-grid">
-        <div class="analysis-column">
-          <article class="section-block">
-            <div class="section-head">
-              <h3>维度评分</h3>
-              <span>1-5</span>
-            </div>
-            <div id="dimensionScores" class="score-list"></div>
-          </article>
-
-          <article class="section-block">
-            <div class="section-head">
-              <h3>核心优势</h3>
-              <span>evidence-backed</span>
-            </div>
-            <ul id="strengthList" class="text-list"></ul>
-          </article>
-
-          <article class="section-block">
-            <div class="section-head">
-              <h3>风险与待验证</h3>
-              <span>critic notes</span>
-            </div>
-            <ul id="riskList" class="text-list risk-list"></ul>
-          </article>
-        </div>
-
-        <div class="evidence-column">
-          <article class="section-block evidence-block">
-            <div class="section-head">
-              <h3>证据链</h3>
-              <span id="evidenceCount">0 items</span>
-            </div>
-            <div id="evidenceList" class="evidence-list"></div>
-          </article>
-
-          <article class="section-block">
-            <div class="section-head">
-              <h3>面谈追问</h3>
-              <span>sharp checks</span>
-            </div>
-            <ol id="questionList" class="question-list"></ol>
-          </article>
-
-          <article class="section-block">
-            <div class="section-head">
-              <h3>培养方向</h3>
-              <span>project fit</span>
-            </div>
-            <ul id="cultivationList" class="text-list"></ul>
-          </article>
-        </div>
-      </section>
+    <section class="agent-pane" aria-label="Agent 评估区" id="agent-pane">
+      <div class="empty-state" id="empty-agent">
+        <p>Agent 评估区</p>
+        <p class="sub">选择候选人并点击「开始评估」生成结构化结果</p>
+      </div>
     </section>
   </main>
+
+  <template id="candidate-card-template">
+    <div class="candidate-card">
+      <div class="card-name"></div>
+      <div class="card-role"></div>
+      <div class="card-meta">
+        <span class="card-level"></span>
+        <span class="card-category"></span>
+      </div>
+      <div class="card-actions">
+        <button class="action-evaluate" type="button">评估</button>
+        <button class="action-delete" type="button">删除</button>
+      </div>
+    </div>
+  </template>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="{{ url_for('static', filename='workbench.js') }}"></script>
