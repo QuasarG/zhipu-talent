@@ -26,6 +26,7 @@ class BatchAgentTest(unittest.TestCase):
         self.assertTrue(result.dimension_scores)
         self.assertTrue(result.interview_questions)
         self.assertNotIn("985", "\n".join(result.normalized_education))
+        self.assertNotIn("方向方向", result.one_liner)
 
     def test_batch_result_is_sorted_and_tiered(self) -> None:
         resumes = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")
@@ -44,7 +45,7 @@ class BatchAgentTest(unittest.TestCase):
                 resume.target_role,
                 resume.stage,
                 " ".join(resume.education),
-                " ".join(resume.directions),
+                "、".join(resume.directions),
                 " ".join(project.name + " " + " ".join(project.details) for project in resume.projects),
                 " ".join(resume.publications),
                 "、".join(resume.skills),
@@ -52,6 +53,12 @@ class BatchAgentTest(unittest.TestCase):
         )
         for evidence in result.evidence:
             self.assertIn(evidence.quote, raw_text)
+
+    def test_critic_does_not_flag_joined_skill_evidence_as_hallucination(self) -> None:
+        resume = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")[9]
+        result = run_candidate(resume)
+        joined_flags = "\n".join(result.critic_flags)
+        self.assertNotIn("疑似幻觉证据", joined_flags)
 
 
 if __name__ == "__main__":
