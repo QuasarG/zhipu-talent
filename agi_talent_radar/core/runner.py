@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Iterable
 
@@ -24,10 +25,12 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
     ]
     import_classifications, import_trace = run_import_agents(validated_resumes)
     import_by_id = {item.id: item for item in import_classifications}
-    evaluations = [
-        _attach_import_classification(run_candidate(resume), import_by_id[resume.id])
-        for resume in validated_resumes
-    ]
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [
+            executor.submit(_evaluate_one, resume, import_by_id[resume.id])
+            for resume in validated_resumes
+        ]
+        evaluations = [future.result() for future in futures]
     evaluations.sort(key=lambda item: item.overall_score, reverse=True)
     tiers = {
         "强烈建议沟通": [item.id for item in evaluations if item.tier == "强烈建议沟通"],
@@ -48,6 +51,10 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
             "结果用于初筛辅助，不替代人工面谈和论文 / 项目真实性核验。",
         ],
     )
+
+
+def _evaluate_one(resume: CandidateResume, classification: ImportClassification) -> CandidateEvaluation:
+    return _attach_import_classification(run_candidate(resume), classification)
 
 
 def _attach_import_classification(
