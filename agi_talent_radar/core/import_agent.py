@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from agi_talent_radar.core import llm_client
+from agi_talent_radar.core.database import save_candidate
 from agi_talent_radar.core.models import CandidateResume, ImportClassification
 
 
@@ -46,7 +47,7 @@ IMPORT_PROMPT = """
 """.strip()
 
 
-def run_import_agent(resumes: list[CandidateResume]) -> list[ImportClassification]:
+def run_import_agent(resumes: list[CandidateResume], persist: bool = True) -> list[ImportClassification]:
     compact = [_compact_resume(resume) for resume in resumes]
     response = llm_client.call_llm_json(
         IMPORT_PROMPT,
@@ -55,7 +56,7 @@ def run_import_agent(resumes: list[CandidateResume]) -> list[ImportClassificatio
     )
     parsed = ImportOutput.model_validate(response)
     _ensure_all_ids([item.id for item in parsed.items], [resume.id for resume in resumes])
-    return [
+    classifications = [
         ImportClassification(
             id=item.id,
             name=item.name,
@@ -65,6 +66,25 @@ def run_import_agent(resumes: list[CandidateResume]) -> list[ImportClassificatio
         )
         for item in parsed.items
     ]
+    if persist:
+        _persist_import_results(resumes, classifications)
+    return classifications
+
+
+def _persist_import_results(resumes: list[CandidateResume], classifications: list[ImportClassification]) -> None:
+    try:
+        from sqlalchemy.orm import Session
+        from agi_talent_radar.core.database import get_session
+
+        with get_session() as session:
+            class_by_id = {item.id: item for item in classifications}
+            for resume in resumes:
+                save_candidate(session, resume, class_by_id.get(resume.id))
+    except Exception as exc:
+        # 数据库是可选增强，写入失败不应中断评估流程。
+        import warnings
+
+        warnings.warn(f"保存候选人到数据库失败: {exc}", stacklevel=2)
 
 
 def _compact_resume(resume: CandidateResume) -> dict:
