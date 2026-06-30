@@ -1,93 +1,66 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from pydantic import BaseModel, Field
 
-from agi_talent_radar.core.models import DimensionScore, EvidenceItem
+from agi_talent_radar.core import llm_client
+from agi_talent_radar.core.models import DimensionScore, EvidenceItem, NormalizedResume
 from agi_talent_radar.core.rubric import RUBRIC
 
 
+class ScoringOutput(BaseModel):
+    overall_score: int = Field(ge=0, le=100)
+    level: str
+    tier: str
+    dimension_scores: list[DimensionScore]
+
+
+SCORER_PROMPT = """
+你是 AI 人才潜力初评系统里的【跨领域对齐打分 Agent】。
+只输出 JSON 对象，字段必须是 overall_score, level, tier, dimension_scores。
+
+评分目标：
+识别长期培养价值，不是传统履历排序。不要直接按学校、GPA、论文名气给高分。
+只允许根据 evidence 列表打分，不允许使用 evidence 之外的信息编造理由。
+
+等级规则：
+- S: 90-100
+- A: 80-89
+- B: 70-79
+- C: 0-69
+
+分层规则：
+- 强烈建议沟通：80 分及以上，且证据具体
+- 建议沟通：74-79 分
+- 暂缓 / 需补充信息：73 分及以下，或关键证据薄弱
+
+dimension_scores 每项必须包含：
+key, label, score(1-5), weighted_score, rationale, evidence_ids, risk_notes。
+rationale 必须引用 evidence id，不要写空泛评价。
+""".strip()
+
+
 def run_scorer(state: dict) -> dict:
+    normalized = NormalizedResume.model_validate(state["normalized"])
     evidence = [EvidenceItem.model_validate(item) for item in state.get("evidence", [])]
-    evidence_by_dimension: dict[str, list[EvidenceItem]] = defaultdict(list)
-    for item in evidence:
-        evidence_by_dimension[item.dimension].append(item)
-
-    scores: list[DimensionScore] = []
-    for dimension in RUBRIC:
-        items = evidence_by_dimension.get(dimension.key, [])
-        if dimension.key == "cultivation_value" and len(items) < 2:
-            score, rationale, refs, risks = _score_cultivation(evidence_by_dimension)
-        else:
-            score, rationale, refs, risks = _score_dimension(items)
-
-        if state.get("critic_needs_rescore") and score > 4.35 and len(items) < 2:
-            score = 4.15
-            risks.append("Critic 回炉：高分维度证据数量不足，已封顶。")
-
-        scores.append(
-            DimensionScore(
-                key=dimension.key,
-                label=dimension.label,
-                score=round(score, 2),
-                weighted_score=round(score * dimension.weight * 20, 2),
-                rationale=rationale,
-                evidence_ids=[item.id for item in refs[:4]],
-                risk_notes=risks,
-            )
-        )
-
-    return {**state, "scores": [score.model_dump() for score in scores]}
-
-
-def _score_dimension(items: list[EvidenceItem]) -> tuple[float, str, list[EvidenceItem], list[str]]:
-    if not items:
-        return 2.0, "简历中没有足够直接证据，按保守分处理。", [], ["缺少可核验证据。"]
-
-    selected = sorted(items, key=lambda item: (-item.strength, item.id))[:5]
-    avg_strength = sum(item.strength for item in selected) / len(selected)
-    count_bonus = min(len(items), 4) * 0.22
-    metric_bonus = 0.22 if any(item.has_metric for item in selected) else 0
-    tool_bonus = 0.20 if any(item.has_specific_tool for item in selected) else 0
-    owner_bonus = 0.22 if any(item.has_ownership for item in selected) else 0
-    score = 1.55 + avg_strength * 0.48 + count_bonus + metric_bonus + tool_bonus + owner_bonus
-    risks: list[str] = []
-    if not any(item.has_metric for item in selected):
-        risks.append("缺少量化结果，需面谈确认真实效果。")
-    if not any(item.has_ownership for item in selected):
-        risks.append("ownership 信号不够强，需确认本人贡献。")
-    if len(items) == 1:
-        risks.append("该维度只有单条证据，稳定性偏弱。")
-    rationale = _rationale(selected)
-    return max(1, min(5, score)), rationale, selected, risks
-
-
-def _score_cultivation(groups: dict[str, list[EvidenceItem]]) -> tuple[float, str, list[EvidenceItem], list[str]]:
-    keys = ["research_exploration", "engineering_practice", "ai_agent_leverage", "problem_definition", "ownership"]
-    selected: list[EvidenceItem] = []
-    dimension_scores: list[float] = []
-    for key in keys:
-        items = sorted(groups.get(key, []), key=lambda item: (-item.strength, item.id))[:2]
-        selected.extend(items)
-        if items:
-            dimension_scores.append(sum(item.strength for item in items) / len(items))
-    if not selected:
-        return 2.0, "长期培养价值缺少跨维度证据，按保守分处理。", [], ["缺少跨维度证据。"]
-    breadth = len({item.dimension for item in selected})
-    avg_strength = sum(dimension_scores) / len(dimension_scores)
-    score = 1.45 + avg_strength * 0.50 + min(breadth, 5) * 0.22
-    if any(item.has_metric for item in selected):
-        score += 0.18
-    if any("闭环" in item.quote or "平台" in item.quote or "系统" in item.quote for item in selected):
-        score += 0.22
-    risks = [] if breadth >= 4 else ["长期潜力证据广度不足，需要更多真实项目验证。"]
-    return max(1, min(5, score)), _rationale(selected[:5]), selected, risks
-
-
-def _rationale(items: list[EvidenceItem]) -> str:
-    if not items:
-        return "未找到直接证据。"
-    parts = []
-    for item in items[:3]:
-        signals = "、".join(item.signals[:3]) if item.signals else "简历直接描述"
-        parts.append(f"{item.id} 体现 {signals}")
-    return "；".join(parts) + "。"
+    response = llm_client.call_llm_json(
+        SCORER_PROMPT,
+        {
+            "rubric": [item.model_dump() for item in RUBRIC],
+            "resume_brief": normalized.model_dump(exclude={"raw_text"}),
+            "evidence": [item.model_dump() for item in evidence],
+            "critic_feedback": state.get("critic_flags", []),
+            "rescore_instruction": "如果 critic_feedback 非空，请降低证据不足维度分数，并在 risk_notes 中解释。",
+        },
+        temperature=0.1,
+    )
+    scoring = ScoringOutput.model_validate(response)
+    return {
+        **state,
+        "scores": [item.model_dump() for item in scoring.dimension_scores],
+        "ai_assessment": {
+            **state.get("ai_assessment", {}),
+            "overall_score": scoring.overall_score,
+            "level": scoring.level,
+            "tier": scoring.tier,
+        },
+    }

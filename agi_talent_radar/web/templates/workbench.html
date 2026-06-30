@@ -73,6 +73,12 @@
         <button class="tier-tab" data-tier="建议沟通" type="button">建议</button>
         <button class="tier-tab" data-tier="暂缓 / 需补充信息" type="button">暂缓</button>
       </div>
+      <label class="category-filter">
+        <span>导入分类</span>
+        <select id="categorySelect">
+          <option value="all">全部分类</option>
+        </select>
+      </label>
       <div id="candidateList" class="candidate-list"></div>
     </aside>
 
@@ -82,6 +88,7 @@
           <p id="selectedTier" class="eyebrow">-</p>
           <h2 id="selectedName">请选择候选人</h2>
           <p id="selectedRole">批量导入后可查看结构化初评。</p>
+          <p id="selectedImportCategory" class="import-line">导入分类：-</p>
         </div>
         <div class="score-dial">
           <span id="selectedScore">--</span>

@@ -2,6 +2,7 @@ const state = {
   data: null,
   selectedId: "",
   tier: "all",
+  category: "all",
   sortDesc: true,
 };
 
@@ -14,6 +15,7 @@ const els = {
   selectedTier: document.querySelector("#selectedTier"),
   selectedName: document.querySelector("#selectedName"),
   selectedRole: document.querySelector("#selectedRole"),
+  selectedImportCategory: document.querySelector("#selectedImportCategory"),
   selectedScore: document.querySelector("#selectedScore"),
   selectedLevel: document.querySelector("#selectedLevel"),
   oneLiner: document.querySelector("#oneLiner"),
@@ -27,6 +29,7 @@ const els = {
   rerun: document.querySelector("#rerunButton"),
   fileInput: document.querySelector("#fileInput"),
   sort: document.querySelector("#sortButton"),
+  categorySelect: document.querySelector("#categorySelect"),
   toast: document.querySelector("#toast"),
 };
 
@@ -62,6 +65,11 @@ function bindEvents() {
     state.sortDesc = !state.sortDesc;
     renderList();
     showToast(state.sortDesc ? "已按分数从高到低排序" : "已按分数从低到高排序");
+  });
+
+  els.categorySelect.addEventListener("change", () => {
+    state.category = els.categorySelect.value;
+    renderList();
   });
 }
 
@@ -99,6 +107,7 @@ function applyData(data) {
   const first = data.evaluations?.[0];
   state.selectedId = first ? first.id : "";
   renderMetrics();
+  renderCategoryFilter();
   renderList();
   renderDetail(currentCandidate());
 }
@@ -111,6 +120,20 @@ function renderMetrics() {
   els.metricTop.textContent = String(top);
   els.metricStrong.textContent = String(strong);
   els.status.textContent = evaluations.length ? "已完成批量初评" : "暂无数据";
+}
+
+function renderCategoryFilter() {
+  const categories = [...new Set((state.data?.evaluations || [])
+    .map((item) => item.import_category)
+    .filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+  els.categorySelect.innerHTML = '<option value="all">全部分类</option>';
+  categories.forEach((category) => {
+    const option = document.createElement("option");
+    option.value = category;
+    option.textContent = category;
+    els.categorySelect.appendChild(option);
+  });
+  state.category = "all";
 }
 
 function renderList() {
@@ -128,7 +151,7 @@ function renderList() {
       <div>
         <strong>${escapeHtml(candidate.name)}</strong>
         <span>${escapeHtml(candidate.target_role)}</span>
-        <small>${escapeHtml(candidate.tier)}</small>
+        <small>${escapeHtml(candidate.import_category || "未分类")} · ${escapeHtml(candidate.tier)}</small>
       </div>
       <div class="card-score">${candidate.overall_score}</div>
     `;
@@ -143,7 +166,8 @@ function renderList() {
 
 function filteredCandidates() {
   const evaluations = [...(state.data?.evaluations || [])];
-  const filtered = state.tier === "all" ? evaluations : evaluations.filter((item) => item.tier === state.tier);
+  const byTier = state.tier === "all" ? evaluations : evaluations.filter((item) => item.tier === state.tier);
+  const filtered = state.category === "all" ? byTier : byTier.filter((item) => item.import_category === state.category);
   filtered.sort((a, b) => state.sortDesc ? b.overall_score - a.overall_score : a.overall_score - b.overall_score);
   return filtered;
 }
@@ -160,6 +184,7 @@ function renderDetail(candidate) {
   els.selectedTier.textContent = candidate.tier;
   els.selectedName.textContent = `${candidate.name} · ${candidate.stage}`;
   els.selectedRole.textContent = candidate.target_role;
+  els.selectedImportCategory.textContent = `导入分类：${candidate.import_category || "未分类"} · 置信度 ${Number(candidate.import_confidence || 0).toFixed(2)}`;
   els.selectedScore.textContent = candidate.overall_score;
   els.selectedLevel.textContent = `${candidate.level} 级`;
   els.oneLiner.textContent = candidate.one_liner;
