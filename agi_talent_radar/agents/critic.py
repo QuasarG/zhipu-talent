@@ -14,11 +14,7 @@ class CriticOutput(BaseModel):
     def model_validate(cls, obj, **kwargs):
         if isinstance(obj, dict):
             obj = dict(obj)
-            flags = obj.get("critic_flags", [])
-            if isinstance(flags, bool):
-                obj["critic_flags"] = []
-            elif not isinstance(flags, list):
-                obj["critic_flags"] = [str(flags)] if flags else []
+            obj["critic_flags"] = _stringify_flags(obj.get("critic_flags", []))
             obj["needs_rescore"] = bool(obj.get("needs_rescore", False))
         return super().model_validate(obj, **kwargs)
 
@@ -58,6 +54,29 @@ def run_critic(state: dict) -> dict:
         "critic_needs_rescore": needs_rescore,
         "loop_count": loop_count + 1 if needs_rescore else loop_count,
     }
+
+
+def _stringify_flags(value) -> list[str]:
+    if isinstance(value, bool):
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if not isinstance(value, list):
+        return [str(value)] if value else []
+    result: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            if item.strip():
+                result.append(item)
+        elif isinstance(item, dict):
+            text = item.get("flag") or item.get("issue") or item.get("reason") or item.get("note") or " ".join(str(v) for v in item.values() if isinstance(v, str))
+            if text.strip():
+                result.append(text.strip())
+        else:
+            text = str(item).strip()
+            if text:
+                result.append(text)
+    return result
 
 
 def route_after_critic(state: dict) -> str:
