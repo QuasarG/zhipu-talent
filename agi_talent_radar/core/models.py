@@ -12,7 +12,7 @@ class ResumeProject(BaseModel):
 
 class CandidateResume(BaseModel):
     id: str
-    name: str
+    name: str = ""
     target_role: str = ""
     stage: str = ""
     education: list[str] = Field(default_factory=list)
@@ -21,6 +21,7 @@ class CandidateResume(BaseModel):
     publications: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     screening_tags: list[str] = Field(default_factory=list)
+    raw_text: str = ""
 
 
 class NormalizedResume(BaseModel):

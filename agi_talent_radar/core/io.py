@@ -16,6 +16,8 @@ def load_resumes(path: str | Path) -> list[CandidateResume]:
         return _load_jsonl(source)
     if source.suffix.lower() == ".md":
         return _load_markdown(source)
+    if source.suffix.lower() == ".txt":
+        return _load_text(source)
     raise ValueError(f"暂不支持的简历格式: {source.suffix}")
 
 
@@ -62,6 +64,12 @@ def _load_markdown(path: Path) -> list[CandidateResume]:
             )
         )
     return resumes
+
+
+def _load_text(path: Path) -> list[CandidateResume]:
+    """单个 .txt 文件视为一位候选人的原始简历文本。"""
+    raw_text = path.read_text(encoding="utf-8")
+    return [CandidateResume(id=path.stem, raw_text=raw_text)]
 
 
 def _first_group(text: str, pattern: str) -> str:
