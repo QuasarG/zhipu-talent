@@ -25,9 +25,35 @@ def call_llm_json(system_prompt: str, payload: dict[str, Any], temperature: floa
         temperature=temperature,
         response_format={"type": "json_object"},
         timeout=timeout_seconds,
+        extra_body={"thinking": {"type": "disabled"}},
     )
     content = response.choices[0].message.content or ""
     return _loads_json(content)
+
+
+def call_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1):
+    """流式调用 LLM，逐 token 返回文本内容。
+
+    用于导入等需要边接收边解析 JSON Lines 的场景。
+    """
+    client = _client()
+    model = _required_env("OPENAI_MODEL")
+    timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ],
+        temperature=temperature,
+        stream=True,
+        timeout=timeout_seconds,
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+    for chunk in response:
+        delta = chunk.choices[0].delta
+        if delta.content:
+            yield delta.content
 
 
 def _client() -> OpenAI:

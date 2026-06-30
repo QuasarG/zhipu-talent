@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
 from typing import Any
 from unittest.mock import patch
@@ -9,8 +10,22 @@ from agi_talent_radar.core.rubric import RUBRIC
 
 @contextmanager
 def mock_deepseek_json():
-    with patch("agi_talent_radar.core.llm_client.call_llm_json", side_effect=_fake_llm_json):
+    with (
+        patch("agi_talent_radar.core.llm_client.call_llm_json", side_effect=_fake_llm_json),
+        patch("agi_talent_radar.core.llm_client.call_llm_stream", side_effect=_fake_llm_stream),
+    ):
         yield
+
+
+def _fake_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1):
+    """模拟 LLM 流式输出，将原本一次性返回的 JSON 拆成多行 JSON Lines 推送。"""
+    response = _fake_llm_json(system_prompt, payload, temperature)
+    if "人才库批量导入 Agent" in system_prompt:
+        for candidate in response.get("candidates", []):
+            yield json.dumps(candidate, ensure_ascii=False) + "\n"
+        return
+    # 其他 agent 仍一次性返回完整 JSON（当前只有导入需要流式）
+    yield json.dumps(response, ensure_ascii=False)
 
 
 def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1) -> dict[str, Any]:
@@ -31,13 +46,14 @@ def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: flo
         }
     if "人才库批量导入 Agent" in system_prompt:
         return {
-            "items": [
+            "candidates": [
                 {
                     "id": item["id"],
                     "name": item["name"],
                     "target_role": item.get("target_role", ""),
                     "stage": item.get("stage", ""),
                     "category": _category(item),
+                    "level": _level(item),
                     "confidence": 0.82,
                     "reason": "根据目标方向、项目名称和技能关键词进行初步分类。",
                 }
@@ -111,6 +127,19 @@ def _category(item: dict[str, Any]) -> str:
     if "系统" in text or "fp8" in text:
         return "工程闭环型"
     return "研究探索型"
+
+
+def _level(item: dict[str, Any]) -> str:
+    text = " ".join(
+        [
+            item.get("target_role", ""),
+            " ".join(item.get("directions", [])),
+            " ".join(item.get("screening_tags", [])),
+        ]
+    ).lower()
+    if "agent" in text or "系统" in text:
+        return "A"
+    return "B"
 
 
 def _quotes_from_resume(resume: dict[str, Any]) -> list[tuple[str, str, str]]:

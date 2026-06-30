@@ -96,6 +96,7 @@ class ImportClassification(BaseModel):
     id: str
     name: str
     category: str
+    level: str = ""
     confidence: float = Field(ge=0, le=1)
     reason: str
 
