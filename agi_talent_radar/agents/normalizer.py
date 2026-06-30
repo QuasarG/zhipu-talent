@@ -12,6 +12,7 @@ def run_normalizer(state: dict) -> dict:
         name=resume.name,
         target_role=resume.target_role,
         stage=resume.stage,
+        education_raw=resume.education,
         education_blind=[_blind_education(item) for item in resume.education],
         directions=resume.directions,
         projects=resume.projects,

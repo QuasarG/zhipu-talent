@@ -14,26 +14,15 @@ def mock_deepseek_json():
 
 
 def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1) -> dict[str, Any]:
-    if "回顾确认 Agent" in system_prompt:
+    if "人才库批量导入 Agent" in system_prompt:
         return {
             "items": [
                 {
                     "id": item["id"],
                     "name": item["name"],
-                    "final_category": item["initial_category"],
-                    "confidence": item["confidence"],
-                    "review_notes": "分类与项目证据一致，保留候选人进入深评。",
-                }
-                for item in payload["initial_classifications"]
-            ]
-        }
-    if "初评分类 Agent" in system_prompt:
-        return {
-            "items": [
-                {
-                    "id": item["id"],
-                    "name": item["name"],
-                    "initial_category": _category(item),
+                    "target_role": item.get("target_role", ""),
+                    "stage": item.get("stage", ""),
+                    "category": _category(item),
                     "confidence": 0.82,
                     "reason": "根据目标方向、项目名称和技能关键词进行初步分类。",
                 }

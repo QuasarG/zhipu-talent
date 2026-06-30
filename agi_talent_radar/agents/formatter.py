@@ -29,12 +29,26 @@ FORMATTER_PROMPT = """
 只输出 JSON 对象，字段必须是：
 one_liner, core_strengths, potential_risks, interview_questions, cultivation_direction。
 
-要求：
-1. 输出给 HR / 技术面试官使用，语言要具体、可追问。
-2. 每个优势必须绑定 evidence 中的原文证据，不写空话。
-3. 风险要指出待验证点，尤其是论文拟投、贡献边界、指标真实性、项目复现难度。
-4. 面谈问题要尖锐，优先追问 baseline、ablation、本人贡献、失败案例、数据/评测闭环。
-5. 培养方向要对应候选人最适合参与的小闭环项目。
+输入包含：
+- resume_brief：候选人基本信息
+- evidence：已提取的结构化证据（含 dimension, quote, signals, strength）
+- dimension_scores：12 个维度的得分和 rationale
+- score_summary：overall_score, level, tier
+- critic_flags：Critic 复核发现的问题
+
+输出要求：
+1. one_liner：一句话人才画像，必须点出最突出的 1-2 个维度 + 代表性证据。
+2. core_strengths：3-5 条核心优势，每条必须绑定具体 evidence id 或原文 quote，不写空话。
+3. potential_risks：4-6 条风险与待验证点，必须包括：
+   - 论文/项目是否拟投、未发表
+   - 指标真实性（baseline、评测集、消融设计）
+   - 本人贡献边界（团队成果 vs 个人贡献）
+   - 方向匹配度或能力短板
+   - Critic 指出的问题
+4. interview_questions：3-5 个尖锐追问，优先追问：baseline 设计、ablation、本人贡献、失败案例、数据/评测闭环、指标真实性。
+5. cultivation_direction：2-4 条具体培养建议，对应候选人最适合参与的小闭环项目或培养路径。
+
+语言风格：给 HR / 技术面试官使用，具体、可追问、不奉承。
 """.strip()
 
 
@@ -81,7 +95,6 @@ def run_formatter(state: dict) -> dict:
 
 def _normalize_level(value: str, overall_score: int = 0) -> str:
     text = str(value).strip()
-    # LLM sometimes swaps level and tier; infer from tier text or score.
     if "强烈" in text:
         return "A" if overall_score < 90 else "S"
     if "建议沟通" in text and "暂缓" not in text:

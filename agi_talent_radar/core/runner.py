@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Iterable
 
 from agi_talent_radar.core.graph import build_graph
-from agi_talent_radar.core.import_agent import run_import_agents
+from agi_talent_radar.core.import_agent import run_import_agent
 from agi_talent_radar.core.io import load_resumes, render_summary_markdown, save_json
 from agi_talent_radar.core.models import BatchResult, CandidateEvaluation, CandidateResume, ImportClassification
 from agi_talent_radar.core.rubric import DIMENSION_LABELS, RUBRIC
@@ -23,14 +22,12 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
         resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
         for resume in resumes
     ]
-    import_classifications, import_trace = run_import_agents(validated_resumes)
+    import_classifications = run_import_agent(validated_resumes)
     import_by_id = {item.id: item for item in import_classifications}
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [
-            executor.submit(_evaluate_one, resume, import_by_id[resume.id])
-            for resume in validated_resumes
-        ]
-        evaluations = [future.result() for future in futures]
+    evaluations = [
+        _attach_import_classification(run_candidate(resume), import_by_id[resume.id])
+        for resume in validated_resumes
+    ]
     evaluations.sort(key=lambda item: item.overall_score, reverse=True)
     tiers = {
         "强烈建议沟通": [item.id for item in evaluations if item.tier == "强烈建议沟通"],
@@ -43,18 +40,14 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
         dimension_labels=DIMENSION_LABELS,
         rubric=RUBRIC,
         import_classifications=import_classifications,
-        import_agent_trace=import_trace,
         notes=[
-            "批量导入先经过初评分类 Agent 和回顾确认 Agent；分类只用于展示，不筛除候选人。",
+            "批量导入使用单一轻量 Agent，只提取基本信息和分类，不筛除候选人。",
             "逐人深评使用 DeepSeek/OpenAI-compatible JSON 模式；没有配置 DEEPSEEK_API_KEY 会直接失败。",
-            "所有主观结论必须绑定 EvidenceItem；Critic 会检查证据和评分逻辑。",
+            "潜力维度（70%）关注证据：技术栈、动作动词、量化结果、ownership、验证闭环。",
+            "履历维度（30%）低权重参考：学校/GPA、论文、项目丰富度、影响力、方向匹配度。",
             "结果用于初筛辅助，不替代人工面谈和论文 / 项目真实性核验。",
         ],
     )
-
-
-def _evaluate_one(resume: CandidateResume, classification: ImportClassification) -> CandidateEvaluation:
-    return _attach_import_classification(run_candidate(resume), classification)
 
 
 def _attach_import_classification(
@@ -62,9 +55,8 @@ def _attach_import_classification(
     classification: ImportClassification,
 ) -> CandidateEvaluation:
     data = evaluation.model_dump()
-    data["import_category"] = classification.final_category
+    data["import_category"] = classification.category
     data["import_confidence"] = classification.confidence
-    data["import_review_notes"] = classification.review_notes
     return CandidateEvaluation.model_validate(data)
 
 

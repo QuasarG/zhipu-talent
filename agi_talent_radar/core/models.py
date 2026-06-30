@@ -28,6 +28,7 @@ class NormalizedResume(BaseModel):
     name: str
     target_role: str = ""
     stage: str = ""
+    education_raw: list[str] = Field(default_factory=list)
     education_blind: list[str] = Field(default_factory=list)
     directions: list[str] = Field(default_factory=list)
     projects: list[ResumeProject] = Field(default_factory=list)
@@ -35,7 +36,7 @@ class NormalizedResume(BaseModel):
     skills: list[str] = Field(default_factory=list)
     screening_tags: list[str] = Field(default_factory=list)
     raw_text: str = ""
-    blind_note: str = "学校层级与排名仅用于风险提示，不直接进入潜力评分。"
+    blind_note: str = "学校/GPA/排名等背景信号保留原始文本，但仅以低权重进入履历维度评分。"
 
 
 class RubricDimension(BaseModel):
@@ -88,17 +89,14 @@ class CandidateEvaluation(BaseModel):
     screening_tags: list[str] = Field(default_factory=list)
     import_category: str = ""
     import_confidence: float = 0
-    import_review_notes: str = ""
 
 
 class ImportClassification(BaseModel):
     id: str
     name: str
-    initial_category: str
-    final_category: str
+    category: str
     confidence: float = Field(ge=0, le=1)
     reason: str
-    review_notes: str
 
 
 class BatchResult(BaseModel):

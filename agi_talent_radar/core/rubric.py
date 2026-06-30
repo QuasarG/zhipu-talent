@@ -4,59 +4,97 @@ from agi_talent_radar.core.models import RubricDimension
 
 
 RUBRIC: list[RubricDimension] = [
+    # === 潜力维度（核心，总权重 70%）===
     RubricDimension(
         key="learning_growth",
         label="学习与成长潜力",
-        weight=0.14,
-        why_it_matters="AGI 时代技术栈更新很快，候选人是否能跨工具、跨任务持续迁移，比当前头衔更关键。",
+        weight=0.10,
+        why_it_matters="AGI 时代技术栈更新极快，能否跨工具、跨任务持续迁移，比当前头衔更关键。",
         evidence_rule="关注跨领域迁移、快速复现、从错误中迭代、维护评测或数据闭环的描述。",
     ),
     RubricDimension(
         key="research_exploration",
         label="研究探索能力",
-        weight=0.16,
-        why_it_matters="高潜人才需要能提出可检验的新假设，而不是只跟随已有 benchmark 刷点。",
+        weight=0.12,
+        why_it_matters="高潜人才需要提出可检验的新假设，而不是只跟随已有 benchmark 刷点。",
         evidence_rule="关注提出机制、范式、约束建模、消融分析、错误归因和一作研究线索。",
     ),
     RubricDimension(
         key="engineering_practice",
         label="工程实践能力",
-        weight=0.16,
+        weight=0.12,
         why_it_matters="优秀 AI 研究正在工程化，能不能把想法跑成系统会直接影响成长上限。",
         evidence_rule="关注训练流水线、kernel、分布式、Docker、CI、评测脚本、平台架构等可运行产物。",
     ),
     RubricDimension(
         key="ai_agent_leverage",
         label="AI 工具 / Agent 使用能力",
-        weight=0.14,
+        weight=0.10,
         why_it_matters="会用 Agent 组织任务、验证结果和降低成本的人，会更早形成复利。",
         evidence_rule="关注多智能体闭环、路由、自动验证、RAG、代码执行、软件修复与工具链自动化。",
     ),
     RubricDimension(
         key="problem_definition",
         label="问题定义与独立思考",
-        weight=0.14,
+        weight=0.10,
         why_it_matters="黑马通常不是简历背景最亮的人，而是能把真实问题拆成可验证假设的人。",
         evidence_rule="关注候选人是否描述了痛点、约束、失败模式、baseline、评价指标和任务边界。",
     ),
     RubricDimension(
         key="ownership",
         label="项目 Ownership",
-        weight=0.12,
+        weight=0.08,
         why_it_matters="培养价值来自可托付程度，能否独立负责闭环比参与项目更重要。",
         evidence_rule="关注负责、设计、提出、维护、构建、开发、负责人、一作等动作信号。",
     ),
     RubricDimension(
         key="cultivation_value",
         label="长期培养价值",
-        weight=0.14,
+        weight=0.08,
         why_it_matters="最终筛选目标是长期成长为研究者、工程师或技术 leader 的可能性。",
         evidence_rule="综合技术深度、工程闭环、方向稀缺性、可迁移性和待验证风险。",
+    ),
+    # === 履历维度（辅助，总权重 30%）===
+    RubricDimension(
+        key="education_signal",
+        label="教育背景信号",
+        weight=0.08,
+        why_it_matters="学校、GPA、专业相关度不是决定项，但能在一定程度上反映基础训练质量。",
+        evidence_rule="低权重参考：学校层级、GPA/排名、专业与目标方向匹配度。",
+    ),
+    RubricDimension(
+        key="academic_output",
+        label="学术产出信号",
+        weight=0.08,
+        why_it_matters="论文是研究能力的可验证痕迹，但需区分一作/挂名、已发表/拟投。",
+        evidence_rule="低权重参考：论文数量、会议/期刊层级、一作身份、接收状态、引用潜力。",
+    ),
+    RubricDimension(
+        key="project_richness",
+        label="项目 / 实习丰富度",
+        weight=0.07,
+        why_it_matters="项目数量和领域覆盖度能反映候选人的实践广度和工程接触面。",
+        evidence_rule="低权重参考：项目数量、领域覆盖、技术栈广度、实习/科研经历多样性。",
+    ),
+    RubricDimension(
+        key="impact_visibility",
+        label="成果影响力 / 可见度",
+        weight=0.04,
+        why_it_matters="开源贡献、竞赛、专利等外部可见成果能降低信息不对称。",
+        evidence_rule="低权重参考：开源 star/fork、竞赛奖项、专利、技术博客/社区影响力。",
+    ),
+    RubricDimension(
+        key="direction_fit",
+        label="方向匹配度",
+        weight=0.03,
+        why_it_matters="候选人的研究方向、技术栈与目标岗位的契合度影响培养周期。",
+        evidence_rule="低权重参考：研究方向与岗位描述重叠度、技能关键词匹配度。",
     ),
 ]
 
 
 DIMENSION_LABELS = {item.key: item.label for item in RUBRIC}
+
 
 TECH_STACK_TERMS = {
     "PyTorch",
@@ -212,6 +250,11 @@ DIMENSION_KEYWORDS: dict[str, set[str]] = {
         "数据治理",
         "开源",
     },
+    "education_signal": {"985", "211", "双一流", "GPA", "排名", "Top", "博士", "硕士", "本科"},
+    "academic_output": {"一作", "CCF-A", "NeurIPS", "ICML", "ICLR", "ACL", "CVPR", "ICCV", "ECCV", "AAAI", "IJCAI", "拟投", "Under Review"},
+    "project_richness": {"项目", "实习", "经历", "多个", "系列", "平台", "系统"},
+    "impact_visibility": {"开源", "GitHub", "star", "竞赛", "获奖", "专利", "技术博客"},
+    "direction_fit": {"方向", "岗位", "匹配", "相关", "对口"},
 }
 
 
