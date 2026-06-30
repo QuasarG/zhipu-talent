@@ -65,7 +65,7 @@ def _iter_resume_claims(normalized: NormalizedResume) -> list[tuple[str, str]]:
 def _match_dimensions(text: str) -> list[str]:
     scores: dict[str, int] = defaultdict(int)
     for dimension, keywords in DIMENSION_KEYWORDS.items():
-        for keyword in keywords:
+        for keyword in sorted(keywords, key=lambda term: (-len(term), term)):
             if keyword.lower() in text.lower():
                 scores[dimension] += 1
     if _has_any(text, TECH_STACK_TERMS):
@@ -82,10 +82,10 @@ def _match_dimensions(text: str) -> list[str]:
 
 def _collect_signals(text: str) -> list[str]:
     signals: list[str] = []
-    for term in sorted(TECH_STACK_TERMS, key=len, reverse=True):
+    for term in sorted(TECH_STACK_TERMS, key=lambda one: (-len(one), one)):
         if term.lower() in text.lower():
             signals.append(f"技术栈:{term}")
-    for term in sorted(ACTION_TERMS, key=len, reverse=True):
+    for term in sorted(ACTION_TERMS, key=lambda one: (-len(one), one)):
         if term in text:
             signals.append(f"动作:{term}")
     if _has_any(text, METRIC_MARKERS) or re.search(r"\d+(?:\.\d+)?\s*(?:%|倍|K|\+)", text):
