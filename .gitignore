@@ -11,3 +11,5 @@ __pycache__/
 instance/
 *.log
 outputs/*.tmp
+task.md
+我的初步思路.md
