@@ -1,6 +1,19 @@
+<div align="center">
+
 # AGI Talent Radar
 
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.1-000000?style=flat-square&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C?style=flat-square&logo=langchain&logoColor=white)](https://www.langchain.com/langgraph)
+[![OpenAI Compatible](https://img.shields.io/badge/OpenAI--compatible-LLM-412991?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/docs)
+[![Pydantic](https://img.shields.io/badge/Pydantic-2.13-E92063?style=flat-square&logo=pydantic&logoColor=white)](https://docs.pydantic.dev/)
+[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?style=flat-square)](https://www.sqlalchemy.org/)
+[![MySQL](https://img.shields.io/badge/MySQL-optional-4479A1?style=flat-square&logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![Tests](https://img.shields.io/badge/Tests-unittest-E5A50A?style=flat-square)](./tests)
+
 AI 人才潜力初评助手 MVP。它基于 `10_ai_phd_resumes.jsonl` 批量读取 10 位虚拟 AI 博士简历，通过 LangGraph 节点完成脱敏、证据挖掘、跨领域打分、Critic 复核和结构化输出。
+
+</div>
 
 项目参考了本机 `RedNoteMatrix Copilot` 的工程组织方式：包内拆分 `agents/core/web`，脚本入口放在 `scripts/`，测试放在 `tests/`，输出样例放在 `outputs/`。
 
