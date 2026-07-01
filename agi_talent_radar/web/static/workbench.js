@@ -11,11 +11,18 @@ const NODE_LABELS = {
   critic: "逻辑判官与防幻觉",
   formatter: "结构化组装",
 };
+const BULK_EVALUATION_CONCURRENCY = 3;
 
 const els = {
   drawerToggles: document.querySelectorAll(".drawer-toggle"),
   importInput: document.getElementById("import-file-input"),
   importButton: document.getElementById("import-file-button"),
+  bulkEvaluateButton: document.getElementById("bulk-evaluate-pending"),
+  bulkConfirmDialog: document.getElementById("bulk-confirm-dialog"),
+  bulkConfirmTitle: document.getElementById("bulk-confirm-title"),
+  bulkConfirmMessage: document.getElementById("bulk-confirm-message"),
+  bulkConfirmCancel: document.getElementById("bulk-confirm-cancel"),
+  bulkConfirmSubmit: document.getElementById("bulk-confirm-submit"),
   progressBox: document.getElementById("import-progress"),
   progressText: document.getElementById("import-progress-text"),
   resumePane: document.getElementById("resume-pane"),
@@ -27,16 +34,19 @@ const els = {
     pending: document.getElementById("drawer-pending"),
     shortlisted: document.getElementById("drawer-shortlisted"),
     alternative: document.getElementById("drawer-alternative"),
+    rejected: document.getElementById("drawer-rejected"),
   },
   lists: {
     pending: document.getElementById("list-pending"),
     shortlisted: document.getElementById("list-shortlisted"),
     alternative: document.getElementById("list-alternative"),
+    rejected: document.getElementById("list-rejected"),
   },
   counts: {
     pending: document.getElementById("count-pending"),
     shortlisted: document.getElementById("count-shortlisted"),
     alternative: document.getElementById("count-alternative"),
+    rejected: document.getElementById("count-rejected"),
   },
   toast: document.getElementById("toast"),
 };
@@ -44,6 +54,8 @@ const els = {
 let currentCandidateId = null;
 let candidates = {};
 let runs = new Map();
+let bulkEvaluating = false;
+let bulkEvaluationProgress = null;
 
 function showToast(message) {
   els.toast.textContent = message;
@@ -53,6 +65,10 @@ function showToast(message) {
 
 function formatScore(score) {
   return score == null ? "—" : score.toString();
+}
+
+function formatPotentialLevel(level) {
+  return level ? `初筛 ${level}` : "初筛 —";
 }
 
 function clampScore(score) {
@@ -120,22 +136,71 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function evidenceContent(item) {
+  return `
+    <p><strong>维度：</strong>${escapeHtml(item.dimension || "—")}</p>
+    <p><strong>来源：</strong>${escapeHtml(item.source || "—")}</p>
+    ${item.signals?.length ? `<p><strong>信号：</strong>${item.signals.map((s) => escapeHtml(s)).join(" · ")}</p>` : ""}
+    ${typeof item.strength === "number" ? `<p><strong>强度：</strong>${item.strength}/5</p>` : ""}
+    <blockquote>${escapeHtml(item.quote || "无引用")}</blockquote>
+  `;
+}
+
+function renderEvidenceText(text, evidence) {
+  const raw = String(text || "");
+  if (!raw) return "";
+  const items = Array.isArray(evidence) ? evidence : [];
+  const byId = new Map(items.map((item, index) => [String(item.id || `e${index + 1}`), index]));
+  let html = escapeHtml(raw);
+
+  items.forEach((item, index) => {
+    const quote = String(item.quote || "").trim();
+    if (quote && quote.length >= 8 && raw.includes(quote)) {
+      const escapedQuote = escapeHtml(quote);
+      html = html.replace(
+        escapedQuote,
+        `<button class="evidence-link evidence-inline evidence-quote" type="button" data-evidence-index="${index}">${escapedQuote}</button>`,
+      );
+    }
+  });
+
+  byId.forEach((index, id) => {
+    if (!id) return;
+    const pattern = new RegExp(`(${escapeRegExp(id)})`, "g");
+    html = html.replace(pattern, `<button class="evidence-link evidence-inline" type="button" data-evidence-index="${index}">$1</button>`);
+  });
+  return html;
+}
+
+function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function evidenceLabel(item, fallback) {
+  return item?.id || item?.source || item?.dimension || fallback;
+}
+
 function renderCandidateCard(candidate) {
   const clone = els.candidateTemplate.content.cloneNode(true);
   const card = clone.querySelector(".candidate-card");
   card.dataset.id = candidate.id;
   card.classList.add(`level-${(candidate.level || "-").toLowerCase()}`);
+  card.classList.toggle("is-active", candidate.id === currentCandidateId);
   card.querySelector(".card-name").textContent = candidate.name || "未命名候选人";
   card.querySelector(".card-role").textContent = candidate.role || "—";
-  card.querySelector(".card-level").textContent = candidate.level || "—";
+  card.querySelector(".card-level").textContent = formatPotentialLevel(candidate.level);
   card.querySelector(".card-category").textContent = candidate.category || "—";
   card.addEventListener("click", () => selectCandidate(candidate.id));
 
   const evaluateBtn = card.querySelector(".action-evaluate");
-  evaluateBtn.addEventListener("click", (e) => {
+  const run = runs.get(candidate.id);
+  const evaluationLocked = !!(run?.queued || run?.controller);
+  evaluateBtn.disabled = evaluationLocked;
+  evaluateBtn.textContent = run?.queued ? "排队中" : run?.controller ? "评估中" : "评估";
+  evaluateBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
-    selectCandidate(candidate.id);
-    handleEvaluate(candidate.id);
+    if (evaluationLocked) return;
+    await handleEvaluate(candidate.id);
   });
 
   const deleteBtn = card.querySelector(".action-delete");
@@ -148,7 +213,7 @@ function renderCandidateCard(candidate) {
 }
 
 function updateLibrary() {
-  const groups = { pending: [], shortlisted: [], alternative: [] };
+  const groups = { pending: [], shortlisted: [], alternative: [], rejected: [] };
   Object.values(candidates).forEach((c) => {
     const g = groups[c.group || "pending"];
     if (g) g.push(c);
@@ -160,13 +225,48 @@ function updateLibrary() {
     groups[group].forEach((c) => list.appendChild(renderCandidateCard(c)));
     els.counts[group].textContent = String(groups[group].length);
   });
+  updateBulkEvaluateButton(groups.pending.length);
+}
+
+function updateBulkEvaluateButton(pendingCount = pendingCandidateIds().length) {
+  if (!els.bulkEvaluateButton) return;
+  els.bulkEvaluateButton.disabled = pendingCount === 0 || bulkEvaluating;
+  if (bulkEvaluating && bulkEvaluationProgress) {
+    els.bulkEvaluateButton.textContent = `评估中 ${bulkEvaluationProgress.done}/${bulkEvaluationProgress.total}`;
+    return;
+  }
+  els.bulkEvaluateButton.textContent = bulkEvaluating ? "评估中…" : (pendingCount ? `一键评估 ${pendingCount}` : "一键评估");
+}
+
+function pendingCandidateIds() {
+  return Object.values(candidates)
+    .filter((candidate) => (candidate.group || "pending") === "pending")
+    .map((candidate) => candidate.id);
+}
+
+function groupForScore(score) {
+  const value = Number(score);
+  if (value >= 80) return "shortlisted";
+  if (value >= 60) return "alternative";
+  return "rejected";
+}
+
+function setDrawerOpen(group, open) {
+  const drawer = els.drawers[group];
+  if (!drawer) return;
+
+  const toggle = drawer.querySelector(".drawer-toggle");
+  const body = drawer.querySelector(".drawer-body");
+  drawer.classList.toggle("is-open", open);
+  toggle?.classList.toggle("is-open", open);
+  toggle?.setAttribute("aria-expanded", String(open));
+  if (body) body.hidden = !open;
 }
 
 function openDrawer(group) {
-  const drawer = els.drawers[group];
-  if (!drawer) return;
-  drawer.classList.add("is-open");
-  drawer.querySelector(".drawer-toggle").classList.add("is-open");
+  Object.keys(els.drawers).forEach((drawerGroup) => {
+    setDrawerOpen(drawerGroup, drawerGroup === group);
+  });
 }
 
 async function loadCandidates() {
@@ -181,18 +281,105 @@ async function loadCandidates() {
   }
 }
 
+function hasCandidateDetails(candidate) {
+  return ["education", "directions", "projects", "publications", "skills", "screening_tags"]
+    .every((key) => Object.prototype.hasOwnProperty.call(candidate, key));
+}
+
+function hasCandidateEvaluation(candidate) {
+  return Object.prototype.hasOwnProperty.call(candidate, "evaluation")
+    || Object.prototype.hasOwnProperty.call(candidate, "latest_evaluation");
+}
+
+function skillClass(skill) {
+  const normalized = String(skill || "").toLowerCase().replace(/\s+/g, " ");
+  const rules = [
+    [/pytorch/, "skill-pytorch"],
+    [/python/, "skill-python"],
+    [/javascript|\bjs\b/, "skill-javascript"],
+    [/typescript|\bts\b/, "skill-typescript"],
+    [/\bjava\b/, "skill-java"],
+    [/c\+\+/, "skill-cpp"],
+    [/cuda/, "skill-cuda"],
+    [/triton/, "skill-triton"],
+    [/docker/, "skill-docker"],
+    [/kubernetes|\bk8s\b/, "skill-kubernetes"],
+    [/react/, "skill-react"],
+    [/node\.?js/, "skill-node"],
+    [/fastapi/, "skill-fastapi"],
+    [/rust/, "skill-rust"],
+    [/\bgo\b|golang/, "skill-go"],
+    [/\bray\b/, "skill-ray"],
+    [/tensorflow/, "skill-tensorflow"],
+    [/transformers|hugging face/, "skill-huggingface"],
+    [/vllm/, "skill-vllm"],
+    [/deepspeed/, "skill-deepspeed"],
+    [/megatron/, "skill-megatron"],
+    [/tensorrt/, "skill-tensorrt"],
+    [/opencv/, "skill-opencv"],
+    [/\bclip\b/, "skill-clip"],
+    [/llava/, "skill-llava"],
+    [/qwen-vl/, "skill-qwen"],
+    [/paddleocr/, "skill-paddle"],
+    [/layoutlm/, "skill-layoutlm"],
+    [/playwright/, "skill-playwright"],
+    [/\bgit\b|github/, "skill-git"],
+    [/\brag\b/, "skill-rag"],
+    [/rlhf|rlvr/, "skill-rl"],
+    [/sympy/, "skill-sympy"],
+    [/\bsql\b/, "skill-sql"],
+    [/\bocr\b/, "skill-ocr"],
+  ];
+  const match = rules.find(([pattern]) => pattern.test(normalized));
+  return match ? match[1] : "skill-generic";
+}
+
+async function loadCandidateDetail(candidateId) {
+  const existing = candidates[candidateId];
+  if (existing && hasCandidateDetails(existing) && hasCandidateEvaluation(existing)) return existing;
+
+  const res = await fetch(`/api/candidates/${encodeURIComponent(candidateId)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Detail failed: ${res.status}`);
+  const detail = await res.json();
+  if (detail.latest_evaluation && !detail.evaluation) {
+    detail.evaluation = detail.latest_evaluation;
+  }
+  const run = runs.get(candidateId);
+  const merged = { ...(existing || {}), ...detail };
+  if (run?.result) {
+    merged.evaluation = run.result;
+    merged.latest_evaluation = run.result;
+    merged.group = groupForScore(run.result.overall_score);
+  }
+  candidates[candidateId] = merged;
+  return candidates[candidateId];
+}
+
 function renderResume(candidate) {
   els.emptyResume.classList.add("hidden");
   els.resumePane.querySelector(".resume-content")?.remove();
 
   const c = candidate;
-  const section = (title, body) => `<section class="resume-section"><h3>${escapeHtml(title)}</h3>${body}</section>`;
+  const safeItems = (items) => Array.isArray(items) ? items.filter((item) => String(item || "").trim()) : [];
+  const summaryCounts = [
+    { label: "教育", value: safeItems(c.education).length },
+    { label: "方向", value: safeItems(c.directions).length },
+    { label: "项目", value: Array.isArray(c.projects) ? c.projects.length : 0 },
+    { label: "成果", value: safeItems(c.publications).length },
+    { label: "技能", value: safeItems(c.skills).length },
+  ];
+  const section = (title, body, extraClass = "") => `
+    <section class="resume-section ${extraClass}">
+      <h3>${escapeHtml(title)}</h3>
+      <div class="resume-section-body">${body}</div>
+    </section>
+  `;
 
   const basicBody = `
     <dl class="info-grid">
       <dt>姓名</dt><dd>${escapeHtml(c.name || "—")}</dd>
       <dt>目标岗位</dt><dd>${escapeHtml(c.role || "—")}</dd>
-      <dt>职级</dt><dd>${escapeHtml(c.level || "—")}</dd>
+      <dt>初筛等级</dt><dd>${escapeHtml(c.level || "—")}</dd>
       <dt>方向</dt><dd>${escapeHtml(c.category || "—")}</dd>
       <dt>阶段</dt><dd>${escapeHtml(c.stage || "—")}</dd>
       <dt>分组</dt><dd>${escapeHtml(c.group || "—")}</dd>
@@ -200,27 +387,26 @@ function renderResume(candidate) {
     </dl>
   `;
 
-  const list = (items) => Array.isArray(items) && items.length ? `<ul>${items.map((i) => `<li>${escapeHtml(String(i))}</li>`).join("")}</ul>` : "<p>无</p>";
+  const miniCards = (items) => {
+    const values = safeItems(items);
+    return values.length
+      ? `<div class="mini-card-list">${values.map((i) => `<article class="mini-card">${escapeHtml(String(i))}</article>`).join("")}</div>`
+      : "<p>无</p>";
+  };
 
-  const eduBody = Array.isArray(c.education) && c.education.length
-    ? `<div class="item-list">${c.education.map((e) => `
-        <div class="item-block">
-          <p>${escapeHtml(String(e))}</p>
-        </div>
-      `).join("")}</div>`
+  const skillChips = safeItems(c.skills).length
+    ? `<div class="skill-cloud">${safeItems(c.skills).map((skill) => `<span class="${skillClass(skill)}">${escapeHtml(String(skill))}</span>`).join("")}</div>`
     : "<p>无</p>";
 
-  const directionsBody = Array.isArray(c.directions) && c.directions.length
-    ? `<div class="item-list">${c.directions.map((d) => `
-        <div class="item-block"><p>${escapeHtml(String(d))}</p></div>
-      `).join("")}</div>`
-    : "<p>无</p>";
+  const eduBody = miniCards(c.education);
+
+  const directionsBody = miniCards(c.directions);
 
   const projectsBody = Array.isArray(c.projects) && c.projects.length
     ? `<div class="item-list">${c.projects.map((p) => `
         <div class="item-block">
-          <h4>${escapeHtml(p.name || "")}</h4>
-          <p>${(p.details || []).map((d) => escapeHtml(String(d))).join(" / ")}</p>
+          <h4>${escapeHtml(p.name || "未命名项目")}</h4>
+          ${(p.details || []).length ? `<ul>${p.details.map((d) => `<li>${escapeHtml(String(d))}</li>`).join("")}</ul>` : "<p>无细节</p>"}
         </div>
       `).join("")}</div>`
     : "<p>无</p>";
@@ -232,13 +418,26 @@ function renderResume(candidate) {
   const content = document.createElement("div");
   content.className = "resume-content";
   content.innerHTML = [
-    section("基础信息", basicBody),
-    section("教育背景", eduBody),
-    section("研究方向", directionsBody),
-    section("项目经验", projectsBody),
-    section("核心技能", list(c.skills)),
-    section("研究成果", list(c.publications)),
-    section("筛选标签", tagsBody),
+    `<section class="resume-hero">
+      <div>
+        <h2>${escapeHtml(c.name || "未命名候选人")}</h2>
+        <p>${escapeHtml(c.role || "—")}</p>
+      </div>
+      <div class="hero-tags">
+        <span>${escapeHtml(formatPotentialLevel(c.level))}</span>
+        <span>${escapeHtml(c.category || "—")}</span>
+      </div>
+      <div class="summary-strip">
+        ${summaryCounts.map((item) => `<span><strong>${item.value}</strong>${escapeHtml(item.label)}</span>`).join("")}
+      </div>
+    </section>`,
+    section("基础信息", basicBody, "resume-section-basic"),
+    section("教育背景", eduBody, "resume-section-education"),
+    section("研究方向", directionsBody, "resume-section-directions"),
+    section("项目经验", projectsBody, "resume-section-projects"),
+    section("核心技能", skillChips, "resume-section-skills"),
+    section("研究成果", miniCards(c.publications), "resume-section-publications"),
+    section("筛选标签", tagsBody, "resume-section-tags"),
   ].join("");
   els.resumePane.appendChild(content);
 }
@@ -246,9 +445,10 @@ function renderResume(candidate) {
 function getAgentPaneHTML(candidate) {
   const run = runs.get(candidate.id);
   const hasRun = !!run;
+  const isQueued = hasRun && run.queued;
   const isRunning = hasRun && run.controller;
   const result = hasRun ? run.result : candidate.evaluation;
-  const state = isRunning ? "running" : (result ? "done" : "ready");
+  const state = isQueued ? "queued" : isRunning ? "running" : (result ? "done" : "ready");
 
   let nodeRowsHTML = hasRun ? "" : "<small>点击开始评估以查看节点流转</small>";
 
@@ -256,53 +456,65 @@ function getAgentPaneHTML(candidate) {
   if (result) {
     const overall = clampScore(result.overall_score);
 
+    const evidence = Array.isArray(result.evidence) ? result.evidence : [];
+    const evidenceIndexById = new Map(evidence.map((item, index) => [String(item.id || ""), index]));
     const dimensions = Array.isArray(result.dimension_scores) ? result.dimension_scores : [];
     const dimRows = dimensions.map((dim) => {
       const rawScore = typeof dim.score === "number" ? dim.score : 0;
       const score = clampScore((rawScore / 5) * 100);
       const label = dim.label || dim.key || "维度";
+      const evidenceRefs = Array.isArray(dim.evidence_ids)
+        ? dim.evidence_ids
+            .map((id) => evidenceIndexById.get(String(id)))
+            .filter((index) => Number.isInteger(index))
+            .map((index) => {
+              const item = evidence[index];
+              return `<button class="evidence-link evidence-inline" type="button" data-evidence-index="${index}">${escapeHtml(evidenceLabel(item, `证据${index + 1}`))}</button>`;
+            })
+            .join("")
+        : "";
       return `
-        <div class="score-row">
-          <span class="score-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
-          <div class="score-bar"><span style="width: ${score}%"></span></div>
-          <span class="score-value">${rawScore.toFixed ? rawScore.toFixed(1) : rawScore}</span>
+        <div class="score-row has-detail">
+          <div class="score-main">
+            <span class="score-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+            <div class="score-bar"><span style="width: ${score}%"></span></div>
+            <span class="score-value">${rawScore.toFixed ? rawScore.toFixed(1) : rawScore}</span>
+          </div>
+          <p class="score-rationale">${renderEvidenceText(dim.rationale || "", evidence)}${evidenceRefs ? `<span class="evidence-ref-list">${evidenceRefs}</span>` : ""}</p>
         </div>
       `;
     }).join("");
 
-    const evidenceList = Array.isArray(result.evidence) && result.evidence.length
-      ? `<div class="evidence-list">${result.evidence.map((item, index) => {
-          const text = item.dimension || item.source || `证据${index + 1}`;
-          return `<span class="evidence-link" data-evidence-index="${index}">${escapeHtml(text)}</span>`;
-        }).join("")}</div>`
-      : "<p>无详细证据</p>";
-
     const strengths = Array.isArray(result.core_strengths) && result.core_strengths.length
-      ? `<ol>${result.core_strengths.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>`
+      ? `<ol>${result.core_strengths.map((s) => `<li>${renderEvidenceText(s, evidence)}</li>`).join("")}</ol>`
       : "<p>未生成</p>";
 
     const risks = Array.isArray(result.potential_risks) && result.potential_risks.length
-      ? `<ul class="risk-list">${result.potential_risks.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul>`
+      ? `<ul class="risk-list">${result.potential_risks.map((r) => `<li>${renderEvidenceText(r, evidence)}</li>`).join("")}</ul>`
       : "<p>未生成</p>";
 
     const questions = Array.isArray(result.interview_questions) && result.interview_questions.length
-      ? `<ol>${result.interview_questions.map((q) => `<li>${escapeHtml(q)}</li>`).join("")}</ol>`
+      ? `<ol>${result.interview_questions.map((q) => `<li>${renderEvidenceText(q, evidence)}</li>`).join("")}</ol>`
       : "<p>未生成</p>";
 
     const cultivation = Array.isArray(result.cultivation_direction) && result.cultivation_direction.length
-      ? `<ul>${result.cultivation_direction.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}</ul>`
+      ? `<ul>${result.cultivation_direction.map((c) => `<li>${renderEvidenceText(c, evidence)}</li>`).join("")}</ul>`
       : "<p>未生成</p>";
+
+    const decision = result.decision_method
+      ? `<div class="result-section"><h3>决策方式</h3><p>${renderEvidenceText(result.decision_method, evidence)}</p></div>`
+      : "";
 
     resultHTML = `
       <div class="evaluation-view">
         <div class="score-band"><span>${overall}</span><span>综合匹配分</span></div>
-        <div class="result-section"><h3>人才画像</h3><p>${escapeHtml(result.one_liner || "—")}</p></div>
+        <div class="result-section"><h3>人才画像</h3><p>${renderEvidenceText(result.one_liner || "—", evidence)}</p></div>
+        ${decision}
         <div class="result-section"><h3>维度评分</h3><div class="score-list">${dimRows}</div></div>
         <div class="result-section"><h3>核心优势</h3>${strengths}</div>
         <div class="result-section"><h3>风险与待验证</h3>${risks}</div>
         <div class="result-section"><h3>面谈追问</h3>${questions}</div>
         <div class="result-section"><h3>培养方向</h3>${cultivation}</div>
-        <div class="result-section"><h3>证据链</h3>${evidenceList}</div>
       </div>
     `;
   }
@@ -317,16 +529,16 @@ function getAgentPaneHTML(candidate) {
           <p>${escapeHtml(candidate.role || "—")} · ${escapeHtml(candidate.category || "—")}</p>
         </div>
         <div class="agent-header-actions">
-          <button class="evaluate-button" id="evaluate-button" data-id="${escapeHtml(candidate.id)}">
-            ${isRunning ? "评估中…" : (result ? "重新评估" : "开始评估")}
+          <button class="evaluate-button" id="evaluate-button" data-id="${escapeHtml(candidate.id)}" ${isQueued ? "disabled" : ""}>
+            ${isQueued ? "排队中…" : isRunning ? "评估中…" : (result ? "重新评估" : "开始评估")}
           </button>
           <button class="collapse-button" id="agent-collapse" type="button" aria-expanded="true">收起</button>
         </div>
       </div>
       <div class="agent-body" id="agent-body">
         <div class="agent-status-bar">
-          <span class="state-chip ${state === "running" ? "is-running" : state === "done" ? "is-ready" : "is-ready"}" id="agent-state-chip">
-            ${state === "running" ? "RUNNING" : state === "done" ? "DONE" : "READY"}
+          <span class="state-chip ${state === "running" || state === "queued" ? "is-running" : state === "done" ? "is-ready" : "is-ready"}" id="agent-state-chip">
+            ${state === "queued" ? "QUEUED" : state === "running" ? "RUNNING" : state === "done" ? "DONE" : "READY"}
           </span>
           <button class="node-toggle ${panelOpen ? "is-open" : ""}" id="node-toggle">节点状态</button>
         </div>
@@ -370,28 +582,21 @@ function renderAgent(candidate) {
     if (run) run.panelOpen = !open;
   });
 
-  document.querySelectorAll(".evidence-link").forEach((link) => {
-    link.addEventListener("click", (e) => {
-      const result = candidate.evaluation || runs.get(candidate.id)?.result;
-      if (!result) return;
-      const index = Number(e.target.dataset.evidenceIndex);
-      const item = result.evidence[index];
-      if (!item) return;
-      const content = `
-        <p><strong>维度：</strong>${escapeHtml(item.dimension || "—")}</p>
-        <p><strong>来源：</strong>${escapeHtml(item.source || "—")}</p>
-        ${item.signals?.length ? `<p><strong>信号：</strong>${item.signals.map((s) => escapeHtml(s)).join(" · ")}</p>` : ""}
-        ${typeof item.strength === "number" ? `<p><strong>强度：</strong>${item.strength}/5</p>` : ""}
-        <blockquote>${escapeHtml(item.quote || "无引用")}</blockquote>
-      `;
-      renderEvidencePopover(e.target, content, item.dimension || "证据详情");
-    });
+  els.agentPane.querySelector(".agent-content")?.addEventListener("click", (e) => {
+    const target = e.target.closest(".evidence-link");
+    if (!target) return;
+    const result = candidate.evaluation || runs.get(candidate.id)?.result;
+    if (!result) return;
+    const index = Number(target.dataset.evidenceIndex);
+    const item = result.evidence?.[index];
+    if (!item) return;
+    renderEvidencePopover(target, evidenceContent(item), item.dimension || "证据详情");
   });
 
   renderNodeFeed(candidate.id);
 }
 
-function selectCandidate(candidateId) {
+async function selectCandidate(candidateId) {
   currentCandidateId = candidateId;
   const candidate = candidates[candidateId];
   if (!candidate) return;
@@ -399,6 +604,18 @@ function selectCandidate(candidateId) {
   document.querySelectorAll(".candidate-card").forEach((card) => card.classList.toggle("is-active", card.dataset.id === candidateId));
   renderResume(candidate);
   renderAgent(candidate);
+
+  loadCandidateDetail(candidateId)
+    .then((detail) => {
+      if (currentCandidateId !== candidateId) return;
+      renderResume(detail);
+      renderAgent(detail);
+    })
+    .catch((err) => {
+      if (currentCandidateId === candidateId) {
+        showToast("候选人详情加载失败：" + err.message);
+      }
+    });
 }
 
 async function deleteCandidate(candidateId) {
@@ -482,7 +699,17 @@ function renderNodeFeed(candidateId) {
   feed.scrollTop = feed.scrollHeight;
 
   const sub = document.getElementById("node-panel-sub");
-  if (sub) sub.textContent = run.nodeRows.size ? "流式运行中" : "未开始";
+  if (sub) {
+    sub.textContent = run.queued
+      ? "等待批量调度"
+      : run.controller
+        ? "流式运行中"
+        : run.result
+          ? "已完成"
+          : run.error
+            ? "失败"
+            : "未开始";
+  }
 }
 
 function finishAgentRun(candidateId, result) {
@@ -493,10 +720,12 @@ function finishAgentRun(candidateId, result) {
   run.result = result;
   run.nodeRows.forEach((row) => { row.done = true; row.running = false; });
   candidates[candidateId].evaluation = result;
-  candidates[candidateId].group = result && result.overall_score >= 60 ? "shortlisted" : "alternative";
+  candidates[candidateId].group = result ? groupForScore(result.overall_score) : "rejected";
 
   updateLibrary();
-  openDrawer(candidates[candidateId].group);
+  if (!run.bulk) {
+    openDrawer(candidates[candidateId].group);
+  }
 
   if (currentCandidateId === candidateId) {
     renderAgent(candidates[candidateId]);
@@ -523,7 +752,114 @@ function failAgentRun(candidateId, error) {
   }
 }
 
+function requestBulkEvaluation() {
+  const ids = pendingCandidateIds();
+  if (!ids.length) {
+    showToast("待评价库为空");
+    return;
+  }
+  if (bulkEvaluating) return;
+
+  const message = `将同时提交 ${ids.length} 位待评价候选人并开始评估。完成后，80 分及以上进入优选库，60-79 分进入备选库，低于 60 分进入不建议后续沟通。`;
+  if (!els.bulkConfirmDialog?.showModal) {
+    if (confirm(message)) evaluatePendingCandidates(ids);
+    return;
+  }
+
+  els.bulkConfirmTitle.textContent = "确认评估待评价库";
+  els.bulkConfirmMessage.textContent = message;
+  els.bulkConfirmSubmit.dataset.ids = JSON.stringify(ids);
+  els.bulkConfirmDialog.showModal();
+}
+
+function queueAgentRun(candidateId, bulk = true) {
+  const existing = runs.get(candidateId);
+  if (existing?.controller || existing?.result) return;
+
+  const run = {
+    candidateId,
+    controller: null,
+    nodeRows: new Map(),
+    result: null,
+    error: null,
+    panelOpen: existing?.panelOpen ?? true,
+    bulk,
+    queued: true,
+  };
+  run.nodeRows.set(NODE_ORDER[0], {
+    label: NODE_LABELS[NODE_ORDER[0]],
+    message: "等待批量调度…",
+    done: false,
+    running: false,
+  });
+  runs.set(candidateId, run);
+}
+
+async function runWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(limit, items.length);
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      try {
+        results[currentIndex] = { status: "fulfilled", value: await worker(items[currentIndex], currentIndex) };
+      } catch (reason) {
+        results[currentIndex] = { status: "rejected", reason };
+      }
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
+async function evaluatePendingCandidates(ids) {
+  if (!ids.length || bulkEvaluating) return;
+  bulkEvaluating = true;
+  bulkEvaluationProgress = { done: 0, total: ids.length };
+  ids.forEach((candidateId) => queueAgentRun(candidateId, true));
+  updateBulkEvaluateButton(ids.length);
+  if (currentCandidateId && ids.includes(currentCandidateId)) {
+    renderAgent(candidates[currentCandidateId]);
+  }
+  showToast(`开始评估 ${ids.length} 位候选人`);
+
+  const settled = await runWithConcurrency(ids, BULK_EVALUATION_CONCURRENCY, async (candidateId) => {
+    try {
+      await startEvaluation(candidateId, { select: false, bulk: true });
+      const run = runs.get(candidateId);
+      if (run?.error) throw run.error;
+    } finally {
+      bulkEvaluationProgress.done += 1;
+      updateBulkEvaluateButton(ids.length);
+    }
+  });
+  const successCount = settled.filter((item) => item.status === "fulfilled").length;
+  const failedCount = settled.length - successCount;
+  bulkEvaluating = false;
+  bulkEvaluationProgress = null;
+  updateBulkEvaluateButton();
+  updateLibrary();
+
+  if (Object.values(candidates).some((candidate) => candidate.group === "shortlisted")) {
+    openDrawer("shortlisted");
+  } else if (Object.values(candidates).some((candidate) => candidate.group === "alternative")) {
+    openDrawer("alternative");
+  } else {
+    openDrawer("rejected");
+  }
+  showToast(failedCount ? `批量评估完成：成功 ${successCount}，失败 ${failedCount}` : `批量评估完成：成功 ${successCount}`);
+}
+
 async function handleEvaluate(candidateId) {
+  return startEvaluation(candidateId, { select: true, bulk: false });
+}
+
+async function startEvaluation(candidateId, options = {}) {
+  const { select = true, bulk = false } = options;
   const candidate = candidates[candidateId];
   if (!candidate) return;
 
@@ -539,12 +875,18 @@ async function handleEvaluate(candidateId) {
     nodeRows: new Map(),
     result: null,
     error: null,
-    panelOpen: true,
+    panelOpen: existing?.panelOpen ?? true,
+    bulk,
+    queued: false,
   };
   run.nodeRows.set(NODE_ORDER[0], { label: NODE_LABELS[NODE_ORDER[0]], message: "正在执行…", done: false, running: true });
   runs.set(candidateId, run);
 
-  selectCandidate(candidateId);
+  if (select) {
+    await selectCandidate(candidateId);
+  } else if (currentCandidateId === candidateId) {
+    renderAgent(candidates[candidateId]);
+  }
 
   try {
     const res = await fetch(`/api/candidates/${candidateId}/evaluate`, {
@@ -595,6 +937,7 @@ async function handleEvaluate(candidateId) {
       return;
     }
     failAgentRun(candidateId, err);
+    if (bulk) throw err;
   }
 }
 
@@ -658,8 +1001,12 @@ function handleImportFile(file) {
 els.drawerToggles.forEach((toggle) => {
   toggle.addEventListener("click", () => {
     const drawer = toggle.closest(".drawer");
-    const open = drawer.classList.toggle("is-open");
-    toggle.classList.toggle("is-open", open);
+    if (!drawer?.dataset.group) return;
+    if (drawer.classList.contains("is-open")) {
+      setDrawerOpen(drawer.dataset.group, false);
+    } else {
+      openDrawer(drawer.dataset.group);
+    }
   });
 });
 
@@ -667,6 +1014,18 @@ els.importInput.addEventListener("change", (e) => {
   const file = e.target.files?.[0];
   if (file) handleImportFile(file);
   els.importInput.value = "";
+});
+
+els.bulkEvaluateButton?.addEventListener("click", requestBulkEvaluation);
+
+els.bulkConfirmCancel?.addEventListener("click", () => {
+  els.bulkConfirmDialog?.close();
+});
+
+els.bulkConfirmSubmit?.addEventListener("click", () => {
+  const ids = JSON.parse(els.bulkConfirmSubmit.dataset.ids || "[]");
+  els.bulkConfirmDialog?.close();
+  evaluatePendingCandidates(ids);
 });
 
 openDrawer("pending");

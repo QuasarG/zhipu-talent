@@ -5,7 +5,7 @@ import os
 from typing import Any
 
 from dotenv import load_dotenv
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func, text
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func, inspect, text
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume, ImportClassification
@@ -14,6 +14,7 @@ from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume, I
 load_dotenv()
 
 Base = declarative_base()
+_SCHEMA_READY = False
 
 
 class CandidateORM(Base):
@@ -48,6 +49,7 @@ class EvaluationORM(Base):
     overall_score = Column(Integer, default=0)
     level = Column(String(8), default="")
     tier = Column(String(64), default="")
+    decision_method = Column(Text, default="")
     one_liner = Column(Text, default="")
     core_strengths = Column(JSON, default=list)
     potential_risks = Column(JSON, default=list)
@@ -56,6 +58,8 @@ class EvaluationORM(Base):
     dimension_scores = Column(JSON, default=list)
     evidence = Column(JSON, default=list)
     critic_flags = Column(JSON, default=list)
+    normalized_education = Column(JSON, default=list)
+    screening_tags = Column(JSON, default=list)
     evaluation_mode = Column(String(64), default="deepseek_ai_only")
     created_at = Column(DateTime, server_default=func.now())
 
@@ -75,7 +79,9 @@ def _database_url() -> str:
 
 
 def get_engine():
-    return create_engine(_database_url(), pool_pre_ping=True)
+    engine = create_engine(_database_url(), pool_pre_ping=True)
+    _ensure_existing_schema(engine)
+    return engine
 
 
 def get_session():
@@ -88,6 +94,30 @@ def init_db() -> None:
     create_database()
     engine = get_engine()
     Base.metadata.create_all(engine)
+
+
+def _ensure_existing_schema(engine) -> None:
+    global _SCHEMA_READY
+    if _SCHEMA_READY:
+        return
+    Base.metadata.create_all(engine)
+    inspector = inspect(engine)
+    if "evaluations" not in inspector.get_table_names():
+        _SCHEMA_READY = True
+        return
+    columns = {column["name"] for column in inspector.get_columns("evaluations")}
+    missing_columns = []
+    if "normalized_education" not in columns:
+        missing_columns.append(("normalized_education", "JSON"))
+    if "screening_tags" not in columns:
+        missing_columns.append(("screening_tags", "JSON"))
+    if "decision_method" not in columns:
+        missing_columns.append(("decision_method", "TEXT"))
+    if missing_columns:
+        with engine.begin() as conn:
+            for name, column_type in missing_columns:
+                conn.execute(text(f"ALTER TABLE evaluations ADD COLUMN {name} {column_type}"))
+    _SCHEMA_READY = True
 
 
 def create_database() -> None:
@@ -151,6 +181,7 @@ def save_evaluation(session, evaluation: CandidateEvaluation) -> EvaluationORM:
     ev.overall_score = evaluation.overall_score
     ev.level = evaluation.level
     ev.tier = evaluation.tier
+    ev.decision_method = evaluation.decision_method
     ev.one_liner = evaluation.one_liner
     ev.core_strengths = evaluation.core_strengths
     ev.potential_risks = evaluation.potential_risks
@@ -159,6 +190,8 @@ def save_evaluation(session, evaluation: CandidateEvaluation) -> EvaluationORM:
     ev.dimension_scores = [score.model_dump() for score in evaluation.dimension_scores]
     ev.evidence = [item.model_dump() for item in evaluation.evidence]
     ev.critic_flags = evaluation.critic_flags
+    ev.normalized_education = evaluation.normalized_education
+    ev.screening_tags = evaluation.screening_tags
 
     session.commit()
     return ev

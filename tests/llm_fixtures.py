@@ -60,6 +60,18 @@ def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: flo
                 for item in payload["candidates"]
             ]
         }
+    if "背景信号标准化 Agent" in system_prompt:
+        rule_guess = payload["rule_guess"]
+        return {
+            "background_signal_tiers": {
+                **rule_guess,
+                "rationale": "教育背景已折叠为分级信号，仅作低权重参考。",
+            },
+            "education_notes": [
+                "学校层级、成绩与排名已折叠为背景档位。",
+                "后续评分应优先依据项目证据。",
+            ],
+        }
     if "深度证据挖掘 Agent" in system_prompt:
         resume = payload["resume"]
         quotes = _quotes_from_resume(resume)
@@ -70,10 +82,10 @@ def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: flo
                     "dimension": dimension,
                     "source": source,
                     "quote": quote,
-                    "signals": ["动作:负责", "量化结果"] if index == 1 else ["技术栈:PyTorch"],
+                    "signals": _signals_for_quote(quote),
                     "strength": 4,
-                    "has_metric": index == 1,
-                    "has_specific_tool": index != 1,
+                    "has_metric": _has_metric(quote),
+                    "has_specific_tool": _has_specific_tool(quote),
                     "has_ownership": "负责" in quote or "设计" in quote or "提出" in quote,
                 }
                 for index, (dimension, source, quote) in enumerate(quotes, start=1)
@@ -81,7 +93,7 @@ def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: flo
         }
     if "跨领域对齐打分 Agent" in system_prompt:
         evidence = payload["evidence"]
-        evidence_id = evidence[0]["id"]
+        evidence_by_dimension = {item["dimension"]: item["id"] for item in evidence}
         return {
             "overall_score": 82,
             "level": "A",
@@ -90,10 +102,10 @@ def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: flo
                 {
                     "key": item.key,
                     "label": item.label,
-                    "score": 4.1,
-                    "weighted_score": round(4.1 * item.weight * 20, 2),
-                    "rationale": f"{evidence_id} 支撑该维度判断。",
-                    "evidence_ids": [evidence_id],
+                    "score": _fixture_score(item.key),
+                    "weighted_score": round(_fixture_score(item.key) * item.weight * 20, 2),
+                    "rationale": f"{evidence_by_dimension.get(item.key, evidence[0]['id'])} 支撑该维度判断。",
+                    "evidence_ids": [evidence_by_dimension.get(item.key, evidence[0]["id"])],
                     "risk_notes": ["需面谈确认本人贡献。"],
                 }
                 for item in RUBRIC
@@ -146,9 +158,56 @@ def _quotes_from_resume(resume: dict[str, Any]) -> list[tuple[str, str, str]]:
     projects = resume.get("projects", [])
     first_project = projects[0] if projects else {"name": "项目", "details": [resume["target_role"]]}
     first_detail = first_project.get("details", [first_project.get("name", "")])[0]
+    second_project = projects[1] if len(projects) > 1 else first_project
+    second_detail = second_project.get("details", [second_project.get("name", "")])[0]
+    third_project = projects[2] if len(projects) > 2 else first_project
+    third_detail = third_project.get("details", [third_project.get("name", "")])[-1]
     skill_quote = "、".join(resume.get("skills", []))
     return [
         ("problem_definition", f"项目：{first_project.get('name', '')}", first_detail),
         ("engineering_practice", "技能关键词", skill_quote),
-        ("ownership", f"项目：{first_project.get('name', '')}", first_project.get("name", "")),
+        ("ai_agent_leverage", f"项目：{second_project.get('name', '')}", second_detail),
+        ("ownership", f"项目：{third_project.get('name', '')}", third_detail),
+        ("research_exploration", f"项目：{first_project.get('name', '')}", first_detail),
+        ("cultivation_value", f"项目：{third_project.get('name', '')}", third_detail),
     ]
+
+
+def _fixture_score(key: str) -> float:
+    return {
+        "learning_growth": 3.2,
+        "research_exploration": 4.1,
+        "engineering_practice": 4.2,
+        "ai_agent_leverage": 4.1,
+        "problem_definition": 4.1,
+        "ownership": 4.2,
+        "cultivation_value": 4.0,
+        "education_signal": 3.2,
+        "academic_output": 3.4,
+        "project_richness": 3.5,
+        "impact_visibility": 3.0,
+        "direction_fit": 3.4,
+    }.get(key, 3.0)
+
+
+def _signals_for_quote(quote: str) -> list[str]:
+    signals: list[str] = []
+    if _has_specific_tool(quote):
+        signals.append("技术栈:PyTorch")
+    if any(word in quote for word in ["负责", "设计", "提出", "构建", "维护"]):
+        signals.append("动作:负责")
+    if _has_metric(quote):
+        signals.append("量化结果")
+    if any(word in quote.lower() for word in ["agent", "智能体", "workflow", "工作流", "rag", "路由"]):
+        signals.append("AI杠杆:Agent")
+    if any(word in quote for word in ["验证", "评测", "复现", "闭环", "修复", "错误归因"]):
+        signals.append("验证闭环")
+    return signals or ["项目事实"]
+
+
+def _has_metric(quote: str) -> bool:
+    return any(marker in quote for marker in ["%", "倍", "300+", "提升", "降低", "减少", "覆盖"])
+
+
+def _has_specific_tool(quote: str) -> bool:
+    return any(tool.lower() in quote.lower() for tool in ["pytorch", "triton", "docker", "playwright", "sympy", "rag", "agent", "ray"])

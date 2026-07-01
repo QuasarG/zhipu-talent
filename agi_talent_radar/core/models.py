@@ -24,6 +24,15 @@ class CandidateResume(BaseModel):
     raw_text: str = ""
 
 
+class BackgroundSignalTiers(BaseModel):
+    school_tier: str = "not_provided"
+    gpa_tier: str = "not_provided"
+    rank_tier: str = "not_provided"
+    degree_tier: str = "mixed_or_unclear"
+    academic_signal_tier: str = "weak_or_unknown"
+    rationale: str = ""
+
+
 class NormalizedResume(BaseModel):
     id: str
     name: str
@@ -31,13 +40,14 @@ class NormalizedResume(BaseModel):
     stage: str = ""
     education_raw: list[str] = Field(default_factory=list)
     education_blind: list[str] = Field(default_factory=list)
+    background_signal_tiers: BackgroundSignalTiers = Field(default_factory=BackgroundSignalTiers)
     directions: list[str] = Field(default_factory=list)
     projects: list[ResumeProject] = Field(default_factory=list)
     publications: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     screening_tags: list[str] = Field(default_factory=list)
     raw_text: str = ""
-    blind_note: str = "学校/GPA/排名等背景信号保留原始文本，但仅以低权重进入履历维度评分。"
+    blind_note: str = "学校/GPA/排名等具体细节已折叠为分级信号，仅以低权重进入履历维度评分。"
 
 
 class RubricDimension(BaseModel):
@@ -78,6 +88,7 @@ class CandidateEvaluation(BaseModel):
     overall_score: int
     level: Literal["S", "A", "B", "C"]
     tier: Literal["强烈建议沟通", "建议沟通", "暂缓 / 需补充信息"]
+    decision_method: str = ""
     one_liner: str
     core_strengths: list[str]
     potential_risks: list[str]
@@ -116,9 +127,14 @@ class TalentState(TypedDict, total=False):
     resume: dict[str, Any]
     normalized: dict[str, Any]
     evidence: list[dict[str, Any]]
+    evidence_integrity_flags: list[str]
+    evidence_repair_feedback: list[str]
     scores: list[dict[str, Any]]
     critic_flags: list[str]
     critic_needs_rescore: bool
+    critic_needs_evidence_rewrite: bool
     ai_assessment: dict[str, Any]
     loop_count: int
+    score_loop_count: int
+    evidence_loop_count: int
     final_output: dict[str, Any]

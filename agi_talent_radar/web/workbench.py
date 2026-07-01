@@ -14,6 +14,7 @@ from agi_talent_radar.core.runner import run_candidate_stream
 
 
 ROOT = Path(__file__).resolve().parents[2]
+VALID_GROUPS = {"pending", "shortlisted", "alternative", "rejected"}
 
 
 def create_app() -> Flask:
@@ -32,8 +33,8 @@ def create_app() -> Flask:
 
             with get_session() as session:
                 if group:
-                    if group not in {"pending", "shortlisted", "alternative"}:
-                        return jsonify({"detail": "group 必须是 pending/shortlisted/alternative"}), 400
+                    if group not in VALID_GROUPS:
+                        return jsonify({"detail": "group 必须是 pending/shortlisted/alternative/rejected"}), 400
                     rows = list_candidates_by_group(session, group)
                 else:
                     rows = list_candidates(session)
@@ -53,7 +54,8 @@ def create_app() -> Flask:
                     return jsonify({"detail": "候选人不存在"}), 404
                 data = _orm_to_detail(candidate_orm)
                 if evaluation:
-                    data["latest_evaluation"] = _orm_to_evaluation(evaluation)
+                    data["evaluation"] = _orm_to_evaluation(evaluation)
+                    data["latest_evaluation"] = data["evaluation"]
                 return jsonify(data)
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
@@ -85,7 +87,7 @@ def create_app() -> Flask:
 
                     with get_session() as session:
                         save_evaluation(session, evaluation)
-                        group = "shortlisted" if evaluation.overall_score >= 60 else "alternative"
+                        group = _group_for_score(evaluation.overall_score)
                         move_candidate_group(session, candidate_id, group)
             except Exception as exc:
                 yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
@@ -113,8 +115,8 @@ def create_app() -> Flask:
     def move_candidate(candidate_id: str):
         body = request.get_json(silent=True) or {}
         group = body.get("group")
-        if group not in {"pending", "shortlisted", "alternative"}:
-            return jsonify({"detail": "group 必须是 pending/shortlisted/alternative"}), 400
+        if group not in VALID_GROUPS:
+            return jsonify({"detail": "group 必须是 pending/shortlisted/alternative/rejected"}), 400
         try:
             from agi_talent_radar.core.database import get_session, move_candidate_group
 
@@ -239,13 +241,18 @@ def _orm_to_evaluation(row) -> dict[str, Any]:
         "overall_score": row.overall_score,
         "level": row.level,
         "tier": row.tier,
+        "decision_method": row.decision_method or "",
         "one_liner": row.one_liner,
-        "core_strengths": row.core_strengths,
-        "potential_risks": row.potential_risks,
-        "interview_questions": row.interview_questions,
-        "cultivation_direction": row.cultivation_direction,
-        "dimension_scores": row.dimension_scores,
-        "evidence": row.evidence,
+        "core_strengths": row.core_strengths or [],
+        "potential_risks": row.potential_risks or [],
+        "interview_questions": row.interview_questions or [],
+        "cultivation_direction": row.cultivation_direction or [],
+        "dimension_scores": row.dimension_scores or [],
+        "evidence": row.evidence or [],
+        "critic_flags": row.critic_flags or [],
+        "normalized_education": row.normalized_education or [],
+        "screening_tags": row.screening_tags or [],
+        "evaluation_mode": row.evaluation_mode,
     }
 
 
@@ -259,3 +266,11 @@ def _load_json(value: str) -> Any:
 
 
 app = create_app()
+
+
+def _group_for_score(score: int) -> str:
+    if score >= 80:
+        return "shortlisted"
+    if score >= 60:
+        return "alternative"
+    return "rejected"

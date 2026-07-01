@@ -48,6 +48,7 @@ FORMATTER_PROMPT = """
 3. potential_risks：必须包括论文/项目状态、指标真实性、本人贡献边界、方向匹配度或能力短板、Critic 指出的问题。
 4. interview_questions：优先追问 baseline 设计、ablation、本人贡献、失败案例、数据/评测闭环、指标真实性。
 5. cultivation_direction：对应候选人最适合参与的小闭环项目或培养路径。
+6. 不输出具体学校名、GPA 数值或排名数值；如需提及教育背景，只能引用分级信号。
 
 输出示例（严格遵循此结构，数组元素用中文）：
 {
@@ -83,7 +84,7 @@ def run_formatter(state: dict) -> dict:
     response = llm_client.call_llm_json(
         FORMATTER_PROMPT,
         {
-            "resume_brief": normalized.model_dump(exclude={"raw_text"}),
+            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw"}),
             "evidence": [item.model_dump() for item in evidence],
             "dimension_scores": [item.model_dump() for item in scores],
             "score_summary": ai_assessment,
@@ -92,16 +93,18 @@ def run_formatter(state: dict) -> dict:
         temperature=0.2,
     )
     formatted = FormatterOutput.model_validate(response)
-    level = _normalize_level(ai_assessment.get("level", "C"), ai_assessment.get("overall_score", 0))
-    tier = _normalize_tier(ai_assessment.get("tier", "暂缓 / 需补充信息"))
+    overall_score = int(ai_assessment["overall_score"])
+    level = _normalize_level(ai_assessment.get("level", "C"), overall_score)
+    tier = _normalize_tier(ai_assessment.get("tier", "暂缓 / 需补充信息"), overall_score)
     evaluation = CandidateEvaluation(
         id=normalized.id,
         name=normalized.name,
         target_role=normalized.target_role,
         stage=normalized.stage,
-        overall_score=int(ai_assessment["overall_score"]),
+        overall_score=overall_score,
         level=level,
         tier=tier,
+        decision_method=_decision_method(overall_score, tier),
         one_liner=formatted.one_liner,
         core_strengths=formatted.core_strengths,
         potential_risks=formatted.potential_risks,
@@ -116,36 +119,36 @@ def run_formatter(state: dict) -> dict:
     return {**state, "final_output": evaluation.model_dump()}
 
 
+def _decision_method(overall_score: int, tier: str) -> str:
+    if overall_score >= 80:
+        pool = "优选库"
+    elif overall_score >= 60:
+        pool = "备选库"
+    else:
+        pool = "不建议后续沟通"
+    return (
+        f"{overall_score} 分按系统规则进入{pool}；"
+        f"下一轮沟通建议为「{tier}」。评分优先依据项目证据、技术动作、量化结果和 ownership，"
+        "学校/GPA/排名仅作为低权重分级背景信号。"
+    )
+
+
 def _normalize_level(value: str, overall_score: int = 0) -> str:
-    text = str(value).strip()
-    if "强烈" in text:
-        return "A" if overall_score < 90 else "S"
-    if "建议沟通" in text and "暂缓" not in text:
-        return "B"
-    if "暂缓" in text:
-        return "C"
-    mapping = {"s": "S", "a": "A", "b": "B", "c": "C"}
-    normalized = mapping.get(text.lower(), text.upper())
-    if normalized in {"S", "A", "B", "C"}:
-        return normalized
     if overall_score >= 90:
         return "S"
     if overall_score >= 80:
         return "A"
-    if overall_score >= 70:
+    if overall_score >= 60:
         return "B"
     return "C"
 
 
-def _normalize_tier(value: str) -> str:
-    mapping = {
-        "强烈建议沟通": "强烈建议沟通",
-        "建议沟通": "建议沟通",
-        "暂缓/需补充信息": "暂缓 / 需补充信息",
-        "暂缓 / 需补充信息": "暂缓 / 需补充信息",
-        "暂缓": "暂缓 / 需补充信息",
-    }
-    return mapping.get(str(value).strip(), "暂缓 / 需补充信息")
+def _normalize_tier(value: str, overall_score: int = 0) -> str:
+    if overall_score >= 80:
+        return "强烈建议沟通"
+    if overall_score >= 60:
+        return "建议沟通"
+    return "暂缓 / 需补充信息"
 
 
 def _stringify_items(value):
