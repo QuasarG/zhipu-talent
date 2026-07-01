@@ -35,6 +35,7 @@ def build_graph():
         "critic",
         route_after_critic,
         {
+            "evidence_extractor": "evidence_extractor",
             "scorer": "scorer",
             "formatter": "formatter",
         },

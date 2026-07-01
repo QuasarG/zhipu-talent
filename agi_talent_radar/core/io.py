@@ -123,7 +123,7 @@ def render_summary_markdown(evaluations: list[CandidateEvaluation]) -> str:
         "",
         "## 横向排序",
         "",
-        "| 排名 | 候选人 | 综合分 | 等级 | 分层 | 一句话画像 |",
+        "| 排名 | 候选人 | 综合分 | 潜力等级 | 分层 | 一句话画像 |",
         "| ---: | --- | ---: | --- | --- | --- |",
     ]
     for index, item in enumerate(evaluations, start=1):
@@ -136,7 +136,8 @@ def render_summary_markdown(evaluations: list[CandidateEvaluation]) -> str:
             [
                 f"### {item.name}｜{item.target_role}",
                 "",
-                f"- 综合评分：{item.overall_score} / 100（{item.level}，{item.tier}）",
+                f"- 综合评分：{item.overall_score} / 100（潜力等级 {item.level}，{item.tier}）",
+                f"- 决策方式：{item.decision_method}",
                 f"- 人才画像：{item.one_liner}",
                 f"- 核心优势：{'；'.join(item.core_strengths)}",
                 f"- 风险 / 待验证：{'；'.join(item.potential_risks)}",

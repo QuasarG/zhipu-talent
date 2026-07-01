@@ -21,27 +21,38 @@
       </div>
 
       <section class="drawer is-open" data-group="pending" id="drawer-pending">
-        <button class="drawer-toggle is-open" type="button" aria-expanded="true">
+        <button class="drawer-toggle is-open" type="button" aria-expanded="true" aria-controls="list-pending">
           <span>待评价库</span>
           <span class="drawer-count" id="count-pending">0</span>
         </button>
+        <div class="drawer-tools">
+          <button class="bulk-evaluate-button" id="bulk-evaluate-pending" type="button" disabled>一键评估</button>
+        </div>
         <div class="drawer-body" id="list-pending"></div>
       </section>
 
       <section class="drawer" data-group="shortlisted" id="drawer-shortlisted">
-        <button class="drawer-toggle" type="button" aria-expanded="false">
+        <button class="drawer-toggle" type="button" aria-expanded="false" aria-controls="list-shortlisted">
           <span>优选库</span>
           <span class="drawer-count" id="count-shortlisted">0</span>
         </button>
-        <div class="drawer-body" id="list-shortlisted"></div>
+        <div class="drawer-body" id="list-shortlisted" hidden></div>
       </section>
 
       <section class="drawer" data-group="alternative" id="drawer-alternative">
-        <button class="drawer-toggle" type="button" aria-expanded="false">
+        <button class="drawer-toggle" type="button" aria-expanded="false" aria-controls="list-alternative">
           <span>备选库</span>
           <span class="drawer-count" id="count-alternative">0</span>
         </button>
-        <div class="drawer-body" id="list-alternative"></div>
+        <div class="drawer-body" id="list-alternative" hidden></div>
+      </section>
+
+      <section class="drawer" data-group="rejected" id="drawer-rejected">
+        <button class="drawer-toggle" type="button" aria-expanded="false" aria-controls="list-rejected">
+          <span>不建议后续沟通</span>
+          <span class="drawer-count" id="count-rejected">0</span>
+        </button>
+        <div class="drawer-body" id="list-rejected" hidden></div>
       </section>
     </aside>
 
@@ -76,6 +87,16 @@
   </template>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog class="confirm-dialog" id="bulk-confirm-dialog">
+    <form method="dialog" class="confirm-dialog-content">
+      <h2 id="bulk-confirm-title">确认评估待评价库</h2>
+      <p id="bulk-confirm-message"></p>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="confirm-cancel" id="bulk-confirm-cancel">取消</button>
+        <button type="button" class="confirm-submit" id="bulk-confirm-submit">确认评估</button>
+      </div>
+    </form>
+  </dialog>
   <script src="{{ url_for('static', filename='workbench.js') }}"></script>
 </body>
 </html>
