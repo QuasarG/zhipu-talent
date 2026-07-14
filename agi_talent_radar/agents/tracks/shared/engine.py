@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from agi_talent_radar.core import llm_client
@@ -16,10 +17,17 @@ TRACK_SCORER_PROMPT = """
 每个维度 score 为 0-5：
 - 0：没有证据。
 - 1：只有关键词、方向或论文标题。
-- 2：参与过相关工作，但贡献、方法或验证不清。
-- 3：有具体方法、本人动作和基本验证。
-- 4：有原创问题定义以及完整实验或工程闭环。
-- 5：形成可迁移方法论，并有强验证、实际影响和清晰 ownership。
+- 2：参与过相关工作，但贡献、方法或验证仅有部分信息。
+- 3：有具体方法或本人动作，并有项目、系统或研究成果支撑。
+- 4：有原创方法/问题定义和较完整的研究或工程闭环，多条独立强证据可交叉支撑。
+- 4.5：多项独立高质量成果与项目 ownership 交叉验证，已明显超过单项工作的完整闭环。
+- 5：形成可迁移方法论，并有强验证、清晰 ownership 和学术或产业影响。
+
+评分原则：
+1. 评价候选人已被证据支撑的能力，不是评价简历是否写成完整论文。
+2. 正式发表的高水平同行评议成果是有效外部验证；不得与仅有论文标题的拟投成果等同。
+3. 项目负责人 + 具体技术方法 + 可核验成果可构成高分组合证据，不强求它们出现在同一条 evidence 中。
+4. 同一个「缺少量化指标/贡献细节」不得在多个维度重复扣分；将它放在最相关维度的 risk_notes 中。
 
 每项必须输出 key, label, score, rationale, evidence_ids, risk_notes。
 rationale 必须引用存在的 evidence id。没有证据时 score 必须为 0，不要硬凑。
@@ -28,7 +36,17 @@ Track 证据重点：{evidence_focus}
 """.strip()
 
 
-def run_track_chain(state: dict[str, Any], spec: TrackSpec) -> dict[str, Any]:
+PortfolioCalibrator = Callable[
+    [list[DimensionScore], list[EvidenceItem]],
+    list[DimensionScore],
+]
+
+
+def run_track_chain(
+    state: dict[str, Any],
+    spec: TrackSpec,
+    portfolio_calibrator: PortfolioCalibrator | None = None,
+) -> dict[str, Any]:
     assignment = _assignment_for_track(state, spec)
     if assignment is None:
         return {"track_results": []}
@@ -52,6 +70,8 @@ def run_track_chain(state: dict[str, Any], spec: TrackSpec) -> dict[str, Any]:
     )
     scores = _normalize_scores(response.get("dimension_scores", []), spec)
     calibrated, critic_flags = _calibrate_scores(scores, selected, spec)
+    if portfolio_calibrator is not None:
+        calibrated = portfolio_calibrator(calibrated, selected)
     raw_score = round(sum(item.weighted_score for item in scores), 2)
     calibrated_score = round(sum(item.weighted_score for item in calibrated), 2)
     risk_notes = [note for item in calibrated for note in item.risk_notes]
@@ -128,7 +148,7 @@ def _calibrate_scores(
             message = f"{item.label} 缺少可追溯证据，按规则封顶 1 分。"
             risk_notes.append(message)
             critic_flags.append(message)
-        elif next_score >= 4 and not any(_is_strong_evidence(ref) for ref in refs):
+        elif next_score >= 4 and not _supports_high_score(refs):
             next_score = 3.5
             message = f"{item.label} 的高分缺少量化、工具或 ownership 组合证据，封顶 3.5 分。"
             risk_notes.append(message)
@@ -147,6 +167,32 @@ def _calibrate_scores(
     return calibrated, list(dict.fromkeys(critic_flags))
 
 
-def _is_strong_evidence(item: EvidenceItem) -> bool:
-    hard_signals = sum([item.has_metric, item.has_specific_tool, item.has_ownership])
-    return item.strength >= 4 and hard_signals >= 2
+def _supports_high_score(items: list[EvidenceItem]) -> bool:
+    strong = [item for item in items if item.strength >= 4]
+    if any(sum([item.has_metric, item.has_specific_tool, item.has_ownership]) >= 2 for item in strong):
+        return True
+    distinct_sources = {item.source for item in strong if item.source}
+    return len(distinct_sources) >= 2
+
+
+def apply_dimension_floors(
+    scores: list[DimensionScore],
+    floors: dict[str, float],
+    reason: str,
+) -> list[DimensionScore]:
+    calibrated: list[DimensionScore] = []
+    for item in scores:
+        floor = floors.get(item.key, 0)
+        if item.score >= floor:
+            calibrated.append(item)
+            continue
+        calibrated.append(
+            item.model_copy(
+                update={
+                    "score": floor,
+                    "weighted_score": round(floor / 5 * item.max_points, 2),
+                    "rationale": f"{item.rationale} 组合证据校准：{reason}",
+                }
+            )
+        )
+    return calibrated

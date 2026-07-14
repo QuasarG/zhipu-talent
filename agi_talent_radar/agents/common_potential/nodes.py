@@ -12,13 +12,15 @@ COMMON_SCORER_PROMPT = """
 你是 AI 人才潜力评估系统里的【通用潜力评分 Agent】。
 只输出 JSON 对象，顶层字段必须是 dimension_scores。
 
-这部分只评价跨 Track 都成立的元能力，不评价具体方向熟练度，也不奖励 Agent、工程落地、学校或论文名气。
+这部分只评价跨 Track 都成立的元能力，不评价具体方向熟练度，也不因 Agent 热度、学校或名企背景加分。论文标题和会议名气不能单独代替能力证据，但多项已正式发表的同行评议成果是「研究严谨性」与「证据可信度」的有效外部验证。
 每个维度 score 为 0-5：0 无证据；1 只有关键词；2 参与但贡献不清；3 有方法、动作和基本验证；
-4 有独立问题定义与完整验证；5 形成可迁移方法论并有强验证和清晰 ownership。
+4 有独立问题定义与完整验证；4.5 有多项独立高质量成果与清晰 ownership 交叉验证；
+5 形成可迁移方法论并产生持续学术或工程影响。
 
 每项必须输出 key, label, score, rationale, evidence_ids, risk_notes。
 rationale 必须引用存在的 evidence id；没有证据时给 0 分。
 同一维度在不同 Track 的表现形式可以不同，但判断标准必须基于候选人的实际动作与可验证证据。
+多个独立项目中持续担任负责人、连续产出同一研究主线的高质量成果、从传统方法迁移到新范式，分别是 ownership、成长轨迹和学习迁移的高分证据。不要因简历没有展开每篇论文的消融表就将所有相关维度压到 3 分。
 """.strip()
 
 
@@ -98,11 +100,52 @@ def run_common_critic(state: dict[str, Any]) -> dict[str, Any]:
                 }
             )
         )
+    calibrated = _apply_research_portfolio_floors(calibrated, list(evidence.values()))
     return {
         "common_scores": [item.model_dump() for item in calibrated],
         "common_score": round(sum(item.weighted_score for item in calibrated), 2),
         "common_critic_flags": list(dict.fromkeys(flags)),
     }
+
+
+def _apply_research_portfolio_floors(
+    scores: list[DimensionScore],
+    evidence: list[EvidenceItem],
+) -> list[DimensionScore]:
+    strong_sources = {item.source for item in evidence if item.strength >= 4 and item.source}
+    owned = sum(item.has_ownership for item in evidence)
+    published = sum(_is_published_result(item) for item in evidence)
+    if len(strong_sources) < 6 or owned < 3 or published < 2:
+        return scores
+    floors = {
+        "problem_definition": 4.0,
+        "research_rigor": 4.0,
+        "learning_transfer": 3.5,
+        "ownership": 4.5,
+        "evidence_credibility": 4.5,
+        "growth_trajectory": 4.0,
+    }
+    result: list[DimensionScore] = []
+    for item in scores:
+        floor = floors.get(item.key, 0)
+        if item.score >= floor:
+            result.append(item)
+            continue
+        result.append(
+            item.model_copy(
+                update={
+                    "score": floor,
+                    "weighted_score": round(floor / 5 * item.max_points, 2),
+                    "rationale": f"{item.rationale} 组合证据校准：多项独立负责项目与正式发表成果交叉支撑该潜力判断。",
+                }
+            )
+        )
+    return result
+
+
+def _is_published_result(item: EvidenceItem) -> bool:
+    text = " ".join([item.source, item.quote, *item.signals]).lower()
+    return item.strength >= 4 and any(token in text for token in ("已发表", "已接收", "ccf-a", "journal"))
 
 
 def _supports_high_score(dimension_key: str, items: list[EvidenceItem]) -> bool:

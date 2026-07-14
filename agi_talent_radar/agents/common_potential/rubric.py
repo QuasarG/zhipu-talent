@@ -4,10 +4,10 @@ from agi_talent_radar.core.models import RubricDimension
 
 COMMON_RUBRIC = (
     D("problem_definition", "问题定义与独立判断", 8, "看真实问题、约束、边界、失败模式与取舍。"),
-    D("research_rigor", "探索严谨性与验证能力", 8, "看 baseline、对照、消融、失败分析和可证伪验证。"),
-    D("learning_transfer", "学习迁移与认知成长", 5, "看跨任务迁移、失败修正和认知变化。"),
+    D("research_rigor", "探索严谨性与验证能力", 7, "看 baseline、对照、消融、失败分析和可证伪验证；已发表的高水平同行评议成果是外部验证，但不自动等于满分。"),
+    D("learning_transfer", "学习迁移与认知成长", 4, "看跨任务迁移、失败修正和认知变化。"),
     D("ownership", "Ownership 与贡献边界", 7, "看本人提出、设计、实现、维护和推进范围。"),
-    D("evidence_credibility", "证据可信度与可复现性", 5, "看条件、数据、指标、产物和可核验性。"),
+    D("evidence_credibility", "证据可信度与可复现性", 7, "看条件、数据、指标、产物和可核验性。多项已正式发表的同行评议成果、高含金量验收和可运行产物应明确加分；拟投不等同于已接收。"),
     D("growth_trajectory", "长期研究品味与成长轨迹", 4, "看问题选择是否持续深入并形成清晰主线。"),
 )
 
