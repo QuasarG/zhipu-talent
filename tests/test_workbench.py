@@ -78,6 +78,21 @@ class WorkbenchTest(unittest.TestCase):
         self.assertIn("word-break: break-word;", styles)
         self.assertIn("grid-template-columns: minmax(0, 130px) minmax(0, 1fr) 36px;", styles)
 
+    def test_agent_graph_renders_multi_track_parallel_stages(self) -> None:
+        graph_script = (
+            ROOT / "agi_talent_radar" / "web" / "static" / "workbench-agent-graph.js"
+        ).read_text(encoding="utf-8")
+        html = self.app.get("/").get_data(as_text=True)
+        self.assertLess(html.index("workbench-agent-graph.js"), html.index("workbench.js"))
+        self.assertIn('key: "parallel"', graph_script)
+        self.assertIn('"common_critic"', graph_script)
+        self.assertIn('"base_track"', graph_script)
+        self.assertIn('"agent_track"', graph_script)
+        self.assertIn('"safety_track"', graph_script)
+        self.assertIn('"multimodal_track"', graph_script)
+        self.assertIn('"systems_track"', graph_script)
+        self.assertIn('"ai4science_track"', graph_script)
+
     def test_candidates_group_returns_list(self) -> None:
         response = self.app.get("/api/candidates?group=pending")
         self.assertEqual(response.status_code, 200)

@@ -3,14 +3,7 @@
  * Streaming evaluation, persistent node panel, decoupled multi-task runs.
  */
 
-const NODE_ORDER = ["normalizer", "evidence_extractor", "scorer", "critic", "formatter"];
-const NODE_LABELS = {
-  normalizer: "脱敏与标准化",
-  evidence_extractor: "深度证据挖掘",
-  scorer: "跨领域对齐打分",
-  critic: "逻辑判官与防幻觉",
-  formatter: "结构化组装",
-};
+const { NODE_LABELS, NODE_ORDER, STAGES } = window.AgentGraph;
 const BULK_EVALUATION_CONCURRENCY = 3;
 
 const els = {
@@ -678,7 +671,7 @@ async function deleteCandidate(candidateId) {
   }
 }
 
-function upsertAgentNodeEvent(candidateId, nodeKey, label, message, done) {
+function upsertAgentNodeEvent(candidateId, nodeKey, label, message, status) {
   const run = runs.get(candidateId);
   if (!run) return;
 
@@ -686,22 +679,11 @@ function upsertAgentNodeEvent(candidateId, nodeKey, label, message, done) {
   if (existing) {
     existing.label = label || existing.label;
     existing.message = message || existing.message;
-    existing.done = done;
-    existing.running = false;
+    existing.status = status;
   } else {
-    run.nodeRows.set(nodeKey, { label, message, done, running: false });
+    run.nodeRows.set(nodeKey, { label, message, status });
   }
-
-  // 推进下一个预期节点为 running
-  if (done) {
-    const index = NODE_ORDER.indexOf(nodeKey);
-    if (index >= 0 && index + 1 < NODE_ORDER.length) {
-      const nextKey = NODE_ORDER[index + 1];
-      if (!run.nodeRows.has(nextKey)) {
-        run.nodeRows.set(nextKey, { label: NODE_LABELS[nextKey] || nextKey, message: "正在执行…", done: false, running: true });
-      }
-    }
-  }
+  window.AgentGraph.advanceAfterEvent(run.nodeRows, nodeKey);
 
   renderNodeFeed(candidateId);
 }
@@ -715,21 +697,38 @@ function renderNodeFeed(candidateId) {
   if (!feed) return;
 
   feed.innerHTML = "";
-  NODE_ORDER.forEach((nodeKey) => {
-    const row = run.nodeRows.get(nodeKey);
-    if (!row) return;
-
-    const rowEl = document.createElement("div");
-    rowEl.className = `node-row ${row.done ? "is-done" : ""} ${row.running ? "is-running" : ""}`;
-    rowEl.dataset.node = nodeKey;
-    rowEl.innerHTML = `
-      <div class="node-icon">${row.done ? "✓" : (row.running ? "" : "·")}</div>
-      <div class="node-body">
-        <strong>${escapeHtml(row.label)}</strong>
-        <small>${escapeHtml(row.message || "等待中…")}</small>
+  STAGES.forEach((stage) => {
+    const stageEl = document.createElement("section");
+    stageEl.className = `node-stage ${stage.parallel ? "is-parallel" : ""}`;
+    stageEl.dataset.stage = stage.key;
+    stageEl.innerHTML = `
+      <div class="node-stage-head">
+        <strong>${escapeHtml(stage.label)}</strong>
+        <span>${escapeHtml(stage.description)}</span>
       </div>
+      <div class="node-stage-grid"></div>
     `;
-    feed.appendChild(rowEl);
+    const grid = stageEl.querySelector(".node-stage-grid");
+    stage.nodes.forEach((nodeKey) => {
+      const row = run.nodeRows.get(nodeKey);
+      if (!row) return;
+      const status = row.status || "pending";
+      const rowEl = document.createElement("div");
+      rowEl.className = `node-row is-${status}`;
+      rowEl.dataset.node = nodeKey;
+      rowEl.innerHTML = `
+        <div class="node-icon" aria-hidden="true">${status === "done" ? "✓" : status === "skipped" ? "—" : status === "error" ? "!" : ""}</div>
+        <div class="node-body">
+          <div class="node-title-line">
+            <strong>${escapeHtml(row.label)}</strong>
+            <span class="node-status">${escapeHtml(window.AgentGraph.statusLabel(status))}</span>
+          </div>
+          <small>${escapeHtml(row.message || "等待执行…")}</small>
+        </div>
+      `;
+      grid.appendChild(rowEl);
+    });
+    feed.appendChild(stageEl);
   });
 
   feed.scrollTop = feed.scrollHeight;
@@ -754,7 +753,7 @@ function finishAgentRun(candidateId, result) {
 
   run.controller = null;
   run.result = result;
-  run.nodeRows.forEach((row) => { row.done = true; row.running = false; });
+  window.AgentGraph.setNodeStatus(run.nodeRows, "formatter", "done", "结构化结果已生成。");
   candidates[candidateId].evaluation = result;
   candidates[candidateId].group = result ? groupForScore(result.overall_score) : "rejected";
 
@@ -775,6 +774,10 @@ function failAgentRun(candidateId, error) {
 
   run.controller = null;
   run.error = error;
+  const runningNode = [...run.nodeRows.entries()].find(([, row]) => row.status === "running");
+  if (runningNode) {
+    window.AgentGraph.setNodeStatus(run.nodeRows, runningNode[0], "error", error.message || "节点执行失败。");
+  }
 
   if (currentCandidateId === candidateId) {
     const chip = document.getElementById("agent-state-chip");
@@ -815,19 +818,14 @@ function queueAgentRun(candidateId, bulk = true) {
   const run = {
     candidateId,
     controller: null,
-    nodeRows: new Map(),
+    nodeRows: window.AgentGraph.createNodeRows(),
     result: null,
     error: null,
     panelOpen: existing?.panelOpen ?? true,
     bulk,
     queued: true,
   };
-  run.nodeRows.set(NODE_ORDER[0], {
-    label: NODE_LABELS[NODE_ORDER[0]],
-    message: "等待批量调度…",
-    done: false,
-    running: false,
-  });
+  window.AgentGraph.setNodeStatus(run.nodeRows, NODE_ORDER[0], "queued", "等待批量调度…");
   runs.set(candidateId, run);
 }
 
@@ -908,14 +906,14 @@ async function startEvaluation(candidateId, options = {}) {
   const run = {
     candidateId,
     controller: new AbortController(),
-    nodeRows: new Map(),
+    nodeRows: window.AgentGraph.createNodeRows(),
     result: null,
     error: null,
     panelOpen: existing?.panelOpen ?? true,
     bulk,
     queued: false,
   };
-  run.nodeRows.set(NODE_ORDER[0], { label: NODE_LABELS[NODE_ORDER[0]], message: "正在执行…", done: false, running: true });
+  window.AgentGraph.setNodeStatus(run.nodeRows, NODE_ORDER[0], "running", "正在执行…");
   runs.set(candidateId, run);
 
   if (select) {
@@ -956,7 +954,7 @@ async function startEvaluation(candidateId, options = {}) {
         }
 
         if (event.type === "node") {
-          upsertAgentNodeEvent(candidateId, event.node, event.label, event.message, event.status === "done");
+          upsertAgentNodeEvent(candidateId, event.node, event.label, event.message, event.status || "done");
         } else if (event.type === "rescore") {
           showRescoreNotice(candidateId, event.message);
         } else if (event.type === "result") {

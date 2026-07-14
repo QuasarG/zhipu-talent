@@ -846,14 +846,54 @@ button { cursor: pointer; border: none; background: transparent; }
 }
 
 .node-feed {
-  max-height: 260px;
+  max-height: min(52vh, 520px);
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
   min-width: 0;
+}
+
+.node-stage {
+  padding: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.node-stage:last-child {
+  border-bottom: 0;
+}
+
+.node-stage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.node-stage-head strong {
+  font-size: 11px;
+  color: var(--color-primary);
+}
+
+.node-stage-head span {
+  overflow: hidden;
+  color: var(--accent-ink);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-stage-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.node-stage.is-parallel .node-stage-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .node-row {
@@ -867,6 +907,66 @@ button { cursor: pointer; border: none; background: transparent; }
   transform: translateY(-6px);
   animation: node-enter 0.35s ease forwards;
   transition: background 0.15s ease, border-color 0.2s ease;
+}
+
+.node-stage .node-row {
+  min-height: 58px;
+  margin: 0;
+  padding: 8px;
+}
+
+.node-stage.is-parallel .node-row {
+  min-height: 82px;
+}
+
+.node-title-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.node-title-line strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.node-status {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border: 1px solid var(--color-border);
+  color: var(--accent-ink);
+  font-size: 8px;
+}
+
+.node-row.is-pending,
+.node-row.is-queued,
+.node-row.is-skipped {
+  background: #F8F8F8;
+  color: var(--accent-ink);
+}
+
+.node-row.is-skipped {
+  border-style: dashed;
+}
+
+.node-row.is-skipped .node-icon {
+  border-color: var(--color-border);
+  background: transparent;
+  color: var(--accent-ink);
+}
+
+.node-row.is-error {
+  border-color: #F0B8B8;
+  background: #FFF4F4;
+}
+
+.node-row.is-error .node-icon {
+  border-color: var(--color-destructive);
+  background: var(--color-destructive);
+  color: #FFFFFF;
 }
 
 @keyframes node-enter {

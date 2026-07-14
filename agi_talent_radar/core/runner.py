@@ -34,7 +34,8 @@ def run_candidate_stream(resume: CandidateResume | dict):
                     "type": "node",
                     "node": node_key,
                     "label": NODE_LABELS[node_key],
-                    "status": "done",
+                    "status": _node_event_status(node_key, update),
+                    "phase": _node_phase(node_key),
                     "message": summary,
                 }
             state.update(update)
@@ -97,6 +98,22 @@ def _node_summary(node_key: str, update: dict) -> str:
         questions = final.get("interview_questions", [])
         return f"组装完成：{_shorten(final.get('one_liner', '已生成画像'), 48)}；生成 {len(strengths)} 条优势和 {len(questions)} 个追问。"
     return "已完成"
+
+
+def _node_event_status(node_key: str, update: dict) -> str:
+    if node_key.endswith("_track") and not update.get("track_results"):
+        return "skipped"
+    return "done"
+
+
+def _node_phase(node_key: str) -> str:
+    if node_key in {"normalizer", "document_quality", "evidence_extractor"}:
+        return "preparation"
+    if node_key in {"track_router", "route_auditor"}:
+        return "routing"
+    if node_key in {"common_scorer", "common_critic"} or node_key.endswith("_track"):
+        return "parallel"
+    return "aggregation"
 
 
 def _tier_text(key: str, value: str | None) -> str:
