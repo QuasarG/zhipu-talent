@@ -485,6 +485,41 @@ function getAgentPaneHTML(candidate) {
       `;
     }).join("");
 
+    const assignments = Array.isArray(result.track_assignments) ? result.track_assignments : [];
+    const trackEvaluations = Array.isArray(result.track_evaluations) ? result.track_evaluations : [];
+    const trackEvaluationByKey = new Map(trackEvaluations.map((item) => [String(item.track || ""), item]));
+    const trackRows = assignments.map((assignment) => {
+      const key = String(assignment.track || "");
+      const evaluation = trackEvaluationByKey.get(key) || {};
+      const trackScore = typeof evaluation.calibrated_score === "number" ? evaluation.calibrated_score : 0;
+      const weight = typeof assignment.weight === "number" ? assignment.weight : 0;
+      const dimensionsText = Array.isArray(evaluation.dimension_scores)
+        ? evaluation.dimension_scores
+            .slice()
+            .sort((a, b) => Number(b.weighted_score || 0) - Number(a.weighted_score || 0))
+            .slice(0, 3)
+            .map((item) => `${item.label || item.key} ${Number(item.score || 0).toFixed(1)}`)
+            .join("、")
+        : "";
+      return `
+        <div class="score-row has-detail">
+          <div class="score-main">
+            <span class="score-label" title="${escapeHtml(key)}">${escapeHtml(key)} · ${(weight * 100).toFixed(0)}%</span>
+            <div class="score-bar"><span style="width: ${clampScore((trackScore / 60) * 100)}%"></span></div>
+            <span class="score-value">${trackScore.toFixed(1)}</span>
+          </div>
+          <p class="score-rationale">${escapeHtml(dimensionsText || assignment.rationale || "暂无专业评分")}</p>
+        </div>
+      `;
+    }).join("");
+
+    const scoreBreakdown = `通用潜力 ${Number(result.common_score || 0).toFixed(1)} / 37 · `
+      + `Track 加权 ${trackEvaluations.length ? trackEvaluations.reduce((sum, item) => {
+        const assignment = assignments.find((candidate) => candidate.track === item.track);
+        return sum + Number(item.calibrated_score || 0) * Number(assignment?.weight || 0);
+      }, 0).toFixed(1) : "0.0"} / 60 · `
+      + `简历表达 ${Number(result.document_score || 0).toFixed(1)} / 3`;
+
     const strengths = Array.isArray(result.core_strengths) && result.core_strengths.length
       ? `<ol>${result.core_strengths.map((s) => `<li>${renderEvidenceText(s, evidence)}</li>`).join("")}</ol>`
       : "<p>未生成</p>";
@@ -510,7 +545,8 @@ function getAgentPaneHTML(candidate) {
         <div class="score-band"><span>${overall}</span><span>综合匹配分</span></div>
         <div class="result-section"><h3>人才画像</h3><p>${renderEvidenceText(result.one_liner || "—", evidence)}</p></div>
         ${decision}
-        <div class="result-section"><h3>维度评分</h3><div class="score-list">${dimRows}</div></div>
+        <div class="result-section"><h3>Track 分布</h3><p>${escapeHtml(scoreBreakdown)}</p><div class="score-list">${trackRows || "<p>暂无 Track 结果</p>"}</div></div>
+        <div class="result-section"><h3>通用潜力评分</h3><div class="score-list">${dimRows}</div></div>
         <div class="result-section"><h3>核心优势</h3>${strengths}</div>
         <div class="result-section"><h3>风险与待验证</h3>${risks}</div>
         <div class="result-section"><h3>面谈追问</h3>${questions}</div>

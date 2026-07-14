@@ -10,6 +10,7 @@ from flask import Flask, Response, jsonify, render_template, request, stream_wit
 from agi_talent_radar.core.import_agent import run_import_agent_stream
 from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume
+from agi_talent_radar.core.resume_ingestion import load_pdf_resume
 from agi_talent_radar.core.runner import run_candidate_stream
 
 
@@ -132,50 +133,54 @@ def create_app() -> Flask:
     def import_file():
         file = request.files.get("file")
         if not file or not file.filename:
-            return jsonify({"detail": "请上传 .jsonl / .md / .txt 简历文件"}), 400
+            return jsonify({"detail": "请上传 .pdf / .jsonl / .md / .txt 简历文件"}), 400
         suffix = Path(file.filename).suffix.lower()
-        if suffix not in {".jsonl", ".md", ".txt"}:
-            return jsonify({"detail": "仅支持 .jsonl / .md / .txt 文件"}), 400
+        if suffix not in {".pdf", ".jsonl", ".md", ".txt"}:
+            return jsonify({"detail": "仅支持 .pdf / .jsonl / .md / .txt 文件"}), 400
 
         # 预先把文件内容读入内存，避免生成器执行时请求上下文已关闭
         file_bytes = file.read()
+        filename = file.filename
 
         def generate():
             try:
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_path = Path(temp_dir) / f"upload{suffix}"
-                    temp_path.write_bytes(file_bytes)
-                    resumes = load_resumes(temp_path)
-                    resume_by_id = {resume.id: resume for resume in resumes}
-                    classifications = list(run_import_agent_stream(resumes, persist=True))
-                    total = len(classifications)
-                    for index, classification in enumerate(classifications, start=1):
-                        resume = resume_by_id[classification.id]
-                        payload = {
-                            "type": "candidate",
-                            "index": index,
-                            "total": total,
-                            "candidate": {
-                                "id": classification.id,
-                                "name": classification.name,
-                                "role": resume.target_role,
-                                "stage": resume.stage,
-                                "group": "pending",
-                                "category": classification.category,
-                                "level": classification.level,
-                                "confidence": classification.confidence,
-                                "reason": classification.reason,
-                                "education": resume.education,
-                                "directions": resume.directions,
-                                "projects": [project.model_dump() for project in resume.projects],
-                                "publications": resume.publications,
-                                "skills": resume.skills,
-                                "screening_tags": resume.screening_tags,
-                                "raw_text": resume.raw_text,
-                            },
-                        }
-                        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                    yield f"data: {json.dumps({'type': 'done', 'total': total}, ensure_ascii=False)}\n\n"
+                if suffix == ".pdf":
+                    resumes = [load_pdf_resume(file_bytes, filename)]
+                else:
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        temp_path = Path(temp_dir) / f"upload{suffix}"
+                        temp_path.write_bytes(file_bytes)
+                        resumes = load_resumes(temp_path)
+                resume_by_id = {resume.id: resume for resume in resumes}
+                classifications = list(run_import_agent_stream(resumes, persist=True))
+                total = len(classifications)
+                for index, classification in enumerate(classifications, start=1):
+                    resume = resume_by_id[classification.id]
+                    payload = {
+                        "type": "candidate",
+                        "index": index,
+                        "total": total,
+                        "candidate": {
+                            "id": classification.id,
+                            "name": classification.name,
+                            "role": resume.target_role,
+                            "stage": resume.stage,
+                            "group": "pending",
+                            "category": classification.category,
+                            "level": classification.level,
+                            "confidence": classification.confidence,
+                            "reason": classification.reason,
+                            "education": resume.education,
+                            "directions": resume.directions,
+                            "projects": [project.model_dump() for project in resume.projects],
+                            "publications": resume.publications,
+                            "skills": resume.skills,
+                            "screening_tags": resume.screening_tags,
+                            "raw_text": resume.raw_text,
+                        },
+                    }
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'total': total}, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
 
@@ -217,6 +222,8 @@ def _orm_to_detail(row) -> dict[str, Any]:
         "publications": _load_json(row.publications),
         "skills": _load_json(row.skills),
         "screening_tags": _load_json(row.screening_tags),
+        "source_format": _string_attr(row, "source_format", "text"),
+        "document_analysis": _load_json(getattr(row, "document_analysis", "")) or {},
     }
 
 
@@ -233,6 +240,8 @@ def _orm_to_resume(row) -> CandidateResume:
         "publications": _load_json(row.publications),
         "skills": _load_json(row.skills),
         "screening_tags": _load_json(row.screening_tags),
+        "source_format": _string_attr(row, "source_format", "text"),
+        "document_analysis": _load_json(getattr(row, "document_analysis", "")) or {},
     })
 
 
@@ -252,17 +261,41 @@ def _orm_to_evaluation(row) -> dict[str, Any]:
         "critic_flags": row.critic_flags or [],
         "normalized_education": row.normalized_education or [],
         "screening_tags": row.screening_tags or [],
+        "common_score": _number_attr(row, "common_score"),
+        "document_score": _number_attr(row, "document_score"),
+        "track_assignments": _list_attr(row, "track_assignments"),
+        "track_evaluations": _list_attr(row, "track_evaluations"),
+        "routing_confidence": _number_attr(row, "routing_confidence"),
         "evaluation_mode": row.evaluation_mode,
     }
 
 
 def _load_json(value: str) -> Any:
+    if isinstance(value, (list, dict)):
+        return value
+    if not isinstance(value, str):
+        return []
     if not value:
         return []
     try:
         return json.loads(value)
     except json.JSONDecodeError:
         return []
+
+
+def _string_attr(row, name: str, default: str = "") -> str:
+    value = getattr(row, name, default)
+    return value if isinstance(value, str) else default
+
+
+def _number_attr(row, name: str, default: float = 0) -> float:
+    value = getattr(row, name, default)
+    return float(value) if isinstance(value, (int, float)) else default
+
+
+def _list_attr(row, name: str) -> list:
+    value = getattr(row, name, [])
+    return value if isinstance(value, list) else []
 
 
 app = create_app()
