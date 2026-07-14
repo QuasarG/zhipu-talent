@@ -37,6 +37,43 @@ class _FakeVisionClient:
 
 
 class MultiTrackTest(unittest.TestCase):
+    def test_visual_resume_structured_lists_are_normalized(self) -> None:
+        resume = CandidateResume.model_validate(
+            {
+                "id": "visual_structured",
+                "education": [
+                    {
+                        "school": "南方科技大学",
+                        "degree": "博士",
+                        "major": "计算机科学",
+                        "advisor": "导师 A",
+                    }
+                ],
+                "publications": [
+                    {
+                        "authors": ["Yichen Li", "Author B"],
+                        "title": "A Reliable Agent System",
+                        "venue": "ICSE 2024",
+                        "year": "2024",
+                    }
+                ],
+                "projects": [
+                    {
+                        "title": "Coding Agent",
+                        "description": "构建自动验证闭环",
+                        "results": {"pass_rate": "+18%"},
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("学校: 南方科技大学", resume.education[0])
+        self.assertIn("导师: 导师 A", resume.education[0])
+        self.assertIn("题目: A Reliable Agent System", resume.publications[0])
+        self.assertIn("作者: Yichen Li、Author B", resume.publications[0])
+        self.assertEqual(resume.projects[0].name, "Coding Agent")
+        self.assertTrue(all(isinstance(detail, str) for detail in resume.projects[0].details))
+
     def test_each_track_rubric_has_sixty_points(self) -> None:
         self.assertEqual(
             set(TRACK_SPECS),

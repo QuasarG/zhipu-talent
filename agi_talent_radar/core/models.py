@@ -3,7 +3,7 @@ from __future__ import annotations
 import operator
 from typing import Annotated, Any, Literal, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 TrackKey = Literal["base", "agent", "safety", "multimodal", "systems", "ai4science"]
@@ -12,6 +12,39 @@ TrackKey = Literal["base", "agent", "safety", "multimodal", "systems", "ai4scien
 class ResumeProject(BaseModel):
     name: str = ""
     details: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_visual_project(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return {"name": value, "details": []}
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        name = data.get("name") or data.get("title") or data.get("project") or ""
+        details = data.get("details")
+        if details is None:
+            details = [
+                data.get(key)
+                for key in (
+                    "description",
+                    "responsibility",
+                    "role",
+                    "method",
+                    "methods",
+                    "result",
+                    "results",
+                    "achievements",
+                    "tech_stack",
+                )
+                if data.get(key) not in (None, "", [], {})
+            ]
+        return {"name": _structured_text(name), "details": _text_items(details)}
+
+    @field_validator("details", mode="before")
+    @classmethod
+    def normalize_details(cls, value: Any) -> list[str]:
+        return _text_items(value)
 
 
 class CandidateResume(BaseModel):
@@ -28,6 +61,70 @@ class CandidateResume(BaseModel):
     raw_text: str = ""
     source_format: str = "text"
     document_analysis: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator(
+        "education",
+        "directions",
+        "publications",
+        "skills",
+        "screening_tags",
+        mode="before",
+    )
+    @classmethod
+    def normalize_visual_text_lists(cls, value: Any) -> list[str]:
+        return _text_items(value)
+
+
+_FIELD_LABELS = {
+    "school": "学校",
+    "institution": "机构",
+    "degree": "学位",
+    "major": "专业",
+    "department": "院系",
+    "start_date": "开始时间",
+    "end_date": "结束时间",
+    "period": "时间",
+    "advisor": "导师",
+    "title": "题目",
+    "authors": "作者",
+    "venue": "会议/期刊",
+    "conference": "会议",
+    "journal": "期刊",
+    "year": "年份",
+    "status": "状态",
+    "description": "描述",
+    "role": "角色",
+    "result": "结果",
+    "results": "结果",
+    "tech_stack": "技术栈",
+}
+
+
+def _text_items(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    normalized = [_structured_text(item) for item in values]
+    return [item for item in normalized if item]
+
+
+def _structured_text(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            text = _structured_text(item)
+            if not text:
+                continue
+            label = _FIELD_LABELS.get(str(key), str(key))
+            parts.append(f"{label}: {text}")
+        return "；".join(parts)
+    if isinstance(value, (list, tuple, set)):
+        return "、".join(item for item in (_structured_text(entry) for entry in value) if item)
+    return str(value).strip()
 
 
 class BackgroundSignalTiers(BaseModel):
