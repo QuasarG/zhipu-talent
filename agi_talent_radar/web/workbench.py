@@ -64,13 +64,19 @@ def create_app() -> Flask:
     @app.post("/api/candidates/<candidate_id>/evaluate")
     def evaluate_candidate(candidate_id: str):
         try:
-            from agi_talent_radar.core.database import get_candidate_with_latest_evaluation, get_session
+            from agi_talent_radar.core.database import (
+                get_candidate_with_latest_evaluation,
+                get_session,
+                start_evaluation_run,
+            )
 
             with get_session() as session:
                 candidate_orm, _ = get_candidate_with_latest_evaluation(session, candidate_id)
                 if not candidate_orm:
                     return jsonify({"detail": "候选人不存在"}), 404
                 resume = _orm_to_resume(candidate_orm)
+                evaluation_run = start_evaluation_run(session, candidate_id)
+                evaluation_run_id = evaluation_run.id
         except Exception as exc:
             return jsonify({"detail": f"读取候选人失败: {exc}"}), 500
 
@@ -78,6 +84,11 @@ def create_app() -> Flask:
             evaluation = None
             try:
                 for event in run_candidate_stream(resume):
+                    if event["type"] == "node":
+                        from agi_talent_radar.core.database import get_session, record_node_event
+
+                        with get_session() as session:
+                            record_node_event(session, evaluation_run_id, event)
                     if event["type"] == "result":
                         evaluation = CandidateEvaluation.model_validate(event["result"])
                         evaluation.id = candidate_id
@@ -87,10 +98,14 @@ def create_app() -> Flask:
                     from agi_talent_radar.core.database import get_session, move_candidate_group, save_evaluation
 
                     with get_session() as session:
-                        save_evaluation(session, evaluation)
+                        save_evaluation(session, evaluation, evaluation_id=evaluation_run_id)
                         group = _group_for_score(evaluation.overall_score)
                         move_candidate_group(session, candidate_id, group)
             except Exception as exc:
+                from agi_talent_radar.core.database import fail_evaluation_run, get_session
+
+                with get_session() as session:
+                    fail_evaluation_run(session, evaluation_run_id, exc)
                 yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
 
         response = Response(stream_with_context(generate()), mimetype="text/event-stream")
@@ -305,6 +320,10 @@ def _orm_to_resume(row) -> CandidateResume:
 
 
 def _orm_to_evaluation(row) -> dict[str, Any]:
+    from agi_talent_radar.core.database import EvaluationORM, evaluation_to_dict
+
+    if isinstance(row, EvaluationORM):
+        return evaluation_to_dict(row)
     return {
         "overall_score": row.overall_score,
         "level": row.level,

@@ -1,0 +1,247 @@
+from __future__ import annotations
+
+import unittest
+
+from sqlalchemy import create_engine, func, inspect, select, text
+from sqlalchemy.orm import sessionmaker
+
+from agi_talent_radar.core.db.orm import (
+    Base,
+    DimensionScoreORM,
+    EvaluationEvidenceORM,
+    EvaluationNodeRunORM,
+    EvaluationORM,
+    TrackAssignmentORM,
+    TrackEvaluationORM,
+)
+from agi_talent_radar.core.db.migrations import ensure_schema
+from agi_talent_radar.core.db.repository import (
+    evaluation_to_dict,
+    get_candidate_with_latest_evaluation,
+    record_node_event,
+    save_candidate,
+    save_evaluation,
+    start_evaluation_run,
+)
+from agi_talent_radar.core.models import (
+    CandidateEvaluation,
+    CandidateResume,
+    DimensionScore,
+    EvidenceItem,
+    TrackAssignment,
+    TrackEvaluation,
+)
+
+
+class DatabaseTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
+
+    def tearDown(self) -> None:
+        self.engine.dispose()
+
+    def test_multi_track_evaluation_is_normalized_and_round_trips(self) -> None:
+        with self.Session() as session:
+            save_candidate(session, CandidateResume(id="candidate_db", name="DB 候选人"))
+            run = start_evaluation_run(session, "candidate_db")
+            record_node_event(
+                session,
+                run.id,
+                {
+                    "node": "track_router",
+                    "phase": "routing",
+                    "status": "done",
+                    "message": "路由至 Agent 70% 和 Systems 30%",
+                },
+            )
+            saved = save_evaluation(session, _evaluation(82), evaluation_id=run.id)
+
+            self.assertEqual(_count(session, EvaluationORM), 1)
+            self.assertEqual(_count(session, EvaluationNodeRunORM), 1)
+            self.assertEqual(_count(session, EvaluationEvidenceORM), 2)
+            self.assertEqual(_count(session, TrackAssignmentORM), 2)
+            self.assertEqual(_count(session, TrackEvaluationORM), 2)
+            self.assertEqual(_count(session, DimensionScoreORM), 3)
+
+            payload = evaluation_to_dict(saved)
+            self.assertEqual(payload["status"], "completed")
+            self.assertEqual(payload["track_assignments"][0]["evidence_ids"], ["e1"])
+            self.assertEqual(payload["track_evaluations"][0]["dimension_scores"][0]["key"], "agent_architecture")
+            self.assertEqual(payload["dimension_scores"][0]["evidence_ids"], ["e1", "e2"])
+            self.assertEqual(payload["node_runs"][0]["node"], "track_router")
+
+    def test_repeated_evaluations_preserve_history(self) -> None:
+        with self.Session() as session:
+            save_candidate(session, CandidateResume(id="candidate_db", name="DB 候选人"))
+            first = save_evaluation(session, _evaluation(72))
+            second = save_evaluation(session, _evaluation(88))
+
+            self.assertNotEqual(first.id, second.id)
+            self.assertEqual(_count(session, EvaluationORM), 2)
+            _, latest = get_candidate_with_latest_evaluation(session, "candidate_db")
+            self.assertEqual(latest.id, second.id)
+            self.assertEqual(latest.overall_score, 88)
+
+    def test_legacy_json_columns_are_backfilled_then_removed(self) -> None:
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        try:
+            with engine.begin() as connection:
+                connection.execute(text("CREATE TABLE candidates (id VARCHAR(32) PRIMARY KEY, `group` VARCHAR(32), created_at DATETIME)"))
+                connection.execute(
+                    text(
+                        """
+                        CREATE TABLE evaluations (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            candidate_id VARCHAR(32) NOT NULL,
+                            overall_score INTEGER,
+                            level VARCHAR(8), tier VARCHAR(64), decision_method TEXT, one_liner TEXT,
+                            core_strengths JSON, potential_risks JSON, interview_questions JSON,
+                            cultivation_direction JSON, dimension_scores JSON, evidence JSON,
+                            critic_flags JSON, normalized_education JSON, screening_tags JSON,
+                            common_score FLOAT, document_score FLOAT, track_assignments JSON,
+                            track_evaluations JSON, routing_confidence FLOAT,
+                            evaluation_mode VARCHAR(64), created_at DATETIME
+                        )
+                        """
+                    )
+                )
+                connection.execute(text("INSERT INTO candidates (id, `group`) VALUES ('legacy', 'pending')"))
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO evaluations (
+                            candidate_id, overall_score, level, tier, dimension_scores, evidence,
+                            track_assignments, track_evaluations, created_at
+                        ) VALUES (
+                            'legacy', 80, 'S', '强烈建议沟通', :dimensions, :evidence,
+                            :assignments, :track_evaluations, CURRENT_TIMESTAMP
+                        )
+                        """
+                    ),
+                    {
+                        "dimensions": '[{"key":"research_rigor","label":"研究严谨性","score":4,"evidence_ids":["e1"]}]',
+                        "evidence": '[{"id":"e1","dimension":"research_rigor","source":"项目","quote":"对照实验","strength":4}]',
+                        "assignments": '[{"track":"agent","weight":1,"confidence":0.9,"evidence_ids":["e1"]}]',
+                        "track_evaluations": '[{"track":"agent","label":"Agent Track","weight":1,"confidence":0.9,"raw_score":50,"calibrated_score":48,"dimension_scores":[],"evidence_ids":["e1"]}]',
+                    },
+                )
+
+            ensure_schema(engine)
+            columns = {column["name"] for column in inspect(engine).get_columns("evaluations")}
+            self.assertFalse({"dimension_scores", "evidence", "track_assignments", "track_evaluations"} & columns)
+            Session = sessionmaker(bind=engine)
+            with Session() as session:
+                self.assertEqual(_count(session, EvaluationEvidenceORM), 1)
+                self.assertEqual(_count(session, TrackAssignmentORM), 1)
+                self.assertEqual(_count(session, TrackEvaluationORM), 1)
+                self.assertEqual(_count(session, DimensionScoreORM), 1)
+        finally:
+            engine.dispose()
+
+
+def _evaluation(score: int) -> CandidateEvaluation:
+    evidence = [
+        EvidenceItem(
+            id="e1",
+            dimension="track_specific",
+            source="项目 A",
+            quote="设计工具调用与自动验证闭环",
+            signals=["工具调用", "自动验证"],
+            strength=5,
+            has_specific_tool=True,
+            has_ownership=True,
+            track_hints=["agent"],
+        ),
+        EvidenceItem(
+            id="e2",
+            dimension="research_rigor",
+            source="项目 B",
+            quote="通过对照实验验证系统吞吐",
+            signals=["对照实验"],
+            strength=4,
+            has_metric=True,
+            track_hints=["systems"],
+        ),
+    ]
+    common_dimension = DimensionScore(
+        key="research_rigor",
+        label="研究严谨性",
+        score=4.2,
+        weighted_score=6.7,
+        max_points=8,
+        rationale="e1 和 e2 显示验证闭环。",
+        evidence_ids=["e1", "e2"],
+    )
+    agent_dimension = DimensionScore(
+        key="agent_architecture",
+        label="Agent 架构能力",
+        score=4.5,
+        weighted_score=15,
+        max_points=18,
+        rationale="e1 支撑。",
+        evidence_ids=["e1"],
+    )
+    systems_dimension = DimensionScore(
+        key="systems_optimization",
+        label="系统优化",
+        score=4.0,
+        weighted_score=12,
+        max_points=16,
+        rationale="e2 支撑。",
+        evidence_ids=["e2"],
+    )
+    return CandidateEvaluation(
+        id="candidate_db",
+        name="DB 候选人",
+        target_role="Agent 研究员",
+        stage="博士在读",
+        overall_score=score,
+        level="S" if score >= 80 else "B",
+        tier="强烈建议沟通" if score >= 80 else "建议沟通",
+        one_liner="Agent 与系统能力兼具。",
+        core_strengths=["Agent 闭环"],
+        potential_risks=["待验证贡献边界"],
+        interview_questions=["如何设计失败恢复？"],
+        cultivation_direction=["Coding Agent"],
+        dimension_scores=[common_dimension],
+        evidence=evidence,
+        common_score=32,
+        document_score=2,
+        routing_confidence=0.9,
+        track_assignments=[
+            TrackAssignment(track="agent", weight=0.7, confidence=0.92, rationale="e1", evidence_ids=["e1"]),
+            TrackAssignment(track="systems", weight=0.3, confidence=0.84, rationale="e2", evidence_ids=["e2"]),
+        ],
+        track_evaluations=[
+            TrackEvaluation(
+                track="agent",
+                label="Agent Track",
+                weight=0.7,
+                confidence=0.92,
+                raw_score=52,
+                calibrated_score=50,
+                dimension_scores=[agent_dimension],
+                evidence_ids=["e1"],
+            ),
+            TrackEvaluation(
+                track="systems",
+                label="Systems Track",
+                weight=0.3,
+                confidence=0.84,
+                raw_score=48,
+                calibrated_score=46,
+                dimension_scores=[systems_dimension],
+                evidence_ids=["e2"],
+            ),
+        ],
+    )
+
+
+def _count(session, model) -> int:
+    return int(session.scalar(select(func.count()).select_from(model)) or 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

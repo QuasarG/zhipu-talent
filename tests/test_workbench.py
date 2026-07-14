@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from agi_talent_radar.web.workbench import create_app
+from tests.resume_fixtures import make_resume_fixtures
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -238,15 +239,16 @@ class WorkbenchTest(unittest.TestCase):
 
     @patch("agi_talent_radar.web.workbench.run_import_agent_stream")
     def test_upload_jsonl_sse_stream(self, mock_stream) -> None:
+        source = make_resume_fixtures()[0]
         classification = MagicMock()
-        classification.id = "candidate_01"
-        classification.name = "候选人01"
+        classification.id = source.id
+        classification.name = source.name
         classification.category = "研究探索型"
         classification.level = "A"
         classification.confidence = 0.92
         classification.reason = "方向契合度高"
         mock_stream.return_value = iter([classification])
-        content = (ROOT / "10_ai_phd_resumes.jsonl").read_bytes()
+        content = (source.model_dump_json() + "\n").encode("utf-8")
         response = self.app.post(
             "/api/import-file",
             data={"file": (io.BytesIO(content), "resumes.jsonl")},
@@ -257,7 +259,7 @@ class WorkbenchTest(unittest.TestCase):
         events = self._parse_sse(response)
         self.assertEqual([event["type"] for event in events], ["stage", "stage", "candidate", "stage", "done"])
         candidate_event = events[2]
-        self.assertEqual(candidate_event["candidate"]["id"], "candidate_01")
+        self.assertEqual(candidate_event["candidate"]["id"], source.id)
         self.assertIn("education", candidate_event["candidate"])
         self.assertIn("directions", candidate_event["candidate"])
         self.assertIn("projects", candidate_event["candidate"])
@@ -316,12 +318,24 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(candidate["document_analysis"]["warnings"], ["第 1 页局部模糊"])
 
     @patch("agi_talent_radar.web.workbench.run_candidate_stream")
+    @patch("agi_talent_radar.core.database.record_node_event")
+    @patch("agi_talent_radar.core.database.start_evaluation_run")
     @patch("agi_talent_radar.core.database.move_candidate_group")
     @patch("agi_talent_radar.core.database.save_evaluation")
     @patch("agi_talent_radar.core.database.get_candidate_with_latest_evaluation")
     @patch("agi_talent_radar.core.database.get_session")
-    def test_evaluate_candidate(self, mock_session, mock_get, mock_save, mock_move, mock_run_stream) -> None:
+    def test_evaluate_candidate(
+        self,
+        mock_session,
+        mock_get,
+        mock_save,
+        mock_move,
+        mock_start,
+        mock_record,
+        mock_run_stream,
+    ) -> None:
         mock_session.return_value.__enter__.return_value = MagicMock()
+        mock_start.return_value.id = 101
         mock_row = MagicMock()
         mock_row.id = "candidate_01"
         mock_row.name = "候选人01"
@@ -368,15 +382,26 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(events[-1]["type"], "result")
         self.assertEqual(events[-1]["result"]["overall_score"], 75)
         mock_save.assert_called_once()
+        mock_record.assert_called_once()
         mock_move.assert_called_once_with(mock_session.return_value.__enter__.return_value, "candidate_01", "alternative")
 
     @patch("agi_talent_radar.web.workbench.run_candidate_stream")
+    @patch("agi_talent_radar.core.database.start_evaluation_run")
     @patch("agi_talent_radar.core.database.move_candidate_group")
     @patch("agi_talent_radar.core.database.save_evaluation")
     @patch("agi_talent_radar.core.database.get_candidate_with_latest_evaluation")
     @patch("agi_talent_radar.core.database.get_session")
-    def test_evaluate_candidate_group_thresholds(self, mock_session, mock_get, mock_save, mock_move, mock_run_stream) -> None:
+    def test_evaluate_candidate_group_thresholds(
+        self,
+        mock_session,
+        mock_get,
+        mock_save,
+        mock_move,
+        mock_start,
+        mock_run_stream,
+    ) -> None:
         mock_session.return_value.__enter__.return_value = MagicMock()
+        mock_start.return_value.id = 102
         mock_row = MagicMock()
         mock_row.id = "candidate_01"
         mock_row.name = "候选人01"
