@@ -92,7 +92,6 @@ function showRescoreNotice(candidateId, message) {
       <div class="node-body"><strong>回炉重打</strong><small>${escapeHtml(message)}</small></div>
     `;
     feed.appendChild(notice);
-    feed.scrollTop = feed.scrollHeight;
   }
 }
 
@@ -399,6 +398,23 @@ function renderResume(candidate) {
     ? `<div class="skill-cloud">${safeItems(c.skills).map((skill) => `<span class="${skillClass(skill)}">${escapeHtml(String(skill))}</span>`).join("")}</div>`
     : "<p>无</p>";
 
+  const publicationCards = window.PublicationCards.analyze(c.publications, c.name);
+  const publicationsBody = publicationCards.length
+    ? `<div class="publication-list">${publicationCards.map((publication) => `
+        <article class="publication-card">
+          <div class="publication-card-head">
+            <span class="publication-status is-${publication.status.key}">${escapeHtml(publication.status.label)}</span>
+            ${publication.positionLabel ? `<span class="publication-position">${escapeHtml(publication.positionLabel)}</span>` : ""}
+          </div>
+          <h4>${escapeHtml(publication.title || publication.raw)}</h4>
+          ${publication.authors.length ? `<p class="publication-authors">${publication.authors.map((author) => author.isCandidate
+            ? `<strong>${escapeHtml(author.display)}</strong>`
+            : `<span>${escapeHtml(author.display)}</span>`).join("<span class=\"author-separator\">, </span>")}</p>` : ""}
+          ${publication.venue ? `<p class="publication-venue">${escapeHtml(publication.venue)}</p>` : ""}
+        </article>
+      `).join("")}</div>`
+    : "<p>无</p>";
+
   const eduBody = miniCards(c.education);
 
   const directionsBody = miniCards(c.directions);
@@ -471,7 +487,7 @@ function renderResume(candidate) {
     section("研究方向", directionsBody, "resume-section-directions"),
     section("项目经验", projectsBody, "resume-section-projects"),
     section("核心技能", skillChips, "resume-section-skills"),
-    section("研究成果", miniCards(c.publications), "resume-section-publications"),
+    section("研究成果", publicationsBody, "resume-section-publications"),
     section("筛选标签", tagsBody, "resume-section-tags"),
     (c.source_format === "pdf" || Object.keys(qualityDimensions).length)
       ? section("简历表达（低权重）", documentBody, "resume-section-document")
@@ -775,8 +791,6 @@ function renderNodeFeed(candidateId) {
     });
     feed.appendChild(stageEl);
   });
-
-  feed.scrollTop = feed.scrollHeight;
 
   const sub = document.getElementById("node-panel-sub");
   if (sub) {

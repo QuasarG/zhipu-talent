@@ -33,6 +33,20 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("AGI Talent Radar", response.get_data(as_text=True))
         self.assertIn("workbench-import.js", response.get_data(as_text=True))
+        self.assertIn("workbench-publications.js", response.get_data(as_text=True))
+
+    def test_publication_cards_mark_status_and_candidate_author(self) -> None:
+        publication_script = (
+            ROOT / "agi_talent_radar" / "web" / "static" / "workbench-publications.js"
+        ).read_text(encoding="utf-8")
+        workbench_script = (
+            ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("inferCandidateKeys", publication_script)
+        self.assertIn('label: "已发表"', publication_script)
+        self.assertIn('label: "在投"', publication_script)
+        self.assertIn("publication.positionLabel", workbench_script)
+        self.assertIn("author.isCandidate", workbench_script)
 
     def test_drawers_render_with_consistent_toggle_state(self) -> None:
         response = self.app.get("/")
@@ -79,6 +93,12 @@ class WorkbenchTest(unittest.TestCase):
         self.assertIn(".agent-content {", styles)
         self.assertIn("word-break: break-word;", styles)
         self.assertIn("grid-template-columns: minmax(0, 130px) minmax(0, 1fr) 36px;", styles)
+
+    def test_agent_node_panel_expands_without_internal_scroll(self) -> None:
+        styles = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.css").read_text(encoding="utf-8")
+        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
+        self.assertIn(".node-feed {\n  max-height: none;\n  overflow-y: visible;", styles)
+        self.assertNotIn("feed.scrollTop = feed.scrollHeight", script)
 
     def test_agent_graph_renders_multi_track_parallel_stages(self) -> None:
         graph_script = (

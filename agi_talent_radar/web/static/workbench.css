@@ -752,6 +752,85 @@ button { cursor: pointer; border: none; background: transparent; }
   background: #FFFFFF;
 }
 
+.publication-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.publication-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  background: #FFFFFF;
+}
+
+.publication-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 7px;
+}
+
+.publication-status,
+.publication-position {
+  padding: 1px 5px;
+  border: 1px solid var(--color-border);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.publication-status.is-published {
+  border-color: var(--accent-mint-border);
+  background: var(--accent-mint);
+  color: #17623A;
+}
+
+.publication-status.is-submitted {
+  border-color: var(--accent-amber-border);
+  background: var(--accent-amber);
+  color: #805600;
+}
+
+.publication-position {
+  border-color: var(--accent-blue-border);
+  background: var(--accent-blue);
+  color: #24527A;
+}
+
+.publication-card h4 {
+  margin: 0 0 7px;
+  overflow-wrap: anywhere;
+  color: var(--color-primary);
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.publication-card .publication-authors,
+.publication-card .publication-venue {
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.publication-card .publication-authors {
+  color: var(--accent-ink);
+}
+
+.publication-card .publication-authors strong {
+  padding: 0 2px;
+  background: #FFF0A8;
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.publication-card .publication-venue {
+  margin-top: 6px;
+  color: var(--color-secondary);
+}
+
 .item-block {
   padding: 12px;
 }
@@ -1012,8 +1091,8 @@ button { cursor: pointer; border: none; background: transparent; }
 }
 
 .node-feed {
-  max-height: min(52vh, 520px);
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
   overflow-x: hidden;
   padding: 0;
   display: flex;
