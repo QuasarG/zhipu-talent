@@ -4,9 +4,10 @@ import unittest
 from unittest.mock import patch
 
 from agi_talent_radar.agents.document_quality import run_document_quality
-from agi_talent_radar.agents.common_potential import run_common_scorer
+from agi_talent_radar.agents.common_potential import run_common_critic, run_common_scorer
+from agi_talent_radar.agents.routing.track_router import _normalize_assignments
 from agi_talent_radar.agents.tracks.registry import TRACK_SPECS
-from agi_talent_radar.core.models import CandidateResume
+from agi_talent_radar.core.models import CandidateResume, EvidenceItem, NormalizedResume
 from agi_talent_radar.core.resume_ingestion import load_pdf_resume
 from agi_talent_radar.core.runner import run_candidate
 from agi_talent_radar.integrations.vision_mcp import VisionPage, register_vision_mcp_client
@@ -38,6 +39,130 @@ class _FakeVisionClient:
 
 
 class MultiTrackTest(unittest.TestCase):
+    def test_common_critic_uses_dimension_specific_high_score_evidence(self) -> None:
+        state = {
+            "evidence": [
+                EvidenceItem(
+                    id="e_problem_1",
+                    dimension="problem_definition",
+                    source="项目 A",
+                    quote="负责定义硬件断点检测问题",
+                    strength=3,
+                    has_ownership=True,
+                ).model_dump(),
+                EvidenceItem(
+                    id="e_problem_2",
+                    dimension="problem_definition",
+                    source="项目 B",
+                    quote="构建 Angr 符号执行引擎",
+                    strength=3,
+                    has_specific_tool=True,
+                ).model_dump(),
+                EvidenceItem(
+                    id="e_owner",
+                    dimension="ownership",
+                    source="项目 C",
+                    quote="作为项目负责人主导实现",
+                    strength=4,
+                    has_ownership=True,
+                ).model_dump(),
+                EvidenceItem(
+                    id="e_paper",
+                    dimension="evidence_credibility",
+                    source="已发表论文",
+                    quote="ASE CCF-A 论文",
+                    strength=4,
+                ).model_dump(),
+            ],
+            "common_scores": [
+                {
+                    "key": "problem_definition",
+                    "label": "问题定义与独立判断",
+                    "score": 4,
+                    "weighted_score": 6.4,
+                    "max_points": 8,
+                    "evidence_ids": ["e_problem_1", "e_problem_2"],
+                },
+                {
+                    "key": "ownership",
+                    "label": "Ownership 与贡献边界",
+                    "score": 4,
+                    "weighted_score": 5.6,
+                    "max_points": 7,
+                    "evidence_ids": ["e_owner"],
+                },
+                {
+                    "key": "evidence_credibility",
+                    "label": "证据可信度与可复现性",
+                    "score": 4,
+                    "weighted_score": 4,
+                    "max_points": 5,
+                    "evidence_ids": ["e_paper"],
+                },
+            ],
+        }
+        result = run_common_critic(state)
+
+        self.assertEqual([item["score"] for item in result["common_scores"]], [4, 4, 4])
+        self.assertEqual(result["common_critic_flags"], [])
+
+    def test_router_removes_ineligible_llm_systems_assignment(self) -> None:
+        normalized = NormalizedResume(
+            id="mobile_security",
+            name="移动安全候选人",
+            target_role="移动安全与安全智能体研究员",
+            directions=["Agentic Fuzzing", "Multi-Agent 风险识别"],
+            skills=["Angr", "AFL", "神经网络"],
+        )
+        evidence = [
+            EvidenceItem(
+                id="e_safety",
+                dimension="track_specific",
+                source="移动安全项目",
+                quote="构建防 Hook 与断点检测框架",
+                strength=4,
+            ),
+            EvidenceItem(
+                id="e_agent_1",
+                dimension="track_specific",
+                source="JANUS",
+                quote="Agentic Fuzzing Harness 生成",
+                strength=3,
+            ),
+            EvidenceItem(
+                id="e_agent_2",
+                dimension="track_specific",
+                source="AIntel-Agent",
+                quote="Multi-Agent 风险识别",
+                strength=3,
+            ),
+            EvidenceItem(
+                id="e_engine",
+                dimension="track_specific",
+                source="符号执行项目",
+                quote="构建混合测试引擎",
+                strength=3,
+            ),
+        ]
+        assignments = _normalize_assignments(
+            [
+                {"track": "safety", "weight": 0.6, "confidence": 0.9, "evidence_ids": ["e_safety"]},
+                {
+                    "track": "agent",
+                    "weight": 0.3,
+                    "confidence": 0.8,
+                    "evidence_ids": ["e_agent_1", "e_agent_2"],
+                },
+                {"track": "systems", "weight": 0.1, "confidence": 0.6, "evidence_ids": ["e_engine"]},
+            ],
+            normalized,
+            evidence,
+        )
+
+        self.assertEqual([item.track for item in assignments], ["safety", "agent"])
+        self.assertAlmostEqual(assignments[0].weight, 2 / 3, places=3)
+        self.assertAlmostEqual(assignments[1].weight, 1 / 3, places=3)
+
     def test_common_scorer_tolerates_mixed_dimension_shapes(self) -> None:
         state = {
             "normalized": {

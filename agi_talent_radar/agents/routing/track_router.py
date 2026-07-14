@@ -80,7 +80,13 @@ def _normalize_assignments(
     if not merged:
         merged = _fallback_assignments(normalized, evidence)
 
-    ranked = sorted(merged.values(), key=lambda item: float(item["weight"]), reverse=True)[:3]
+    eligible = [
+        item
+        for item in merged.values()
+        if _is_track_eligible(item["track"], item.get("evidence_ids", []), normalized, evidence)
+    ]
+    pool = eligible or list(merged.values())
+    ranked = sorted(pool, key=lambda item: float(item["weight"]), reverse=True)[:3]
     total = sum(float(item["weight"]) for item in ranked) or 1
     return [
         TrackAssignment(
@@ -92,6 +98,50 @@ def _normalize_assignments(
         )
         for item in ranked
     ]
+
+
+def _is_track_eligible(
+    track: TrackKey,
+    evidence_ids: list[str],
+    normalized: NormalizedResume,
+    evidence: list[EvidenceItem],
+) -> bool:
+    selected_ids = set(evidence_ids)
+    selected = [item for item in evidence if item.id in selected_ids] or evidence
+    text = " ".join(
+        [
+            normalized.target_role,
+            " ".join(normalized.directions),
+            " ".join(normalized.skills),
+            " ".join(f"{item.source} {item.quote} {' '.join(item.signals)}" for item in selected),
+        ]
+    ).lower()
+    keywords: dict[TrackKey, tuple[str, ...]] = {
+        "base": (
+            "预训练", "后训练", "transformer", "attention", "moe", "rlhf", "sft",
+            "语言模型", "基础模型", "长上下文", "tokenizer",
+        ),
+        "agent": (
+            "agent", "智能体", "multi-agent", "planner", "tool", "memory", "harness",
+            "workflow", "swe-bench", "fuzzing harness",
+        ),
+        "safety": (
+            "安全", "攻击", "防御", "漏洞", "fuzz", "符号执行", "angr", "afl",
+            "hook", "隐私", "威胁", "调试", "程序分析", "风险识别",
+        ),
+        "multimodal": (
+            "多模态", "视觉", "vlm", "图像", "视频", "3d", "ocr", "clip", "跨模态",
+        ),
+        "systems": (
+            "训练系统", "推理系统", "大模型系统", "serving", "吞吐", "显存",
+            "gpu", "cuda", "triton", "算子", "分布式训练", "并行训练", "低精度",
+            "量化", "模型压缩", "ml编译器", "推理引擎", "vllm", "deepspeed",
+        ),
+        "ai4science": (
+            "ai4science", "科学智能", "蛋白", "药物", "生物", "材料", "分子", "医学",
+        ),
+    }
+    return any(keyword in text for keyword in keywords[track])
 
 
 def _fallback_assignments(normalized: NormalizedResume, evidence: list[EvidenceItem]) -> dict[TrackKey, dict[str, Any]]:

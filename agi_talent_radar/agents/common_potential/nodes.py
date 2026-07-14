@@ -84,7 +84,7 @@ def run_common_critic(state: dict[str, Any]) -> dict[str, Any]:
             message = f"{item.label} 缺少可追溯证据，封顶 1 分。"
             flags.append(message)
             risk_notes.append(message)
-        elif next_score >= 4 and not any(_supports_high_score(ref) for ref in refs):
+        elif next_score >= 4 and not _supports_high_score(item.key, refs):
             next_score = 3.5
             message = f"{item.label} 缺少支持高分的动作、指标或 ownership 组合证据。"
             flags.append(message)
@@ -105,5 +105,33 @@ def run_common_critic(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _supports_high_score(item: EvidenceItem) -> bool:
-    return item.strength >= 4 and sum([item.has_metric, item.has_specific_tool, item.has_ownership]) >= 2
+def _supports_high_score(dimension_key: str, items: list[EvidenceItem]) -> bool:
+    if not items:
+        return False
+    strong = [item for item in items if item.strength >= 4]
+    credible = [item for item in items if item.strength >= 3]
+    distinct_sources = {item.source for item in credible if item.source}
+
+    if dimension_key == "problem_definition":
+        return any(item.has_ownership and (item.has_specific_tool or item.has_metric) for item in strong) or (
+            len(distinct_sources) >= 2
+            and any(item.has_ownership for item in credible)
+            and any(item.has_specific_tool or item.has_metric for item in credible)
+        )
+    if dimension_key == "research_rigor":
+        return any(item.has_metric or item.has_specific_tool for item in strong) or (
+            len(distinct_sources) >= 2 and any(item.has_metric for item in credible)
+        )
+    if dimension_key == "learning_transfer":
+        return len(distinct_sources) >= 2 and len(credible) >= 2
+    if dimension_key == "ownership":
+        return any(item.has_ownership for item in strong)
+    if dimension_key == "evidence_credibility":
+        return bool(strong)
+    if dimension_key == "growth_trajectory":
+        return len(distinct_sources) >= 2 and len(credible) >= 2
+    return any(
+        item.strength >= 4
+        and sum([item.has_metric, item.has_specific_tool, item.has_ownership]) >= 2
+        for item in items
+    )
