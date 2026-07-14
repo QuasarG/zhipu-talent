@@ -19,7 +19,6 @@ from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.runner import run_candidate
 
 
-INPUT_PATH = ROOT / "10_ai_phd_resumes.jsonl"
 OUTPUT_JSON = ROOT / "outputs" / "consistency_eval.json"
 OUTPUT_MD = ROOT / "outputs" / "consistency_eval.md"
 RUNS_PER_CANDIDATE = 5
@@ -30,7 +29,9 @@ SAVE_LOCK = Lock()
 
 
 def main() -> None:
-    resumes = load_resumes(INPUT_PATH)
+    if len(sys.argv) < 2:
+        raise SystemExit("用法: python scripts/run_consistency_eval.py <resume-file>")
+    resumes = load_resumes(Path(sys.argv[1]))
     rounds = _load_checkpoint()
 
     for round_index in range(1, RUNS_PER_CANDIDATE + 1):

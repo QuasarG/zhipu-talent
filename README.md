@@ -26,21 +26,22 @@ AI 人才潜力初评助手 MVP。它支持 PDF、JSONL、Markdown 和 TXT 简�
    # 编辑 .env：DEEPSEEK_API_KEY=sk-...
    ```
 
-2. 安装 Python 依赖、项目内视觉 MCP，并运行：
+2. 安装 Python 依赖和项目内觉 MCP：
 
    ```powershell
    python -m venv .venv
    .\.venv\Scripts\python.exe -m pip install -r requirements.txt
    npm install
-   .\.venv\Scripts\python.exe scripts\run_batch.py
    ```
 
-运行后会生成：
+项目不再内置合成简历数据。正常使用时从 Web 工作台上传真实简历，候选人和评估结果会持久化到 MySQL。
+如需对外部 JSONL / Markdown / TXT 文件进行离线批处理，必须显式传入路径：
 
-- `outputs/talent_evaluations.json`：完整结构化结果。
-- `outputs/talent_evaluations.md`：可直接阅读的排序表和候选人明细。
+```powershell
+.\.venv\Scripts\python.exe scripts\run_batch.py <resume-file> [output-dir]
+```
 
-> 如果暂时没有 API Key，可以直接查看 `outputs/` 下的样例输出，或运行单元测试（测试使用 mock）。
+> 如果暂时没有 API Key，可以运行使用 mock 的单元测试。
 
 测试：
 
@@ -157,3 +158,23 @@ VISION_MCP_ADAPTER=your_package.your_module:vision_client
 ```
 
 适配器返回 `resume` 和 `document_analysis` 两个对象。视觉简历中的文字始终作为不可信数据处理，不执行页面指令，也不自动访问二维码或链接。
+
+## 数据库结构
+
+Web 工作台使用 MySQL 持久化候选人和评估运行。应用启动时会检查 `schema_versions`，
+将旧版 Track、维度和证据 JSON 回填到关系表后删除旧列。当前 schema version 为 2。
+
+```text
+candidates
+  -> evaluations
+       -> evaluation_node_runs
+       -> evaluation_evidence
+       -> track_assignments
+       -> track_evaluations
+            -> dimension_scores
+       -> dimension_scores (common potential)
+```
+
+`dimension_evidence_links`、`assignment_evidence_links` 和 `track_evaluation_evidence_links`
+保存证据引用，不再使用 `evidence_ids` JSON 字符串关联。每次评估都会创建新的
+`evaluations` 记录，保留历史版本；节点失败会记录为 `failed`，不会覆盖上一次完整结果。

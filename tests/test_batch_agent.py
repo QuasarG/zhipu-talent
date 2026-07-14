@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ from agi_talent_radar.agents.evidence_integrity import is_quote_traceable
 from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.runner import run_batch, run_candidate
 from tests.llm_fixtures import mock_deepseek_json
+from tests.resume_fixtures import make_resume_fixtures
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,16 +19,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class BatchAgentTest(unittest.TestCase):
     def test_load_jsonl_resumes(self) -> None:
-        resumes = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")
-        self.assertEqual(len(resumes), 10)
-        self.assertEqual(resumes[0].id, "candidate_01")
+        source = make_resume_fixtures()[0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "resume.jsonl"
+            path.write_text(source.model_dump_json() + "\n", encoding="utf-8")
+            resumes = load_resumes(path)
+        self.assertEqual(len(resumes), 1)
+        self.assertEqual(resumes[0].id, source.id)
         self.assertTrue(resumes[0].projects)
 
     def test_single_candidate_returns_structured_result(self) -> None:
-        resume = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")[0]
+        resume = make_resume_fixtures()[0]
         with mock_deepseek_json():
             result = run_candidate(resume)
-        self.assertEqual(result.id, "candidate_01")
+        self.assertEqual(result.id, resume.id)
         self.assertGreaterEqual(result.overall_score, 55)
         self.assertIn(result.level, {"B", "C"})
         self.assertIn(result.tier, {"建议沟通", "暂缓 / 需补充信息"})
@@ -39,7 +45,7 @@ class BatchAgentTest(unittest.TestCase):
         self.assertNotIn("方向方向", result.one_liner)
 
     def test_normalizer_folds_academic_background_into_tiers(self) -> None:
-        resume = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")[0]
+        resume = make_resume_fixtures()[0]
         with mock_deepseek_json():
             state = run_normalizer({"resume": resume.model_dump(), "loop_count": 0})
         normalized = state["normalized"]
@@ -51,7 +57,7 @@ class BatchAgentTest(unittest.TestCase):
         self.assertIn("background_signal_tiers", normalized)
 
     def test_batch_result_is_sorted_and_tiered(self) -> None:
-        resumes = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")
+        resumes = make_resume_fixtures()
         with (
             mock_deepseek_json(),
             patch("agi_talent_radar.core.import_agent._persist_single_import"),
@@ -60,14 +66,14 @@ class BatchAgentTest(unittest.TestCase):
             result = run_batch(resumes)
         scores = [item.overall_score for item in result.evaluations]
         self.assertEqual(scores, sorted(scores, reverse=True))
-        self.assertEqual(len(result.evaluations), 10)
+        self.assertEqual(len(result.evaluations), len(resumes))
         tiered_ids = [candidate_id for ids in result.tiers.values() for candidate_id in ids]
         self.assertEqual(sorted(tiered_ids), sorted(item.id for item in result.evaluations))
-        self.assertEqual(len(result.import_classifications), 10)
+        self.assertEqual(len(result.import_classifications), len(resumes))
         self.assertTrue(result.evaluations[0].import_category)
 
     def test_evidence_quotes_are_from_resume_text(self) -> None:
-        resume = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")[6]
+        resume = make_resume_fixtures()[0]
         with mock_deepseek_json():
             result = run_candidate(resume)
         raw_text = "\n".join(
@@ -85,7 +91,7 @@ class BatchAgentTest(unittest.TestCase):
             self.assertIn(evidence.quote, raw_text)
 
     def test_critic_does_not_flag_joined_skill_evidence_as_hallucination(self) -> None:
-        resume = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")[9]
+        resume = make_resume_fixtures()[2]
         with mock_deepseek_json():
             result = run_candidate(resume)
         joined_flags = "\n".join(result.critic_flags)
@@ -97,7 +103,7 @@ class BatchAgentTest(unittest.TestCase):
         self.assertTrue(is_quote_traceable(quote, raw_text))
 
     def test_critic_rewrites_untraceable_evidence_before_exposing_flag(self) -> None:
-        resume = load_resumes(ROOT / "10_ai_phd_resumes.jsonl")[1]
+        resume = make_resume_fixtures()[1]
         with mock_deepseek_json():
             normalized = run_normalizer({"resume": resume.model_dump(), "loop_count": 0})["normalized"]
         state = {

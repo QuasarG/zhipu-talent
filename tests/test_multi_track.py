@@ -5,12 +5,12 @@ from unittest.mock import patch
 
 from agi_talent_radar.agents.document_quality import run_document_quality
 from agi_talent_radar.agents.tracks.registry import TRACK_SPECS
-from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.models import CandidateResume
 from agi_talent_radar.core.resume_ingestion import load_pdf_resume
 from agi_talent_radar.core.runner import run_candidate
 from agi_talent_radar.integrations.vision_mcp import VisionPage, register_vision_mcp_client
 from tests.llm_fixtures import mock_deepseek_json
+from tests.resume_fixtures import make_resume_fixtures
 
 
 class _FakeVisionClient:
@@ -47,7 +47,7 @@ class MultiTrackTest(unittest.TestCase):
             self.assertEqual(len({item.key for item in spec.dimensions}), len(spec.dimensions))
 
     def test_candidate_uses_normalized_multi_track_portfolio(self) -> None:
-        resume = load_resumes("10_ai_phd_resumes.jsonl")[0]
+        resume = make_resume_fixtures()[0]
         with mock_deepseek_json():
             result = run_candidate(resume)
 

@@ -10,12 +10,13 @@ if str(ROOT) not in sys.path:
 from agi_talent_radar.core.runner import run_batch_from_file
 
 
-INPUT_PATH = Path("10_ai_phd_resumes.jsonl")
 OUTPUT_DIR = Path("outputs")
 
 
 def main() -> None:
-    input_path = Path(sys.argv[1]) if len(sys.argv) > 1 else INPUT_PATH
+    if len(sys.argv) < 2:
+        raise SystemExit("用法: python scripts/run_batch.py <resume-file> [output-dir]")
+    input_path = Path(sys.argv[1])
     output_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else OUTPUT_DIR
     result = run_batch_from_file(input_path, output_dir)
     print(f"已评估 {len(result.evaluations)} 位候选人")
