@@ -31,6 +31,7 @@ class WorkbenchTest(unittest.TestCase):
         response = self.app.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("AGI Talent Radar", response.get_data(as_text=True))
+        self.assertIn("workbench-import.js", response.get_data(as_text=True))
 
     def test_drawers_render_with_consistent_toggle_state(self) -> None:
         response = self.app.get("/")
@@ -254,18 +255,65 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/event-stream", response.content_type)
         events = self._parse_sse(response)
-        self.assertEqual(len(events), 2)
-        self.assertEqual(events[0]["type"], "candidate")
-        self.assertEqual(events[0]["candidate"]["id"], "candidate_01")
-        self.assertIn("education", events[0]["candidate"])
-        self.assertIn("directions", events[0]["candidate"])
-        self.assertIn("projects", events[0]["candidate"])
-        self.assertIn("publications", events[0]["candidate"])
-        self.assertIn("skills", events[0]["candidate"])
-        self.assertIn("screening_tags", events[0]["candidate"])
-        self.assertEqual(events[0]["index"], 1)
-        self.assertEqual(events[0]["total"], 1)
-        self.assertEqual(events[1]["type"], "done")
+        self.assertEqual([event["type"] for event in events], ["stage", "stage", "candidate", "stage", "done"])
+        candidate_event = events[2]
+        self.assertEqual(candidate_event["candidate"]["id"], "candidate_01")
+        self.assertIn("education", candidate_event["candidate"])
+        self.assertIn("directions", candidate_event["candidate"])
+        self.assertIn("projects", candidate_event["candidate"])
+        self.assertIn("publications", candidate_event["candidate"])
+        self.assertIn("skills", candidate_event["candidate"])
+        self.assertIn("screening_tags", candidate_event["candidate"])
+        self.assertIn("source_format", candidate_event["candidate"])
+        self.assertIn("document_analysis", candidate_event["candidate"])
+        self.assertEqual(candidate_event["index"], 1)
+        self.assertEqual(candidate_event["total"], 1)
+
+    @patch("agi_talent_radar.web.workbench.run_import_agent_stream")
+    @patch("agi_talent_radar.web.workbench.analyze_resume_pages")
+    @patch("agi_talent_radar.web.workbench.render_pdf_pages")
+    def test_upload_pdf_reports_real_import_stages(self, mock_render, mock_analyze, mock_stream) -> None:
+        from agi_talent_radar.core.models import CandidateResume
+        from agi_talent_radar.integrations.vision_mcp import VisionPage
+
+        mock_render.return_value = [VisionPage(page_number=1, mime_type="image/png", data_base64="aW1hZ2U=")]
+        mock_analyze.return_value = CandidateResume(
+            id="pdf_candidate",
+            name="PDF 候选人",
+            source_format="pdf",
+            document_analysis={"warnings": ["第 1 页局部模糊"]},
+        )
+        classification = MagicMock()
+        classification.id = "pdf_candidate"
+        classification.name = "PDF 候选人"
+        classification.category = "多模态型"
+        classification.level = "A"
+        classification.confidence = 0.9
+        classification.reason = "方向匹配"
+        mock_stream.return_value = iter([classification])
+
+        response = self.app.post(
+            "/api/import-file",
+            data={"file": (io.BytesIO(b"%PDF fake"), "candidate.pdf")},
+            content_type="multipart/form-data",
+        )
+        events = self._parse_sse(response)
+        stages = [(event.get("stage"), event.get("status")) for event in events if event["type"] == "stage"]
+        self.assertEqual(
+            stages,
+            [
+                ("validation", "done"),
+                ("rendering", "running"),
+                ("rendering", "done"),
+                ("vision", "running"),
+                ("vision", "done"),
+                ("classification", "running"),
+                ("classification", "done"),
+            ],
+        )
+        candidate = next(event["candidate"] for event in events if event["type"] == "candidate")
+        self.assertEqual(candidate["source_format"], "pdf")
+        self.assertEqual(candidate["document_analysis"]["warnings"], ["第 1 页局部模糊"])
 
     @patch("agi_talent_radar.web.workbench.run_candidate_stream")
     @patch("agi_talent_radar.core.database.move_candidate_group")

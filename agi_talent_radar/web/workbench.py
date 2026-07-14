@@ -10,7 +10,7 @@ from flask import Flask, Response, jsonify, render_template, request, stream_wit
 from agi_talent_radar.core.import_agent import run_import_agent_stream
 from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume
-from agi_talent_radar.core.resume_ingestion import load_pdf_resume
+from agi_talent_radar.core.resume_ingestion import MAX_PDF_BYTES, analyze_resume_pages, render_pdf_pages
 from agi_talent_radar.core.runner import run_candidate_stream
 
 
@@ -143,14 +143,60 @@ def create_app() -> Flask:
         filename = file.filename
 
         def generate():
+            current_stage = "validation"
             try:
+                yield _sse_event(
+                    "stage",
+                    stage=current_stage,
+                    status="done",
+                    message=f"已接收 {filename}，文件校验通过。",
+                )
                 if suffix == ".pdf":
-                    resumes = [load_pdf_resume(file_bytes, filename)]
+                    if len(file_bytes) > MAX_PDF_BYTES:
+                        raise ValueError(f"PDF 超过 {MAX_PDF_BYTES // 1024 // 1024} MB 限制。")
+                    current_stage = "rendering"
+                    yield _sse_event(
+                        "stage",
+                        stage=current_stage,
+                        status="running",
+                        message="正在将 PDF 渲染为逐页图像。",
+                    )
+                    pages = render_pdf_pages(file_bytes)
+                    yield _sse_event(
+                        "stage",
+                        stage=current_stage,
+                        status="done",
+                        message=f"已渲染 {len(pages)} 页 PDF。",
+                        page_count=len(pages),
+                    )
+                    current_stage = "vision"
+                    yield _sse_event(
+                        "stage",
+                        stage=current_stage,
+                        status="running",
+                        message=f"正在调用视觉 MCP 解析 {len(pages)} 页内容和版式。",
+                        page_count=len(pages),
+                    )
+                    resumes = [analyze_resume_pages(pages, filename)]
+                    yield _sse_event(
+                        "stage",
+                        stage=current_stage,
+                        status="done",
+                        message="视觉内容和排版证据已结构化。",
+                        page_count=len(pages),
+                    )
                 else:
                     with tempfile.TemporaryDirectory() as temp_dir:
                         temp_path = Path(temp_dir) / f"upload{suffix}"
                         temp_path.write_bytes(file_bytes)
                         resumes = load_resumes(temp_path)
+                current_stage = "classification"
+                yield _sse_event(
+                    "stage",
+                    stage=current_stage,
+                    status="running",
+                    message=f"正在对 {len(resumes)} 份简历进行初筛分类。",
+                )
                 resume_by_id = {resume.id: resume for resume in resumes}
                 classifications = list(run_import_agent_stream(resumes, persist=True))
                 total = len(classifications)
@@ -177,12 +223,25 @@ def create_app() -> Flask:
                             "skills": resume.skills,
                             "screening_tags": resume.screening_tags,
                             "raw_text": resume.raw_text,
+                            "source_format": resume.source_format,
+                            "document_analysis": resume.document_analysis,
                         },
                     }
-                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                yield f"data: {json.dumps({'type': 'done', 'total': total}, ensure_ascii=False)}\n\n"
+                    yield _sse_payload(payload)
+                yield _sse_event(
+                    "stage",
+                    stage=current_stage,
+                    status="done",
+                    message=f"已完成 {total} 位候选人的初筛分类。",
+                )
+                yield _sse_event("done", total=total, message=f"导入完成，共 {total} 份简历。")
             except Exception as exc:
-                yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+                yield _sse_event(
+                    "error",
+                    stage=current_stage,
+                    message=str(exc),
+                    retryable=current_stage in {"rendering", "vision", "classification"},
+                )
 
         response = Response(stream_with_context(generate()), mimetype="text/event-stream")
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -296,6 +355,14 @@ def _number_attr(row, name: str, default: float = 0) -> float:
 def _list_attr(row, name: str) -> list:
     value = getattr(row, name, [])
     return value if isinstance(value, list) else []
+
+
+def _sse_event(event_type: str, **payload: Any) -> str:
+    return _sse_payload({"type": event_type, **payload})
+
+
+def _sse_payload(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 app = create_app()

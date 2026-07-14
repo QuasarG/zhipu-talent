@@ -54,6 +54,12 @@ def load_pdf_resume(file_bytes: bytes, filename: str) -> CandidateResume:
     if len(file_bytes) > MAX_PDF_BYTES:
         raise ValueError(f"PDF 超过 {MAX_PDF_BYTES // 1024 // 1024} MB 限制。")
     pages = render_pdf_pages(file_bytes)
+    return analyze_resume_pages(pages, filename)
+
+
+def analyze_resume_pages(pages: list[VisionPage], filename: str) -> CandidateResume:
+    if not pages:
+        raise ValueError("PDF 没有可分析页面。")
     client = get_vision_mcp_client()
     response = client.analyze_resume(pages, VISION_RESUME_PROMPT)
     if not isinstance(response, dict):

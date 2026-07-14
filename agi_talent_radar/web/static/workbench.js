@@ -18,6 +18,11 @@ const els = {
   bulkConfirmSubmit: document.getElementById("bulk-confirm-submit"),
   progressBox: document.getElementById("import-progress"),
   progressText: document.getElementById("import-progress-text"),
+  importFileName: document.getElementById("import-file-name"),
+  importState: document.getElementById("import-state"),
+  importStageList: document.getElementById("import-stage-list"),
+  importCancel: document.getElementById("import-cancel"),
+  importRetry: document.getElementById("import-retry"),
   resumePane: document.getElementById("resume-pane"),
   agentPane: document.getElementById("agent-pane"),
   emptyResume: document.getElementById("empty-resume"),
@@ -49,6 +54,9 @@ let candidates = {};
 let runs = new Map();
 let bulkEvaluating = false;
 let bulkEvaluationProgress = null;
+let importController = null;
+let importState = null;
+let lastImportFile = null;
 
 function showToast(message) {
   els.toast.textContent = message;
@@ -408,6 +416,39 @@ function renderResume(candidate) {
     ? `<div class="signal-row">${c.screening_tags.map((t) => `<span class="signal-pill">${escapeHtml(String(t))}</span>`).join("")}</div>`
     : "<p>无</p>";
 
+  const documentAnalysis = c.document_analysis && typeof c.document_analysis === "object"
+    ? c.document_analysis
+    : {};
+  const qualityDimensions = documentAnalysis.quality_dimensions && typeof documentAnalysis.quality_dimensions === "object"
+    ? documentAnalysis.quality_dimensions
+    : {};
+  const qualityLabels = {
+    information_architecture: "信息架构",
+    evidence_expression: "证据表达",
+    content_consistency: "内容一致性",
+    targeting: "求职针对性",
+  };
+  const qualityRows = Object.entries(qualityLabels).map(([key, label]) => {
+    const item = qualityDimensions[key] || {};
+    const score = Number(item.score);
+    return `
+      <div class="document-quality-row">
+        <span>${escapeHtml(label)}</span>
+        <strong>${Number.isFinite(score) ? score.toFixed(1) : "—"} / 5</strong>
+        <p>${escapeHtml(item.rationale || "暂无视觉评价")}</p>
+      </div>
+    `;
+  }).join("");
+  const documentWarnings = Array.isArray(documentAnalysis.warnings) ? documentAnalysis.warnings : [];
+  const documentBody = `
+    <div class="document-quality-head">
+      <span>${c.source_format === "pdf" ? "PDF 视觉解析" : "文本简历"}</span>
+      <span>最终最多计入 3 分</span>
+    </div>
+    <div class="document-quality-grid">${qualityRows}</div>
+    ${documentWarnings.length ? `<div class="document-warning-list"><strong>解析警告</strong><ul>${documentWarnings.map((warning) => `<li>${escapeHtml(String(warning))}</li>`).join("")}</ul></div>` : ""}
+  `;
+
   const content = document.createElement("div");
   content.className = "resume-content";
   content.innerHTML = [
@@ -419,6 +460,7 @@ function renderResume(candidate) {
       <div class="hero-tags">
         <span>${escapeHtml(formatPotentialLevel(c.level))}</span>
         <span>${escapeHtml(c.category || "—")}</span>
+        <span>${escapeHtml((c.source_format || "text").toUpperCase())}</span>
       </div>
       <div class="summary-strip">
         ${summaryCounts.map((item) => `<span><strong>${item.value}</strong>${escapeHtml(item.label)}</span>`).join("")}
@@ -431,6 +473,9 @@ function renderResume(candidate) {
     section("核心技能", skillChips, "resume-section-skills"),
     section("研究成果", miniCards(c.publications), "resume-section-publications"),
     section("筛选标签", tagsBody, "resume-section-tags"),
+    (c.source_format === "pdf" || Object.keys(qualityDimensions).length)
+      ? section("简历表达（低权重）", documentBody, "resume-section-document")
+      : "",
   ].join("");
   els.resumePane.appendChild(content);
 }
@@ -975,61 +1020,100 @@ async function startEvaluation(candidateId, options = {}) {
   }
 }
 
-function handleImportFile(file) {
+function renderImportProgress() {
+  if (!importState) return;
+  els.importFileName.textContent = importState.fileName;
+  els.importState.textContent = window.ImportProgress.statusLabel(importState.status);
+  els.importState.className = `import-state is-${importState.status}`;
+  els.progressText.textContent = importState.message;
+  els.importStageList.innerHTML = importState.stages.map((stage) => `
+    <div class="import-stage is-${stage.status}">
+      <span class="import-stage-indicator" aria-hidden="true">${stage.status === "done" ? "✓" : stage.status === "error" ? "!" : ""}</span>
+      <span>${escapeHtml(stage.label)}</span>
+      <small>${escapeHtml(window.ImportProgress.statusLabel(stage.status))}</small>
+    </div>
+  `).join("");
+  els.importCancel.classList.toggle("hidden", importState.status !== "running");
+  els.importRetry.classList.toggle("hidden", importState.status !== "error");
+  els.importCancel.classList.remove("hidden");
+  els.importCancel.textContent = importState.status === "running" ? "取消" : "关闭";
+}
+
+async function handleImportFile(file) {
   if (!file) return;
+  const suffix = file.name.toLowerCase().split(".").pop();
+  if (!["pdf", "jsonl", "md", "txt"].includes(suffix)) {
+    showToast("仅支持 PDF / JSONL / Markdown / TXT 文件");
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    showToast("文件超过 20 MB 限制");
+    return;
+  }
+
+  importController?.abort();
+  importController = new AbortController();
+  lastImportFile = file;
+  importState = window.ImportProgress.createState(file);
   els.importButton.classList.add("is-busy");
   els.progressBox.classList.remove("hidden");
-  els.progressText.textContent = "上传简历文件中…";
+  renderImportProgress();
 
   const formData = new FormData();
   formData.append("file", file);
 
-  fetch("/api/import-file", { method: "POST", body: formData, cache: "no-store" })
-    .then(async (res) => {
-      if (!res.ok) throw new Error(`Import failed: ${res.status}`);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+  try {
+    const res = await fetch("/api/import-file", {
+      method: "POST",
+      body: formData,
+      cache: "no-store",
+      signal: importController.signal,
+    });
+    if (!res.ok || !res.body) throw new Error(`导入请求失败（${res.status}）`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.length ? lines.pop() : "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.length ? lines.pop() : "";
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data: ")) continue;
-          const payload = trimmed.slice(6);
-          try {
-            const event = JSON.parse(payload);
-            if (event.type === "candidate") {
-              candidates[event.candidate.id] = event.candidate;
-              updateLibrary();
-              openDrawer("pending");
-              els.progressText.textContent = `已导入 ${event.index} / ${event.total}：${event.candidate.name}`;
-            } else if (event.type === "done") {
-              els.progressText.textContent = `导入完成：共 ${event.total} 份简历`;
-              setTimeout(() => {
-                els.progressBox.classList.add("hidden");
-                els.importButton.classList.remove("is-busy");
-              }, 2000);
-              showToast("导入完成");
-            } else if (event.type === "error") {
-              throw new Error(event.message);
-            }
-          } catch (e) {
-            // skip malformed lines
-          }
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data: ")) continue;
+        let event;
+        try {
+          event = JSON.parse(trimmed.slice(6));
+        } catch (error) {
+          continue;
+        }
+        window.ImportProgress.applyEvent(importState, event);
+        renderImportProgress();
+        if (event.type === "candidate") {
+          candidates[event.candidate.id] = event.candidate;
+          updateLibrary();
+          openDrawer("pending");
+        } else if (event.type === "done") {
+          showToast("导入完成");
+        } else if (event.type === "error") {
+          throw new Error(event.message || "导入失败");
         }
       }
-    })
-    .catch((err) => {
-      els.progressText.textContent = "导入失败：" + err.message;
-      els.importButton.classList.remove("is-busy");
-      showToast("导入失败：" + err.message);
-    });
+    }
+  } catch (err) {
+    if (err.name === "AbortError") return;
+    if (importState.status !== "error") {
+      window.ImportProgress.applyEvent(importState, { type: "error", message: err.message });
+    }
+    renderImportProgress();
+    showToast("导入失败：" + err.message);
+  } finally {
+    els.importButton.classList.remove("is-busy");
+    importController = null;
+  }
 }
 
 els.drawerToggles.forEach((toggle) => {
@@ -1042,6 +1126,21 @@ els.drawerToggles.forEach((toggle) => {
       openDrawer(drawer.dataset.group);
     }
   });
+});
+
+els.importCancel.addEventListener("click", () => {
+  if (importState?.status === "running") {
+    importController?.abort();
+    window.ImportProgress.cancel(importState);
+    renderImportProgress();
+  } else {
+    els.progressBox.classList.add("hidden");
+  }
+  els.importButton.classList.remove("is-busy");
+});
+
+els.importRetry.addEventListener("click", () => {
+  if (lastImportFile) handleImportFile(lastImportFile);
 });
 
 els.importInput.addEventListener("change", (e) => {
