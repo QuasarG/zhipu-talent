@@ -1,0 +1,10 @@
+{
+  "name": "agi-talent-radar-local-tools",
+  "private": true,
+  "scripts": {
+    "mcp:vision": "zai-mcp-server"
+  },
+  "dependencies": {
+    "@z_ai/mcp-server": "0.1.4"
+  }
+}
