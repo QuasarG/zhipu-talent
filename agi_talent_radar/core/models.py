@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+import operator
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
+
+
+TrackKey = Literal["base", "agent", "safety", "multimodal", "systems", "ai4science"]
 
 
 class ResumeProject(BaseModel):
@@ -22,6 +26,8 @@ class CandidateResume(BaseModel):
     skills: list[str] = Field(default_factory=list)
     screening_tags: list[str] = Field(default_factory=list)
     raw_text: str = ""
+    source_format: str = "text"
+    document_analysis: dict[str, Any] = Field(default_factory=dict)
 
 
 class BackgroundSignalTiers(BaseModel):
@@ -68,16 +74,51 @@ class EvidenceItem(BaseModel):
     has_metric: bool = False
     has_specific_tool: bool = False
     has_ownership: bool = False
+    track_hints: list[TrackKey] = Field(default_factory=list)
+    page: int | None = None
+    bbox: list[float] = Field(default_factory=list)
+    extraction_confidence: float = Field(default=1.0, ge=0, le=1)
 
 
 class DimensionScore(BaseModel):
     key: str
     label: str
-    score: float = Field(ge=1, le=5)
+    score: float = Field(ge=0, le=5)
     weighted_score: float = 0
+    max_points: float = 0
     rationale: str = ""
     evidence_ids: list[str] = Field(default_factory=list)
     risk_notes: list[str] = Field(default_factory=list)
+
+
+class TrackAssignment(BaseModel):
+    track: TrackKey
+    weight: float = Field(ge=0, le=1)
+    confidence: float = Field(ge=0, le=1)
+    rationale: str = ""
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class TrackEvaluation(BaseModel):
+    track: TrackKey
+    label: str
+    weight: float = Field(ge=0, le=1)
+    confidence: float = Field(ge=0, le=1)
+    raw_score: float = Field(ge=0, le=60)
+    calibrated_score: float = Field(ge=0, le=60)
+    dimension_scores: list[DimensionScore] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    risk_notes: list[str] = Field(default_factory=list)
+    critic_flags: list[str] = Field(default_factory=list)
+
+
+class DocumentQualityAssessment(BaseModel):
+    score: float = Field(default=0, ge=0, le=3)
+    available: bool = False
+    rationale: str = ""
+    dimension_scores: list[DimensionScore] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class CandidateEvaluation(BaseModel):
@@ -101,6 +142,12 @@ class CandidateEvaluation(BaseModel):
     screening_tags: list[str] = Field(default_factory=list)
     import_category: str = ""
     import_confidence: float = 0
+    common_score: float = Field(default=0, ge=0, le=37)
+    document_score: float = Field(default=0, ge=0, le=3)
+    track_assignments: list[TrackAssignment] = Field(default_factory=list)
+    track_evaluations: list[TrackEvaluation] = Field(default_factory=list)
+    routing_confidence: float = Field(default=0, ge=0, le=1)
+    evaluation_mode: str = "multi_track_v1"
 
 
 class ImportClassification(BaseModel):
@@ -137,4 +184,14 @@ class TalentState(TypedDict, total=False):
     loop_count: int
     score_loop_count: int
     evidence_loop_count: int
+    document_quality: dict[str, Any]
+    track_assignments: list[dict[str, Any]]
+    routing_confidence: float
+    routing_flags: list[str]
+    common_scores: list[dict[str, Any]]
+    common_score: float
+    common_critic_flags: list[str]
+    track_results: Annotated[list[dict[str, Any]], operator.add]
+    portfolio_assessment: dict[str, Any]
+    global_critic_flags: list[str]
     final_output: dict[str, Any]

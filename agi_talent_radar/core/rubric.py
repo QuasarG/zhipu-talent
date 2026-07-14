@@ -1,3 +1,5 @@
+"""Legacy v1 rubric retained for regression coverage; inactive in multi-track scoring."""
+
 from __future__ import annotations
 
 from agi_talent_radar.core.models import RubricDimension

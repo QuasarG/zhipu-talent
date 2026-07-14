@@ -83,4 +83,10 @@ def ensure_structured_resume(resume: CandidateResume) -> CandidateResume:
         return resume
     if not resume.raw_text:
         return resume
-    return parse_raw_resume(resume.id, resume.raw_text)
+    parsed = parse_raw_resume(resume.id, resume.raw_text)
+    return parsed.model_copy(
+        update={
+            "source_format": resume.source_format,
+            "document_analysis": resume.document_analysis,
+        }
+    )

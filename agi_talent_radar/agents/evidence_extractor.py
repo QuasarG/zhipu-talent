@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from agi_talent_radar.agents.common_potential.rubric import COMMON_RUBRIC
+from agi_talent_radar.agents.tracks.registry import TRACK_SPECS
 from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.models import EvidenceItem, NormalizedResume
-from agi_talent_radar.core.rubric import CALIBRATION_REFERENCE, rubric_as_markdown
 from agi_talent_radar.agents.evidence_integrity import quote_integrity_flags
 
 
@@ -16,16 +17,15 @@ EVIDENCE_PROMPT = """
 抽取原则：
 1. 像尽调律师一样，优先提取「具体技术栈 / 具体动作动词 / 量化结果 / ownership 信号 / 验证闭环」。
 2. 每条 evidence.quote 必须尽量使用简历原文短句；允许裁剪或压缩，但必须可从原文追溯，禁止扩写、脑补、编造数据。
-3. 潜力维度（学习与成长、研究探索、工程实践、AI Agent、问题定义、ownership、长期培养）只看项目/成果中的实际动作，不看学校/GPA/论文名气。
-4. 履历维度（教育背景、学术产出、项目丰富度、影响力、方向匹配）只允许使用 education_blind 与 background_signal_tiers 中的分级信号，不要恢复或猜测具体学校/GPA/排名。
+3. 通用潜力只看项目/成果中的实际动作，不看学校、GPA、论文名气或热门方向。
+4. Track 专业证据必须标注 track_hints，可多选 base, agent, safety, multimodal, systems, ai4science。
 5. 如果某维度没有直接证据，不要硬凑，直接跳过。
-6. 优先捕捉能区分“真正高潜”与“简历光鲜”的证据：问题约束、baseline/评测、错误归因、自动验证、Agent/工具链、可运行系统、本人负责范围。
+6. 优先捕捉能区分“真正高潜”与“简历光鲜”的证据：问题约束、baseline、评测、错误归因、验证方式、本人负责范围和可复现产物。
 7. 对只有论文题目、拟投状态、方向关键词、宽泛“提升/降低”但缺少 baseline 或验证定义的内容，可以抽取为风险证据，但 strength 不应给高。
 
-可用维度（dimension 必须取以下值之一）：
-learning_growth, research_exploration, engineering_practice, ai_agent_leverage,
-problem_definition, ownership, cultivation_value,
-education_signal, academic_output, project_richness, impact_visibility, direction_fit
+可用通用维度：
+problem_definition, research_rigor, learning_transfer, ownership,
+evidence_credibility, growth_trajectory, track_specific, background_signal
 
 每条证据格式：
 {
@@ -37,10 +37,14 @@ education_signal, academic_output, project_richness, impact_visibility, directio
   "strength": 1-5,
   "has_metric": true/false,
   "has_specific_tool": true/false,
-  "has_ownership": true/false
+  "has_ownership": true/false,
+  "track_hints": ["systems", "base"],
+  "page": null,
+  "bbox": [],
+  "extraction_confidence": 1.0
 }
 
-证据数量：每位候选人控制在 15-25 条，潜力维度与履历维度都要覆盖，不要全部堆在某一个维度上。
+证据数量：每位候选人控制在 15-25 条，通用潜力与候选人实际涉及的专业 Track 都要覆盖。
 不要输出 Markdown。
 """.strip()
 
@@ -51,8 +55,16 @@ def run_evidence_extractor(state: dict) -> dict:
     response = llm_client.call_llm_json(
         EVIDENCE_PROMPT,
         {
-            "rubric": rubric_as_markdown(),
-            "calibration_reference": CALIBRATION_REFERENCE,
+            "common_rubric": [
+                {
+                    "key": item.key,
+                    "label": item.label,
+                    "max_points": item.max_points,
+                    "evidence_rule": item.evidence_rule,
+                }
+                for item in COMMON_RUBRIC
+            ],
+            "track_rubrics": {key: spec.as_prompt_dict() for key, spec in TRACK_SPECS.items()},
             "resume": normalized.model_dump(exclude={"education_raw"}),
             "repair_feedback": repair_feedback,
             "repair_instruction": (

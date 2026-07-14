@@ -3,19 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
+from agi_talent_radar.agents.common_potential.rubric import COMMON_DIMENSION_LABELS, COMMON_RUBRIC_MODELS
 from agi_talent_radar.agents.resume_parser import ensure_structured_resume
 from agi_talent_radar.core.graph import NODE_LABELS, build_graph
 from agi_talent_radar.core.import_agent import run_import_agent
 from agi_talent_radar.core.io import load_resumes, render_summary_markdown, save_json
 from agi_talent_radar.core.models import BatchResult, CandidateEvaluation, CandidateResume, ImportClassification
-from agi_talent_radar.core.rubric import DIMENSION_LABELS, RUBRIC
 
 
 def run_candidate(resume: CandidateResume | dict) -> CandidateEvaluation:
     validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
     structured = ensure_structured_resume(validated)
     graph = build_graph()
-    state = graph.invoke({"resume": structured.model_dump(), "loop_count": 0})
+    state = graph.invoke({"resume": structured.model_dump(), "track_results": [], "loop_count": 0})
     return CandidateEvaluation.model_validate(state["final_output"])
 
 
@@ -24,7 +24,7 @@ def run_candidate_stream(resume: CandidateResume | dict):
     validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
     structured = ensure_structured_resume(validated)
     graph = build_graph()
-    state: dict = {"resume": structured.model_dump(), "loop_count": 0}
+    state: dict = {"resume": structured.model_dump(), "track_results": [], "loop_count": 0}
 
     for event in graph.stream(state):
         for node_key, update in event.items():
@@ -38,22 +38,6 @@ def run_candidate_stream(resume: CandidateResume | dict):
                     "message": summary,
                 }
             state.update(update)
-
-            # 检测 critic 触发的回炉重写/重打
-            if state.get("critic_needs_evidence_rewrite"):
-                loop_count = int(state.get("evidence_loop_count", 0))
-                yield {
-                    "type": "evidence_rewrite",
-                    "loop_count": loop_count,
-                    "message": f"逻辑判官发现证据可追溯性问题，第 {loop_count} 轮回炉重抽证据…",
-                }
-            if state.get("critic_needs_rescore"):
-                loop_count = int(state.get("score_loop_count", state.get("loop_count", 0)))
-                yield {
-                    "type": "rescore",
-                    "loop_count": loop_count,
-                    "message": f"逻辑判官发现评分问题，第 {loop_count} 轮回炉重打…",
-                }
 
     evaluation = CandidateEvaluation.model_validate(state["final_output"])
     yield {"type": "result", "result": evaluation.model_dump()}
@@ -73,17 +57,40 @@ def _node_summary(node_key: str, update: dict) -> str:
         tools = _top_tools(evidence)
         suffix = f"，高频工具/信号：{'、'.join(tools)}" if tools else ""
         return f"提取 {len(evidence)} 条证据，覆盖 {dimensions or '待补证'} 等维度{suffix}。"
-    if node_key == "scorer":
-        scores = update.get("scores", [])
-        assessment = update.get("ai_assessment", {})
-        top_scores = sorted(scores, key=lambda item: float(item.get("score", 0)), reverse=True)[:2]
-        top_text = "、".join(f"{item.get('label', item.get('key', '维度'))}{float(item.get('score', 0)):.1f}" for item in top_scores)
-        return f"完成 {len(scores)} 维打分，综合 {assessment.get('overall_score', '—')} / {assessment.get('level', '—')}，最高维度：{top_text or '暂无'}。"
-    if node_key == "critic":
-        flags = update.get("critic_flags", [])
+    if node_key == "document_quality":
+        quality = update.get("document_quality", {})
+        if quality.get("available"):
+            return f"视觉简历表达质量 {quality.get('score', 0):.1f} / 3。"
+        return "非视觉简历或视觉质量不可用，本项不计分。"
+    if node_key == "track_router":
+        assignments = update.get("track_assignments", [])
+        text = "、".join(f"{item.get('track')} {float(item.get('weight', 0)):.0%}" for item in assignments)
+        return f"分配至 {text or '待人工确认'}；路由置信度 {float(update.get('routing_confidence', 0)):.0%}。"
+    if node_key == "route_auditor":
+        flags = update.get("routing_flags", [])
+        return f"路由校验发现 {len(flags)} 个待复核点。" if flags else "路由权重与证据覆盖校验通过。"
+    if node_key == "common_scorer":
+        return f"通用潜力初评分 {float(update.get('common_score', 0)):.1f} / 37。"
+    if node_key == "common_critic":
+        flags = update.get("common_critic_flags", [])
+        return f"通用潜力校准为 {float(update.get('common_score', 0)):.1f} / 37，发现 {len(flags)} 个封顶项。"
+    if node_key.endswith("_track"):
+        results = update.get("track_results", [])
+        if not results:
+            return "该 Track 未被路由命中，跳过。"
+        result = results[0]
+        return f"{result.get('label')} 专业分 {float(result.get('calibrated_score', 0)):.1f} / 60。"
+    if node_key == "portfolio_aggregator":
+        assessment = update.get("portfolio_assessment", {})
+        return (
+            f"汇总 {assessment.get('overall_score', '—')} 分：通用 {assessment.get('common_score', 0)}、"
+            f"Track {assessment.get('track_score', 0)}、简历表达 {assessment.get('document_score', 0)}。"
+        )
+    if node_key == "global_critic":
+        flags = update.get("global_critic_flags", [])
         if flags:
-            return f"逻辑复核发现 {len(flags)} 个风险点：{_shorten(flags[0], 42)}"
-        return "逻辑复核通过：证据引用与评分分布未发现硬性冲突。"
+            return f"全局复核发现 {len(flags)} 个风险点：{_shorten(flags[0], 42)}"
+        return "全局复核通过：路由、证据与评分未发现硬性冲突。"
     if node_key == "formatter":
         final = update.get("final_output", {})
         strengths = final.get("core_strengths", [])
@@ -156,14 +163,14 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
     return BatchResult(
         evaluations=evaluations,
         tiers=tiers,
-        dimension_labels=DIMENSION_LABELS,
-        rubric=RUBRIC,
+        dimension_labels=COMMON_DIMENSION_LABELS,
+        rubric=COMMON_RUBRIC_MODELS,
         import_classifications=import_classifications,
         notes=[
             "批量导入使用单一轻量 Agent，只提取基本信息和分类，不筛除候选人。",
             "逐人深评使用 DeepSeek/OpenAI-compatible JSON 模式；没有配置 DEEPSEEK_API_KEY 会直接失败。",
-            "潜力维度（70%）关注证据：技术栈、动作动词、量化结果、ownership、验证闭环。",
-            "履历维度（30%）低权重参考：学校/GPA、论文、项目丰富度、影响力、方向匹配度。",
+            "通用潜力占 37%，Track 专业能力占 60%，视觉简历表达质量最多占 3%。",
+            "候选人可进入 1-3 个 Track，专业分按 Track 工作分布权重聚合。",
             "系统分流规则：80 分及以上进入优选库，60-79 分进入备选库，低于 60 分进入不建议后续沟通。",
             "如果配置了 MySQL，结果会同时持久化到数据库；数据库失败不会中断评估流程。",
             "结果用于初筛辅助，不替代人工面谈和论文 / 项目真实性核验。",

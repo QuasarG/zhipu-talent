@@ -1,3 +1,5 @@
+"""Legacy v1 critic retained for regression coverage; inactive in the multi-track graph."""
+
 from __future__ import annotations
 
 import re

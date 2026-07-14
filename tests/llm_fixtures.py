@@ -87,8 +87,75 @@ def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: flo
                     "has_metric": _has_metric(quote),
                     "has_specific_tool": _has_specific_tool(quote),
                     "has_ownership": "负责" in quote or "设计" in quote or "提出" in quote,
+                    "track_hints": [],
+                    "page": None,
+                    "bbox": [],
+                    "extraction_confidence": 1.0,
                 }
                 for index, (dimension, source, quote) in enumerate(quotes, start=1)
+            ]
+        }
+    if "多 Track 路由 Agent" in system_prompt:
+        evidence_ids = [item["id"] for item in payload.get("evidence", [])]
+        resume_text = " ".join(
+            [
+                payload.get("resume", {}).get("target_role", ""),
+                " ".join(payload.get("resume", {}).get("directions", [])),
+                " ".join(payload.get("resume", {}).get("skills", [])),
+            ]
+        ).lower()
+        if "agent" in resume_text or "智能体" in resume_text:
+            assignments = [("agent", 0.7), ("systems", 0.3)]
+        elif "多模态" in resume_text or "视觉" in resume_text or "3d" in resume_text:
+            assignments = [("multimodal", 0.7), ("base", 0.3)]
+        elif "安全" in resume_text:
+            assignments = [("safety", 0.8), ("base", 0.2)]
+        elif "生物" in resume_text or "science" in resume_text:
+            assignments = [("ai4science", 0.7), ("multimodal", 0.3)]
+        else:
+            assignments = [("base", 0.65), ("systems", 0.35)]
+        return {
+            "assignments": [
+                {
+                    "track": track,
+                    "weight": weight,
+                    "confidence": 0.86,
+                    "rationale": "根据项目工作分布和研究方向进行路由。",
+                    "evidence_ids": evidence_ids,
+                }
+                for track, weight in assignments
+            ]
+        }
+    if "通用潜力评分 Agent" in system_prompt:
+        evidence = payload.get("evidence", [])
+        evidence_ids = [item["id"] for item in evidence] or ["e001"]
+        return {
+            "dimension_scores": [
+                {
+                    "key": item["key"],
+                    "label": item["label"],
+                    "score": 3.5,
+                    "rationale": f"{evidence_ids[0]} 支撑该通用潜力判断。",
+                    "evidence_ids": evidence_ids[:2],
+                    "risk_notes": ["需面谈确认贡献边界。"],
+                }
+                for item in payload["rubric"]
+            ]
+        }
+    if "专业评估 Agent" in system_prompt:
+        evidence = payload.get("evidence", [])
+        evidence_ids = [item["id"] for item in evidence] or ["e001"]
+        return {
+            "dimension_scores": [
+                {
+                    "key": item["key"],
+                    "label": item["label"],
+                    "score": 3.5,
+                    "rationale": f"{evidence_ids[0]} 支撑该 Track 专业判断。",
+                    "evidence_ids": evidence_ids[:2],
+                    "risk_notes": ["需补充该 Track 的复现实验。"],
+                }
+                for item in payload["track"]["dimensions"]
             ]
         }
     if "跨领域对齐打分 Agent" in system_prompt:

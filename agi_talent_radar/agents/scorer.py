@@ -1,3 +1,5 @@
+"""Legacy v1 single-rubric scorer; the multi-track graph does not import this module."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

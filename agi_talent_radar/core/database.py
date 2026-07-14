@@ -35,6 +35,8 @@ class CandidateORM(Base):
     publications = Column(Text, default="")
     skills = Column(Text, default="")
     screening_tags = Column(Text, default="")
+    source_format = Column(String(32), default="text")
+    document_analysis = Column(Text, default="")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -60,6 +62,11 @@ class EvaluationORM(Base):
     critic_flags = Column(JSON, default=list)
     normalized_education = Column(JSON, default=list)
     screening_tags = Column(JSON, default=list)
+    common_score = Column(Float, default=0.0)
+    document_score = Column(Float, default=0.0)
+    track_assignments = Column(JSON, default=list)
+    track_evaluations = Column(JSON, default=list)
+    routing_confidence = Column(Float, default=0.0)
     evaluation_mode = Column(String(64), default="deepseek_ai_only")
     created_at = Column(DateTime, server_default=func.now())
 
@@ -102,7 +109,19 @@ def _ensure_existing_schema(engine) -> None:
         return
     Base.metadata.create_all(engine)
     inspector = inspect(engine)
-    if "evaluations" not in inspector.get_table_names():
+    table_names = inspector.get_table_names()
+    if "candidates" in table_names:
+        candidate_columns = {column["name"] for column in inspector.get_columns("candidates")}
+        candidate_missing = []
+        if "source_format" not in candidate_columns:
+            candidate_missing.append(("source_format", "VARCHAR(32)"))
+        if "document_analysis" not in candidate_columns:
+            candidate_missing.append(("document_analysis", "TEXT"))
+        if candidate_missing:
+            with engine.begin() as conn:
+                for name, column_type in candidate_missing:
+                    conn.execute(text(f"ALTER TABLE candidates ADD COLUMN {name} {column_type}"))
+    if "evaluations" not in table_names:
         _SCHEMA_READY = True
         return
     columns = {column["name"] for column in inspector.get_columns("evaluations")}
@@ -113,6 +132,16 @@ def _ensure_existing_schema(engine) -> None:
         missing_columns.append(("screening_tags", "JSON"))
     if "decision_method" not in columns:
         missing_columns.append(("decision_method", "TEXT"))
+    if "common_score" not in columns:
+        missing_columns.append(("common_score", "FLOAT"))
+    if "document_score" not in columns:
+        missing_columns.append(("document_score", "FLOAT"))
+    if "track_assignments" not in columns:
+        missing_columns.append(("track_assignments", "JSON"))
+    if "track_evaluations" not in columns:
+        missing_columns.append(("track_evaluations", "JSON"))
+    if "routing_confidence" not in columns:
+        missing_columns.append(("routing_confidence", "FLOAT"))
     if missing_columns:
         with engine.begin() as conn:
             for name, column_type in missing_columns:
@@ -155,6 +184,8 @@ def save_candidate(session, resume: CandidateResume, classification: ImportClass
     candidate.publications = _json_list(resume.publications)
     candidate.skills = _json_list(resume.skills)
     candidate.screening_tags = _json_list(resume.screening_tags)
+    candidate.source_format = resume.source_format
+    candidate.document_analysis = json.dumps(resume.document_analysis, ensure_ascii=False)
 
     if classification:
         candidate.import_category = classification.category
@@ -192,6 +223,12 @@ def save_evaluation(session, evaluation: CandidateEvaluation) -> EvaluationORM:
     ev.critic_flags = evaluation.critic_flags
     ev.normalized_education = evaluation.normalized_education
     ev.screening_tags = evaluation.screening_tags
+    ev.common_score = evaluation.common_score
+    ev.document_score = evaluation.document_score
+    ev.track_assignments = [item.model_dump() for item in evaluation.track_assignments]
+    ev.track_evaluations = [item.model_dump() for item in evaluation.track_evaluations]
+    ev.routing_confidence = evaluation.routing_confidence
+    ev.evaluation_mode = evaluation.evaluation_mode
 
     session.commit()
     return ev
