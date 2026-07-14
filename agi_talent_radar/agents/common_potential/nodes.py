@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from agi_talent_radar.agents.common_potential.rubric import COMMON_RUBRIC
+from agi_talent_radar.agents.scoring_normalization import dimension_items, score_value, string_list
 from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.models import DimensionScore, EvidenceItem, NormalizedResume
 
@@ -42,11 +43,14 @@ def run_common_scorer(state: dict[str, Any]) -> dict[str, Any]:
         },
         temperature=0.1,
     )
-    by_key = {str(item.get("key")): item for item in response.get("dimension_scores", [])}
+    by_key = {
+        str(item.get("key")): item
+        for item in dimension_items(response.get("dimension_scores", []))
+    }
     scores = []
     for dimension in COMMON_RUBRIC:
         raw = by_key.get(dimension.key, {})
-        score = max(0.0, min(5.0, round(float(raw.get("score", 0)), 1)))
+        score = score_value(raw.get("score", 0))
         scores.append(
             DimensionScore(
                 key=dimension.key,
@@ -55,8 +59,8 @@ def run_common_scorer(state: dict[str, Any]) -> dict[str, Any]:
                 max_points=dimension.max_points,
                 weighted_score=round(score / 5 * dimension.max_points, 2),
                 rationale=str(raw.get("rationale", "该维度未返回有效理由。")),
-                evidence_ids=[str(item) for item in raw.get("evidence_ids", [])],
-                risk_notes=_string_list(raw.get("risk_notes", [])),
+                evidence_ids=string_list(raw.get("evidence_ids", [])),
+                risk_notes=string_list(raw.get("risk_notes", [])),
             )
         )
     return {
@@ -103,11 +107,3 @@ def run_common_critic(state: dict[str, Any]) -> dict[str, Any]:
 
 def _supports_high_score(item: EvidenceItem) -> bool:
     return item.strength >= 4 and sum([item.has_metric, item.has_specific_tool, item.has_ownership]) >= 2
-
-
-def _string_list(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(item) for item in value if str(item).strip()]
-    if isinstance(value, str) and value.strip():
-        return [value]
-    return []

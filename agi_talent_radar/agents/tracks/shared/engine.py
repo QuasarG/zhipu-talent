@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from agi_talent_radar.core import llm_client
+from agi_talent_radar.agents.scoring_normalization import dimension_items, score_value, string_list
 from agi_talent_radar.core.models import DimensionScore, EvidenceItem, NormalizedResume, TrackAssignment, TrackEvaluation
 from agi_talent_radar.agents.tracks.shared.spec import TrackDimensionSpec, TrackSpec
 
@@ -87,12 +88,12 @@ def _select_track_evidence(
     return selected or evidence
 
 
-def _normalize_scores(raw_scores: list[dict[str, Any]], spec: TrackSpec) -> list[DimensionScore]:
-    by_key = {str(item.get("key")): item for item in raw_scores if isinstance(item, dict)}
+def _normalize_scores(raw_scores: Any, spec: TrackSpec) -> list[DimensionScore]:
+    by_key = {str(item.get("key")): item for item in dimension_items(raw_scores)}
     result: list[DimensionScore] = []
     for dimension in spec.dimensions:
         raw = by_key.get(dimension.key, {})
-        score = max(0.0, min(5.0, round(float(raw.get("score", 0)), 1)))
+        score = score_value(raw.get("score", 0))
         result.append(
             DimensionScore(
                 key=dimension.key,
@@ -101,8 +102,8 @@ def _normalize_scores(raw_scores: list[dict[str, Any]], spec: TrackSpec) -> list
                 max_points=dimension.max_points,
                 weighted_score=round(score / 5 * dimension.max_points, 2),
                 rationale=str(raw.get("rationale", "该维度未返回有效理由。")),
-                evidence_ids=[str(item) for item in raw.get("evidence_ids", [])],
-                risk_notes=_string_list(raw.get("risk_notes", [])),
+                evidence_ids=string_list(raw.get("evidence_ids", [])),
+                risk_notes=string_list(raw.get("risk_notes", [])),
             )
         )
     return result
@@ -149,11 +150,3 @@ def _calibrate_scores(
 def _is_strong_evidence(item: EvidenceItem) -> bool:
     hard_signals = sum([item.has_metric, item.has_specific_tool, item.has_ownership])
     return item.strength >= 4 and hard_signals >= 2
-
-
-def _string_list(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(item) for item in value if str(item).strip()]
-    if isinstance(value, str) and value.strip():
-        return [value]
-    return []

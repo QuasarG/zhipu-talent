@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from agi_talent_radar.agents.document_quality import run_document_quality
+from agi_talent_radar.agents.common_potential import run_common_scorer
 from agi_talent_radar.agents.tracks.registry import TRACK_SPECS
 from agi_talent_radar.core.models import CandidateResume
 from agi_talent_radar.core.resume_ingestion import load_pdf_resume
@@ -37,6 +38,38 @@ class _FakeVisionClient:
 
 
 class MultiTrackTest(unittest.TestCase):
+    def test_common_scorer_tolerates_mixed_dimension_shapes(self) -> None:
+        state = {
+            "normalized": {
+                "id": "mixed_scores",
+                "name": "混合输出候选人",
+                "target_role": "AI 研究员",
+            },
+            "evidence": [],
+            "track_assignments": [],
+        }
+        response = {
+            "dimension_scores": [
+                "invalid free text",
+                {
+                    "key": "problem_definition",
+                    "score": "4/5",
+                    "rationale": "e1 支撑。",
+                    "evidence_ids": "e1",
+                    "risk_notes": "待验证",
+                },
+                {"research_rigor": {"score": 3.5, "rationale": "有对照实验。"}},
+            ]
+        }
+        with patch("agi_talent_radar.core.llm_client.call_llm_json", return_value=response):
+            result = run_common_scorer(state)
+
+        scores = {item["key"]: item for item in result["common_scores"]}
+        self.assertEqual(scores["problem_definition"]["score"], 4.0)
+        self.assertEqual(scores["problem_definition"]["evidence_ids"], ["e1"])
+        self.assertEqual(scores["research_rigor"]["score"], 3.5)
+        self.assertEqual(scores["ownership"]["score"], 0.0)
+
     def test_visual_resume_structured_lists_are_normalized(self) -> None:
         resume = CandidateResume.model_validate(
             {
