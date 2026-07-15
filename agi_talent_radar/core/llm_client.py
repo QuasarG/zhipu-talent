@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from dotenv import load_dotenv
+from json_repair import loads as repair_json_loads
 from openai import OpenAI
 
 
@@ -16,19 +17,50 @@ def call_llm_json(system_prompt: str, payload: dict[str, Any], temperature: floa
     client = _client()
     model = _required_env("OPENAI_MODEL")
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
     response = client.chat.completions.create(
         model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-        ],
+        messages=messages,
         temperature=temperature,
         response_format={"type": "json_object"},
         timeout=timeout_seconds,
         extra_body={"thinking": {"type": "disabled"}},
     )
     content = response.choices[0].message.content or ""
-    return _loads_json(content)
+    try:
+        return _loads_json(content)
+    except ValueError as first_error:
+        retry_response = client.chat.completions.create(
+            model=model,
+            messages=[
+                *messages,
+                {"role": "assistant", "content": content},
+                {
+                    "role": "user",
+                    "content": (
+                        "上一次输出不是完整有效的 JSON 对象。"
+                        f"解析错误：{first_error}。"
+                        "请基于原始请求重新生成完整 JSON，只输出 JSON 对象，"
+                        "不要省略字段，不要输出 Markdown 或解释。"
+                    ),
+                },
+            ],
+            temperature=0,
+            response_format={"type": "json_object"},
+            timeout=timeout_seconds,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        retry_content = retry_response.choices[0].message.content or ""
+        try:
+            return _loads_json(retry_content)
+        except ValueError as retry_error:
+            raise ValueError(
+                f"LLM JSON 本地修复与二次生成均失败；"
+                f"首次错误: {first_error}；二次错误: {retry_error}"
+            ) from retry_error
 
 
 def call_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1):
@@ -70,13 +102,35 @@ def _required_env(name: str) -> str:
 
 
 def _loads_json(content: str) -> dict[str, Any]:
-    try:
-        data = json.loads(content)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", content, re.S)
-        if not match:
-            raise ValueError(f"模型没有返回 JSON 对象: {content[:300]}")
-        data = json.loads(match.group(0))
-    if not isinstance(data, dict):
-        raise ValueError("模型返回的 JSON 顶层必须是对象。")
-    return data
+    text = content.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S).strip()
+    candidates = [text]
+    match = re.search(r"\{.*\}", text, re.S)
+    if match and match.group(0) != text:
+        candidates.append(match.group(0))
+
+    errors: list[str] = []
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            errors.append(f"line {exc.lineno} column {exc.colno}: {exc.msg}")
+            continue
+        if isinstance(data, dict):
+            return data
+        errors.append("顶层不是对象")
+
+    for candidate in candidates:
+        try:
+            repaired = repair_json_loads(candidate)
+        except Exception as exc:
+            errors.append(f"本地修复失败: {exc}")
+            continue
+        if isinstance(repaired, dict):
+            return repaired
+        errors.append("本地修复后顶层仍不是对象")
+
+    preview = text[:240].replace("\n", " ")
+    details = "；".join(dict.fromkeys(errors))
+    raise ValueError(f"模型没有返回有效 JSON 对象: {details}；内容摘要: {preview}")
