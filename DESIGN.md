@@ -3,7 +3,7 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-07-14
+- Last refreshed: 2026-07-15
 - Primary product surfaces: Flask 面试评审工作台、候选人库、PDF 简历视图、多 Track 评估结果。
 - Evidence reviewed: `README.md`、`agi_talent_radar/web/templates/workbench.html`、`agi_talent_radar/web/static/workbench.css`、`agi_talent_radar/web/static/workbench.js`、`agi_talent_radar/web/workbench.py`、`agi_talent_radar/core/graph.py`。
 
@@ -51,7 +51,7 @@
 ## Components
 
 - Existing components to reuse: 顶栏、人才库抽屉、候选人条目、证据 Popover、确认 Dialog、Toast、分数条。
-- New/changed components: 导入阶段器、PDF/结构化 Tab、并行 Agent 阶段图、Track 权重条、Track 详情 Tab、简历表达评估、视觉解析警告。
+- New/changed components: 批量导入队列（每份简历一行、真实阶段进度线、单条失败隔离）、PDF/结构化 Tab、并行 Agent 阶段图、Track 权重条、Track 详情 Tab、简历表达评估、视觉解析警告。
 - Variants and states: ready, queued, running, done, skipped, warning, error, cancelled, retrying。
 - Token/component ownership: 设计 token 继续存放在 `workbench.css :root`；JavaScript 组件按领域拆分，不引入第二套设计系统。
 
@@ -71,7 +71,7 @@
 
 ## Interaction states
 
-- Loading: 显示当前真实阶段、页码或节点，不伪造精确剩余时间。
+- Loading: 显示当前真实阶段、页码或节点，不伪造精确剩余时间。批量导入时每份简历独立显示进度线与错误阶段，其他记录继续处理。
 - Empty: 说明当前可执行的唯一主操作。
 - Error: 区分文件校验、PDF 渲染、MCP 启动、鉴权、模型、数据库和节点错误，并提供局部重试。
 - Success: 保留成功结果和耗时，将候选人自动聚焦到可审查状态。

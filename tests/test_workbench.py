@@ -31,9 +31,12 @@ class WorkbenchTest(unittest.TestCase):
     def test_index_loads(self) -> None:
         response = self.app.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("AGI Talent Radar", response.get_data(as_text=True))
-        self.assertIn("workbench-import.js", response.get_data(as_text=True))
-        self.assertIn("workbench-publications.js", response.get_data(as_text=True))
+        html = response.get_data(as_text=True)
+        self.assertIn("AGI Talent Radar", html)
+        self.assertIn("workbench-import.js", html)
+        self.assertIn("workbench-publications.js", html)
+        self.assertIn('id="import-file-input" type="file"', html)
+        self.assertIn("multiple hidden", html)
 
     def test_publication_cards_mark_status_and_candidate_author(self) -> None:
         publication_script = (
@@ -290,6 +293,62 @@ class WorkbenchTest(unittest.TestCase):
         self.assertIn("document_analysis", candidate_event["candidate"])
         self.assertEqual(candidate_event["index"], 1)
         self.assertEqual(candidate_event["total"], 1)
+
+    @patch("agi_talent_radar.web.workbench.run_import_agent_stream")
+    def test_batch_upload_isolates_file_failures(self, mock_stream) -> None:
+        first, second = make_resume_fixtures()[:2]
+
+        def classify(resumes, persist):
+            self.assertTrue(persist)
+            results = []
+            for resume in resumes:
+                classification = MagicMock()
+                classification.id = resume.id
+                classification.name = resume.name
+                classification.category = "研究探索型"
+                classification.level = "A"
+                classification.confidence = 0.9
+                classification.reason = "方向契合"
+                results.append(classification)
+            return iter(results)
+
+        mock_stream.side_effect = classify
+        response = self.app.post(
+            "/api/import-file",
+            data={
+                "files": [
+                    (io.BytesIO((first.model_dump_json() + "\n").encode("utf-8")), "first.jsonl"),
+                    (io.BytesIO((second.model_dump_json() + "\n").encode("utf-8")), "second.jsonl"),
+                    (io.BytesIO(b"unsupported"), "invalid.exe"),
+                ]
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        events = self._parse_sse(response)
+        candidates = [event for event in events if event["type"] == "candidate"]
+        errors = [event for event in events if event["type"] == "error"]
+        done = events[-1]
+        self.assertEqual([event["file_id"] for event in candidates], ["file-1", "file-2"])
+        self.assertEqual(errors[0]["file_id"], "file-3")
+        self.assertEqual(errors[0]["stage"], "validation")
+        self.assertEqual(done["type"], "done")
+        self.assertEqual(done["imported_files"], 2)
+        self.assertEqual(done["failed_files"], 1)
+        self.assertEqual(done["total"], 2)
+
+    def test_batch_import_frontend_renders_one_progress_line_per_resume(self) -> None:
+        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
+        progress_script = (
+            ROOT / "agi_talent_radar" / "web" / "static" / "workbench-import.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('formData.append("files", file)', script)
+        self.assertIn('class="import-file-row is-${item.status}"', script)
+        self.assertIn('role="progressbar"', script)
+        self.assertIn("state.items.find", progress_script)
+        self.assertIn("failedFiles", progress_script)
 
     @patch("agi_talent_radar.web.workbench.run_import_agent_stream")
     @patch("agi_talent_radar.web.workbench.analyze_resume_pages")

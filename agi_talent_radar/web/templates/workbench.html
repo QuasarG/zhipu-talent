@@ -9,19 +9,19 @@
 <body>
   <header class="topbar">
     <div class="brand">AGI Talent Radar</div>
-    <label for="import-file-input" id="import-file-button" class="import-button" title="上传 PDF / JSONL / Markdown / TXT 简历">导入简历</label>
-    <input id="import-file-input" type="file" accept=".pdf,.jsonl,.md,.txt" hidden>
+    <label for="import-file-input" id="import-file-button" class="import-button" title="批量上传 PDF / JSONL / Markdown / TXT 简历">批量导入</label>
+    <input id="import-file-input" type="file" accept=".pdf,.jsonl,.md,.txt" multiple hidden>
   </header>
 
   <main class="workspace">
     <aside class="library" aria-label="人才库">
       <div class="import-progress hidden" id="import-progress" role="status" aria-live="polite">
         <div class="import-progress-head">
-          <span class="import-file-name" id="import-file-name">导入简历</span>
+          <span class="import-file-name" id="import-file-name">批量导入</span>
           <span class="import-state" id="import-state">准备中</span>
         </div>
-        <div class="import-stage-list" id="import-stage-list"></div>
-        <p id="import-progress-text">正在解析上传文件…</p>
+        <div class="import-stage-list" id="import-stage-list" aria-label="简历导入队列"></div>
+        <p id="import-progress-text">等待选择简历文件。</p>
         <div class="import-progress-actions">
           <button id="import-cancel" type="button">取消</button>
           <button id="import-retry" type="button" class="hidden">重试</button>

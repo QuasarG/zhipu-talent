@@ -16,6 +16,15 @@ from agi_talent_radar.core.runner import run_candidate_stream
 
 ROOT = Path(__file__).resolve().parents[2]
 VALID_GROUPS = {"pending", "shortlisted", "alternative", "rejected"}
+VALID_IMPORT_SUFFIXES = {".pdf", ".jsonl", ".md", ".txt"}
+MAX_BATCH_FILES = 50
+MAX_BATCH_BYTES = 200 * 1024 * 1024
+
+
+class ImportFileError(ValueError):
+    def __init__(self, stage: str, message: str):
+        super().__init__(message)
+        self.stage = stage
 
 
 def create_app() -> Flask:
@@ -146,117 +155,67 @@ def create_app() -> Flask:
 
     @app.post("/api/import-file")
     def import_file():
-        file = request.files.get("file")
-        if not file or not file.filename:
+        uploaded_files = request.files.getlist("files")
+        if not uploaded_files:
+            single_file = request.files.get("file")
+            uploaded_files = [single_file] if single_file else []
+        uploaded_files = [file for file in uploaded_files if file and file.filename]
+        if not uploaded_files:
             return jsonify({"detail": "请上传 .pdf / .jsonl / .md / .txt 简历文件"}), 400
-        suffix = Path(file.filename).suffix.lower()
-        if suffix not in {".pdf", ".jsonl", ".md", ".txt"}:
-            return jsonify({"detail": "仅支持 .pdf / .jsonl / .md / .txt 文件"}), 400
+        if len(uploaded_files) > MAX_BATCH_FILES:
+            return jsonify({"detail": f"单次最多导入 {MAX_BATCH_FILES} 份简历"}), 400
 
-        # 预先把文件内容读入内存，避免生成器执行时请求上下文已关闭
-        file_bytes = file.read()
-        filename = file.filename
+        uploads: list[tuple[str, str, bytes, str]] = []
+        total_bytes = 0
+        for index, file in enumerate(uploaded_files, start=1):
+            filename = file.filename
+            file_bytes = file.read()
+            total_bytes += len(file_bytes)
+            uploads.append((f"file-{index}", filename, file_bytes, Path(filename).suffix.lower()))
+        if total_bytes > MAX_BATCH_BYTES:
+            return jsonify({"detail": f"单次导入总大小不能超过 {MAX_BATCH_BYTES // 1024 // 1024} MB"}), 400
 
         def generate():
-            current_stage = "validation"
-            try:
-                yield _sse_event(
-                    "stage",
-                    stage=current_stage,
-                    status="done",
-                    message=f"已接收 {filename}，文件校验通过。",
-                )
-                if suffix == ".pdf":
-                    if len(file_bytes) > MAX_PDF_BYTES:
-                        raise ValueError(f"PDF 超过 {MAX_PDF_BYTES // 1024 // 1024} MB 限制。")
-                    current_stage = "rendering"
-                    yield _sse_event(
-                        "stage",
-                        stage=current_stage,
-                        status="running",
-                        message="正在将 PDF 渲染为逐页图像。",
+            imported_candidates = 0
+            imported_files = 0
+            failed_files = 0
+            file_total = len(uploads)
+            for file_index, (file_id, filename, file_bytes, suffix) in enumerate(uploads, start=1):
+                try:
+                    for event in _stream_import_upload(
+                        file_id,
+                        filename,
+                        file_bytes,
+                        suffix,
+                        file_index,
+                        file_total,
+                    ):
+                        if event["type"] == "candidate":
+                            imported_candidates += 1
+                        yield _sse_payload(event)
+                    imported_files += 1
+                except Exception as exc:
+                    failed_files += 1
+                    yield _sse_payload(
+                        _file_event(
+                            "error",
+                            file_id,
+                            filename,
+                            file_index,
+                            file_total,
+                            stage=getattr(exc, "stage", "validation"),
+                            message=str(exc),
+                            retryable=True,
+                        )
                     )
-                    pages = render_pdf_pages(file_bytes)
-                    yield _sse_event(
-                        "stage",
-                        stage=current_stage,
-                        status="done",
-                        message=f"已渲染 {len(pages)} 页 PDF。",
-                        page_count=len(pages),
-                    )
-                    current_stage = "vision"
-                    yield _sse_event(
-                        "stage",
-                        stage=current_stage,
-                        status="running",
-                        message=f"正在调用视觉 MCP 解析 {len(pages)} 页内容和版式。",
-                        page_count=len(pages),
-                    )
-                    resumes = [analyze_resume_pages(pages, filename)]
-                    yield _sse_event(
-                        "stage",
-                        stage=current_stage,
-                        status="done",
-                        message="视觉内容和排版证据已结构化。",
-                        page_count=len(pages),
-                    )
-                else:
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        temp_path = Path(temp_dir) / f"upload{suffix}"
-                        temp_path.write_bytes(file_bytes)
-                        resumes = load_resumes(temp_path)
-                current_stage = "classification"
-                yield _sse_event(
-                    "stage",
-                    stage=current_stage,
-                    status="running",
-                    message=f"正在对 {len(resumes)} 份简历进行初筛分类。",
-                )
-                resume_by_id = {resume.id: resume for resume in resumes}
-                classifications = list(run_import_agent_stream(resumes, persist=True))
-                total = len(classifications)
-                for index, classification in enumerate(classifications, start=1):
-                    resume = resume_by_id[classification.id]
-                    payload = {
-                        "type": "candidate",
-                        "index": index,
-                        "total": total,
-                        "candidate": {
-                            "id": classification.id,
-                            "name": classification.name,
-                            "role": resume.target_role,
-                            "stage": resume.stage,
-                            "group": "pending",
-                            "category": classification.category,
-                            "level": classification.level,
-                            "confidence": classification.confidence,
-                            "reason": classification.reason,
-                            "education": resume.education,
-                            "directions": resume.directions,
-                            "projects": [project.model_dump() for project in resume.projects],
-                            "publications": resume.publications,
-                            "skills": resume.skills,
-                            "screening_tags": resume.screening_tags,
-                            "raw_text": resume.raw_text,
-                            "source_format": resume.source_format,
-                            "document_analysis": resume.document_analysis,
-                        },
-                    }
-                    yield _sse_payload(payload)
-                yield _sse_event(
-                    "stage",
-                    stage=current_stage,
-                    status="done",
-                    message=f"已完成 {total} 位候选人的初筛分类。",
-                )
-                yield _sse_event("done", total=total, message=f"导入完成，共 {total} 份简历。")
-            except Exception as exc:
-                yield _sse_event(
-                    "error",
-                    stage=current_stage,
-                    message=str(exc),
-                    retryable=current_stage in {"rendering", "vision", "classification"},
-                )
+            yield _sse_event(
+                "done",
+                total=imported_candidates,
+                imported_files=imported_files,
+                failed_files=failed_files,
+                file_total=file_total,
+                message=f"导入完成：{imported_files} 份成功，{failed_files} 份失败，生成 {imported_candidates} 条候选人记录。",
+            )
 
         response = Response(stream_with_context(generate()), mimetype="text/event-stream")
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -265,6 +224,168 @@ def create_app() -> Flask:
         return response
 
     return app
+
+
+def _stream_import_upload(
+    file_id: str,
+    filename: str,
+    file_bytes: bytes,
+    suffix: str,
+    file_index: int,
+    file_total: int,
+):
+    current_stage = "validation"
+    try:
+        if suffix not in VALID_IMPORT_SUFFIXES:
+            raise ValueError("仅支持 .pdf / .jsonl / .md / .txt 文件")
+        if not file_bytes:
+            raise ValueError("文件内容为空")
+        yield _file_event(
+            "stage",
+            file_id,
+            filename,
+            file_index,
+            file_total,
+            stage=current_stage,
+            status="done",
+            message=f"已接收 {filename}，文件校验通过。",
+        )
+        if suffix == ".pdf":
+            if len(file_bytes) > MAX_PDF_BYTES:
+                raise ValueError(f"PDF 超过 {MAX_PDF_BYTES // 1024 // 1024} MB 限制。")
+            current_stage = "rendering"
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="running",
+                message="正在将 PDF 渲染为逐页图像。",
+            )
+            pages = render_pdf_pages(file_bytes)
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="done",
+                message=f"已渲染 {len(pages)} 页 PDF。",
+                page_count=len(pages),
+            )
+            current_stage = "vision"
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="running",
+                message=f"正在调用视觉 MCP 解析 {len(pages)} 页内容和版式。",
+                page_count=len(pages),
+            )
+            resumes = [analyze_resume_pages(pages, filename)]
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="done",
+                message="视觉内容和排版证据已结构化。",
+                page_count=len(pages),
+            )
+        else:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir) / f"upload{suffix}"
+                temp_path.write_bytes(file_bytes)
+                resumes = load_resumes(temp_path)
+        current_stage = "classification"
+        yield _file_event(
+            "stage",
+            file_id,
+            filename,
+            file_index,
+            file_total,
+            stage=current_stage,
+            status="running",
+            message=f"正在对 {len(resumes)} 份简历进行初筛分类。",
+        )
+        resume_by_id = {resume.id: resume for resume in resumes}
+        classifications = list(run_import_agent_stream(resumes, persist=True))
+        candidate_total = len(classifications)
+        for candidate_index, classification in enumerate(classifications, start=1):
+            resume = resume_by_id[classification.id]
+            yield _file_event(
+                "candidate",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                index=candidate_index,
+                total=candidate_total,
+                candidate=_imported_candidate_payload(classification, resume),
+            )
+        yield _file_event(
+            "stage",
+            file_id,
+            filename,
+            file_index,
+            file_total,
+            stage=current_stage,
+            status="done",
+            message=f"已完成 {candidate_total} 位候选人的初筛分类。",
+        )
+    except Exception as exc:
+        if isinstance(exc, ImportFileError):
+            raise
+        raise ImportFileError(current_stage, str(exc)) from exc
+
+
+def _file_event(
+    event_type: str,
+    file_id: str,
+    file_name: str,
+    file_index: int,
+    file_total: int,
+    **payload: Any,
+) -> dict[str, Any]:
+    return {
+        "type": event_type,
+        "file_id": file_id,
+        "file_name": file_name,
+        "file_index": file_index,
+        "file_total": file_total,
+        **payload,
+    }
+
+
+def _imported_candidate_payload(classification, resume: CandidateResume) -> dict[str, Any]:
+    return {
+        "id": classification.id,
+        "name": classification.name,
+        "role": resume.target_role,
+        "stage": resume.stage,
+        "group": "pending",
+        "category": classification.category,
+        "level": classification.level,
+        "confidence": classification.confidence,
+        "reason": classification.reason,
+        "education": resume.education,
+        "directions": resume.directions,
+        "projects": [project.model_dump() for project in resume.projects],
+        "publications": resume.publications,
+        "skills": resume.skills,
+        "screening_tags": resume.screening_tags,
+        "raw_text": resume.raw_text,
+        "source_format": resume.source_format,
+        "document_analysis": resume.document_analysis,
+    }
 
 
 def _orm_to_brief(row) -> dict[str, Any]:

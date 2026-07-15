@@ -56,7 +56,7 @@ let bulkEvaluating = false;
 let bulkEvaluationProgress = null;
 let importController = null;
 let importState = null;
-let lastImportFile = null;
+let lastImportFiles = [];
 
 function showToast(message) {
   els.toast.textContent = message;
@@ -1036,45 +1036,49 @@ async function startEvaluation(candidateId, options = {}) {
 
 function renderImportProgress() {
   if (!importState) return;
-  els.importFileName.textContent = importState.fileName;
+  const completed = window.ImportProgress.completedCount(importState);
+  const total = importState.items.length;
+  els.importFileName.textContent = `批量导入 ${completed}/${total}`;
   els.importState.textContent = window.ImportProgress.statusLabel(importState.status);
   els.importState.className = `import-state is-${importState.status}`;
   els.progressText.textContent = importState.message;
-  els.importStageList.innerHTML = importState.stages.map((stage) => `
-    <div class="import-stage is-${stage.status}">
-      <span class="import-stage-indicator" aria-hidden="true">${stage.status === "done" ? "✓" : stage.status === "error" ? "!" : ""}</span>
-      <span>${escapeHtml(stage.label)}</span>
-      <small>${escapeHtml(window.ImportProgress.statusLabel(stage.status))}</small>
+  els.importStageList.innerHTML = importState.items.map((item) => `
+    <div class="import-file-row is-${item.status}">
+      <div class="import-file-row-head">
+        <span class="import-file-row-name" title="${escapeHtml(item.fileName)}">${escapeHtml(item.candidateName || item.fileName)}</span>
+        <small>${escapeHtml(item.stageLabel)} · ${escapeHtml(window.ImportProgress.statusLabel(item.status))}</small>
+      </div>
+      <div class="import-file-track" role="progressbar" aria-label="${escapeHtml(item.fileName)} 导入进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${item.progress}">
+        <span style="width: ${item.progress}%"></span>
+      </div>
+      <div class="import-file-message">${escapeHtml(item.message)}</div>
     </div>
   `).join("");
   els.importCancel.classList.toggle("hidden", importState.status !== "running");
-  els.importRetry.classList.toggle("hidden", importState.status !== "error");
+  const hasErrors = importState.items.some((item) => item.status === "error");
+  els.importRetry.classList.toggle("hidden", !hasErrors && importState.status !== "error");
   els.importCancel.classList.remove("hidden");
   els.importCancel.textContent = importState.status === "running" ? "取消" : "关闭";
 }
 
-async function handleImportFile(file) {
-  if (!file) return;
-  const suffix = file.name.toLowerCase().split(".").pop();
-  if (!["pdf", "jsonl", "md", "txt"].includes(suffix)) {
-    showToast("仅支持 PDF / JSONL / Markdown / TXT 文件");
-    return;
-  }
-  if (file.size > 20 * 1024 * 1024) {
-    showToast("文件超过 20 MB 限制");
+async function handleImportFiles(files) {
+  const selectedFiles = Array.from(files || []);
+  if (!selectedFiles.length) return;
+  if (selectedFiles.length > 50) {
+    showToast("单次最多导入 50 份简历");
     return;
   }
 
   importController?.abort();
   importController = new AbortController();
-  lastImportFile = file;
-  importState = window.ImportProgress.createState(file);
+  lastImportFiles = selectedFiles;
+  importState = window.ImportProgress.createState(selectedFiles);
   els.importButton.classList.add("is-busy");
   els.progressBox.classList.remove("hidden");
   renderImportProgress();
 
   const formData = new FormData();
-  formData.append("file", file);
+  selectedFiles.forEach((file) => formData.append("files", file));
 
   try {
     const res = await fetch("/api/import-file", {
@@ -1111,9 +1115,7 @@ async function handleImportFile(file) {
           updateLibrary();
           openDrawer("pending");
         } else if (event.type === "done") {
-          showToast("导入完成");
-        } else if (event.type === "error") {
-          throw new Error(event.message || "导入失败");
+          showToast(event.failed_files ? `导入完成，${event.failed_files} 份失败` : `已导入 ${event.total} 份简历`);
         }
       }
     }
@@ -1154,12 +1156,16 @@ els.importCancel.addEventListener("click", () => {
 });
 
 els.importRetry.addEventListener("click", () => {
-  if (lastImportFile) handleImportFile(lastImportFile);
+  const failedFiles = importState?.items
+    .filter((item) => item.status === "error")
+    .map((item) => item.file)
+    .filter(Boolean);
+  handleImportFiles(failedFiles?.length ? failedFiles : lastImportFiles);
 });
 
 els.importInput.addEventListener("change", (e) => {
-  const file = e.target.files?.[0];
-  if (file) handleImportFile(file);
+  const files = Array.from(e.target.files || []);
+  if (files.length) handleImportFiles(files);
   els.importInput.value = "";
 });
 
