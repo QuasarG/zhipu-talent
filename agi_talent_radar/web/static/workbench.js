@@ -405,6 +405,7 @@ function renderResume(candidate) {
         <article class="publication-card">
           <div class="publication-card-head">
             <span class="publication-status is-${publication.status.key}">${escapeHtml(publication.status.label)}</span>
+            ${publication.venueStatus?.key === "missing" ? `<span class="publication-status is-incomplete">${escapeHtml(publication.venueStatus.label)}</span>` : ""}
             ${publication.positionLabel ? `<span class="publication-position">${escapeHtml(publication.positionLabel)}</span>` : ""}
           </div>
           <h4>${escapeHtml(publication.title || publication.raw)}</h4>
@@ -448,10 +449,6 @@ function renderResume(candidate) {
           ${(p.details || []).length ? `<ul>${p.details.map((d) => `<li>${escapeHtml(String(d))}</li>`).join("")}</ul>` : "<p>无细节</p>"}
         </div>
       `).join("")}</div>`
-    : "<p>无</p>";
-
-  const tagsBody = Array.isArray(c.screening_tags) && c.screening_tags.length
-    ? `<div class="signal-row">${c.screening_tags.map((t) => `<span class="signal-pill">${escapeHtml(String(t))}</span>`).join("")}</div>`
     : "<p>无</p>";
 
   const documentAnalysis = c.document_analysis && typeof c.document_analysis === "object"
@@ -499,6 +496,7 @@ function renderResume(candidate) {
         <span>${escapeHtml(formatPotentialLevel(c.level))}</span>
         <span>${escapeHtml(c.category || "—")}</span>
         <span>${escapeHtml((c.source_format || "text").toUpperCase())}</span>
+        ${safeItems(c.screening_tags).slice(0, 2).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
       </div>
       <div class="summary-strip">
         ${summaryCounts.map((item) => `<span><strong>${item.value}</strong>${escapeHtml(item.label)}</span>`).join("")}
@@ -511,7 +509,6 @@ function renderResume(candidate) {
     section("项目经验", projectsBody, "resume-section-projects"),
     section("核心技能", skillChips, "resume-section-skills"),
     section("研究成果", publicationsBody, "resume-section-publications"),
-    section("筛选标签", tagsBody, "resume-section-tags"),
     (c.source_format === "pdf" || Object.keys(qualityDimensions).length)
       ? section("简历表达（低权重）", documentBody, "resume-section-document")
       : "",
@@ -565,28 +562,60 @@ function getAgentPaneHTML(candidate) {
     const assignments = Array.isArray(result.track_assignments) ? result.track_assignments : [];
     const trackEvaluations = Array.isArray(result.track_evaluations) ? result.track_evaluations : [];
     const trackEvaluationByKey = new Map(trackEvaluations.map((item) => [String(item.track || ""), item]));
+    const evidenceButtons = (ids) => (Array.isArray(ids) ? ids : [])
+      .map((id) => evidenceIndexById.get(String(id)))
+      .filter((index) => Number.isInteger(index))
+      .map((index) => {
+        const item = evidence[index];
+        return `<button class="evidence-link evidence-inline" type="button" data-evidence-index="${index}">${escapeHtml(evidenceLabel(item, `证据${index + 1}`))}</button>`;
+      })
+      .join("");
     const trackRows = assignments.map((assignment) => {
       const key = String(assignment.track || "");
       const evaluation = trackEvaluationByKey.get(key) || {};
       const trackScore = typeof evaluation.calibrated_score === "number" ? evaluation.calibrated_score : 0;
       const weight = typeof assignment.weight === "number" ? assignment.weight : 0;
-      const dimensionsText = Array.isArray(evaluation.dimension_scores)
-        ? evaluation.dimension_scores
-            .slice()
-            .sort((a, b) => Number(b.weighted_score || 0) - Number(a.weighted_score || 0))
-            .slice(0, 3)
-            .map((item) => `${item.label || item.key} ${Number(item.score || 0).toFixed(1)}`)
-            .join("、")
-        : "";
-      return `
-        <div class="score-row has-detail">
-          <div class="score-main">
-            <span class="score-label" title="${escapeHtml(key)}">${escapeHtml(key)} · ${(weight * 100).toFixed(0)}%</span>
-            <div class="score-bar"><span style="width: ${clampScore((trackScore / 60) * 100)}%"></span></div>
-            <span class="score-value">${trackScore.toFixed(1)}</span>
+      const trackDimensions = Array.isArray(evaluation.dimension_scores) ? evaluation.dimension_scores : [];
+      const dimensionRows = trackDimensions.map((dimension) => {
+        const rawScore = Number(dimension.score || 0);
+        const weightedScore = Number(dimension.weighted_score || 0);
+        const maxPoints = Number(dimension.max_points || 0);
+        const refs = evidenceButtons(dimension.evidence_ids);
+        return `
+          <div class="track-dimension-row">
+            <div class="track-dimension-head">
+              <strong>${escapeHtml(dimension.label || dimension.key || "未命名维度")}</strong>
+              <span>${rawScore.toFixed(1)} / 5 · ${weightedScore.toFixed(1)} / ${maxPoints.toFixed(0)}</span>
+            </div>
+            <div class="score-bar" aria-hidden="true"><span style="width: ${clampScore((rawScore / 5) * 100)}%"></span></div>
+            <p>${renderEvidenceText(dimension.rationale || "暂无评分理由", evidence)}</p>
+            ${refs ? `<div class="track-evidence-list"><span>证据</span>${refs}</div>` : `<div class="track-evidence-list is-empty"><span>证据</span><em>无直接证据</em></div>`}
           </div>
-          <p class="score-rationale">${escapeHtml(dimensionsText || assignment.rationale || "暂无专业评分")}</p>
-        </div>
+        `;
+      }).join("");
+      const trackRefs = evidenceButtons(evaluation.evidence_ids || assignment.evidence_ids);
+      const trackRisks = [
+        ...(Array.isArray(evaluation.risk_notes) ? evaluation.risk_notes : []),
+        ...(Array.isArray(evaluation.critic_flags) ? evaluation.critic_flags : []),
+      ];
+      return `
+        <details class="track-result" open>
+          <summary class="track-result-summary">
+            <span class="track-result-name">${escapeHtml(evaluation.label || key)}</span>
+            <span class="track-result-weight">路由 ${(weight * 100).toFixed(0)}%</span>
+            <strong>${trackScore.toFixed(1)} / 60</strong>
+          </summary>
+          <div class="track-result-body">
+            <div class="track-contribution">
+              <span>加权贡献</span><strong>${(trackScore * weight).toFixed(1)}</strong>
+              <span>路由置信度</span><strong>${(Number(assignment.confidence || 0) * 100).toFixed(0)}%</strong>
+            </div>
+            <p class="track-route-rationale">${renderEvidenceText(assignment.rationale || "暂无路由说明", evidence)}</p>
+            ${trackRefs ? `<div class="track-evidence-list"><span>Track 证据</span>${trackRefs}</div>` : ""}
+            <div class="track-dimension-list">${dimensionRows || "<p>暂无维度结果</p>"}</div>
+            ${trackRisks.length ? `<div class="track-risk-block"><strong>校准与待验证</strong><ul>${[...new Set(trackRisks)].map((risk) => `<li>${renderEvidenceText(risk, evidence)}</li>`).join("")}</ul></div>` : ""}
+          </div>
+        </details>
       `;
     }).join("");
 
@@ -622,7 +651,7 @@ function getAgentPaneHTML(candidate) {
         <div class="score-band"><span>${overall}</span><span>综合匹配分</span></div>
         <div class="result-section"><h3>人才画像</h3><p>${renderEvidenceText(result.one_liner || "—", evidence)}</p></div>
         ${decision}
-        <div class="result-section"><h3>Track 分布</h3><p>${escapeHtml(scoreBreakdown)}</p><div class="score-list">${trackRows || "<p>暂无 Track 结果</p>"}</div></div>
+        <div class="result-section result-section-tracks"><h3>Track 专业评估</h3><p>${escapeHtml(scoreBreakdown)}</p><div class="track-result-list">${trackRows || "<p>暂无 Track 结果</p>"}</div></div>
         <div class="result-section"><h3>通用潜力评分</h3><div class="score-list">${dimRows}</div></div>
         <div class="result-section"><h3>核心优势</h3>${strengths}</div>
         <div class="result-section"><h3>风险与待验证</h3>${risks}</div>
@@ -781,10 +810,54 @@ function renderNodeFeed(candidateId) {
   if (!feed) return;
 
   feed.innerHTML = "";
+  const appendNode = (container, nodeKey) => {
+    const row = run.nodeRows.get(nodeKey);
+    if (!row) return;
+    const status = row.status || "pending";
+    const rowEl = document.createElement("div");
+    rowEl.className = `node-row is-${status}`;
+    rowEl.dataset.node = nodeKey;
+    rowEl.innerHTML = `
+      <div class="node-icon" aria-hidden="true">${status === "done" ? "✓" : status === "skipped" ? "—" : status === "error" ? "!" : ""}</div>
+      <div class="node-body">
+        <div class="node-title-line">
+          <strong>${escapeHtml(row.label)}</strong>
+          <span class="node-status">${escapeHtml(window.AgentGraph.statusLabel(status))}</span>
+        </div>
+        <small>${escapeHtml(row.message || "等待执行…")}</small>
+      </div>
+    `;
+    container.appendChild(rowEl);
+  };
   STAGES.forEach((stage) => {
     const stageEl = document.createElement("section");
     stageEl.className = `node-stage ${stage.parallel ? "is-parallel" : ""}`;
     stageEl.dataset.stage = stage.key;
+    if (stage.parallel && Array.isArray(stage.lanes)) {
+      stageEl.innerHTML = `
+        <div class="node-stage-head">
+          <strong>${escapeHtml(stage.label)}</strong>
+          <span>${escapeHtml(stage.description)}</span>
+        </div>
+        <div class="parallel-origin"><span>并行启动</span></div>
+        <div class="parallel-lanes"></div>
+      `;
+      const lanes = stageEl.querySelector(".parallel-lanes");
+      stage.lanes.forEach((lane) => {
+        const laneEl = document.createElement("section");
+        laneEl.className = `parallel-lane ${lane.common ? "is-common" : ""}`;
+        laneEl.dataset.lane = lane.key;
+        laneEl.innerHTML = `
+          <div class="parallel-lane-head"><strong>${escapeHtml(lane.label)}</strong><span>${lane.nodes.length > 1 ? "串行链" : "独立 Track"}</span></div>
+          <div class="parallel-lane-nodes"></div>
+        `;
+        const laneNodes = laneEl.querySelector(".parallel-lane-nodes");
+        lane.nodes.forEach((nodeKey) => appendNode(laneNodes, nodeKey));
+        lanes.appendChild(laneEl);
+      });
+      feed.appendChild(stageEl);
+      return;
+    }
     stageEl.innerHTML = `
       <div class="node-stage-head">
         <strong>${escapeHtml(stage.label)}</strong>
@@ -793,25 +866,7 @@ function renderNodeFeed(candidateId) {
       <div class="node-stage-grid"></div>
     `;
     const grid = stageEl.querySelector(".node-stage-grid");
-    stage.nodes.forEach((nodeKey) => {
-      const row = run.nodeRows.get(nodeKey);
-      if (!row) return;
-      const status = row.status || "pending";
-      const rowEl = document.createElement("div");
-      rowEl.className = `node-row is-${status}`;
-      rowEl.dataset.node = nodeKey;
-      rowEl.innerHTML = `
-        <div class="node-icon" aria-hidden="true">${status === "done" ? "✓" : status === "skipped" ? "—" : status === "error" ? "!" : ""}</div>
-        <div class="node-body">
-          <div class="node-title-line">
-            <strong>${escapeHtml(row.label)}</strong>
-            <span class="node-status">${escapeHtml(window.AgentGraph.statusLabel(status))}</span>
-          </div>
-          <small>${escapeHtml(row.message || "等待执行…")}</small>
-        </div>
-      `;
-      grid.appendChild(rowEl);
-    });
+    stage.nodes.forEach((nodeKey) => appendNode(grid, nodeKey));
     feed.appendChild(stageEl);
   });
 

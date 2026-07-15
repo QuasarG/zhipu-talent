@@ -1,5 +1,7 @@
 window.PublicationCards = (() => {
   const SUBMISSION_PATTERN = /在投|投稿中|审稿中|under\s+review|submitted|submission|manuscript|preprint|arxiv/i;
+  const ACCEPTED_PATTERN = /已接收|已录用|录用|待刊|accepted|forthcoming|to\s+appear/i;
+  const PUBLISHED_PATTERN = /已发表|正式发表|published|publication\s+date|proceedings/i;
 
   function analyze(publications, candidateName) {
     const parsed = (Array.isArray(publications) ? publications : [])
@@ -29,6 +31,7 @@ window.PublicationCards = (() => {
       authors: splitAuthors(authorsText),
       venue,
       status: publicationStatus(text),
+      venueStatus: publicationVenueStatus(venue),
     };
   }
 
@@ -44,6 +47,7 @@ window.PublicationCards = (() => {
       authors: splitAuthors(authorsMatch?.[1] || ""),
       venue: [venueMatch?.[1], yearMatch?.[1]].filter(Boolean).join(" · "),
       status: publicationStatus(text),
+      venueStatus: publicationVenueStatus(venueMatch?.[1] || ""),
     };
   }
 
@@ -98,9 +102,18 @@ window.PublicationCards = (() => {
   }
 
   function publicationStatus(text) {
-    return SUBMISSION_PATTERN.test(text)
-      ? { key: "submitted", label: "在投" }
-      : { key: "published", label: "已发表" };
+    if (SUBMISSION_PATTERN.test(text)) return { key: "submitted", label: "在投" };
+    if (ACCEPTED_PATTERN.test(text)) return { key: "accepted", label: "已接收" };
+    if (PUBLISHED_PATTERN.test(text)) return { key: "published", label: "已发表" };
+    return { key: "unknown", label: "状态未注明" };
+  }
+
+  function publicationVenueStatus(venue) {
+    const normalized = String(venue || "").trim();
+    if (!normalized || /^(?:未注明|未知|无|n\/?a|—|-)$/i.test(normalized)) {
+      return { key: "missing", label: "出版信息不完整" };
+    }
+    return { key: "known", label: "出版信息已注明" };
   }
 
   function normalizeAuthor(value) {

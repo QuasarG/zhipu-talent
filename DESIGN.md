@@ -51,7 +51,7 @@
 ## Components
 
 - Existing components to reuse: 顶栏、人才库抽屉、候选人条目、证据 Popover、确认 Dialog、Toast、分数条。
-- New/changed components: 批量导入队列（每份简历一行、真实阶段进度线、单条失败隔离）、实习/工作经历时间线、PDF/结构化 Tab、并行 Agent 阶段图、Track 权重条、Track 详情 Tab、简历表达评估、视觉解析警告。
+- New/changed components: 批量导入队列（每份简历一行、真实阶段进度线、单条失败隔离）、实习/工作经历密集时间线、论文发表/接收/在投/未知/出版信息不完整标记、PDF/结构化 Tab、并行 Agent 泳道图、Track 权重与完整维度证据折叠组、简历表达评估、视觉解析警告。
 - Variants and states: ready, queued, running, done, skipped, warning, error, cancelled, retrying。
 - Token/component ownership: 设计 token 继续存放在 `workbench.css :root`；JavaScript 组件按领域拆分，不引入第二套设计系统。
 
@@ -66,7 +66,7 @@
 ## Responsive behavior
 
 - Supported breakpoints/devices: 1280px 及以上桌面为主；768-1279px 可用；小于 768px 保证基本查看和操作。
-- Layout adaptations: 宽屏三栏；中等宽度折叠人才库；小屏将人才库和 Agent 面板改为独立抽屉。
+- Layout adaptations: 宽屏三栏，右侧 Agent 栏保持 480-560px 以容纳 Track 维度与证据；中栏保持高密度固定网格，顶部概览/基础信息/教育并排，经历独占一行，项目/成果/方向/技能继续并排；中等宽度折叠人才库；小屏将人才库和 Agent 面板改为独立抽屉。
 - Touch/hover differences: 不依赖 hover 才能看到的关键内容；触摸目标最小 40px。
 
 ## Interaction states

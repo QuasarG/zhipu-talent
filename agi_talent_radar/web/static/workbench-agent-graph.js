@@ -36,6 +36,15 @@ window.AgentGraph = (() => {
       label: "并行评估",
       description: "通用潜力与各专业 Track 同步评估",
       parallel: true,
+      lanes: [
+        { key: "common", label: "通用潜力链", nodes: ["common_scorer", "common_critic"], common: true },
+        { key: "base", label: "Base", nodes: ["base_track"] },
+        { key: "agent", label: "Agent", nodes: ["agent_track"] },
+        { key: "safety", label: "Safety", nodes: ["safety_track"] },
+        { key: "multimodal", label: "Multimodal", nodes: ["multimodal_track"] },
+        { key: "systems", label: "Systems", nodes: ["systems_track"] },
+        { key: "ai4science", label: "AI4Science", nodes: ["ai4science_track"] },
+      ],
       nodes: [
         "common_scorer",
         "common_critic",

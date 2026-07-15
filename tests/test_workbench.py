@@ -48,7 +48,11 @@ class WorkbenchTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("inferCandidateKeys", publication_script)
         self.assertIn('label: "已发表"', publication_script)
+        self.assertIn('label: "已接收"', publication_script)
         self.assertIn('label: "在投"', publication_script)
+        self.assertIn('label: "状态未注明"', publication_script)
+        self.assertIn('label: "出版信息不完整"', publication_script)
+        self.assertIn("publicationVenueStatus", publication_script)
         self.assertIn("publication.positionLabel", workbench_script)
         self.assertIn("author.isCandidate", workbench_script)
 
@@ -62,6 +66,8 @@ class WorkbenchTest(unittest.TestCase):
         self.assertIn("experience.details", script)
         self.assertIn(".resume-section-experiences", styles)
         self.assertIn(".experience-item", styles)
+        self.assertIn("grid-template-rows: 150px 240px", styles)
+        self.assertNotIn('section("筛选标签"', script)
 
     def test_drawers_render_with_consistent_toggle_state(self) -> None:
         response = self.app.get("/")
@@ -103,11 +109,24 @@ class WorkbenchTest(unittest.TestCase):
 
     def test_agent_panel_disallows_horizontal_scroll(self) -> None:
         styles = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.css").read_text(encoding="utf-8")
-        self.assertIn(".agent-pane {\n  width: 420px;", styles)
+        self.assertIn(".agent-pane {\n  width: clamp(480px, 36vw, 560px);", styles)
         self.assertIn("overflow-x: hidden;", styles)
         self.assertIn(".agent-content {", styles)
         self.assertIn("word-break: break-word;", styles)
-        self.assertIn("grid-template-columns: minmax(0, 130px) minmax(0, 1fr) 36px;", styles)
+        self.assertIn("grid-template-columns: minmax(0, 160px) minmax(0, 1fr) 42px;", styles)
+
+    def test_track_results_render_all_dimensions_with_evidence(self) -> None:
+        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
+        styles = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.css").read_text(encoding="utf-8")
+
+        self.assertIn('class="track-result" open', script)
+        self.assertIn("trackDimensions.map", script)
+        self.assertIn("dimension.weighted_score", script)
+        self.assertIn("evidenceButtons(dimension.evidence_ids)", script)
+        self.assertIn("track-risk-block", script)
+        self.assertNotIn(".slice(0, 3)", script)
+        self.assertIn(".track-dimension-row", styles)
+        self.assertIn(".track-evidence-list", styles)
 
     def test_agent_node_panel_expands_without_internal_scroll(self) -> None:
         styles = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.css").read_text(encoding="utf-8")
@@ -122,6 +141,9 @@ class WorkbenchTest(unittest.TestCase):
         html = self.app.get("/").get_data(as_text=True)
         self.assertLess(html.index("workbench-agent-graph.js"), html.index("workbench.js"))
         self.assertIn('key: "parallel"', graph_script)
+        self.assertIn('label: "通用潜力链"', graph_script)
+        self.assertIn('label: "AI4Science"', graph_script)
+        self.assertIn("parallel-lanes", (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8"))
         self.assertIn('"common_critic"', graph_script)
         self.assertIn('"base_track"', graph_script)
         self.assertIn('"agent_track"', graph_script)
