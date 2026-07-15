@@ -98,7 +98,7 @@ def run_scorer(state: dict) -> dict:
         {
             "rubric": [item.model_dump() for item in RUBRIC],
             "calibration_reference": CALIBRATION_REFERENCE,
-            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw"}),
+            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw", "experiences_raw"}),
             "evidence": [item.model_dump() for item in evidence],
             "critic_feedback": state.get("critic_flags", []),
             "rescore_instruction": "如果 critic_feedback 非空，请降低证据不足维度分数，并在 risk_notes 中解释。",

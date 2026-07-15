@@ -138,6 +138,7 @@ def _compact_resume(resume: CandidateResume) -> dict:
         "target_role": resume.target_role,
         "stage": resume.stage,
         "directions": resume.directions,
+        "experiences": [experience.model_dump() for experience in resume.experiences],
         "raw_text": resume.raw_text[:2000] if resume.raw_text else "",
         "project_names": [project.name for project in resume.projects],
         "project_details": [detail for project in resume.projects for detail in project.details[:2]],

@@ -10,8 +10,8 @@
 ## Brand
 
 - Personality: 冷静、严谨、研究导向，像面试评审台而不是招聘营销页。
-- Trust signals: 原始证据、页码定位、权重公式、路由理由、风险和不确定性可见。
-- Avoid: 过度营销化、大面积装饰渐变、悬浮页面卡片、只展示总分不展示证据、用学校或公司 Logo 暗示候选人质量。
+- Trust signals: 原始证据、页码定位、权重公式、路由理由、风险和不确定性可见；前端可核验原始学校/机构，评分侧只使用脱敏档位与实际动作证据。
+- Avoid: 过度营销化、大面积装饰渐变、悬浮页面卡片、只展示总分不展示证据、用学校、公司名或 Logo 暗示候选人质量。
 
 ## Product goals
 
@@ -29,7 +29,7 @@
 
 - Primary navigation: 顶栏提供导入和系统状态；左侧人才库；中间简历和原文；右侧 Agent 运行与评估。
 - Core routes/screens: 工作台单页、候选人详情、PDF/结构化双视图、多 Track 结果。
-- Content hierarchy: 结论和当前状态 > Track 权重与分数组成 > 维度和风险 > 原始证据。
+- Content hierarchy: 结论和当前状态 > 实习/工作与项目主线 > Track 权重与分数组成 > 维度和风险 > 原始证据。
 
 ## Design principles
 
@@ -51,7 +51,7 @@
 ## Components
 
 - Existing components to reuse: 顶栏、人才库抽屉、候选人条目、证据 Popover、确认 Dialog、Toast、分数条。
-- New/changed components: 批量导入队列（每份简历一行、真实阶段进度线、单条失败隔离）、PDF/结构化 Tab、并行 Agent 阶段图、Track 权重条、Track 详情 Tab、简历表达评估、视觉解析警告。
+- New/changed components: 批量导入队列（每份简历一行、真实阶段进度线、单条失败隔离）、实习/工作经历时间线、PDF/结构化 Tab、并行 Agent 阶段图、Track 权重条、Track 详情 Tab、简历表达评估、视觉解析警告。
 - Variants and states: ready, queued, running, done, skipped, warning, error, cancelled, retrying。
 - Token/component ownership: 设计 token 继续存放在 `workbench.css :root`；JavaScript 组件按领域拆分，不引入第二套设计系统。
 
@@ -90,6 +90,7 @@
 - Design-token constraints: 复用和扩展现有 CSS 变量；卡片圆角不超过 8px；不使用负 letter-spacing。
 - Performance constraints: PDF 预览和节点流转按需渲染；候选人切换不应重新启动评估或重载已缓存详情。
 - Compatibility constraints: Windows 本地开发，现代 Chromium/Edge 为主，保留 Flask SSE 协议。
+- Privacy constraints: 原始机构名称可在数据库与前端展示；路由、证据抽取、通用潜力、Track 评分和结果组装仅接收机构档位/类型/领域与脱敏经历，不得输出具体机构名。
 - Test/screenshot expectations: 每次节点图、三栏布局或 PDF 视图修改都要通过单元测试、JavaScript 语法检查和桌面/移动 Playwright 截图。
 
 ## Open questions

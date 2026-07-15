@@ -282,7 +282,7 @@ async function loadCandidates() {
 }
 
 function hasCandidateDetails(candidate) {
-  return ["education", "directions", "projects", "publications", "skills", "screening_tags"]
+  return ["education", "directions", "experiences", "projects", "publications", "skills", "screening_tags"]
     .every((key) => Object.prototype.hasOwnProperty.call(candidate, key));
 }
 
@@ -364,6 +364,7 @@ function renderResume(candidate) {
   const summaryCounts = [
     { label: "教育", value: safeItems(c.education).length },
     { label: "方向", value: safeItems(c.directions).length },
+    { label: "经历", value: Array.isArray(c.experiences) ? c.experiences.length : 0 },
     { label: "项目", value: Array.isArray(c.projects) ? c.projects.length : 0 },
     { label: "成果", value: safeItems(c.publications).length },
     { label: "技能", value: safeItems(c.skills).length },
@@ -418,6 +419,27 @@ function renderResume(candidate) {
   const eduBody = miniCards(c.education);
 
   const directionsBody = miniCards(c.directions);
+
+  const experiencesBody = Array.isArray(c.experiences) && c.experiences.length
+    ? `<div class="experience-list">${c.experiences.map((experience) => {
+        const dates = experience.period || [experience.start_date, experience.end_date].filter(Boolean).join(" - ");
+        return `
+          <article class="experience-item">
+            <div class="experience-head">
+              <div>
+                <h4>${escapeHtml(experience.organization || "未标注机构")}</h4>
+                <p>${escapeHtml(experience.role || "未标注岗位")}</p>
+              </div>
+              <div class="experience-meta">
+                ${experience.experience_type ? `<span>${escapeHtml(experience.experience_type)}</span>` : ""}
+                ${dates ? `<time>${escapeHtml(dates)}</time>` : ""}
+              </div>
+            </div>
+            ${(experience.details || []).length ? `<ul>${experience.details.map((detail) => `<li>${escapeHtml(String(detail))}</li>`).join("")}</ul>` : "<p>暂无职责或成果细节</p>"}
+          </article>
+        `;
+      }).join("")}</div>`
+    : "<p>无</p>";
 
   const projectsBody = Array.isArray(c.projects) && c.projects.length
     ? `<div class="item-list">${c.projects.map((p) => `
@@ -484,6 +506,7 @@ function renderResume(candidate) {
     </section>`,
     section("基础信息", basicBody, "resume-section-basic"),
     section("教育背景", eduBody, "resume-section-education"),
+    section("实习 / 工作经历", experiencesBody, "resume-section-experiences"),
     section("研究方向", directionsBody, "resume-section-directions"),
     section("项目经验", projectsBody, "resume-section-projects"),
     section("核心技能", skillChips, "resume-section-skills"),

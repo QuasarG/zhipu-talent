@@ -34,6 +34,7 @@ def save_candidate(
     candidate.raw_text = resume.raw_text or candidate.raw_text
     candidate.education = _json_text(resume.education)
     candidate.directions = _json_text(resume.directions)
+    candidate.experiences = _json_text([experience.model_dump() for experience in resume.experiences])
     candidate.projects = _json_text([project.model_dump() for project in resume.projects])
     candidate.publications = _json_text(resume.publications)
     candidate.skills = _json_text(resume.skills)

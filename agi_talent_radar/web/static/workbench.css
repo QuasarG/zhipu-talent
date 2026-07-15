@@ -538,9 +538,11 @@ button { cursor: pointer; border: none; background: transparent; }
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.08fr) minmax(0, 0.95fr);
-  grid-template-rows: minmax(112px, auto) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 0.95fr);
+  grid-template-rows: 105px 105px 150px minmax(180px, 1fr) minmax(180px, 1fr);
+  grid-auto-rows: minmax(150px, auto);
   gap: 14px;
-  overflow: hidden;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .resume-hero {
@@ -551,8 +553,8 @@ button { cursor: pointer; border: none; background: transparent; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
-  padding: 26px;
+  gap: 10px;
+  padding: 18px;
   border: 1px solid var(--color-primary);
   background: linear-gradient(135deg, #FFFFFF 0%, #F4F6F8 100%);
   box-shadow: var(--shadow-soft);
@@ -562,7 +564,7 @@ button { cursor: pointer; border: none; background: transparent; }
 .resume-hero h2 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 34px;
+  font-size: 28px;
   font-weight: 400;
   line-height: 1.05;
   color: var(--color-primary);
@@ -598,7 +600,7 @@ button { cursor: pointer; border: none; background: transparent; }
 .summary-strip {
   width: min(100%, 460px);
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   border: 1px solid var(--color-border);
   background: transparent;
 }
@@ -656,27 +658,32 @@ button { cursor: pointer; border: none; background: transparent; }
 
 .resume-section-projects {
   grid-column: 1 / 3;
-  grid-row: 3 / 5;
+  grid-row: 4 / 6;
 }
 
 .resume-section-directions {
   grid-column: 3 / 4;
-  grid-row: 3 / 4;
+  grid-row: 4 / 5;
 }
 
 .resume-section-publications {
   grid-column: 4 / 5;
-  grid-row: 3 / 5;
+  grid-row: 4 / 6;
 }
 
 .resume-section-skills {
   grid-column: 3 / 4;
-  grid-row: 4 / 5;
+  grid-row: 5 / 6;
+}
+
+.resume-section-experiences {
+  grid-column: 1 / 5;
+  grid-row: 3 / 4;
 }
 
 .resume-section-document {
   grid-column: 1 / 5;
-  grid-row: 5 / 6;
+  grid-row: 6 / 7;
 }
 
 .document-quality-head {
@@ -796,6 +803,53 @@ button { cursor: pointer; border: none; background: transparent; }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 10px;
+}
+
+.experience-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.experience-item {
+  min-width: 0;
+  padding: 0 0 0 12px;
+  border-left: 3px solid var(--color-primary);
+}
+
+.experience-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+
+.experience-head h4 {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 12px;
+}
+
+.experience-head p {
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.experience-meta {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  color: var(--accent-ink);
+  font-size: 9px;
+}
+
+.experience-meta span {
+  padding: 1px 5px;
+  border: 1px solid var(--color-border);
+  background: var(--color-muted);
 }
 
 .item-block,
@@ -1708,6 +1762,7 @@ body.is-loading .evaluate-button { pointer-events: none; opacity: 0.6; }
   .resume-section-basic,
   .resume-section-tags,
   .resume-section-education,
+  .resume-section-experiences,
   .resume-section-projects,
   .resume-section-directions,
   .resume-section-publications,
@@ -1717,7 +1772,8 @@ body.is-loading .evaluate-button { pointer-events: none; opacity: 0.6; }
     grid-row: auto;
   }
   .resume-hero,
-  .resume-section-projects {
+  .resume-section-projects,
+  .resume-section-experiences {
     grid-column: 1 / -1;
   }
   .resume-section-document {
@@ -1740,7 +1796,7 @@ body.is-loading .evaluate-button { pointer-events: none; opacity: 0.6; }
 @media (max-width: 720px) {
   .resume-content {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(140px, auto) repeat(7, minmax(0, 1fr));
+    grid-template-rows: minmax(140px, auto) repeat(8, minmax(0, 1fr));
   }
   .resume-hero {
     align-items: flex-start;
@@ -1754,6 +1810,6 @@ body.is-loading .evaluate-button { pointer-events: none; opacity: 0.6; }
     justify-content: flex-start;
   }
   .summary-strip {
-    grid-template-columns: repeat(5, minmax(42px, 1fr));
+    grid-template-columns: repeat(3, minmax(42px, 1fr));
   }
 }

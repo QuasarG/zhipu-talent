@@ -99,7 +99,7 @@ def run_formatter(state: dict) -> dict:
     response = llm_client.call_llm_json(
         FORMATTER_PROMPT,
         {
-            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw"}),
+            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw", "experiences_raw"}),
             "evidence": [item.model_dump() for item in evidence],
             "common_scores": [item.model_dump() for item in common_scores],
             "track_assignments": [item.model_dump() for item in assignments],

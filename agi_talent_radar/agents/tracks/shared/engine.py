@@ -28,6 +28,7 @@ TRACK_SCORER_PROMPT = """
 2. 正式发表的高水平同行评议成果是有效外部验证；不得与仅有论文标题的拟投成果等同。
 3. 项目负责人 + 具体技术方法 + 可核验成果可构成高分组合证据，不强求它们出现在同一条 evidence 中。
 4. 同一个「缺少量化指标/贡献细节」不得在多个维度重复扣分；将它放在最相关维度的 risk_notes 中。
+5. 实习/工作经历中的具体方法、系统、指标和产物与项目证据同等有效；但机构档位、机构类型、岗位名或时长本身不得加分。
 
 每项必须输出 key, label, score, rationale, evidence_ids, risk_notes。
 rationale 必须引用存在的 evidence id。没有证据时 score 必须为 0，不要硬凑。
@@ -63,7 +64,7 @@ def run_track_chain(
         {
             "track": spec.as_prompt_dict(),
             "assignment": assignment.model_dump(),
-            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw"}),
+            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw", "experiences_raw"}),
             "evidence": [item.model_dump() for item in selected],
         },
         temperature=0.1,

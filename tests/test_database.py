@@ -130,7 +130,9 @@ class DatabaseTest(unittest.TestCase):
 
             ensure_schema(engine)
             columns = {column["name"] for column in inspect(engine).get_columns("evaluations")}
+            candidate_columns = {column["name"] for column in inspect(engine).get_columns("candidates")}
             self.assertFalse({"dimension_scores", "evidence", "track_assignments", "track_evaluations"} & columns)
+            self.assertIn("experiences", candidate_columns)
             Session = sessionmaker(bind=engine)
             with Session() as session:
                 self.assertEqual(_count(session, EvaluationEvidenceORM), 1)

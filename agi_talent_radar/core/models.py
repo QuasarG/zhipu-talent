@@ -47,6 +47,65 @@ class ResumeProject(BaseModel):
         return _text_items(value)
 
 
+class ResumeExperience(BaseModel):
+    organization: str = ""
+    role: str = ""
+    experience_type: str = ""
+    start_date: str = ""
+    end_date: str = ""
+    period: str = ""
+    details: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_visual_experience(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return {"organization": value, "details": []}
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        details = data.get("details")
+        if details is None:
+            details = [
+                data.get(key)
+                for key in (
+                    "description",
+                    "responsibilities",
+                    "responsibility",
+                    "achievements",
+                    "achievement",
+                    "results",
+                    "result",
+                    "projects",
+                    "tech_stack",
+                )
+                if data.get(key) not in (None, "", [], {})
+            ]
+        return {
+            "organization": _structured_text(
+                data.get("organization")
+                or data.get("company")
+                or data.get("employer")
+                or data.get("institution")
+                or data.get("lab")
+                or ""
+            ),
+            "role": _structured_text(data.get("role") or data.get("position") or data.get("title") or ""),
+            "experience_type": _structured_text(
+                data.get("experience_type") or data.get("employment_type") or data.get("type") or ""
+            ),
+            "start_date": _structured_text(data.get("start_date") or data.get("start") or ""),
+            "end_date": _structured_text(data.get("end_date") or data.get("end") or ""),
+            "period": _structured_text(data.get("period") or data.get("duration") or ""),
+            "details": _text_items(details),
+        }
+
+    @field_validator("details", mode="before")
+    @classmethod
+    def normalize_details(cls, value: Any) -> list[str]:
+        return _text_items(value)
+
+
 class CandidateResume(BaseModel):
     id: str
     name: str = ""
@@ -54,6 +113,7 @@ class CandidateResume(BaseModel):
     stage: str = ""
     education: list[str] = Field(default_factory=list)
     directions: list[str] = Field(default_factory=list)
+    experiences: list[ResumeExperience] = Field(default_factory=list)
     projects: list[ResumeProject] = Field(default_factory=list)
     publications: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
@@ -61,6 +121,23 @@ class CandidateResume(BaseModel):
     raw_text: str = ""
     source_format: str = "text"
     document_analysis: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_experience_aliases(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or value.get("experiences") is not None:
+            return value
+        data = dict(value)
+        aliases = ("work_experience", "work_experiences", "internships", "employment", "employment_history")
+        combined: list[Any] = []
+        for key in aliases:
+            item = data.get(key)
+            if isinstance(item, list):
+                combined.extend(item)
+            elif item not in (None, ""):
+                combined.append(item)
+        data["experiences"] = combined
+        return data
 
     @field_validator(
         "education",
@@ -78,6 +155,9 @@ class CandidateResume(BaseModel):
 _FIELD_LABELS = {
     "school": "学校",
     "institution": "机构",
+    "organization": "机构",
+    "company": "公司",
+    "employer": "单位",
     "degree": "学位",
     "major": "专业",
     "department": "院系",
@@ -94,6 +174,9 @@ _FIELD_LABELS = {
     "status": "状态",
     "description": "描述",
     "role": "角色",
+    "position": "岗位",
+    "experience_type": "经历类型",
+    "employment_type": "用工类型",
     "result": "结果",
     "results": "结果",
     "tech_stack": "技术栈",
@@ -136,6 +219,14 @@ class BackgroundSignalTiers(BaseModel):
     rationale: str = ""
 
 
+class OrganizationSignalTier(BaseModel):
+    index: int = Field(ge=0)
+    organization_tier: str = "unknown"
+    organization_type: str = "unknown"
+    sector: str = "other_or_unknown"
+    rationale: str = ""
+
+
 class NormalizedResume(BaseModel):
     id: str
     name: str
@@ -145,6 +236,9 @@ class NormalizedResume(BaseModel):
     education_blind: list[str] = Field(default_factory=list)
     background_signal_tiers: BackgroundSignalTiers = Field(default_factory=BackgroundSignalTiers)
     directions: list[str] = Field(default_factory=list)
+    experiences_raw: list[ResumeExperience] = Field(default_factory=list)
+    experiences_blind: list[ResumeExperience] = Field(default_factory=list)
+    organization_signal_tiers: list[OrganizationSignalTier] = Field(default_factory=list)
     projects: list[ResumeProject] = Field(default_factory=list)
     publications: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)

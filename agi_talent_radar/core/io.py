@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume, ResumeProject
+from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume, ResumeExperience, ResumeProject
 
 
 def load_resumes(path: str | Path) -> list[CandidateResume]:
@@ -46,6 +46,7 @@ def _load_markdown(path: Path) -> list[CandidateResume]:
         education = _list_after_heading(chunk, r"\*\*教育背景\*\*：")
         directions_text = _first_group(chunk, r"\*\*研究方向\*\*：(.+)")
         directions = _split_terms(directions_text)
+        experiences = _experiences_from_markdown(chunk)
         projects = _projects_from_markdown(chunk)
         publications = _list_after_heading(chunk, r"\*\*代表成果\*\*：")
         skills_text = _first_group(chunk, r"\*\*技能关键词\*\*：(.+)")
@@ -57,6 +58,7 @@ def _load_markdown(path: Path) -> list[CandidateResume]:
                 stage=stage,
                 education=education,
                 directions=directions,
+                experiences=experiences,
                 projects=projects,
                 publications=publications,
                 skills=_split_terms(skills_text),
@@ -95,7 +97,7 @@ def _list_after_heading(text: str, heading_pattern: str) -> list[str]:
 
 
 def _projects_from_markdown(text: str) -> list[ResumeProject]:
-    section_match = re.search(r"\*\*(?:科研|项目|实习)经历\*\*：(?P<body>.*?)(?:\n\*\*代表成果|\n##|\Z)", text, re.S)
+    section_match = re.search(r"\*\*(?:科研|项目)经历\*\*：(?P<body>.*?)(?:\n\*\*|\n##|\Z)", text, re.S)
     if not section_match:
         return []
     body = section_match.group("body")
@@ -109,6 +111,32 @@ def _projects_from_markdown(text: str) -> list[ResumeProject]:
         if name:
             projects.append(ResumeProject(name=name, details=[detail] if detail else []))
     return projects
+
+
+def _experiences_from_markdown(text: str) -> list[ResumeExperience]:
+    section_match = re.search(
+        r"\*\*(?:实习|工作|实习\s*/\s*工作)经历\*\*：(?P<body>.*?)(?:\n\*\*|\n##|\Z)",
+        text,
+        re.S,
+    )
+    if not section_match:
+        return []
+    experiences: list[ResumeExperience] = []
+    for line in section_match.group("body").splitlines():
+        line = line.strip()
+        if not line.startswith("-"):
+            continue
+        organization = _first_group(line, r"\*\*(.+?)\*\*")
+        detail = re.sub(r"^\s*-\s*\*\*.+?\*\*：?", "", line).strip()
+        if organization:
+            experiences.append(
+                ResumeExperience(
+                    organization=organization,
+                    experience_type="实习/工作",
+                    details=[detail] if detail else [],
+                )
+            )
+    return experiences
 
 
 def save_json(path: str | Path, payload: Any) -> None:

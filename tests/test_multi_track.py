@@ -210,6 +210,15 @@ class MultiTrackTest(unittest.TestCase):
                         "advisor": "导师 A",
                     }
                 ],
+                "work_experience": [
+                    {
+                        "company": "某 AI 公司",
+                        "position": "Agent 研发实习生",
+                        "start": "2025.01",
+                        "end": "2025.06",
+                        "responsibilities": ["构建自动验证闭环"],
+                    }
+                ],
                 "publications": [
                     {
                         "authors": ["Yichen Li", "Author B"],
@@ -230,6 +239,9 @@ class MultiTrackTest(unittest.TestCase):
 
         self.assertIn("学校: 南方科技大学", resume.education[0])
         self.assertIn("导师: 导师 A", resume.education[0])
+        self.assertEqual(resume.experiences[0].organization, "某 AI 公司")
+        self.assertEqual(resume.experiences[0].role, "Agent 研发实习生")
+        self.assertEqual(resume.experiences[0].details, ["构建自动验证闭环"])
         self.assertIn("题目: A Reliable Agent System", resume.publications[0])
         self.assertIn("作者: Yichen Li、Author B", resume.publications[0])
         self.assertEqual(resume.projects[0].name, "Coding Agent")

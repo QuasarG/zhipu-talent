@@ -60,7 +60,7 @@ def run_critic(state: dict) -> dict:
     response = llm_client.call_llm_json(
         CRITIC_PROMPT,
         {
-            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw"}),
+            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw", "experiences_raw"}),
             "evidence": [item.model_dump() for item in evidence],
             "dimension_scores": [item.model_dump() for item in scores],
             "hard_integrity_flags": integrity_flags,

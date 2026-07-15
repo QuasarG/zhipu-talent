@@ -5,7 +5,14 @@ import re
 from pydantic import BaseModel, Field
 
 from agi_talent_radar.core import llm_client
-from agi_talent_radar.core.models import BackgroundSignalTiers, CandidateResume, NormalizedResume
+from agi_talent_radar.core.models import (
+    BackgroundSignalTiers,
+    CandidateResume,
+    NormalizedResume,
+    OrganizationSignalTier,
+    ResumeExperience,
+    ResumeProject,
+)
 
 
 TIER_DEFINITIONS = {
@@ -46,10 +53,43 @@ TIER_DEFINITIONS = {
     },
 }
 
+ORGANIZATION_TIER_DEFINITIONS = {
+    "organization_tier": {
+        "large_scale": "成熟大型组织，仅表示协作和工程环境规模。",
+        "established": "成熟专业组织或稳定研发团队。",
+        "growth_stage": "成长阶段技术组织。",
+        "early_stage": "早期或小型团队。",
+        "academic_or_nonprofit": "学术、研究或非营利组织。",
+        "public_sector": "政府、事业或公共部门。",
+        "unknown": "缺少足够信息。",
+    },
+    "organization_type": {
+        "technology_company": "技术企业",
+        "industry_company": "行业企业",
+        "startup": "初创团队",
+        "research_institute": "研究机构",
+        "university_lab": "高校实验室",
+        "public_or_nonprofit": "公共或非营利组织",
+        "unknown": "未知",
+    },
+    "sector": {
+        "foundation_model_ai": "基础模型与 AI",
+        "semiconductors_systems": "半导体与计算系统",
+        "internet_software": "互联网与软件",
+        "enterprise_software": "企业软件",
+        "automotive_robotics": "汽车与机器人",
+        "finance": "金融",
+        "healthcare_lifescience": "医疗与生命科学",
+        "security": "安全",
+        "research_education": "科研与教育",
+        "other_or_unknown": "其他或未知",
+    },
+}
+
 
 NORMALIZER_PROMPT = """
 你是 AI 人才潜力初评系统里的【背景信号标准化 Agent】。
-只输出 JSON 对象，字段必须是 background_signal_tiers 和 education_notes。
+只输出 JSON 对象，字段必须是 background_signal_tiers、education_notes 和 organization_signals。
 
 任务：
 把教育背景中的具体学校、GPA、排名等细节折叠成低权重档位，避免后续节点直接依赖具体学校名或精确成绩。
@@ -68,6 +108,8 @@ NORMALIZER_PROMPT = """
 3. school_tier 只代表背景训练质量信号，不代表能力结论。
 4. academic_signal_tier 综合 school_tier、gpa_tier、rank_tier、degree_tier，但不能压过项目证据。
 5. education_notes 用 1-3 条短句说明分级结果，不出现具体学校名、GPA 数值、排名数值。
+6. 对每条实习/工作经历按 index 输出 organization_tier、organization_type 和 sector，只能使用 allowed_organization_tiers 的枚举。
+7. organization_signals.rationale 不得出现机构全称、简称、品牌、产品或 Logo；机构档位只是低权重环境信号，不是候选人能力结论。
 
 输出示例：
 {
@@ -82,6 +124,9 @@ NORMALIZER_PROMPT = """
   "education_notes": [
     "学校背景折叠为强研究型院校信号。",
     "学业表现折叠为前列档位，后续仅低权重参考。"
+  ],
+  "organization_signals": [
+    {"index": 0, "organization_tier": "large_scale", "organization_type": "technology_company", "sector": "semiconductors_systems", "rationale": "成熟大型技术组织环境，仅用于理解工作约束。"}
   ]
 }
 """.strip()
@@ -90,27 +135,34 @@ NORMALIZER_PROMPT = """
 class NormalizerOutput(BaseModel):
     background_signal_tiers: BackgroundSignalTiers
     education_notes: list[str] = Field(default_factory=list)
+    organization_signals: list[OrganizationSignalTier] = Field(default_factory=list)
 
 
 def run_normalizer(state: dict) -> dict:
     resume = CandidateResume.model_validate(state["resume"])
     rule_tiers = _infer_background_tiers(resume.education)
-    adjudicated = _adjudicate_background_tiers(resume, rule_tiers)
+    rule_organizations = _infer_organization_signals(resume.experiences)
+    adjudicated = _adjudicate_background_tiers(resume, rule_tiers, rule_organizations)
     education_blind = _blind_education(resume.education, adjudicated.background_signal_tiers, adjudicated.education_notes)
+    experiences_blind = _blind_experiences(resume.experiences, adjudicated.organization_signals)
+    scoring_resume = _redact_resume_organization_references(resume)
     normalized = NormalizedResume(
         id=resume.id,
         name=resume.name,
-        target_role=resume.target_role,
+        target_role=scoring_resume.target_role,
         stage=resume.stage,
         education_raw=resume.education,
         education_blind=education_blind,
         background_signal_tiers=adjudicated.background_signal_tiers,
-        directions=resume.directions,
-        projects=resume.projects,
-        publications=resume.publications,
-        skills=resume.skills,
-        screening_tags=resume.screening_tags,
-        raw_text=_resume_to_text(resume, education_blind),
+        directions=scoring_resume.directions,
+        experiences_raw=resume.experiences,
+        experiences_blind=experiences_blind,
+        organization_signal_tiers=adjudicated.organization_signals,
+        projects=scoring_resume.projects,
+        publications=scoring_resume.publications,
+        skills=scoring_resume.skills,
+        screening_tags=scoring_resume.screening_tags,
+        raw_text=_resume_to_text(scoring_resume, education_blind, experiences_blind),
     )
     return {
         **state,
@@ -119,14 +171,21 @@ def run_normalizer(state: dict) -> dict:
     }
 
 
-def _adjudicate_background_tiers(resume: CandidateResume, rule_tiers: BackgroundSignalTiers) -> NormalizerOutput:
+def _adjudicate_background_tiers(
+    resume: CandidateResume,
+    rule_tiers: BackgroundSignalTiers,
+    rule_organizations: list[OrganizationSignalTier],
+) -> NormalizerOutput:
     try:
         response = llm_client.call_llm_json(
             NORMALIZER_PROMPT,
             {
                 "allowed_tiers": TIER_DEFINITIONS,
+                "allowed_organization_tiers": ORGANIZATION_TIER_DEFINITIONS,
                 "rule_guess": rule_tiers.model_dump(),
+                "organization_rule_guess": [item.model_dump() for item in rule_organizations],
                 "education_raw": resume.education,
+                "experiences_raw": [item.model_dump() for item in resume.experiences],
                 "target_role": resume.target_role,
                 "stage": resume.stage,
             },
@@ -135,11 +194,16 @@ def _adjudicate_background_tiers(resume: CandidateResume, rule_tiers: Background
         output = NormalizerOutput.model_validate(response)
         output.background_signal_tiers = _sanitize_tiers(output.background_signal_tiers, rule_tiers)
         output.education_notes = _sanitize_notes(output.education_notes)
+        output.organization_signals = _sanitize_organization_signals(
+            output.organization_signals,
+            rule_organizations,
+        )
         return output
     except Exception:
         return NormalizerOutput(
             background_signal_tiers=rule_tiers,
             education_notes=["背景信号由规则分级折叠，后续仅低权重参考。"],
+            organization_signals=rule_organizations,
         )
 
 
@@ -156,6 +220,137 @@ def _sanitize_tiers(tiers: BackgroundSignalTiers, fallback: BackgroundSignalTier
 def _sanitize_notes(notes: list[str]) -> list[str]:
     clean = [_strip_sensitive_academic_detail(str(item)) for item in notes if str(item).strip()]
     return clean[:3] or ["背景信号已折叠为分级档位，后续仅低权重参考。"]
+
+
+def _infer_organization_signals(experiences: list[ResumeExperience]) -> list[OrganizationSignalTier]:
+    return [_infer_organization_signal(index, experience) for index, experience in enumerate(experiences)]
+
+
+def _infer_organization_signal(index: int, experience: ResumeExperience) -> OrganizationSignalTier:
+    text = " ".join(
+        [experience.organization, experience.role, experience.experience_type, *experience.details]
+    ).lower()
+    if any(token in text for token in ("大学", "university", "实验室", "laboratory", "lab")):
+        tier, organization_type = "academic_or_nonprofit", "university_lab"
+    elif any(token in text for token in ("研究院", "研究所", "institute", "research center")):
+        tier, organization_type = "academic_or_nonprofit", "research_institute"
+    elif any(token in text for token in ("政府", "委员会", "事业单位", "government", "nonprofit")):
+        tier, organization_type = "public_sector", "public_or_nonprofit"
+    elif any(token in text for token in ("初创", "startup", "创业团队")):
+        tier, organization_type = "early_stage", "startup"
+    elif any(token in text for token in ("集团", "股份", "corporation", "company", " inc", "科技")):
+        tier, organization_type = "established", "technology_company"
+    else:
+        tier, organization_type = "unknown", "unknown"
+    sector = _organization_sector(text)
+    return OrganizationSignalTier(
+        index=index,
+        organization_tier=tier,
+        organization_type=organization_type,
+        sector=sector,
+        rationale="机构名称已折叠为低权重环境信号。",
+    )
+
+
+def _organization_sector(text: str) -> str:
+    rules = (
+        (("大模型", "基础模型", "llm", "artificial intelligence"), "foundation_model_ai"),
+        (("芯片", "半导体", "gpu", "cuda", "compiler"), "semiconductors_systems"),
+        (("安全", "security", "fuzz", "漏洞"), "security"),
+        (("医疗", "生物", "药物", "health", "bio"), "healthcare_lifescience"),
+        (("汽车", "机器人", "robot", "autonomous driving"), "automotive_robotics"),
+        (("金融", "银行", "finance"), "finance"),
+        (("大学", "研究院", "实验室", "university", "institute"), "research_education"),
+        (("企业软件", "saas", "enterprise"), "enterprise_software"),
+        (("互联网", "软件", "software", "internet"), "internet_software"),
+    )
+    for keywords, sector in rules:
+        if any(keyword in text for keyword in keywords):
+            return sector
+    return "other_or_unknown"
+
+
+def _sanitize_organization_signals(
+    signals: list[OrganizationSignalTier],
+    fallback: list[OrganizationSignalTier],
+) -> list[OrganizationSignalTier]:
+    by_index = {item.index: item for item in signals}
+    result: list[OrganizationSignalTier] = []
+    for default in fallback:
+        item = by_index.get(default.index, default)
+        data = item.model_dump()
+        for key, allowed in ORGANIZATION_TIER_DEFINITIONS.items():
+            if data.get(key) not in allowed:
+                data[key] = getattr(default, key)
+        data["index"] = default.index
+        data["rationale"] = "机构名称已折叠为低权重环境信号，不直接参与能力加分。"
+        result.append(OrganizationSignalTier.model_validate(data))
+    return result
+
+
+def _blind_experiences(
+    experiences: list[ResumeExperience],
+    signals: list[OrganizationSignalTier],
+) -> list[ResumeExperience]:
+    by_index = {item.index: item for item in signals}
+    result: list[ResumeExperience] = []
+    for index, experience in enumerate(experiences):
+        signal = by_index.get(index, _infer_organization_signal(index, experience))
+        organization = (
+            f"机构规模={signal.organization_tier}；"
+            f"机构类型={signal.organization_type}；"
+            f"所属领域={signal.sector}；具体名称已脱敏"
+        )
+        result.append(
+            experience.model_copy(
+                update={
+                    "organization": organization,
+                    "role": _redact_organization(experience.role, experience.organization),
+                    "experience_type": _redact_organization(experience.experience_type, experience.organization),
+                    "details": [
+                        _redact_organization(detail, experience.organization)
+                        for detail in experience.details
+                    ],
+                }
+            )
+        )
+    return result
+
+
+def _redact_organization(text: str, organization: str) -> str:
+    if not text or not organization:
+        return text
+    return re.sub(re.escape(organization), "[机构名称已脱敏]", text, flags=re.I)
+
+
+def _redact_resume_organization_references(resume: CandidateResume) -> CandidateResume:
+    organizations = [item.organization for item in resume.experiences if item.organization]
+    if not organizations:
+        return resume
+
+    def redact(text: str) -> str:
+        result = text
+        for organization in organizations:
+            result = _redact_organization(result, organization)
+        return result
+
+    projects = [
+        ResumeProject(
+            name=redact(project.name),
+            details=[redact(detail) for detail in project.details],
+        )
+        for project in resume.projects
+    ]
+    return resume.model_copy(
+        update={
+            "target_role": redact(resume.target_role),
+            "directions": [redact(item) for item in resume.directions],
+            "projects": projects,
+            "publications": [redact(item) for item in resume.publications],
+            "skills": [redact(item) for item in resume.skills],
+            "screening_tags": [redact(item) for item in resume.screening_tags],
+        }
+    )
 
 
 def _infer_background_tiers(education: list[str]) -> BackgroundSignalTiers:
@@ -346,7 +541,11 @@ def _tier_label(key: str, value: str) -> str:
     return labels.get(key, {}).get(value, value)
 
 
-def _resume_to_text(resume: CandidateResume, education_blind: list[str]) -> str:
+def _resume_to_text(
+    resume: CandidateResume,
+    education_blind: list[str],
+    experiences_blind: list[ResumeExperience],
+) -> str:
     sections: list[str] = [
         resume.id,
         resume.name,
@@ -355,6 +554,18 @@ def _resume_to_text(resume: CandidateResume, education_blind: list[str]) -> str:
         " ".join(education_blind),
         " ".join(resume.directions),
     ]
+    for experience in experiences_blind:
+        sections.extend(
+            [
+                experience.organization,
+                experience.role,
+                experience.experience_type,
+                experience.period,
+                experience.start_date,
+                experience.end_date,
+                *experience.details,
+            ]
+        )
     for project in resume.projects:
         sections.append(project.name)
         sections.extend(project.details)

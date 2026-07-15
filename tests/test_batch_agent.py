@@ -9,6 +9,7 @@ from agi_talent_radar.agents.normalizer import run_normalizer
 from agi_talent_radar.agents.critic import route_after_critic, run_critic
 from agi_talent_radar.agents.evidence_integrity import is_quote_traceable
 from agi_talent_radar.core.io import load_resumes
+from agi_talent_radar.core.models import CandidateResume, ResumeExperience, ResumeProject
 from agi_talent_radar.core.runner import run_batch, run_candidate
 from tests.llm_fixtures import mock_deepseek_json
 from tests.resume_fixtures import make_resume_fixtures
@@ -55,6 +56,55 @@ class BatchAgentTest(unittest.TestCase):
         self.assertNotIn("985", folded)
         self.assertNotIn("3.82", folded)
         self.assertIn("background_signal_tiers", normalized)
+
+    def test_normalizer_redacts_organization_names_before_scoring(self) -> None:
+        resume = CandidateResume(
+            id="private_org",
+            name="脱敏候选人",
+            experiences=[
+                ResumeExperience(
+                    organization="NVIDIA",
+                    role="GPU 系统研发实习生",
+                    experience_type="实习",
+                    period="2025.01 - 2025.06",
+                    details=["负责 NVIDIA CUDA 推理算子优化，延迟降低 20%"],
+                )
+            ],
+            projects=[ResumeProject(name="NVIDIA 推理优化", details=["维护 NVIDIA 内部评测"])],
+            publications=["NVIDIA 实习技术报告"],
+        )
+        response = {
+            "background_signal_tiers": {
+                "school_tier": "not_provided",
+                "gpa_tier": "not_provided",
+                "rank_tier": "not_provided",
+                "degree_tier": "mixed_or_unclear",
+                "academic_signal_tier": "weak_or_unknown",
+                "rationale": "无教育信号。",
+            },
+            "education_notes": [],
+            "organization_signals": [
+                {
+                    "index": 0,
+                    "organization_tier": "large_scale",
+                    "organization_type": "technology_company",
+                    "sector": "semiconductors_systems",
+                    "rationale": "大型技术组织。",
+                }
+            ],
+        }
+
+        with patch("agi_talent_radar.agents.normalizer.llm_client.call_llm_json", return_value=response):
+            normalized = run_normalizer({"resume": resume.model_dump()})["normalized"]
+
+        self.assertEqual(normalized["experiences_raw"][0]["organization"], "NVIDIA")
+        blind_text = str(normalized["experiences_blind"])
+        self.assertNotIn("NVIDIA", blind_text)
+        self.assertNotIn("NVIDIA", normalized["raw_text"])
+        self.assertNotIn("NVIDIA", str(normalized["projects"]))
+        self.assertNotIn("NVIDIA", str(normalized["publications"]))
+        self.assertIn("具体名称已脱敏", normalized["experiences_blind"][0]["organization"])
+        self.assertEqual(normalized["organization_signal_tiers"][0]["organization_tier"], "large_scale")
 
     def test_batch_result_is_sorted_and_tiered(self) -> None:
         resumes = make_resume_fixtures()

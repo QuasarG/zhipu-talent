@@ -21,6 +21,7 @@ COMMON_SCORER_PROMPT = """
 rationale 必须引用存在的 evidence id；没有证据时给 0 分。
 同一维度在不同 Track 的表现形式可以不同，但判断标准必须基于候选人的实际动作与可验证证据。
 多个独立项目中持续担任负责人、连续产出同一研究主线的高质量成果、从传统方法迁移到新范式，分别是 ownership、成长轨迹和学习迁移的高分证据。不要因简历没有展开每篇论文的消融表就将所有相关维度压到 3 分。
+实习/工作经历可支撑通用潜力，但只评价其中的问题定义、本人动作、验证闭环、ownership 和成长迁移。脱敏机构档位、机构类型、岗位名和时长均不得直接加分。
 """.strip()
 
 
@@ -40,7 +41,7 @@ def run_common_scorer(state: dict[str, Any]) -> dict[str, Any]:
                 for item in COMMON_RUBRIC
             ],
             "track_assignments": state.get("track_assignments", []),
-            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw"}),
+            "resume_brief": normalized.model_dump(exclude={"raw_text", "education_raw", "experiences_raw"}),
             "evidence": [item.model_dump() for item in evidence],
         },
         temperature=0.1,

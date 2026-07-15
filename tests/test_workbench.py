@@ -52,6 +52,17 @@ class WorkbenchTest(unittest.TestCase):
         self.assertIn("publication.positionLabel", workbench_script)
         self.assertIn("author.isCandidate", workbench_script)
 
+    def test_resume_panel_renders_structured_work_experiences(self) -> None:
+        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
+        styles = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.css").read_text(encoding="utf-8")
+
+        self.assertIn('section("实习 / 工作经历", experiencesBody', script)
+        self.assertIn("experience.organization", script)
+        self.assertIn("experience.role", script)
+        self.assertIn("experience.details", script)
+        self.assertIn(".resume-section-experiences", styles)
+        self.assertIn(".experience-item", styles)
+
     def test_drawers_render_with_consistent_toggle_state(self) -> None:
         response = self.app.get("/")
         self.assertEqual(response.status_code, 200)
@@ -143,6 +154,10 @@ class WorkbenchTest(unittest.TestCase):
         mock_row.raw_text = "raw"
         mock_row.education = json.dumps(["博士，计算机科学"], ensure_ascii=False)
         mock_row.directions = json.dumps(["LLM Agent"], ensure_ascii=False)
+        mock_row.experiences = json.dumps(
+            [{"organization": "某技术公司", "role": "Agent 研发实习生", "details": ["构建评测闭环"]}],
+            ensure_ascii=False,
+        )
         mock_row.projects = json.dumps([{"name": "AgentBench", "details": ["构建评测框架"]}], ensure_ascii=False)
         mock_row.publications = json.dumps(["ACL 论文"], ensure_ascii=False)
         mock_row.skills = json.dumps(["Python", "PyTorch"], ensure_ascii=False)
@@ -170,6 +185,7 @@ class WorkbenchTest(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data["education"], ["博士，计算机科学"])
         self.assertEqual(data["directions"], ["LLM Agent"])
+        self.assertEqual(data["experiences"][0]["role"], "Agent 研发实习生")
         self.assertEqual(data["projects"][0]["name"], "AgentBench")
         self.assertEqual(data["publications"], ["ACL 论文"])
         self.assertEqual(data["skills"], ["Python", "PyTorch"])
@@ -183,7 +199,7 @@ class WorkbenchTest(unittest.TestCase):
         from sqlalchemy.orm import sessionmaker
 
         from agi_talent_radar.core.database import Base, CandidateORM, save_candidate
-        from agi_talent_radar.core.models import CandidateResume, ImportClassification, ResumeProject
+        from agi_talent_radar.core.models import CandidateResume, ImportClassification, ResumeExperience, ResumeProject
 
         engine = create_engine("sqlite+pysqlite:///:memory:")
         Base.metadata.create_all(engine)
@@ -195,6 +211,14 @@ class WorkbenchTest(unittest.TestCase):
             stage="博士二年级",
             education=["博士，计算机科学"],
             directions=["LLM Agent"],
+            experiences=[
+                ResumeExperience(
+                    organization="某技术公司",
+                    role="Agent 研发实习生",
+                    period="2025.01 - 2025.06",
+                    details=["构建工具调用闭环"],
+                )
+            ],
             projects=[ResumeProject(name="AgentBench", details=["构建评测框架"])],
             publications=["ACL 论文"],
             skills=["Python", "PyTorch"],
@@ -215,6 +239,7 @@ class WorkbenchTest(unittest.TestCase):
             row = session.query(CandidateORM).filter_by(id="candidate_99").one()
             self.assertEqual(json.loads(row.education), ["博士，计算机科学"])
             self.assertEqual(json.loads(row.directions), ["LLM Agent"])
+            self.assertEqual(json.loads(row.experiences)[0]["role"], "Agent 研发实习生")
             self.assertEqual(json.loads(row.projects)[0]["name"], "AgentBench")
             self.assertEqual(json.loads(row.publications), ["ACL 论文"])
             self.assertEqual(json.loads(row.skills), ["Python", "PyTorch"])
@@ -286,6 +311,7 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(candidate_event["candidate"]["id"], source.id)
         self.assertIn("education", candidate_event["candidate"])
         self.assertIn("directions", candidate_event["candidate"])
+        self.assertIn("experiences", candidate_event["candidate"])
         self.assertIn("projects", candidate_event["candidate"])
         self.assertIn("publications", candidate_event["candidate"])
         self.assertIn("skills", candidate_event["candidate"])

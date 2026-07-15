@@ -65,6 +65,7 @@ class CandidateORM(Base):
     import_confidence = Column(Float, default=0.0)
     education = Column(Text, default="")
     directions = Column(Text, default="")
+    experiences = Column(Text, default="")
     projects = Column(Text, default="")
     publications = Column(Text, default="")
     skills = Column(Text, default="")

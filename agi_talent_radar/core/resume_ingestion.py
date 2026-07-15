@@ -24,6 +24,7 @@ VISION_RESUME_PROMPT = """
     "stage": "",
     "education": [],
     "directions": [],
+    "experiences": [{"organization": "", "role": "", "experience_type": "", "start_date": "", "end_date": "", "period": "", "details": []}],
     "projects": [{"name": "", "details": []}],
     "publications": [],
     "skills": [],
@@ -44,6 +45,7 @@ VISION_RESUME_PROMPT = """
 }
 
 排版评分只评价信息组织和证据表达，不评价照片、性别、年龄、配色、字体风格、学校或公司 Logo。
+实习/工作/产业研究经历必须放入 experiences，不得混入 projects。完整保留机构、岗位、时间、本人职责、技术动作和量化结果；机构名称仅用于前端核验，后续评分节点会脱敏。
 上传压缩、扫描模糊等非候选人原因必须写入 warnings，不得直接扣分。
 """.strip()
 

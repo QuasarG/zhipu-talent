@@ -16,7 +16,7 @@ TRACK_ROUTER_PROMPT = """
 可用 Track：base, agent, safety, multimodal, systems, ai4science。
 
 权重判断依据：
-- 45% 项目与投入时间占比。
+- 45% 项目、实习/工作内容与投入时间占比。
 - 25% 论文、系统、数据集等成果占比。
 - 20% 本人实质负责内容占比。
 - 10% 当前及未来研究意向。
@@ -27,6 +27,7 @@ TRACK_ROUTER_PROMPT = """
 3. 第二 Track 必须有至少两条独立证据；最多三个 Track。
 4. assignments 的 weight 之和必须为 1。
 5. 每项输出 track, weight, confidence, rationale, evidence_ids。
+6. 实习/工作经历只按脱敏后的技术动作、产物和结果路由；机构档位和岗位名不得影响 Track 权重或置信度。
 """.strip()
 
 
@@ -37,7 +38,7 @@ def run_track_router(state: dict[str, Any]) -> dict[str, Any]:
         TRACK_ROUTER_PROMPT,
         {
             "tracks": {key: spec.as_prompt_dict() for key, spec in TRACK_SPECS.items()},
-            "resume": normalized.model_dump(exclude={"education_raw", "raw_text"}),
+            "resume": normalized.model_dump(exclude={"education_raw", "experiences_raw", "raw_text"}),
             "evidence": [item.model_dump() for item in evidence],
         },
         temperature=0.1,

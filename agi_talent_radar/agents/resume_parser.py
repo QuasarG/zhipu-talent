@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from agi_talent_radar.core import llm_client
-from agi_talent_radar.core.models import CandidateResume, ResumeProject
+from agi_talent_radar.core.models import CandidateResume, ResumeExperience, ResumeProject
 
 
 class ParsedResume(BaseModel):
@@ -12,6 +12,7 @@ class ParsedResume(BaseModel):
     stage: str = ""
     education: list[str] = Field(default_factory=list)
     directions: list[str] = Field(default_factory=list)
+    experiences: list[ResumeExperience] = Field(default_factory=list)
     projects: list[ResumeProject] = Field(default_factory=list)
     publications: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
@@ -30,6 +31,7 @@ RESUME_PARSER_PROMPT = """
 - stage: 当前阶段（如博一、博二、应届博士、博士在读等）
 - education: 教育背景列表，每项一条字符串
 - directions: 研究方向列表
+- experiences: 实习/工作/产业研究经历列表，每项 {"organization": "机构", "role": "岗位", "experience_type": "实习/全职/访问研究", "start_date": "", "end_date": "", "period": "", "details": ["职责/成果"]}
 - projects: 项目/科研经历列表，每项 {"name": "项目名", "details": ["细节1", "细节2"]}
 - publications: 代表成果/论文列表
 - skills: 技能关键词列表
@@ -40,6 +42,7 @@ RESUME_PARSER_PROMPT = """
 2. 如果某字段在文本中确实没有，给空值或空列表。
 3. 保留原文中的关键动作动词、技术栈和量化结果，不要过度改写。
 4. 如果文本包含多位候选人，只解析当前这一位。
+5. 实习/工作经历不得混入 projects；经历中的具体项目可保留在 details 中。
 """.strip()
 
 
@@ -59,6 +62,7 @@ def parse_raw_resume(resume_id: str, raw_text: str) -> CandidateResume:
         stage=parsed.stage,
         education=parsed.education,
         directions=parsed.directions,
+        experiences=parsed.experiences,
         projects=parsed.projects,
         publications=parsed.publications,
         skills=parsed.skills,
@@ -75,6 +79,7 @@ def ensure_structured_resume(resume: CandidateResume) -> CandidateResume:
         resume.stage,
         resume.education,
         resume.directions,
+        resume.experiences,
         resume.projects,
         resume.publications,
         resume.skills,
