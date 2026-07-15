@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -21,7 +22,7 @@ VALID_GROUPS = {"pending", "shortlisted", "alternative", "rejected"}
 VALID_IMPORT_SUFFIXES = {".pdf", ".jsonl", ".md", ".txt"}
 MAX_BATCH_FILES = 50
 MAX_BATCH_BYTES = 200 * 1024 * 1024
-MAX_PARALLEL_IMPORTS = 5
+MAX_PARALLEL_IMPORTS = max(1, min(5, int(os.getenv("IMPORT_CONCURRENCY", "5"))))
 
 
 class ImportFileError(ValueError):
