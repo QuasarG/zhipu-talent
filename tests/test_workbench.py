@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -330,13 +331,58 @@ class WorkbenchTest(unittest.TestCase):
         candidates = [event for event in events if event["type"] == "candidate"]
         errors = [event for event in events if event["type"] == "error"]
         done = events[-1]
-        self.assertEqual([event["file_id"] for event in candidates], ["file-1", "file-2"])
+        self.assertEqual({event["file_id"] for event in candidates}, {"file-1", "file-2"})
         self.assertEqual(errors[0]["file_id"], "file-3")
         self.assertEqual(errors[0]["stage"], "validation")
         self.assertEqual(done["type"], "done")
         self.assertEqual(done["imported_files"], 2)
         self.assertEqual(done["failed_files"], 1)
         self.assertEqual(done["total"], 2)
+
+    @patch("agi_talent_radar.web.workbench._stream_import_upload")
+    def test_batch_upload_runs_at_most_five_files_in_parallel(self, mock_import) -> None:
+        barrier = threading.Barrier(5)
+        lock = threading.Lock()
+        active = 0
+        max_active = 0
+
+        def fake_import(file_id, filename, file_bytes, suffix, file_index, file_total):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            if file_index <= 5:
+                barrier.wait(timeout=2)
+            yield {
+                "type": "stage",
+                "file_id": file_id,
+                "file_name": filename,
+                "file_index": file_index,
+                "file_total": file_total,
+                "stage": "classification",
+                "status": "done",
+                "message": "完成",
+            }
+            with lock:
+                active -= 1
+
+        mock_import.side_effect = fake_import
+        response = self.app.post(
+            "/api/import-file",
+            data={
+                "files": [
+                    (io.BytesIO(f"resume-{index}".encode()), f"resume-{index}.txt")
+                    for index in range(7)
+                ]
+            },
+            content_type="multipart/form-data",
+        )
+
+        events = self._parse_sse(response)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(max_active, 5)
+        self.assertEqual(events[-1]["imported_files"], 7)
+        self.assertEqual(events[-1]["failed_files"], 0)
 
     def test_batch_import_frontend_renders_one_progress_line_per_resume(self) -> None:
         script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")

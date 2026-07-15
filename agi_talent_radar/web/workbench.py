@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from queue import Queue
 from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
@@ -19,6 +21,7 @@ VALID_GROUPS = {"pending", "shortlisted", "alternative", "rejected"}
 VALID_IMPORT_SUFFIXES = {".pdf", ".jsonl", ".md", ".txt"}
 MAX_BATCH_FILES = 50
 MAX_BATCH_BYTES = 200 * 1024 * 1024
+MAX_PARALLEL_IMPORTS = 5
 
 
 class ImportFileError(ValueError):
@@ -180,34 +183,31 @@ def create_app() -> Flask:
             imported_files = 0
             failed_files = 0
             file_total = len(uploads)
-            for file_index, (file_id, filename, file_bytes, suffix) in enumerate(uploads, start=1):
-                try:
-                    for event in _stream_import_upload(
-                        file_id,
-                        filename,
-                        file_bytes,
-                        suffix,
+            event_queue: Queue[dict[str, Any]] = Queue()
+            worker_count = min(MAX_PARALLEL_IMPORTS, file_total)
+            with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="resume-import") as executor:
+                for file_index, upload in enumerate(uploads, start=1):
+                    executor.submit(
+                        _run_import_worker,
+                        event_queue,
+                        upload,
                         file_index,
                         file_total,
-                    ):
-                        if event["type"] == "candidate":
-                            imported_candidates += 1
-                        yield _sse_payload(event)
-                    imported_files += 1
-                except Exception as exc:
-                    failed_files += 1
-                    yield _sse_payload(
-                        _file_event(
-                            "error",
-                            file_id,
-                            filename,
-                            file_index,
-                            file_total,
-                            stage=getattr(exc, "stage", "validation"),
-                            message=str(exc),
-                            retryable=True,
-                        )
                     )
+
+                completed_files = 0
+                while completed_files < file_total:
+                    event = event_queue.get()
+                    if event["type"] == "_file_complete":
+                        completed_files += 1
+                        if event["success"]:
+                            imported_files += 1
+                        else:
+                            failed_files += 1
+                        continue
+                    if event["type"] == "candidate":
+                        imported_candidates += 1
+                    yield _sse_payload(event)
             yield _sse_event(
                 "done",
                 total=imported_candidates,
@@ -224,6 +224,42 @@ def create_app() -> Flask:
         return response
 
     return app
+
+
+def _run_import_worker(
+    event_queue: Queue[dict[str, Any]],
+    upload: tuple[str, str, bytes, str],
+    file_index: int,
+    file_total: int,
+) -> None:
+    file_id, filename, file_bytes, suffix = upload
+    success = False
+    try:
+        for event in _stream_import_upload(
+            file_id,
+            filename,
+            file_bytes,
+            suffix,
+            file_index,
+            file_total,
+        ):
+            event_queue.put(event)
+        success = True
+    except Exception as exc:
+        event_queue.put(
+            _file_event(
+                "error",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=getattr(exc, "stage", "validation"),
+                message=str(exc),
+                retryable=True,
+            )
+        )
+    finally:
+        event_queue.put({"type": "_file_complete", "file_id": file_id, "success": success})
 
 
 def _stream_import_upload(
