@@ -313,7 +313,7 @@ def _stream_import_upload(
                 message=f"已渲染 {len(pages)} 页 PDF。",
                 page_count=len(pages),
             )
-            current_stage = "vision"
+            current_stage = "multimodal"
             yield _file_event(
                 "stage",
                 file_id,
@@ -322,7 +322,7 @@ def _stream_import_upload(
                 file_total,
                 stage=current_stage,
                 status="running",
-                message=f"正在调用视觉 MCP 解析 {len(pages)} 页内容和版式。",
+                message=f"正在调用 GLM 多模态模型解析 {len(pages)} 页内容和版式。",
                 page_count=len(pages),
             )
             resumes = [analyze_resume_pages(pages, filename)]
@@ -334,7 +334,7 @@ def _stream_import_upload(
                 file_total,
                 stage=current_stage,
                 status="done",
-                message="视觉内容和排版证据已结构化。",
+                message="多模态内容和排版证据已结构化。",
                 page_count=len(pages),
             )
         else:

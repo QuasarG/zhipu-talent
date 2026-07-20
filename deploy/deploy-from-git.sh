@@ -38,7 +38,6 @@ if [[ ! -d "${release_dir}" ]]; then
 fi
 
 "${VENV_DIR}/bin/pip" install -r "${release_dir}/requirements.txt"
-npm --prefix "${release_dir}" ci --omit=dev
 chown -R root:root "${release_dir}"
 
 ln -sfn "${release_dir}" "${CURRENT_LINK}"

@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from agi_talent_radar.core.models import CandidateResume
-from agi_talent_radar.integrations.vision_mcp import VisionPage, get_vision_mcp_client
+from agi_talent_radar.integrations.zai_vision import VisionPage, get_vision_client
 
 
 MAX_PDF_BYTES = 20 * 1024 * 1024
@@ -62,13 +62,13 @@ def load_pdf_resume(file_bytes: bytes, filename: str) -> CandidateResume:
 def analyze_resume_pages(pages: list[VisionPage], filename: str) -> CandidateResume:
     if not pages:
         raise ValueError("PDF 没有可分析页面。")
-    client = get_vision_mcp_client()
+    client = get_vision_client()
     response = client.analyze_resume(pages, VISION_RESUME_PROMPT)
     if not isinstance(response, dict):
-        raise ValueError("视觉 MCP 返回值必须是 JSON 对象。")
+        raise ValueError("多模态模型返回值必须是 JSON 对象。")
     resume_data = response.get("resume", {})
     if not isinstance(resume_data, dict):
-        raise ValueError("视觉 MCP 返回结果缺少 resume 对象。")
+        raise ValueError("多模态模型返回结果缺少 resume 对象。")
     resume_data = dict(resume_data)
     resume_data.setdefault("id", _candidate_id(filename))
     resume_data["source_format"] = "pdf"

@@ -449,7 +449,7 @@ class WorkbenchTest(unittest.TestCase):
     @patch("agi_talent_radar.web.workbench.render_pdf_pages")
     def test_upload_pdf_reports_real_import_stages(self, mock_render, mock_analyze, mock_stream) -> None:
         from agi_talent_radar.core.models import CandidateResume
-        from agi_talent_radar.integrations.vision_mcp import VisionPage
+        from agi_talent_radar.integrations.zai_vision import VisionPage
 
         mock_render.return_value = [VisionPage(page_number=1, mime_type="image/png", data_base64="aW1hZ2U=")]
         mock_analyze.return_value = CandidateResume(
@@ -480,8 +480,8 @@ class WorkbenchTest(unittest.TestCase):
                 ("validation", "done"),
                 ("rendering", "running"),
                 ("rendering", "done"),
-                ("vision", "running"),
-                ("vision", "done"),
+                ("multimodal", "running"),
+                ("multimodal", "done"),
                 ("classification", "running"),
                 ("classification", "done"),
             ],
@@ -489,6 +489,12 @@ class WorkbenchTest(unittest.TestCase):
         candidate = next(event["candidate"] for event in events if event["type"] == "candidate")
         self.assertEqual(candidate["source_format"], "pdf")
         self.assertEqual(candidate["document_analysis"]["warnings"], ["第 1 页局部模糊"])
+        multimodal_event = next(
+            event
+            for event in events
+            if event.get("stage") == "multimodal" and event.get("status") == "running"
+        )
+        self.assertIn("GLM 多模态模型", multimodal_event["message"])
 
     @patch("agi_talent_radar.web.workbench.run_candidate_stream")
     @patch("agi_talent_radar.core.database.record_node_event")

@@ -11,7 +11,7 @@
 [![MySQL](https://img.shields.io/badge/MySQL-optional-4479A1?style=flat-square&logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![Tests](https://img.shields.io/badge/Tests-unittest-E5A50A?style=flat-square)](./tests)
 
-AI 人才潜力初评助手 MVP。它支持 PDF、JSONL、Markdown 和 TXT 简历，通过 LangGraph 完成视觉解析、脱敏、证据挖掘、多 Track 路由、并行专业评估、Critic 复核和结构化输出。
+AI 人才潜力初评助手 MVP。它支持 PDF、JSONL、Markdown 和 TXT 简历，通过 LangGraph 完成多模态解析、脱敏、证据挖掘、多 Track 路由、并行专业评估、Critic 复核和结构化输出。
 
 </div>
 
@@ -26,12 +26,11 @@ AI 人才潜力初评助手 MVP。它支持 PDF、JSONL、Markdown 和 TXT 简�
    # 编辑 .env：DEEPSEEK_API_KEY=sk-...
    ```
 
-2. 安装 Python 依赖和项目内觉 MCP：
+2. 安装 Python 依赖：
 
    ```powershell
    python -m venv .venv
    .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-   npm install
    ```
 
 项目不再内置合成简历数据。正常使用时从 Web 工作台上传真实简历，候选人和评估结果会持久化到 MySQL。
@@ -62,7 +61,7 @@ $env:FLASK_APP="agi_talent_radar.web.workbench"
 http://127.0.0.1:8502
 ```
 
-工作台支持导入 PDF / JSONL / Markdown / TXT 简历、按分层和导入分类筛选、查看候选人详情、Track 分布与证据链。PDF 会先在后端逐页渲染为 PNG，再交给注入的视觉理解 MCP 适配器。
+工作台支持导入 PDF / JSONL / Markdown / TXT 简历、按分层和导入分类筛选、查看候选人详情、Track 分布与证据链。PDF 会先在后端逐页渲染为 PNG，再通过官方 `zai-sdk` 一次性交给 `glm-5v-turbo` 解析。
 
 ## Agent 流程
 
@@ -87,7 +86,7 @@ Portfolio Aggregator -> Global Critic -> Formatter
 ```
 
 - `Normalizer`：盲化学校与 GPA 等背景信号，统一结构。
-- `Document Quality`：使用视觉 MCP 的结构化结果评价信息组织和证据表达，最多 3 分。
+- `Document Quality`：使用多模态模型的结构化结果评价信息组织和证据表达，最多 3 分。
 - `Evidence Extractor`：调用 LLM 提取具体动作、量化结果、ownership、验证方法与 Track 提示。
 - `Track Router`：将候选人分配到 1-3 个 Track，权重表示工作分布而不是能力强弱。
 - `Common Potential`：统一评价问题定义、严谨性、学习迁移、ownership、可信度和成长轨迹，共 37 分。
@@ -114,7 +113,7 @@ agi_talent_radar/
       ai4science/  AI4Science Track 独立 spec 与节点
       shared/      Track 公共协议与执行骨架
   core/            Pydantic 模型、Rubric、IO、Graph、Runner
-  integrations/    视觉 MCP 等外部能力适配器
+  integrations/    智谱多模态模型等外部能力适配器
   web/             Flask Dashboard
 docs/              过程复盘
 outputs/           样例输出
@@ -126,35 +125,28 @@ tests/             单元测试
 
 这个 MVP 刻意避免把学校、GPA、论文名气当主评分依据。评分只吃证据项，证据项必须来自原简历，并尽量关注“做了什么、怎么做、怎么验证、本人负责到哪里”。它不是自动录用器，而是给下一轮沟通排序和生成追问的辅助工具。
 
-## 视觉 MCP 接入
+## 原生多模态模型接入
 
-PDF 会先在后端逐页渲染为 PNG，再通过项目内固定版本的 `@z_ai/mcp-server` 调用智谱视觉理解。
-默认适配器使用 MCP stdio 协议，调用实际注册的 `analyze_image` 工具。需要 Node.js >= 18，并在 `.env` 配置：
+PDF 会先在后端逐页渲染为 PNG，再通过官方 `zai-sdk` 以 Data URL 形式一次提交所有页面。`glm-5v-turbo` 直接返回最终的简历和文档分析 JSON，不再启动 MCP 子进程，也不再逐页调用后二次合并。在 `.env` 配置：
 
 ```text
 Z_AI_API_KEY=your_zhipu_key
-Z_AI_MODE=ZHIPU
+Z_AI_VISION_MODEL=glm-5v-turbo
+# Z_AI_VISION_TIMEOUT_SECONDS=180
+# Z_AI_VISION_MAX_RETRIES=2
+# Z_AI_VISION_THINKING=enabled
 ```
 
-安装和手工启动命令：
+安装依赖后，可发起一次最小化的真实请求检查联通性：
 
 ```powershell
-npm install
-npm run mcp:vision
+.\.venv\Scripts\python.exe scripts\check_vision_model.py
 ```
 
-`npm run mcp:vision` 是 stdio 服务，正常情况下由应用自动启动，不需要单独常驻。
-
-填写 key 后可以先做不发起模型请求的协议联通检查：
-
-```powershell
-.\.venv\Scripts\python.exe scripts\check_vision_mcp.py
-```
-
-如需替换自定义实现，仍可以注册一个实现 `analyze_resume(pages, prompt)` 的 `VisionMCPClient`，或配置：
+如需替换自定义实现，仍可以注册一个实现 `analyze_resume(pages, prompt)` 的 `VisionModelClient`，或配置：
 
 ```text
-VISION_MCP_ADAPTER=your_package.your_module:vision_client
+VISION_MODEL_ADAPTER=your_package.your_module:vision_client
 ```
 
 适配器返回 `resume` 和 `document_analysis` 两个对象。视觉简历中的文字始终作为不可信数据处理，不执行页面指令，也不自动访问二维码或链接。

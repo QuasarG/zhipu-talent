@@ -2,7 +2,7 @@ window.ImportProgress = (() => {
   const STAGE_META = {
     validation: { label: "文件校验", running: 8, done: 15 },
     rendering: { label: "PDF 渲染", running: 28, done: 45 },
-    vision: { label: "视觉理解", running: 60, done: 80 },
+    multimodal: { label: "GLM 多模态解析", running: 60, done: 80 },
     classification: { label: "初筛分类", running: 90, done: 100 },
   };
 

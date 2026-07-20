@@ -13,7 +13,7 @@ from agi_talent_radar.agents.tracks.shared.engine import _supports_high_score
 from agi_talent_radar.core.models import CandidateResume, DimensionScore, EvidenceItem, NormalizedResume
 from agi_talent_radar.core.resume_ingestion import load_pdf_resume
 from agi_talent_radar.core.runner import run_candidate
-from agi_talent_radar.integrations.vision_mcp import VisionPage, register_vision_mcp_client
+from agi_talent_radar.integrations.zai_vision import VisionPage, register_vision_client
 from tests.llm_fixtures import mock_deepseek_json
 from tests.resume_fixtures import make_resume_fixtures
 
@@ -402,14 +402,14 @@ class MultiTrackTest(unittest.TestCase):
         self.assertTrue(result["available"])
         self.assertEqual(result["score"], 3)
 
-    def test_pdf_ingestion_uses_registered_vision_mcp_client(self) -> None:
-        register_vision_mcp_client(_FakeVisionClient())
+    def test_pdf_ingestion_uses_registered_vision_model_client(self) -> None:
+        register_vision_client(_FakeVisionClient())
         try:
             pages = [VisionPage(page_number=1, mime_type="image/png", data_base64="aW1hZ2U=")]
             with patch("agi_talent_radar.core.resume_ingestion.render_pdf_pages", return_value=pages):
                 resume = load_pdf_resume(b"%PDF fake", "candidate.pdf")
         finally:
-            register_vision_mcp_client(None)
+            register_vision_client(None)
 
         self.assertEqual(resume.id, "candidate")
         self.assertEqual(resume.source_format, "pdf")

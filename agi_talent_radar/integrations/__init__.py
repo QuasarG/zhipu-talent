@@ -1,20 +1,20 @@
-from agi_talent_radar.integrations.vision_mcp import (
-    MCPProtocolError,
-    VisionMCPClient,
-    VisionMCPUnavailableError,
+from agi_talent_radar.integrations.zai_vision import (
+    VisionModelClient,
+    VisionModelResponseError,
+    VisionModelUnavailableError,
     VisionPage,
-    ZaiVisionMCPClient,
-    get_vision_mcp_client,
-    register_vision_mcp_client,
+    ZaiVisionClient,
+    get_vision_client,
+    register_vision_client,
 )
 
 
 __all__ = [
-    "MCPProtocolError",
-    "VisionMCPClient",
-    "VisionMCPUnavailableError",
+    "VisionModelClient",
+    "VisionModelResponseError",
+    "VisionModelUnavailableError",
     "VisionPage",
-    "ZaiVisionMCPClient",
-    "get_vision_mcp_client",
-    "register_vision_mcp_client",
+    "ZaiVisionClient",
+    "get_vision_client",
+    "register_vision_client",
 ]

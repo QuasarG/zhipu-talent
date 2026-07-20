@@ -11,7 +11,6 @@ WorkingDirectory=/opt/zhipu-talent/current
 EnvironmentFile=/etc/zhipu-talent.env
 Environment=DATABASE_URL=sqlite:////var/lib/zhipu-talent/talent_radar.db
 Environment=IMPORT_CONCURRENCY=2
-Environment=Z_AI_MCP_NODE=/usr/bin/node
 ExecStart=/opt/zhipu-talent/venv/bin/gunicorn --worker-class gthread --workers 1 --threads 2 --bind 127.0.0.1:8503 --timeout 900 --graceful-timeout 30 --keep-alive 5 --access-logfile - --error-logfile - agi_talent_radar.web.workbench:app
 Restart=on-failure
 RestartSec=5

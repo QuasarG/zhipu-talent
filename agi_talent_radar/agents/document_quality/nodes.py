@@ -19,7 +19,7 @@ def run_document_quality(state: dict) -> dict:
         assessment = DocumentQualityAssessment(
             score=0,
             available=False,
-            rationale="非视觉简历或视觉 MCP 未返回版面质量结果，不计分也不扣分。",
+            rationale="非视觉简历或多模态模型未返回版面质量结果，不计分也不扣分。",
             warnings=["简历表达质量不可用。"] if resume.source_format == "pdf" else [],
         )
         return {"document_quality": assessment.model_dump()}
@@ -37,7 +37,7 @@ def run_document_quality(state: dict) -> dict:
                 score=score,
                 max_points=max_points,
                 weighted_score=round(score / 5 * max_points, 2),
-                rationale=str(raw.get("rationale", "视觉 MCP 未提供说明。")),
+                rationale=str(raw.get("rationale", "多模态模型未提供说明。")),
                 evidence_ids=[],
                 risk_notes=[],
             )
