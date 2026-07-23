@@ -30,6 +30,10 @@ TRACK_SCORER_PROMPT = """
 4. 同一个「缺少量化指标/贡献细节」不得在多个维度重复扣分；将它放在最相关维度的 risk_notes 中。
 5. 实习/工作经历中的具体方法、系统、指标和产物与项目证据同等有效；但机构档位、机构类型、岗位名或时长本身不得加分。
 
+硬性锚点（优先于其他判断）：
+- 引用证据中没有任何量化指标、可运行产物、验收结果或正式发表成果时，该维度得分不得超过 2.5。
+- 4 分以上需要指标、具体工具或 ownership 中至少两项的组合证据；只有方向或参与描述时封顶 3。
+
 每项必须输出 key, label, score, rationale, evidence_ids, risk_notes。
 rationale 必须引用存在的 evidence id。没有证据时 score 必须为 0，不要硬凑。
 Track 证据重点：{evidence_focus}
@@ -149,6 +153,11 @@ def _calibrate_scores(
             message = f"{item.label} 缺少可追溯证据，按规则封顶 1 分。"
             risk_notes.append(message)
             critic_flags.append(message)
+        elif next_score > 2.5 and not _has_verification(refs):
+            next_score = 2.5
+            message = f"{item.label} 引用证据缺少量化指标、产物、验收或正式发表成果，封顶 2.5 分。"
+            risk_notes.append(message)
+            critic_flags.append(message)
         elif next_score >= 4 and not _supports_high_score(refs):
             next_score = 3.5
             message = f"{item.label} 的高分缺少量化、工具或 ownership 组合证据，封顶 3.5 分。"
@@ -174,6 +183,16 @@ def _supports_high_score(items: list[EvidenceItem]) -> bool:
         return True
     distinct_sources = {item.source for item in strong if item.source}
     return len(distinct_sources) >= 2
+
+
+def _has_verification(refs: list[EvidenceItem]) -> bool:
+    for item in refs:
+        if item.has_metric or item.has_specific_tool:
+            return True
+        text = " ".join([item.source, item.quote, *item.signals]).lower()
+        if any(token in text for token in ("已发表", "已接收", "ccf-a", "journal", "验收", "上线")):
+            return True
+    return False
 
 
 def apply_dimension_floors(

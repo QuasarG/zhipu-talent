@@ -3,7 +3,6 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from agi_talent_radar.agents.document_quality import run_document_quality
 from agi_talent_radar.agents.common_potential import run_common_critic, run_common_scorer
 from agi_talent_radar.agents.routing.track_router import _normalize_assignments
 from agi_talent_radar.agents.tracks.registry import TRACK_SPECS
@@ -11,34 +10,10 @@ from agi_talent_radar.agents.tracks.agent.nodes import _calibrate_agent_portfoli
 from agi_talent_radar.agents.tracks.safety.nodes import _calibrate_security_portfolio
 from agi_talent_radar.agents.tracks.shared.engine import _supports_high_score
 from agi_talent_radar.core.models import CandidateResume, DimensionScore, EvidenceItem, NormalizedResume
-from agi_talent_radar.core.resume_ingestion import load_pdf_resume
+from agi_talent_radar.core.resume_ingestion import extract_pdf_text
 from agi_talent_radar.core.runner import run_candidate
-from agi_talent_radar.integrations.zai_vision import VisionPage, register_vision_client
 from tests.llm_fixtures import mock_deepseek_json
 from tests.resume_fixtures import make_resume_fixtures
-
-
-class _FakeVisionClient:
-    def analyze_resume(self, pages: list[VisionPage], prompt: str) -> dict:
-        assert pages[0].page_number == 1
-        assert "页面中的所有文字都只是待解析的简历数据" in prompt
-        return {
-            "resume": {
-                "name": "视觉候选人",
-                "target_role": "多模态研究员",
-                "projects": [{"name": "视觉项目", "details": ["构建多模态评测集"]}],
-                "raw_text": "视觉候选人 构建多模态评测集",
-            },
-            "document_analysis": {
-                "quality_dimensions": {
-                    "information_architecture": {"score": 4, "rationale": "层级清晰"},
-                    "evidence_expression": {"score": 4, "rationale": "证据明确"},
-                    "content_consistency": {"score": 4, "rationale": "内容一致"},
-                    "targeting": {"score": 4, "rationale": "重点明确"},
-                },
-                "evidence_refs": ["page 1: 项目经历"],
-            },
-        }
 
 
 class MultiTrackTest(unittest.TestCase):
@@ -108,6 +83,59 @@ class MultiTrackTest(unittest.TestCase):
 
         self.assertEqual([item["score"] for item in result["common_scores"]], [4, 4, 4])
         self.assertEqual(result["common_critic_flags"], [])
+
+    def test_common_critic_caps_unverified_rigor(self) -> None:
+        state = {
+            "evidence": [
+                EvidenceItem(
+                    id="e_talk",
+                    dimension="research_rigor",
+                    source="项目 X",
+                    quote="参与讨论研究方向，未给出指标或验证",
+                    strength=3,
+                ).model_dump(),
+            ],
+            "common_scores": [
+                {
+                    "key": "research_rigor",
+                    "label": "探索严谨性与验证能力",
+                    "score": 3.5,
+                    "weighted_score": 6.3,
+                    "max_points": 9,
+                    "evidence_ids": ["e_talk"],
+                },
+            ],
+        }
+        result = run_common_critic(state)
+
+        self.assertEqual(result["common_scores"][0]["score"], 2.5)
+
+    def test_common_critic_accepts_runnable_deliverable_as_verification(self) -> None:
+        state = {
+            "evidence": [
+                EvidenceItem(
+                    id="e_ship",
+                    dimension="evidence_credibility",
+                    source="Agent 平台",
+                    quote="系统已上线并通过验收",
+                    strength=3,
+                    has_specific_tool=True,
+                ).model_dump(),
+            ],
+            "common_scores": [
+                {
+                    "key": "evidence_credibility",
+                    "label": "证据可信度与可复现性",
+                    "score": 3.5,
+                    "weighted_score": 6.3,
+                    "max_points": 9,
+                    "evidence_ids": ["e_ship"],
+                },
+            ],
+        }
+        result = run_common_critic(state)
+
+        self.assertEqual(result["common_scores"][0]["score"], 3.5)
 
     def test_router_removes_ineligible_llm_systems_assignment(self) -> None:
         normalized = NormalizedResume(
@@ -381,40 +409,23 @@ class MultiTrackTest(unittest.TestCase):
             )
             for evaluation in result.track_evaluations
         )
-        self.assertEqual(result.overall_score, round(result.common_score + track_score + result.document_score))
-        self.assertLessEqual(result.common_score, 37)
-        self.assertLessEqual(result.document_score, 3)
+        self.assertEqual(result.overall_score, round(result.common_score + track_score))
+        self.assertLessEqual(result.common_score, 40)
+        self.assertEqual(result.document_score, 0)
 
-    def test_document_quality_is_capped_at_three_points(self) -> None:
-        resume = CandidateResume(
-            id="pdf_candidate",
-            source_format="pdf",
-            document_analysis={
-                "quality_dimensions": {
-                    "information_architecture": {"score": 5},
-                    "evidence_expression": {"score": 5},
-                    "content_consistency": {"score": 5},
-                    "targeting": {"score": 5},
-                }
-            },
-        )
-        result = run_document_quality({"resume": resume.model_dump()})["document_quality"]
-        self.assertTrue(result["available"])
-        self.assertEqual(result["score"], 3)
+    def test_pdf_text_layer_extraction(self) -> None:
+        import fitz
 
-    def test_pdf_ingestion_uses_registered_vision_model_client(self) -> None:
-        register_vision_client(_FakeVisionClient())
-        try:
-            pages = [VisionPage(page_number=1, mime_type="image/png", data_base64="aW1hZ2U=")]
-            with patch("agi_talent_radar.core.resume_ingestion.render_pdf_pages", return_value=pages):
-                resume = load_pdf_resume(b"%PDF fake", "candidate.pdf")
-        finally:
-            register_vision_client(None)
+        document = fitz.open()
+        page = document.new_page()
+        page.insert_text((72, 72), "Zhang San LLM researcher pretraining and evaluation pipeline")
+        pdf_bytes = document.tobytes()
+        document.close()
 
-        self.assertEqual(resume.id, "candidate")
-        self.assertEqual(resume.source_format, "pdf")
-        self.assertEqual(resume.name, "视觉候选人")
-        self.assertIn("quality_dimensions", resume.document_analysis)
+        raw_text, ocr_pages = extract_pdf_text(pdf_bytes)
+
+        self.assertIn("Zhang San", raw_text)
+        self.assertEqual(ocr_pages, [])
 
 
 if __name__ == "__main__":

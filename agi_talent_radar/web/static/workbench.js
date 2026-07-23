@@ -619,12 +619,11 @@ function getAgentPaneHTML(candidate) {
       `;
     }).join("");
 
-    const scoreBreakdown = `通用潜力 ${Number(result.common_score || 0).toFixed(1)} / 37 · `
+    const scoreBreakdown = `通用潜力 ${Number(result.common_score || 0).toFixed(1)} / 40 · `
       + `Track 加权 ${trackEvaluations.length ? trackEvaluations.reduce((sum, item) => {
         const assignment = assignments.find((candidate) => candidate.track === item.track);
         return sum + Number(item.calibrated_score || 0) * Number(assignment?.weight || 0);
-      }, 0).toFixed(1) : "0.0"} / 60 · `
-      + `简历表达 ${Number(result.document_score || 0).toFixed(1)} / 3`;
+      }, 0).toFixed(1) : "0.0"} / 60`;
 
     const strengths = Array.isArray(result.core_strengths) && result.core_strengths.length
       ? `<ol>${result.core_strengths.map((s) => `<li>${renderEvidenceText(s, evidence)}</li>`).join("")}</ol>`

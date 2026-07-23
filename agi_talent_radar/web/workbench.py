@@ -13,7 +13,7 @@ from flask import Flask, Response, jsonify, render_template, request, stream_wit
 from agi_talent_radar.core.import_agent import run_import_agent_stream
 from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume
-from agi_talent_radar.core.resume_ingestion import MAX_PDF_BYTES, analyze_resume_pages, render_pdf_pages
+from agi_talent_radar.core.resume_ingestion import MAX_PDF_BYTES, extract_pdf_text, text_resume
 from agi_talent_radar.core.runner import run_candidate_stream
 
 
@@ -290,7 +290,7 @@ def _stream_import_upload(
         if suffix == ".pdf":
             if len(file_bytes) > MAX_PDF_BYTES:
                 raise ValueError(f"PDF 超过 {MAX_PDF_BYTES // 1024 // 1024} MB 限制。")
-            current_stage = "rendering"
+            current_stage = "extracting"
             yield _file_event(
                 "stage",
                 file_id,
@@ -299,9 +299,15 @@ def _stream_import_upload(
                 file_total,
                 stage=current_stage,
                 status="running",
-                message="正在将 PDF 渲染为逐页图像。",
+                message="正在提取 PDF 文本，扫描页自动走本地 OCR。",
             )
-            pages = render_pdf_pages(file_bytes)
+            raw_text, ocr_pages = extract_pdf_text(file_bytes)
+            if not raw_text.strip():
+                raise ValueError("PDF 未能提取到任何文字内容。")
+            resumes = [text_resume(raw_text, filename)]
+            message = f"已提取 {raw_text.count('[第 ')} 页文本。"
+            if ocr_pages:
+                message += f"第 {', '.join(map(str, ocr_pages))} 页为扫描件，已本地 OCR。"
             yield _file_event(
                 "stage",
                 file_id,
@@ -310,32 +316,7 @@ def _stream_import_upload(
                 file_total,
                 stage=current_stage,
                 status="done",
-                message=f"已渲染 {len(pages)} 页 PDF。",
-                page_count=len(pages),
-            )
-            current_stage = "multimodal"
-            yield _file_event(
-                "stage",
-                file_id,
-                filename,
-                file_index,
-                file_total,
-                stage=current_stage,
-                status="running",
-                message=f"正在调用 GLM 多模态模型解析 {len(pages)} 页内容和版式。",
-                page_count=len(pages),
-            )
-            resumes = [analyze_resume_pages(pages, filename)]
-            yield _file_event(
-                "stage",
-                file_id,
-                filename,
-                file_index,
-                file_total,
-                stage=current_stage,
-                status="done",
-                message="多模态内容和排版证据已结构化。",
-                page_count=len(pages),
+                message=message,
             )
         else:
             with tempfile.TemporaryDirectory() as temp_dir:

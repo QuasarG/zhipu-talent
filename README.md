@@ -11,7 +11,7 @@
 [![MySQL](https://img.shields.io/badge/MySQL-optional-4479A1?style=flat-square&logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![Tests](https://img.shields.io/badge/Tests-unittest-E5A50A?style=flat-square)](./tests)
 
-AI 人才潜力初评助手 MVP。它支持 PDF、JSONL、Markdown 和 TXT 简历，通过 LangGraph 完成多模态解析、脱敏、证据挖掘、多 Track 路由、并行专业评估、Critic 复核和结构化输出。
+AI 人才潜力初评助手 MVP。它支持 PDF、JSONL、Markdown 和 TXT 简历，通过 LangGraph 完成文本提取（扫描页本地 OCR 兜底）、脱敏、证据挖掘、多 Track 路由、并行专业评估、Critic 复核和结构化输出。
 
 </div>
 
@@ -61,7 +61,7 @@ $env:FLASK_APP="agi_talent_radar.web.workbench"
 http://127.0.0.1:8502
 ```
 
-工作台支持导入 PDF / JSONL / Markdown / TXT 简历、按分层和导入分类筛选、查看候选人详情、Track 分布与证据链。PDF 会先在后端逐页渲染为 PNG，再通过官方 `zai-sdk` 一次性交给 `glm-5v-turbo` 解析。
+工作台支持导入 PDF / JSONL / Markdown / TXT 简历、按分层和导入分类筛选、查看候选人详情、Track 分布与证据链。PDF 在后端直接提取文本层，扫描页自动走本地 RapidOCR 兜底，不再调用多模态模型。
 
 ## Agent 流程
 
@@ -86,12 +86,11 @@ Portfolio Aggregator -> Global Critic -> Formatter
 ```
 
 - `Normalizer`：盲化学校与 GPA 等背景信号，统一结构。
-- `Document Quality`：使用多模态模型的结构化结果评价信息组织和证据表达，最多 3 分。
 - `Evidence Extractor`：调用 LLM 提取具体动作、量化结果、ownership、验证方法与 Track 提示。
 - `Track Router`：将候选人分配到 1-3 个 Track，权重表示工作分布而不是能力强弱。
-- `Common Potential`：统一评价问题定义、严谨性、学习迁移、ownership、可信度和成长轨迹，共 37 分。
+- `Common Potential`：统一评价问题定义、严谨性、学习迁移、ownership、可信度和成长轨迹，共 40 分。
 - `Track`：按 Base、Agent、Safety、Multimodal、Systems、AI4Science 六套独立 Rubric 评分，各 60 分。
-- `Portfolio Aggregator`：按 `37 + Σ(Track 权重 × 60) + 3` 汇总最终分。
+- `Portfolio Aggregator`：按 `40 + Σ(Track 权重 × 60)` 汇总最终分。
 - `Global Critic`：检查路由、通用分、专业分和最终结论的一致性。
 - `Formatter`：调用 LLM 输出评分、画像、优势、风险、面谈追问和培养方向。
 
@@ -102,7 +101,6 @@ agi_talent_radar/
   agents/
     routing/       多 Track 路由与路由校验
     common_potential/  通用潜力 Rubric 与节点
-    document_quality/  低权重简历表达质量
     aggregation/   跨 Track 聚合与全局 Critic
     tracks/
       base/        Base Track 独立 spec 与节点
@@ -113,7 +111,6 @@ agi_talent_radar/
       ai4science/  AI4Science Track 独立 spec 与节点
       shared/      Track 公共协议与执行骨架
   core/            Pydantic 模型、Rubric、IO、Graph、Runner
-  integrations/    智谱多模态模型等外部能力适配器
   web/             Flask Dashboard
 docs/              过程复盘
 outputs/           样例输出
@@ -125,31 +122,15 @@ tests/             单元测试
 
 这个 MVP 刻意避免把学校、GPA、论文名气当主评分依据。评分只吃证据项，证据项必须来自原简历，并尽量关注“做了什么、怎么做、怎么验证、本人负责到哪里”。它不是自动录用器，而是给下一轮沟通排序和生成追问的辅助工具。
 
-## 原生多模态模型接入
+## PDF 文本提取与本地 OCR
 
-PDF 会先在后端逐页渲染为 PNG，再通过官方 `zai-sdk` 以 Data URL 形式一次提交所有页面。`glm-5v-turbo` 直接返回最终的简历和文档分析 JSON，不再启动 MCP 子进程，也不再逐页调用后二次合并。在 `.env` 配置：
+PDF 导入不再依赖多模态模型。后端优先用 PyMuPDF 直接读取文本层（绝大多数简历 PDF 自带文本层，秒级完成）；单页提取字符过少时判定为扫描件，自动用本地 `rapidocr-onnxruntime` 对该页 OCR 兜底。提取出的全文交给与 TXT/Markdown 相同的文本 LLM 解析节点完成结构化，零额外 API 成本。OCR 仅本地推理，不调用任何外部服务。
 
-```text
-Z_AI_API_KEY=your_zhipu_key
-Z_AI_VISION_MODEL=glm-5v-turbo
-# Z_AI_VISION_TIMEOUT_SECONDS=180
-# Z_AI_VISION_MAX_RETRIES=2
-# Z_AI_VISION_THINKING=enabled
+```bash
+pip install rapidocr-onnxruntime
 ```
 
-安装依赖后，可发起一次最小化的真实请求检查联通性：
-
-```powershell
-.\.venv\Scripts\python.exe scripts\check_vision_model.py
-```
-
-如需替换自定义实现，仍可以注册一个实现 `analyze_resume(pages, prompt)` 的 `VisionModelClient`，或配置：
-
-```text
-VISION_MODEL_ADAPTER=your_package.your_module:vision_client
-```
-
-适配器返回 `resume` 和 `document_analysis` 两个对象。视觉简历中的文字始终作为不可信数据处理，不执行页面指令，也不自动访问二维码或链接。
+简历中的文字始终作为不可信数据处理，不执行页面指令，也不自动访问二维码或链接。
 
 ## 数据库结构
 

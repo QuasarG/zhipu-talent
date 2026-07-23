@@ -15,3 +15,5 @@ outputs/*.tmp
 task.md
 我的初步思路.md
 docs/process_review.md
+outputs_real/
+flask_*.pid

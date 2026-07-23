@@ -88,6 +88,11 @@ def _normalize_assignments(
     ]
     pool = eligible or list(merged.values())
     ranked = sorted(pool, key=lambda item: float(item["weight"]), reverse=True)[:3]
+    if len(ranked) > 1:
+        # 第二、三 Track 必须有至少两条独立证据，否则是路由噪声，砍掉并把权重还给主 Track
+        primary, *secondary = ranked
+        secondary = [item for item in secondary if len(item.get("evidence_ids", [])) >= 2]
+        ranked = [primary, *secondary]
     total = sum(float(item["weight"]) for item in ranked) or 1
     return [
         TrackAssignment(

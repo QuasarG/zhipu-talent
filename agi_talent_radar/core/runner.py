@@ -58,11 +58,6 @@ def _node_summary(node_key: str, update: dict) -> str:
         tools = _top_tools(evidence)
         suffix = f"，高频工具/信号：{'、'.join(tools)}" if tools else ""
         return f"提取 {len(evidence)} 条证据，覆盖 {dimensions or '待补证'} 等维度{suffix}。"
-    if node_key == "document_quality":
-        quality = update.get("document_quality", {})
-        if quality.get("available"):
-            return f"视觉简历表达质量 {quality.get('score', 0):.1f} / 3。"
-        return "非视觉简历或视觉质量不可用，本项不计分。"
     if node_key == "track_router":
         assignments = update.get("track_assignments", [])
         text = "、".join(f"{item.get('track')} {float(item.get('weight', 0)):.0%}" for item in assignments)
@@ -71,10 +66,10 @@ def _node_summary(node_key: str, update: dict) -> str:
         flags = update.get("routing_flags", [])
         return f"路由校验发现 {len(flags)} 个待复核点。" if flags else "路由权重与证据覆盖校验通过。"
     if node_key == "common_scorer":
-        return f"通用潜力初评分 {float(update.get('common_score', 0)):.1f} / 37。"
+        return f"通用潜力初评分 {float(update.get('common_score', 0)):.1f} / 40。"
     if node_key == "common_critic":
         flags = update.get("common_critic_flags", [])
-        return f"通用潜力校准为 {float(update.get('common_score', 0)):.1f} / 37，发现 {len(flags)} 个封顶项。"
+        return f"通用潜力校准为 {float(update.get('common_score', 0)):.1f} / 40，发现 {len(flags)} 个封顶项。"
     if node_key.endswith("_track"):
         results = update.get("track_results", [])
         if not results:
@@ -85,7 +80,7 @@ def _node_summary(node_key: str, update: dict) -> str:
         assessment = update.get("portfolio_assessment", {})
         return (
             f"汇总 {assessment.get('overall_score', '—')} 分：通用 {assessment.get('common_score', 0)}、"
-            f"Track {assessment.get('track_score', 0)}、简历表达 {assessment.get('document_score', 0)}。"
+            f"Track {assessment.get('track_score', 0)}。"
         )
     if node_key == "global_critic":
         flags = update.get("global_critic_flags", [])
@@ -107,7 +102,7 @@ def _node_event_status(node_key: str, update: dict) -> str:
 
 
 def _node_phase(node_key: str) -> str:
-    if node_key in {"normalizer", "document_quality", "evidence_extractor"}:
+    if node_key in {"normalizer", "evidence_extractor"}:
         return "preparation"
     if node_key in {"track_router", "route_auditor"}:
         return "routing"
@@ -186,7 +181,7 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
         notes=[
             "批量导入使用单一轻量 Agent，只提取基本信息和分类，不筛除候选人。",
             "逐人深评使用 DeepSeek/OpenAI-compatible JSON 模式；没有配置 DEEPSEEK_API_KEY 会直接失败。",
-            "通用潜力占 37%，Track 专业能力占 60%，视觉简历表达质量最多占 3%。",
+            "通用潜力占 40%，Track 专业能力占 60%。",
             "候选人可进入 1-3 个 Track，专业分按 Track 工作分布权重聚合。",
             "系统分流规则：80 分及以上进入优选库，60-79 分进入备选库，低于 60 分进入不建议后续沟通。",
             "如果配置了 MySQL，结果会同时持久化到数据库；数据库失败不会中断评估流程。",

@@ -445,18 +445,17 @@ class WorkbenchTest(unittest.TestCase):
         self.assertIn("failedFiles", progress_script)
 
     @patch("agi_talent_radar.web.workbench.run_import_agent_stream")
-    @patch("agi_talent_radar.web.workbench.analyze_resume_pages")
-    @patch("agi_talent_radar.web.workbench.render_pdf_pages")
-    def test_upload_pdf_reports_real_import_stages(self, mock_render, mock_analyze, mock_stream) -> None:
+    @patch("agi_talent_radar.web.workbench.text_resume")
+    @patch("agi_talent_radar.web.workbench.extract_pdf_text")
+    def test_upload_pdf_reports_real_import_stages(self, mock_extract, mock_text_resume, mock_stream) -> None:
         from agi_talent_radar.core.models import CandidateResume
-        from agi_talent_radar.integrations.zai_vision import VisionPage
 
-        mock_render.return_value = [VisionPage(page_number=1, mime_type="image/png", data_base64="aW1hZ2U=")]
-        mock_analyze.return_value = CandidateResume(
+        mock_extract.return_value = ("[第 1 页]\nPDF 候选人 简历文本", [])
+        mock_text_resume.return_value = CandidateResume(
             id="pdf_candidate",
             name="PDF 候选人",
             source_format="pdf",
-            document_analysis={"warnings": ["第 1 页局部模糊"]},
+            raw_text="[第 1 页]\nPDF 候选人 简历文本",
         )
         classification = MagicMock()
         classification.id = "pdf_candidate"
@@ -478,23 +477,15 @@ class WorkbenchTest(unittest.TestCase):
             stages,
             [
                 ("validation", "done"),
-                ("rendering", "running"),
-                ("rendering", "done"),
-                ("multimodal", "running"),
-                ("multimodal", "done"),
+                ("extracting", "running"),
+                ("extracting", "done"),
                 ("classification", "running"),
                 ("classification", "done"),
             ],
         )
         candidate = next(event["candidate"] for event in events if event["type"] == "candidate")
         self.assertEqual(candidate["source_format"], "pdf")
-        self.assertEqual(candidate["document_analysis"]["warnings"], ["第 1 页局部模糊"])
-        multimodal_event = next(
-            event
-            for event in events
-            if event.get("stage") == "multimodal" and event.get("status") == "running"
-        )
-        self.assertIn("GLM 多模态模型", multimodal_event["message"])
+        mock_text_resume.assert_called_once_with("[第 1 页]\nPDF 候选人 简历文本", "candidate.pdf")
 
     @patch("agi_talent_radar.web.workbench.run_candidate_stream")
     @patch("agi_talent_radar.core.database.record_node_event")

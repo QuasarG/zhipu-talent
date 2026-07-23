@@ -51,7 +51,7 @@
 ## Components
 
 - Existing components to reuse: 顶栏、人才库抽屉、候选人条目、证据 Popover、确认 Dialog、Toast、分数条。
-- New/changed components: 批量导入队列（每份简历一行、真实阶段进度线、单条失败隔离）、实习/工作经历密集时间线、论文发表/接收/在投/未知/出版信息不完整标记、PDF/结构化 Tab、并行 Agent 泳道图、Track 权重与完整维度证据折叠组、简历表达评估、视觉解析警告。
+- New/changed components: 批量导入队列（每份简历一行、真实阶段进度线、单条失败隔离）、实习/工作经历密集时间线、论文发表/接收/在投/未知/出版信息不完整标记、PDF/结构化 Tab、并行 Agent 泳道图、Track 权重与完整维度证据折叠组、OCR 兜底提示。
 - Variants and states: ready, queued, running, done, skipped, warning, error, cancelled, retrying。
 - Token/component ownership: 设计 token 继续存放在 `workbench.css :root`；JavaScript 组件按领域拆分，不引入第二套设计系统。
 
@@ -73,7 +73,7 @@
 
 - Loading: 显示当前真实阶段、页码或节点，不伪造精确剩余时间。批量导入时每份简历独立显示进度线与错误阶段，最多并行处理 5 份，其他记录等待槽位且不因单份失败中断。
 - Empty: 说明当前可执行的唯一主操作。
-- Error: 区分文件校验、PDF 渲染、多模态模型鉴权/调用、数据库和节点错误，并提供局部重试。
+- Error: 区分文件校验、PDF 文本提取、OCR 依赖、数据库和节点错误，并提供局部重试。
 - Success: 保留成功结果和耗时，将候选人自动聚焦到可审查状态。
 - Disabled: 说明禁用原因，不只降低透明度。
 - Offline/slow network, if applicable: 保留已完成页和节点结果，允许重试未完成部分。

@@ -19,6 +19,10 @@ COMMON_SCORER_PROMPT = """
 
 每项必须输出 key, label, score, rationale, evidence_ids, risk_notes。
 rationale 必须引用存在的 evidence id；没有证据时给 0 分。
+硬性锚点（优先于其他判断）：
+1. research_rigor 与 evidence_credibility：引用证据中没有任何量化指标、baseline/对照、复现、量化验收或正式发表成果时，得分不得超过 2.5。
+2. 任何维度 4 分以上，必须同时有本人具体动作和可验证结果（指标、产物、验收）的组合证据；只有方向、参与或头衔描述时封顶 3。
+3. 论文列表、学校、机构、热门术语本身不构成加分理由。
 同一维度在不同 Track 的表现形式可以不同，但判断标准必须基于候选人的实际动作与可验证证据。
 多个独立项目中持续担任负责人、连续产出同一研究主线的高质量成果、从传统方法迁移到新范式，分别是 ownership、成长轨迹和学习迁移的高分证据。不要因简历没有展开每篇论文的消融表就将所有相关维度压到 3 分。
 实习/工作经历可支撑通用潜力，但只评价其中的问题定义、本人动作、验证闭环、ownership 和成长迁移。脱敏机构档位、机构类型、岗位名和时长均不得直接加分。
@@ -87,6 +91,16 @@ def run_common_critic(state: dict[str, Any]) -> dict[str, Any]:
             message = f"{item.label} 缺少可追溯证据，封顶 1 分。"
             flags.append(message)
             risk_notes.append(message)
+        elif item.key == "research_rigor" and next_score > 2.5 and not _has_verification(refs, allow_tool=True):
+            next_score = 2.5
+            message = f"{item.label} 引用证据缺少量化指标、对照、复现或正式发表成果，封顶 2.5 分。"
+            flags.append(message)
+            risk_notes.append(message)
+        elif item.key == "evidence_credibility" and next_score > 2.5 and not _has_verification(refs, allow_tool=True):
+            next_score = 2.5
+            message = f"{item.label} 引用证据缺少量化指标、可运行产物或正式发表等可核验结果，封顶 2.5 分。"
+            flags.append(message)
+            risk_notes.append(message)
         elif next_score >= 4 and not _supports_high_score(item.key, refs):
             next_score = 3.5
             message = f"{item.label} 缺少支持高分的动作、指标或 ownership 组合证据。"
@@ -101,7 +115,8 @@ def run_common_critic(state: dict[str, Any]) -> dict[str, Any]:
                 }
             )
         )
-    calibrated = _apply_research_portfolio_floors(calibrated, list(evidence.values()))
+    evidence_items = list(evidence.values())
+    calibrated = _apply_research_portfolio_floors(calibrated, evidence_items)
     return {
         "common_scores": [item.model_dump() for item in calibrated],
         "common_score": round(sum(item.weighted_score for item in calibrated), 2),
@@ -147,6 +162,18 @@ def _apply_research_portfolio_floors(
 def _is_published_result(item: EvidenceItem) -> bool:
     text = " ".join([item.source, item.quote, *item.signals]).lower()
     return item.strength >= 4 and any(token in text for token in ("已发表", "已接收", "ccf-a", "journal"))
+
+
+def _has_verification(refs: list[EvidenceItem], allow_tool: bool) -> bool:
+    for item in refs:
+        if item.has_metric or _is_published_result(item):
+            return True
+        if allow_tool and item.has_specific_tool:
+            return True
+        text = " ".join([item.source, item.quote, *item.signals]).lower()
+        if any(token in text for token in ("验收", "上线", "可运行", "可复现")):
+            return True
+    return False
 
 
 def _supports_high_score(dimension_key: str, items: list[EvidenceItem]) -> bool:

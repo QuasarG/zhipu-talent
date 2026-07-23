@@ -1,7 +1,6 @@
 window.AgentGraph = (() => {
   const NODE_LABELS = {
     normalizer: "脱敏与标准化",
-    document_quality: "简历表达质量",
     evidence_extractor: "深度证据挖掘",
     track_router: "多 Track 路由",
     route_auditor: "Track 路由校验",
@@ -23,7 +22,7 @@ window.AgentGraph = (() => {
       key: "preparation",
       label: "预处理",
       description: "统一信息并建立可追溯证据",
-      nodes: ["normalizer", "document_quality", "evidence_extractor"],
+      nodes: ["normalizer", "evidence_extractor"],
     },
     {
       key: "routing",
@@ -93,8 +92,7 @@ window.AgentGraph = (() => {
 
   function advanceAfterEvent(rows, nodeKey) {
     const nextByNode = {
-      normalizer: "document_quality",
-      document_quality: "evidence_extractor",
+      normalizer: "evidence_extractor",
       evidence_extractor: "track_router",
       track_router: "route_auditor",
       common_scorer: "common_critic",

@@ -6,7 +6,6 @@ from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.models import (
     CandidateEvaluation,
     DimensionScore,
-    DocumentQualityAssessment,
     EvidenceItem,
     NormalizedResume,
     TrackAssignment,
@@ -49,8 +48,7 @@ FORMATTER_PROMPT = """
 - common_scores：跨 Track 通用潜力维度
 - track_assignments：候选人的 Track 权重与路由证据
 - track_evaluations：各 Track 专业得分、风险和维度
-- document_quality：低权重简历表达质量
-- score_summary：overall_score, common_score, track_score, document_score, level, tier
+- score_summary：overall_score, common_score, track_score, level, tier
 - critic_flags：路由、通用评分、专业评分和全局 Critic 发现的问题
 
 输出要求：
@@ -93,7 +91,6 @@ def run_formatter(state: dict) -> dict:
     common_scores = [DimensionScore.model_validate(item) for item in state.get("common_scores", [])]
     assignments = [TrackAssignment.model_validate(item) for item in state.get("track_assignments", [])]
     track_evaluations = [TrackEvaluation.model_validate(item) for item in state.get("track_results", [])]
-    document_quality = DocumentQualityAssessment.model_validate(state.get("document_quality", {}))
     assessment = state.get("portfolio_assessment", {})
     critic_flags = list(state.get("global_critic_flags", []))
     response = llm_client.call_llm_json(
@@ -104,7 +101,6 @@ def run_formatter(state: dict) -> dict:
             "common_scores": [item.model_dump() for item in common_scores],
             "track_assignments": [item.model_dump() for item in assignments],
             "track_evaluations": [item.model_dump() for item in track_evaluations],
-            "document_quality": document_quality.model_dump(),
             "score_summary": assessment,
             "critic_flags": critic_flags,
         },
@@ -134,7 +130,7 @@ def run_formatter(state: dict) -> dict:
         normalized_education=normalized.education_blind,
         screening_tags=normalized.screening_tags,
         common_score=float(assessment.get("common_score", 0)),
-        document_score=document_quality.score,
+        document_score=0.0,
         track_assignments=assignments,
         track_evaluations=track_evaluations,
         routing_confidence=float(state.get("routing_confidence", 0)),
@@ -153,7 +149,7 @@ def _decision_method(overall_score: int, tier: str, assignments: list[TrackAssig
     return (
         f"{overall_score} 分按系统规则进入{pool}；"
         f"下一轮沟通建议为「{tier}」。Track 分布为 {track_text}；"
-        "最终分由通用潜力、按 Track 权重聚合的专业能力和最多 3 分的简历表达质量构成。"
+        "最终分由通用潜力（40 分）与按 Track 权重聚合的专业能力（60 分）构成。"
     )
 
 
