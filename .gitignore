@@ -17,3 +17,6 @@ task.md
 docs/process_review.md
 outputs_real/
 flask_*.pid
+
+# ZCode agent 临时目录
+.zcode/
