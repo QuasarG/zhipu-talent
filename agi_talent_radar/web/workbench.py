@@ -39,6 +39,10 @@ def create_app() -> Flask:
     def index() -> str:
         return render_template("workbench.html")
 
+    @app.get("/talent-pool")
+    def talent_pool() -> str:
+        return render_template("talent_pool.html")
+
     @app.get("/api/candidates")
     def list_candidates():
         group = request.args.get("group")
@@ -154,6 +158,67 @@ def create_app() -> Flask:
                 if not moved:
                     return jsonify({"detail": "候选人不存在"}), 404
                 return jsonify({"id": moved.id, "group": moved.group})
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.get("/api/persons")
+    def list_persons_view():
+        person_type = request.args.get("person_type", "")
+        name = request.args.get("name", "")
+        level = request.args.get("level", "")
+        try:
+            from agi_talent_radar.core.database import get_session, list_persons
+
+            with get_session() as session:
+                rows = list_persons(session, person_type=person_type, name=name, level=level)
+                return jsonify([_person_to_brief(row) for row in rows])
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.get("/api/persons/<person_id>")
+    def get_person_view(person_id: str):
+        try:
+            from agi_talent_radar.core.database import get_person_detail, get_session
+
+            with get_session() as session:
+                person = get_person_detail(session, person_id)
+                if not person:
+                    return jsonify({"detail": "人员不存在"}), 404
+                return jsonify(_person_to_detail(person))
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.get("/api/persons/<person_id>/reputation")
+    def list_person_reputation(person_id: str):
+        try:
+            from agi_talent_radar.core.database import PersonORM, get_session
+
+            with get_session() as session:
+                person = session.get(PersonORM, person_id)
+                if not person:
+                    return jsonify({"detail": "人员不存在"}), 404
+                reports = sorted(person.reputation_reports, key=lambda r: r.created_at, reverse=True)
+                return jsonify([_reputation_report_to_dict(r) for r in reports])
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.post("/api/reputation/<int:report_id>/review")
+    def review_reputation(report_id: int):
+        body = request.get_json(silent=True) or {}
+        action = body.get("action")
+        reviewer = body.get("reviewer", "")
+        note = body.get("note", "")
+        try:
+            from agi_talent_radar.core.database import get_session
+            from agi_talent_radar.core.reputation_service import review_reputation_report
+
+            with get_session() as session:
+                report = review_reputation_report(session, report_id, action, reviewer=reviewer, note=note)
+                if not report:
+                    return jsonify({"detail": "舆情报告不存在"}), 404
+                return jsonify(_reputation_report_to_dict(report))
+        except ValueError as exc:
+            return jsonify({"detail": str(exc)}), 400
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
@@ -440,6 +505,67 @@ def _orm_to_detail(row) -> dict[str, Any]:
         "source_format": _string_attr(row, "source_format", "text"),
         "document_analysis": _load_json(getattr(row, "document_analysis", "")) or {},
     }
+
+
+def _person_to_brief(person) -> dict[str, Any]:
+    """人才库列表项：主档摘要 + 最新评估/舆情快照。"""
+    latest_eval = _latest_evaluation(person)
+    latest_rep = _latest_reputation(person)
+    return {
+        "id": person.id,
+        "name": person.name or person.id,
+        "org": person.org or "",
+        "direction": person.direction or "",
+        "person_type": person.person_type,
+        "overall_score": latest_eval.overall_score if latest_eval else None,
+        "level": latest_eval.level if latest_eval else None,
+        "reputation_level": latest_rep.level if latest_rep else None,
+        "reputation_status": latest_rep.review_status if latest_rep else None,
+        "updated_at": person.updated_at.isoformat() if person.updated_at else None,
+    }
+
+
+def _person_to_detail(person) -> dict[str, Any]:
+    """人才详情：主档 + 评估历史 + 舆情报告列表。"""
+    return {
+        "id": person.id,
+        "name": person.name or person.id,
+        "org": person.org or "",
+        "direction": person.direction or "",
+        "person_type": person.person_type,
+        "created_at": person.created_at.isoformat() if person.created_at else None,
+        "updated_at": person.updated_at.isoformat() if person.updated_at else None,
+        "evaluations": [_orm_to_evaluation(ev) for ev in sorted(person.evaluations, key=lambda e: e.id, reverse=True)],
+        "reputation_reports": [_reputation_report_to_dict(r) for r in sorted(person.reputation_reports, key=lambda r: r.created_at, reverse=True)],
+    }
+
+
+def _reputation_report_to_dict(report) -> dict[str, Any]:
+    """舆情报告序列化。"""
+    return {
+        "id": report.id,
+        "person_id": report.person_id,
+        "level": report.level,
+        "events": report.events or [],
+        "review_status": report.review_status,
+        "reviewer": report.reviewer or "",
+        "review_note": report.review_note or "",
+        "created_at": report.created_at.isoformat() if report.created_at else None,
+        "reviewed_at": report.reviewed_at.isoformat() if report.reviewed_at else None,
+    }
+
+
+def _latest_evaluation(person):
+    completed = [e for e in person.evaluations if e.status == "completed"]
+    if not completed:
+        return None
+    return max(completed, key=lambda e: e.id)
+
+
+def _latest_reputation(person):
+    if not person.reputation_reports:
+        return None
+    return max(person.reputation_reports, key=lambda r: r.created_at)
 
 
 def _orm_to_resume(row) -> CandidateResume:

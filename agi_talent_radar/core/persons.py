@@ -5,7 +5,7 @@ import hashlib
 import re
 import uuid
 
-from agi_talent_radar.core.db.orm import PersonORM
+from agi_talent_radar.core.db.orm import PersonORM, ReputationReportORM
 
 PERSON_TYPES = {"student", "social", "guest"}
 
@@ -55,3 +55,30 @@ def get_or_create_person(
     session.add(person)
     session.flush()
     return person
+
+
+def list_persons(
+    session,
+    person_type: str = "",
+    name: str = "",
+    level: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> list[PersonORM]:
+    """人才库列表：按类型/姓名/舆情等级筛选，分页返回。只读不 commit。"""
+    query = session.query(PersonORM)
+    if person_type:
+        query = query.filter(PersonORM.person_type == person_type)
+    if name:
+        query = query.filter(PersonORM.name.like(f"%{name}%"))
+    if level:
+        # 舆情等级筛选：取每个 person 最新一条 reputation_report 的 level
+        query = query.join(
+            ReputationReportORM, PersonORM.id == ReputationReportORM.person_id, isouter=True,
+        ).filter(ReputationReportORM.level == level)
+    return query.order_by(PersonORM.updated_at.desc()).limit(limit).offset(offset).all()
+
+
+def get_person_detail(session, person_id: str) -> PersonORM | None:
+    """人才详情：主档 + 评估历史 + 舆情报告，通过 relationship 一次性带出。只读不 commit。"""
+    return session.query(PersonORM).filter_by(id=person_id).first()

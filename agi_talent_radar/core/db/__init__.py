@@ -29,6 +29,7 @@ from agi_talent_radar.core.db.repository import (
     update_task,
 )
 from agi_talent_radar.core.db.runtime import create_database, get_engine, get_session, init_db, reset_engine_cache
+from agi_talent_radar.core.persons import get_person_detail, list_persons
 
 
 __all__ = [
@@ -52,10 +53,12 @@ __all__ = [
     "fail_evaluation_run",
     "get_candidate_with_latest_evaluation",
     "get_engine",
+    "get_person_detail",
     "get_session",
     "init_db",
     "list_candidates",
     "list_candidates_by_group",
+    "list_persons",
     "move_candidate_group",
     "record_node_event",
     "reset_engine_cache",

@@ -287,6 +287,8 @@ class PersonORM(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
     evaluations = relationship("EvaluationORM", back_populates="person")
+    reputation_reports = relationship("ReputationReportORM", back_populates="person", cascade="all, delete-orphan")
+    external_facts = relationship("ExternalFactORM", back_populates="person", cascade="all, delete-orphan")
 
 
 class ExternalFactORM(Base):
@@ -304,6 +306,8 @@ class ExternalFactORM(Base):
     fetched_at = Column(DateTime, server_default=func.now(), nullable=False)
     expires_at = Column(DateTime)
 
+    person = relationship("PersonORM", back_populates="external_facts")
+
 
 class ReputationReportORM(Base):
     """舆情风险报告：红/黄/绿 + 事件证据，人工复核后才终态。"""
@@ -320,6 +324,8 @@ class ReputationReportORM(Base):
     review_note = Column(Text, default="")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     reviewed_at = Column(DateTime)
+
+    person = relationship("PersonORM", back_populates="reputation_reports")
 
 
 class TaskORM(Base):
