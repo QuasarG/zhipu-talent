@@ -7,5 +7,6 @@ sqlalchemy==2.0.51
 pymysql==1.2.0
 pymupdf>=1.24,<2
 rapidocr-onnxruntime>=1.4,<2
+httpx>=0.27,<1
 json-repair>=0.30,<1
 gunicorn>=22,<24
