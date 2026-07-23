@@ -11,18 +11,24 @@ from agi_talent_radar.core.db.orm import (
     EvaluationEvidenceORM,
     EvaluationNodeRunORM,
     EvaluationORM,
+    PersonORM,
+    SchemaVersionORM,
+    TaskORM,
     TrackAssignmentORM,
     TrackEvaluationORM,
 )
-from agi_talent_radar.core.db.migrations import ensure_schema
+from agi_talent_radar.core.db.migrations import LATEST_SCHEMA_VERSION, ensure_schema
 from agi_talent_radar.core.db.repository import (
+    create_task,
     evaluation_to_dict,
     get_candidate_with_latest_evaluation,
     record_node_event,
     save_candidate,
     save_evaluation,
     start_evaluation_run,
+    update_task,
 )
+from agi_talent_radar.core.persons import get_or_create_person
 from agi_talent_radar.core.models import (
     CandidateEvaluation,
     CandidateResume,
@@ -83,6 +89,46 @@ class DatabaseTest(unittest.TestCase):
             _, latest = get_candidate_with_latest_evaluation(session, "candidate_db")
             self.assertEqual(latest.id, second.id)
             self.assertEqual(latest.overall_score, 88)
+
+    def test_evaluation_links_person_master_record(self) -> None:
+        with self.Session() as session:
+            save_candidate(session, CandidateResume(id="candidate_db", name="DB 候选人", directions=["Agent 安全"]))
+            first = save_evaluation(session, _evaluation(72))
+            second = save_evaluation(session, _evaluation(88))
+
+            self.assertTrue(first.person_id)
+            self.assertEqual(first.person_id, second.person_id)
+            self.assertTrue(first.config_version.startswith("scoring-"))
+            person = session.get(PersonORM, first.person_id)
+            self.assertEqual(person.name, "DB 候选人")
+            self.assertEqual(person.direction, "Agent 安全")
+
+    def test_person_fingerprint_merges_same_identity(self) -> None:
+        with self.Session() as session:
+            early = get_or_create_person(session, name="张三")
+            later = get_or_create_person(session, name="张 三", org="某大学", person_type="guest")
+
+            self.assertEqual(early.id, later.id)
+            self.assertEqual(later.org, "某大学")
+            self.assertEqual(_count(session, PersonORM), 1)
+
+    def test_ensure_schema_creates_platform_tables(self) -> None:
+        ensure_schema(self.engine)
+        tables = set(inspect(self.engine).get_table_names())
+        self.assertTrue({"persons", "external_facts", "reputation_reports", "tasks"} <= tables)
+        evaluation_columns = {column["name"] for column in inspect(self.engine).get_columns("evaluations")}
+        self.assertTrue({"person_id", "config_version"} <= evaluation_columns)
+        with self.Session() as session:
+            self.assertIsNotNone(session.get(SchemaVersionORM, LATEST_SCHEMA_VERSION))
+
+    def test_task_lifecycle_helpers(self) -> None:
+        with self.Session() as session:
+            task = create_task(session, "reputation", {"person_id": "p1"})
+            update_task(session, task.id, status="running", progress={"step": 1})
+            update_task(session, task.id, status="done")
+            final = session.get(TaskORM, task.id)
+            self.assertEqual(final.status, "done")
+            self.assertEqual(final.progress, {"step": 1})
 
     def test_legacy_json_columns_are_backfilled_then_removed(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")

@@ -90,36 +90,120 @@ class Connector(Protocol):
 ### 5.1 总图
 
 ```
-intake_router          判断模式：full_eval / guest_check
-      │
-person_resolver        主档归并（fingerprint 命中则带出历史摘要）
-      │
-      ├──── full_eval ──────────────────────────────┐
-      │  resume_chain（已有）                        │
-      │  parser → normalizer → evidence_extractor    │
-      │                                              │
-      ├──── 并行外部证据链（两种模式都跑） ──────────┤
-      │  academic_chain                              │
-      │    claim_extractor → academic_lookup         │
-      │    → claim_alignment                         │
-      │  code_chain                                  │
-      │    github_lookup → repo_reader(ZRead)        │
-      │    → contribution_alignment                  │
-      │  reputation_chain                            │
-      │    identity_disambiguator → risk_searcher    │
-      │    → event_classifier → risk_grader          │
-      │                                              │
-      ▼                                              ▼
-track_router → common_scorer/critic → track scorers   （仅 full_eval，已有）
-      │
-match_scorer           需求档案 ↔ Track 分布 + 外部事实（有激活需求档案时）
-      │
-reputation_gate        舆情结论转决策闸门：红→不推荐，黄→人工复核标记
-      │
-decision_composer      汇总：推荐结论 + 匹配方向 + 人才画像 + 风险面板
-      │
-review_router          红/疑似命中 → human_review 待办；绿 → 直接终态
+┌──────────────────────────────── 接入层 ────────────────────────────────┐
+│  ① 简历 PDF/JSONL/MD        ② 姓名+机构+方向         ③ HR 批量导入      │
+│    (文本层提取+RapidOCR)      (嘉宾核查,无需简历)       +筛选结果回流     │
+└───────────────────────────────┬────────────────────────────────────────┘
+                                ▼
+                      ┌───────────────────┐
+                      │  intake_router    │  判断评估模式
+                      │  full_eval /      │  有简历→完整评估
+                      │  guest_check      │  仅身份→轻量核查
+                      └─────────┬─────────┘
+                                ▼
+                      ┌───────────────────┐     ┌─ persons 主档 ─┐
+                      │  person_resolver  │◄───►│ fingerprint 归并│
+                      │  主档归并+历史带出 │     │ 历史评估/舆情   │
+                      └─────────┬─────────┘     └────────────────┘
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        │ (仅 full_eval)        │                       │
+        ▼                       ▼                       ▼
+┌───────────────┐   ┌───────────────────┐   ┌───────────────────────┐
+│  简历证据链     │   │  学术核查链        │   │  代码核查链            │
+│  (已有,不动)    │   │  claim_extractor  │   │  github_lookup        │
+│               │   │  论文声称提取      │   │  贡献事实(GitHub API) │
+│               │   │       ▼           │   │       ▼               │
+│               │   │  academic_lookup  │   │  repo_reader          │
+│               │   │  OpenAlex/AMiner  │   │  ZRead 项目解读       │
+│               │   │  +撤稿库          │   │       ▼               │
+│               │   │       ▼           │   │  contribution_        │
+│               │   │  claim_alignment  │   │  alignment            │
+│               │   │  ✓/✗/疑似对齐     │   │  贡献真伪对齐         │
+└───────┬───────┘   └─────────┬─────────┘   └───────────┬───────────┘
+        │                     │                         │
+        ▼                     │                         │
+┌──────────────────────────────────────────────────┐   │
+│            舆情核查链 (WAIC 核心,两种模式都跑)      │   │
+│  identity_disambiguator  姓名+机构+方向消歧指纹     │   │
+│         ▼  confirmed/probable/rejected(同名)      │   │
+│  risk_searcher   模板检索: 抄袭/学术不端/撤稿/争议  │   │
+│         ▼  (web_search+web_reader+PubPeer/RW)     │   │
+│  event_classifier  事件分类: 学术不端/抄袭/冲突/误报│   │
+│         ▼                                        │   │
+│  risk_grader     🔴实锤不端 🟡疑似/一般争议 🟢干净 │   │
+└───────────────────────┬──────────────────────────┘   │
+                        │ reputation_report(带URL证据)   │
+        ┌───────────────┴───────────────┐              │
+        ▼ (仅 full_eval 继续评分)         │              │
+┌──────────────────────────────────────────────────┐   │
+│              多 Track 评分区 (已有,全部保留)        │   │
+│                                                  │   │
+│  normalizer  脱敏+背景折叠                        │   │
+│       ▼                                          │   │
+│  evidence_extractor  结构化证据+flag              │   │
+│       ▼                                          │   │
+│  track_router → route_auditor  1-3 Track+权重     │   │
+│       │                                          │   │
+│       ├─► common_scorer → common_critic  (40分)  │   │
+│       ├─► base_track ──────────────┐             │   │
+│       ├─► agent_track ─────────────┤             │   │
+│       ├─► safety_track ────────────┤  各60分      │   │
+│       ├─► multimodal_track ────────┤  独立rubric  │   │
+│       ├─► systems_track ───────────┤  校准封顶    │   │
+│       └─► ai4science_track ────────┘             │   │
+│                       ▼                          │   │
+│  portfolio_aggregator  40+Σ(权重×60)             │   │
+│       ▼                                          │   │
+│  global_critic  一致性复核                        │   │
+└───────────────────────┬──────────────────────────┘   │
+                        │ score + track分布 + evidence   │
+        ┌───────────────┼───────────────┬──────────────┘
+        ▼               ▼               ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────────────┐
+│  match_scorer  │ │ 外部对齐事实    │ │  reputation_gate      │
+│  需求档案↔Track │ │  学术✓/✗       │ │  🔴→强制不推荐        │
+│  匹配分+缺口    │ │  代码✓/✗       │ │  🟡→挂人工复核        │
+│  (等HRBP需求)   │ │                │ │  🟢→不干预            │
+└───────┬───────┘ └───────┬───────┘ └───────────┬───────────┘
+        └─────────────────┼─────────────────────┘
+                          ▼
+              ┌───────────────────────┐
+              │  decision_composer    │  (formatter 升级)
+              │  推荐/不推荐 结论      │
+              │  + 匹配方向            │
+              │  + 人才画像            │
+              │  + 风险面板            │
+              └───────────┬───────────┘
+                          ▼
+              ┌───────────────────────┐
+              │  review_router        │
+              │  红/疑似→人工复核队列   │──► HR确认/驳回后才终态
+              │  绿→直接终态           │
+              └───────────┬───────────┘
+                          ▼
+┌──────────────────────────────── 输出 ────────────────────────────────┐
+│ 评估报告(分数+Track+对齐+风险) │ 人才库主档更新 │ 匹配结果 │ 复核待办   │
+└──────────────────────────────────────────────────────────────────────┘
+
+外围支撑层（所有链共享）：
+
+┌─ 连接器层 ──────────────┐  ┌─ 数据层(MySQL) ──────┐  ┌─ 编排层 ─────────┐
+│ openalex / aminer       │  │ persons(主档)         │  │ 任务表+状态机     │
+│ github / zread_mcp      │  │ evaluations(含版本)   │  │ 失败重试2次→降级  │
+│ web_search / web_reader │  │ external_facts(缓存)  │  │ 单源挂不拖死全图  │
+│ retraction_watch        │  │ reputation_reports    │  │ TTL缓存控成本     │
+│ 统一: search()→Fact[]   │  │ requirement_profiles  │  └──────────────────┘
+│ 带source_url, 缓存+限流  │  │ match_results         │
+└─────────────────────────┘  │ hr_outcomes(回流真值) │
+                             └───────────────────────┘
 ```
+
+看图要点：
+
+- 简历证据链 + 多 Track 评分区整块不动，外部链结果与评分结果在 `decision_composer` 汇合，互不侵入。
+- 两条分水岭：`intake_router` 决定走不走评分区（嘉宾只核查不打分）；`reputation_gate` 决定分数能不能生效（分数是能力，闸门是风险）。
+- 舆情链是两种模式都必跑的新链；`match_scorer` 只吃 Track 分布与外部对齐事实，嘉宾模式接了需求档案也能用。
 
 ### 5.2 新节点详设
 

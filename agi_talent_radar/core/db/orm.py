@@ -87,6 +87,8 @@ class EvaluationORM(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     candidate_id = Column(String(32), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
+    person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"))
+    config_version = Column(String(64), default="")
     status = Column(String(24), default="running", nullable=False)
     error_message = Column(Text, default="")
     overall_score = Column(Integer, default=0)
@@ -109,6 +111,7 @@ class EvaluationORM(Base):
     completed_at = Column(DateTime)
 
     candidate = relationship("CandidateORM", back_populates="evaluations")
+    person = relationship("PersonORM", back_populates="evaluations")
     node_runs = relationship(
         "EvaluationNodeRunORM",
         back_populates="evaluation",
@@ -267,3 +270,68 @@ class DimensionScoreORM(Base):
     evaluation = relationship("EvaluationORM", back_populates="dimension_scores", overlaps="dimension_scores,track_evaluation")
     track_evaluation = relationship("TrackEvaluationORM", back_populates="dimension_scores", overlaps="dimension_scores,evaluation")
     evidence_items = relationship("EvaluationEvidenceORM", secondary=dimension_evidence_links)
+
+
+class PersonORM(Base):
+    """人员主档：同一自然人多次评估/邀请归并到一档。"""
+
+    __tablename__ = "persons"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(128), default="", index=True)
+    org = Column(String(256), default="")
+    direction = Column(String(256), default="")
+    fingerprint = Column(String(64), unique=True, nullable=False, index=True)
+    person_type = Column(String(32), default="student")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    evaluations = relationship("EvaluationORM", back_populates="person")
+
+
+class ExternalFactORM(Base):
+    """外部证据缓存：连接器结果落表，TTL 到期才重拉。"""
+
+    __tablename__ = "external_facts"
+    __table_args__ = (Index("ix_external_facts_person_source", "person_id", "source"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    person_id = Column(String(36), ForeignKey("persons.id", ondelete="CASCADE"), nullable=False)
+    source = Column(String(32), nullable=False)
+    fact_type = Column(String(64), nullable=False)
+    payload = Column(JSON, default=dict)
+    source_url = Column(Text, default="")
+    fetched_at = Column(DateTime, server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime)
+
+
+class ReputationReportORM(Base):
+    """舆情风险报告：红/黄/绿 + 事件证据，人工复核后才终态。"""
+
+    __tablename__ = "reputation_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    person_id = Column(String(36), ForeignKey("persons.id", ondelete="CASCADE"), nullable=False)
+    evaluation_id = Column(Integer, ForeignKey("evaluations.id", ondelete="SET NULL"))
+    level = Column(String(8), default="green")
+    events = Column(JSON, default=list)
+    review_status = Column(String(24), default="pending", index=True)
+    reviewer = Column(String(128), default="")
+    review_note = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    reviewed_at = Column(DateTime)
+
+
+class TaskORM(Base):
+    """异步任务：外部核查等慢操作的状态机。"""
+
+    __tablename__ = "tasks"
+
+    id = Column(String(36), primary_key=True)
+    task_type = Column(String(32), nullable=False)
+    status = Column(String(24), default="queued", index=True)
+    payload = Column(JSON, default=dict)
+    progress = Column(JSON, default=dict)
+    error_message = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

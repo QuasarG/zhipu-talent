@@ -5,11 +5,16 @@ from agi_talent_radar.core.db.orm import (
     EvaluationEvidenceORM,
     EvaluationNodeRunORM,
     EvaluationORM,
+    ExternalFactORM,
+    PersonORM,
+    ReputationReportORM,
     SchemaVersionORM,
+    TaskORM,
     TrackAssignmentORM,
     TrackEvaluationORM,
 )
 from agi_talent_radar.core.db.repository import (
+    create_task,
     delete_candidate,
     evaluation_to_dict,
     fail_evaluation_run,
@@ -21,6 +26,7 @@ from agi_talent_radar.core.db.repository import (
     save_candidate,
     save_evaluation,
     start_evaluation_run,
+    update_task,
 )
 from agi_talent_radar.core.db.runtime import create_database, get_engine, get_session, init_db, reset_engine_cache
 
@@ -32,10 +38,15 @@ __all__ = [
     "EvaluationEvidenceORM",
     "EvaluationNodeRunORM",
     "EvaluationORM",
+    "ExternalFactORM",
+    "PersonORM",
+    "ReputationReportORM",
     "SchemaVersionORM",
+    "TaskORM",
     "TrackAssignmentORM",
     "TrackEvaluationORM",
     "create_database",
+    "create_task",
     "delete_candidate",
     "evaluation_to_dict",
     "fail_evaluation_run",
@@ -51,4 +62,5 @@ __all__ = [
     "save_candidate",
     "save_evaluation",
     "start_evaluation_run",
+    "update_task",
 ]

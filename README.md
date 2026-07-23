@@ -135,7 +135,7 @@ pip install rapidocr-onnxruntime
 ## 数据库结构
 
 Web 工作台使用 MySQL 持久化候选人和评估运行。应用启动时会检查 `schema_versions`，
-将旧版 Track、维度和证据 JSON 回填到关系表后删除旧列。当前 schema version 为 2。
+将旧版 Track、维度和证据 JSON 回填到关系表后删除旧列。当前 schema version 为 4（含人员主档 `persons`、外部证据缓存 `external_facts`、舆情报告 `reputation_reports`、异步任务 `tasks`）。
 
 ```text
 candidates

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,10 +13,13 @@ from agi_talent_radar.core.db.orm import (
     EvaluationEvidenceORM,
     EvaluationNodeRunORM,
     EvaluationORM,
+    TaskORM,
     TrackAssignmentORM,
     TrackEvaluationORM,
 )
 from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume, ImportClassification
+from agi_talent_radar.core.persons import get_or_create_person
+from agi_talent_radar.core.scoring_version import current_scoring_version
 
 
 def save_candidate(
@@ -133,6 +137,8 @@ def save_evaluation(
     ev.document_score = evaluation.document_score
     ev.routing_confidence = evaluation.routing_confidence
     ev.evaluation_mode = evaluation.evaluation_mode
+    ev.config_version = current_scoring_version()
+    ev.person_id = _link_person(session, evaluation).id
     ev.status = "completed"
     ev.error_message = ""
     ev.completed_at = _now()
@@ -417,3 +423,43 @@ def _as_list(value: Any) -> list:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _link_person(session, evaluation: CandidateEvaluation):
+    """把评估挂到人员主档：优先取候选人记录里的姓名和方向。"""
+    candidate = session.get(CandidateORM, evaluation.id)
+    name = (candidate.name if candidate else "") or evaluation.name
+    direction = ""
+    if candidate and candidate.directions:
+        items = _as_list(candidate.directions)
+        if items:
+            direction = str(items[0])[:256]
+    return get_or_create_person(session, name=name, direction=direction)
+
+
+def create_task(session, task_type: str, payload: dict[str, Any] | None = None, task_id: str | None = None) -> TaskORM:
+    task = TaskORM(id=task_id or uuid.uuid4().hex, task_type=task_type, payload=payload or {})
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+def update_task(
+    session,
+    task_id: str,
+    status: str | None = None,
+    progress: dict[str, Any] | None = None,
+    error: str = "",
+) -> TaskORM | None:
+    task = session.get(TaskORM, task_id)
+    if task is None:
+        return None
+    if status:
+        task.status = status
+    if progress is not None:
+        task.progress = progress
+    if error:
+        task.error_message = error
+    session.commit()
+    return task

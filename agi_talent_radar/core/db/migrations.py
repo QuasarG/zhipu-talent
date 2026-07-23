@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 3
+LATEST_SCHEMA_VERSION = 4
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -28,6 +28,8 @@ def ensure_schema(engine) -> None:
         _record_version(engine, 2, "normalize multi-track evaluation details")
     if current_version < 3:
         _record_version(engine, 3, "add structured internship and work experiences")
+    if current_version < 4:
+        _record_version(engine, 4, "add person master record and platform foundation tables")
     _ensure_indexes(engine)
 
 
@@ -58,6 +60,8 @@ def _ensure_legacy_parent_columns(engine) -> None:
             ("status", "VARCHAR(24) NOT NULL DEFAULT 'completed'"),
             ("error_message", "TEXT"),
             ("completed_at", "DATETIME"),
+            ("person_id", "VARCHAR(36)"),
+            ("config_version", "VARCHAR(64)"),
         ):
             if name not in evaluation_columns:
                 additions.append(f"{name} {column_type}")
