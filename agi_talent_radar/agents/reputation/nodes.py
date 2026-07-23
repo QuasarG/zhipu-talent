@@ -17,8 +17,8 @@ from agi_talent_radar.agents.reputation.models import (
     SearchHit,
 )
 
-SERIOUS_CATEGORIES = {"学术不端", "抄袭争议"}
-NEGATIVE_CATEGORIES = SERIOUS_CATEGORIES | {"公开冲突", "法律纠纷", "其他负面"}
+SERIOUS_CATEGORIES = {"学术不端", "抄袭争议", "职业诚信"}
+NEGATIVE_CATEGORIES = SERIOUS_CATEGORIES | {"项目争议", "商业纠纷", "公开冲突", "法律纠纷", "其他负面"}
 
 RISK_QUERY_TEMPLATES: tuple[tuple[str, str], ...] = (
     ("{name} {org} 抄袭", ""),
@@ -28,6 +28,11 @@ RISK_QUERY_TEMPLATES: tuple[tuple[str, str], ...] = (
     ("{name} 学术 纠纷", ""),
     ("{name}", "pubpeer.com"),
     ("{name}", "retractionwatch.com"),
+    ("{name} 争议", ""),
+    ("{name} 纠纷", ""),
+    ("{name} 造假", ""),
+    ("{name} 负面", ""),
+    ("{name} 塌房", ""),
 )
 
 EVENT_CLASSIFIER_PROMPT = """
@@ -45,13 +50,20 @@ EVENT_CLASSIFIER_PROMPT = """
    confirmed = 文本同时提到姓名且机构/方向/成果可对应；
    probable = 只提到姓名，机构方向未提但不矛盾；
    rejected = 机构、方向、年代明显对不上，或只是重名。
-2. 只允许输出这些 category：学术不端 / 抄袭争议 / 公开冲突 / 法律纠纷 / 其他负面 / 误报。
+2. 只允许输出这些 category：学术不端 / 抄袭争议 / 项目争议 / 商业纠纷 / 公开冲突 / 法律纠纷 / 职业诚信 / 其他负面 / 误报。
+   - 项目争议：开源/商业项目涉嫌抄袭、索贿、刷量、虚假宣传、社区塌房等
+   - 商业纠纷：劳资、股权、违约、欠款等
+   - 职业诚信：简历/学历造假、冒充资历、虚构经历等
 3. 内容只是正常学术讨论、新闻报道中性提及、或明显广告，归入 误报。
-4. 每条事件必须给出 source_urls（只能引用输入中出现的 URL），不得编造。
-5. status 填写事件当前状态：进行中 / 已澄清 / 已有结论 / 不明。
-6. 没有可靠命中时 events 输出空数组，不要硬凑。
+4. 严格区分「事件主体」与「事件对象」：summary 必须写清是谁对谁做了什么。
+   例如"A 指控 B 抄袭"，目标人物是 A 则事件是"A 发起抄袭指控"，是 B 则是"B 被指控抄袭"。
+   绝不可把报道里出现的人都当成目标人物的负面。
+5. 每条事件必须给出来源。优先用 source_urls（引用输入 hit 中出现的 url）；
+   若 hit 无 url（聚合摘要类结果常缺链接），改在 source_refs 里填该 hit 的 title 原文，作为来源标识。不得编造不存在的来源。
+6. status 填写事件当前状态：进行中 / 已澄清 / 已有结论 / 不明。
+7. 没有可靠命中时 events 输出空数组，不要硬凑。
 
-每条 event 输出字段：category, identity_match, summary（50 字内事实转述，不做定性评价）, status, source_urls, publish_date。
+每条 event 输出字段：category, identity_match, summary（50 字内事实转述，不做定性评价，必须点明主客体）, status, source_urls, source_refs（url 缺失时填来源标题）, publish_date。
 """.strip()
 
 
@@ -112,20 +124,35 @@ def classify_events(identity: PersonIdentity, hits: list[SearchHit]) -> list[Rep
         temperature=0.1,
     )
     events: list[ReputationEvent] = []
-    known_urls = {hit.url for hit in hits}
+    # 已知来源：URL 优先，无 URL 时用标题做来源标识（智谱聚合结果常缺 link）
+    known_urls = {hit.url for hit in hits if hit.url}
+    known_titles = {hit.title for hit in hits if hit.title}
     for raw in response.get("events", []):
         if not isinstance(raw, dict):
             continue
+        raw_urls = [str(u) for u in raw.get("source_urls", []) if u]
+        # URL 在已知集合里就直接用；否则尝试用来源标注匹配已知标题
+        verified_urls = [u for u in raw_urls if u in known_urls]
+        source_refs = raw.get("source_refs", [])  # LLM 可用标题/媒体做来源标注
+        if not verified_urls:
+            # URL 缺失或不在已知集，改用标题匹配补来源
+            for ref in source_refs:
+                ref_str = str(ref)
+                for title in known_titles:
+                    if ref_str and ref_str in title:
+                        verified_urls.append(f"来源:{title[:40]}")
+                        break
         event = ReputationEvent(
             category=str(raw.get("category", "误报")),
             identity_match=str(raw.get("identity_match", "rejected")),
             summary=str(raw.get("summary", "")),
             status=str(raw.get("status", "不明")),
-            source_urls=[url for url in raw.get("source_urls", []) if url in known_urls],
+            source_urls=verified_urls,
             publish_date=str(raw.get("publish_date", "")),
         )
         if event.category == "误报" or event.identity_match == "rejected":
             continue
+        # 有 URL 或标题来源都算可追溯，不再因缺 URL 直接丢弃
         if not event.source_urls:
             continue
         events.append(event)
@@ -139,7 +166,7 @@ def grade_risk(events: list[ReputationEvent]) -> tuple[str, str]:
         e for e in confirmed if e.category in SERIOUS_CATEGORIES and e.status != "已澄清"
     ]
     if serious_confirmed:
-        return "red", f"确认身份的学术不端/抄袭争议 {len(serious_confirmed)} 起，需人工复核。"
+        return "red", f"确认身份的学术不端/抄袭/职业诚信问题 {len(serious_confirmed)} 起，需人工复核。"
     negative_confirmed = [
         e for e in confirmed if e.category in NEGATIVE_CATEGORIES and e.status != "已澄清"
     ]

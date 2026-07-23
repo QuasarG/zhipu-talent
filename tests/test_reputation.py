@@ -31,10 +31,12 @@ def _fact(title: str, url: str, content: str = "") -> Fact:
 class ReputationChainTest(unittest.TestCase):
     def test_build_queries_strips_empty_org_and_keeps_domains(self) -> None:
         queries = build_queries(PersonIdentity(name="张三", org=""))
-        self.assertEqual(len(queries), 7)
+        self.assertEqual(len(queries), 12)
         self.assertIn(("张三 抄袭", ""), queries)
         self.assertIn(("张三", "pubpeer.com"), queries)
         self.assertIn(("张三", "retractionwatch.com"), queries)
+        self.assertIn(("张三 争议", ""), queries)
+        self.assertIn(("张三 造假", ""), queries)
 
     def test_collect_hits_dedups_and_degrades_on_failure(self) -> None:
         def fake_search(query, count=8, domain_filter=""):
