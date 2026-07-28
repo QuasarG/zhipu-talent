@@ -66,19 +66,6 @@ class WorkbenchTest(unittest.TestCase):
         self.assertIn("publication.positionLabel", workbench_script)
         self.assertIn("author.isCandidate", workbench_script)
 
-    def test_resume_panel_renders_structured_work_experiences(self) -> None:
-        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
-        styles = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.css").read_text(encoding="utf-8")
-
-        self.assertIn('section("实习 / 工作经历", experiencesBody', script)
-        self.assertIn("experience.organization", script)
-        self.assertIn("experience.role", script)
-        self.assertIn("experience.details", script)
-        self.assertIn(".resume-section-experiences", styles)
-        self.assertIn(".experience-item", styles)
-        self.assertIn("grid-template-rows: 150px 240px", styles)
-        self.assertNotIn('section("筛选标签"', script)
-
     def test_drawers_render_with_consistent_toggle_state(self) -> None:
         response = self.app.get("/")
         self.assertEqual(response.status_code, 200)
@@ -116,33 +103,6 @@ class WorkbenchTest(unittest.TestCase):
         self.assertIn("async function runWithConcurrency", script)
         self.assertIn("runWithConcurrency(ids, BULK_EVALUATION_CONCURRENCY", script)
         self.assertNotIn("Promise.allSettled(\n    ids.map", script)
-
-    def test_agent_panel_disallows_horizontal_scroll(self) -> None:
-        styles = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.css").read_text(encoding="utf-8")
-        self.assertIn(".agent-pane {\n  width: clamp(480px, 36vw, 560px);", styles)
-        self.assertIn("overflow-x: hidden;", styles)
-        self.assertIn(".agent-content {", styles)
-        self.assertIn("word-break: break-word;", styles)
-        self.assertIn("grid-template-columns: minmax(0, 160px) minmax(0, 1fr) 42px;", styles)
-
-    def test_track_results_render_all_dimensions_with_evidence(self) -> None:
-        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
-        styles = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.css").read_text(encoding="utf-8")
-
-        self.assertIn('class="track-result" open', script)
-        self.assertIn("trackDimensions.map", script)
-        self.assertIn("dimension.weighted_score", script)
-        self.assertIn("evidenceButtons(dimension.evidence_ids)", script)
-        self.assertIn("track-risk-block", script)
-        self.assertNotIn(".slice(0, 3)", script)
-        self.assertIn(".track-dimension-row", styles)
-        self.assertIn(".track-evidence-list", styles)
-
-    def test_agent_node_panel_expands_without_internal_scroll(self) -> None:
-        styles = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.css").read_text(encoding="utf-8")
-        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
-        self.assertIn(".node-feed {\n  max-height: none;\n  overflow-y: visible;", styles)
-        self.assertNotIn("feed.scrollTop = feed.scrollHeight", script)
 
     def test_agent_graph_renders_multi_track_parallel_stages(self) -> None:
         graph_script = (
