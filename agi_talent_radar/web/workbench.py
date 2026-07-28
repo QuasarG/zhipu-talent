@@ -53,19 +53,14 @@ def create_app() -> Flask:
     install_auth_middleware(app)
 
     @app.get("/")
+    @app.get("/")
     def index() -> str:
-        return render_template(
-            "workbench.html",
-            scoring_thresholds={
-                "shortlisted": SCORING_CONFIG.thresholds.a,
-                "alternative": SCORING_CONFIG.thresholds.b,
-            },
-            scoring_routing_note=SCORING_CONFIG.thresholds.routing_note(),
-        )
+        """简历评估工作台（Liquid Glass 重构版）。"""
+        return render_template("resume_evaluate.html")
 
     @app.get("/resume-evaluate")
     def resume_evaluate() -> str:
-        """新简历评估工作台（Liquid Glass 重构版）。"""
+        """简历评估工作台（别名）。"""
         return render_template("resume_evaluate.html")
 
     @app.get("/knowledge")
@@ -76,6 +71,16 @@ def create_app() -> Flask:
     @app.get("/talent-pool")
     def talent_pool() -> str:
         return render_template("talent_pool_v2.html")
+
+    @app.get("/review")
+    def review_center() -> str:
+        """待核验中心。"""
+        return render_template("review_center.html")
+
+    @app.get("/settings")
+    def settings_page() -> str:
+        """全局配置页。"""
+        return render_template("settings.html")
 
     @app.get("/api/candidates")
     def list_candidates():

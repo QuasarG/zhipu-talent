@@ -40,87 +40,12 @@ class WorkbenchTest(unittest.TestCase):
         return events
 
     def test_index_loads(self) -> None:
+        """新前端：GET / 渲染 resume_evaluate.html。"""
         response = self.app.get("/")
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
-        self.assertIn("AGI Talent Radar", html)
-        self.assertIn("workbench-import.js", html)
-        self.assertIn("workbench-publications.js", html)
-        self.assertIn('id="import-file-input" type="file"', html)
-        self.assertIn("multiple hidden", html)
-
-    def test_publication_cards_mark_status_and_candidate_author(self) -> None:
-        publication_script = (
-            ROOT / "agi_talent_radar" / "web" / "static" / "workbench-publications.js"
-        ).read_text(encoding="utf-8")
-        workbench_script = (
-            ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js"
-        ).read_text(encoding="utf-8")
-        self.assertIn("inferCandidateKeys", publication_script)
-        self.assertIn('label: "已发表"', publication_script)
-        self.assertIn('label: "已接收"', publication_script)
-        self.assertIn('label: "在投"', publication_script)
-        self.assertIn('label: "状态未注明"', publication_script)
-        self.assertIn('label: "出版信息不完整"', publication_script)
-        self.assertIn("publicationVenueStatus", publication_script)
-        self.assertIn("publication.positionLabel", workbench_script)
-        self.assertIn("author.isCandidate", workbench_script)
-
-    def test_drawers_render_with_consistent_toggle_state(self) -> None:
-        response = self.app.get("/")
-        self.assertEqual(response.status_code, 200)
-        html = response.get_data(as_text=True)
-        self.assertIn('aria-controls="list-pending"', html)
-        self.assertIn('aria-controls="list-shortlisted"', html)
-        self.assertIn('aria-controls="list-alternative"', html)
-        self.assertIn('aria-controls="list-rejected"', html)
-        self.assertIn('id="list-shortlisted" hidden', html)
-        self.assertIn('id="list-alternative" hidden', html)
-        self.assertIn('id="list-rejected" hidden', html)
-        self.assertIn('id="bulk-evaluate-pending"', html)
-        self.assertIn('id="bulk-confirm-dialog"', html)
-
-    def test_evidence_is_rendered_as_inline_annotations(self) -> None:
-        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
-        self.assertIn("renderEvidenceText", script)
-        self.assertIn("evidence-inline", script)
-        self.assertNotIn("<h3>证据链</h3>", script)
-
-    def test_candidate_switch_renders_before_detail_fetch(self) -> None:
-        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
-        start = script.index("async function selectCandidate")
-        end = script.index("async function deleteCandidate")
-        select_candidate = script[start:end]
-        self.assertLess(select_candidate.index("renderResume(candidate);"), select_candidate.index("loadCandidateDetail(candidateId)"))
-        self.assertLess(select_candidate.index("renderAgent(candidate);"), select_candidate.index("loadCandidateDetail(candidateId)"))
-        self.assertIn("if (currentCandidateId !== candidateId) return;", select_candidate)
-
-    def test_bulk_evaluation_uses_limited_concurrency_and_queue_state(self) -> None:
-        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
-        self.assertIn("const BULK_EVALUATION_CONCURRENCY = 3;", script)
-        self.assertIn("function queueAgentRun", script)
-        self.assertIn("等待批量调度", script)
-        self.assertIn("async function runWithConcurrency", script)
-        self.assertIn("runWithConcurrency(ids, BULK_EVALUATION_CONCURRENCY", script)
-        self.assertNotIn("Promise.allSettled(\n    ids.map", script)
-
-    def test_agent_graph_renders_multi_track_parallel_stages(self) -> None:
-        graph_script = (
-            ROOT / "agi_talent_radar" / "web" / "static" / "workbench-agent-graph.js"
-        ).read_text(encoding="utf-8")
-        html = self.app.get("/").get_data(as_text=True)
-        self.assertLess(html.index("workbench-agent-graph.js"), html.index("workbench.js"))
-        self.assertIn('key: "parallel"', graph_script)
-        self.assertIn('label: "通用潜力链"', graph_script)
-        self.assertIn('label: "AI4Science"', graph_script)
-        self.assertIn("parallel-lanes", (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8"))
-        self.assertIn('"common_critic"', graph_script)
-        self.assertIn('"base_track"', graph_script)
-        self.assertIn('"agent_track"', graph_script)
-        self.assertIn('"safety_track"', graph_script)
-        self.assertIn('"multimodal_track"', graph_script)
-        self.assertIn('"systems_track"', graph_script)
-        self.assertIn('"ai4science_track"', graph_script)
+        self.assertIn("resume-evaluate.css", html)
+        self.assertIn("resume-evaluate.js", html)
 
     def test_candidates_group_returns_list(self) -> None:
         response = self.app.get("/api/candidates?group=pending")
@@ -403,18 +328,6 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(max_active, 5)
         self.assertEqual(events[-1]["imported_files"], 7)
         self.assertEqual(events[-1]["failed_files"], 0)
-
-    def test_batch_import_frontend_renders_one_progress_line_per_resume(self) -> None:
-        script = (ROOT / "agi_talent_radar" / "web" / "static" / "workbench.js").read_text(encoding="utf-8")
-        progress_script = (
-            ROOT / "agi_talent_radar" / "web" / "static" / "workbench-import.js"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn('formData.append("files", file)', script)
-        self.assertIn('class="import-file-row is-${item.status}"', script)
-        self.assertIn('role="progressbar"', script)
-        self.assertIn("state.items.find", progress_script)
-        self.assertIn("failedFiles", progress_script)
 
     @patch("agi_talent_radar.web.workbench.run_import_agent_stream")
     @patch("agi_talent_radar.web.workbench.text_resume")

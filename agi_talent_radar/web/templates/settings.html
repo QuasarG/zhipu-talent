@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% set nav_active = 'settings' %}
+{% block title %}设置 · 智谱人才研究平台{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='settings.css') }}">
+{% endblock %}
+
+{% block body %}
+<header class="page-toolbar glass">
+  <div class="toolbar-left">
+    <h1 class="toolbar-title">设置</h1>
+    <p class="toolbar-subtitle muted">外部服务 Key、Base URL 与模型配置</p>
+  </div>
+  <div class="toolbar-right">
+    <button class="pill" id="settings-test">连接测试</button>
+    <button class="pill" id="settings-save">保存配置</button>
+  </div>
+</header>
+
+<div class="settings-workspace">
+  <section class="settings-section">
+    <h2>LLM 服务</h2>
+    <div id="settings-llm" class="settings-grid"></div>
+  </section>
+  <section class="settings-section">
+    <h2>学术与搜索服务</h2>
+    <div id="settings-search" class="settings-grid"></div>
+  </section>
+  <section class="settings-section">
+    <h2>向量数据库</h2>
+    <div id="settings-vector" class="settings-grid"></div>
+  </section>
+  <section class="settings-section">
+    <h2>数据库</h2>
+    <div id="settings-db" class="settings-grid"></div>
+  </section>
+</div>
+
+<div id="settings-test-result" class="settings-test-result" hidden></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='settings.js') }}"></script>
+{% endblock %}

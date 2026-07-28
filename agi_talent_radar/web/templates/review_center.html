@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% set nav_active = 'review' %}
+{% block title %}待核验 · 智谱人才研究平台{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='review-center.css') }}">
+{% endblock %}
+
+{% block body %}
+<header class="page-toolbar glass">
+  <div class="toolbar-left">
+    <h1 class="toolbar-title">待核验</h1>
+    <p class="toolbar-subtitle muted">论文冲突、外部事实冲突与身份合并建议</p>
+  </div>
+</header>
+
+<div class="review-workspace">
+  <section class="review-section">
+    <h2>论文核验冲突</h2>
+    <div id="review-papers" class="review-list">
+      <div class="review-empty muted">暂无论文冲突</div>
+    </div>
+  </section>
+
+  <section class="review-section">
+    <h2>外部事实冲突</h2>
+    <div id="review-facts" class="review-list">
+      <div class="review-empty muted">暂无外部事实冲突</div>
+    </div>
+  </section>
+
+  <section class="review-section">
+    <h2>身份合并建议</h2>
+    <div id="review-identity" class="review-list">
+      <div class="review-empty muted">暂无身份合并建议</div>
+    </div>
+  </section>
+</div>
+{% endblock %}
