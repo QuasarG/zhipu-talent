@@ -52,6 +52,20 @@ class SchemaVersionORM(Base):
 
 
 class CandidateORM(Base):
+    """候选人档案。
+
+    阶段 1 之后语义被拆开：
+
+    - 阶段 1 之前：CandidateORM 同时承担"刚导入的简历" + "已入人才库人才"。
+    - 阶段 1 之后：CandidateORM 只表示已入人才库的人才档案，新增
+      ``person_id``、``engagement_status``、``current_resume_version_id``、
+      ``admitted_at`` 字段；旧 ``group`` 列保留作为审计与前端兼容，
+      但不再被自动改写（详见阶段 4 workbench 拆解）。
+
+    评估完成前的"占位候选人"角色由 ``ResumeSubmissionORM`` 承担，
+    但保留 id 复用以便兼容老 workbench 路由（迁移期允许）。
+    """
+
     __tablename__ = "candidates"
 
     id = Column(String(32), primary_key=True)
@@ -72,10 +86,23 @@ class CandidateORM(Base):
     screening_tags = Column(Text, default="")
     source_format = Column(String(32), default="text")
     document_analysis = Column(Text, default="")
+    # 阶段 1 新增列（保留原 group 作为审计，迁移期允许 NULL）
+    person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"), index=True)
+    engagement_status = Column(String(32), default="newly_admitted", nullable=False)
+    # 兼容老 candidate ↔ resume_versions 关系：不带 FK，业务层校验。
+    current_resume_version_id = Column(String(36), index=True)
+    admitted_at = Column(DateTime)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
     evaluations = relationship("EvaluationORM", back_populates="candidate", cascade="all, delete-orphan")
+    sources = relationship("CandidateSourceORM", back_populates="candidate", cascade="all, delete-orphan")
+    engagement_history = relationship(
+        "EngagementStatusHistoryORM",
+        back_populates="candidate",
+        cascade="all, delete-orphan",
+        order_by="EngagementStatusHistoryORM.created_at",
+    )
 
 
 class EvaluationORM(Base):
@@ -367,7 +394,9 @@ class ResumeSubmissionORM(Base):
     )
 
     id = Column(String(36), primary_key=True)
-    candidate_id = Column(String(32), ForeignKey("candidates.id", ondelete="SET NULL"))
+    # 兼容老 CandidateORM id：保留为业务字段但不带 FK，避免与
+    # CandidateORM.current_resume_version_id 形成 FK 环。
+    candidate_id = Column(String(32), index=True)
     person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"))
     source_format = Column(String(16), nullable=False)
     filename = Column(String(256), default="")
@@ -419,6 +448,8 @@ class CandidateSourceORM(Base):
     created_by = Column(String(128), default="")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
+    candidate = relationship("CandidateORM", back_populates="sources")
+
 
 class EngagementStatusHistoryORM(Base):
     """HR 跟进状态变更的不可变审计记录。
@@ -439,6 +470,8 @@ class EngagementStatusHistoryORM(Base):
     changed_by = Column(String(128), nullable=False)
     note = Column(Text, default="")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    candidate = relationship("CandidateORM", back_populates="engagement_history")
 
 
 class IdentitySuggestionORM(Base):

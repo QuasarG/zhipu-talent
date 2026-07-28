@@ -10,13 +10,26 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 6
+LATEST_SCHEMA_VERSION = 7
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
     "track_assignments",
     "track_evaluations",
 }
+
+# 阶段 1：candidates / evaluations 需要 ALTER TABLE ADD 的新列。
+# 这里是 (列名, 列类型, 默认值表达式或 NULL/默认值) 三元组。
+CANDIDATES_NEW_COLUMNS = (
+    ("person_id", "VARCHAR(36)", None),
+    ("engagement_status", "VARCHAR(32)", "'newly_admitted'"),
+    ("current_resume_version_id", "VARCHAR(36)", None),
+    ("admitted_at", "DATETIME", None),
+)
+EVALUATIONS_NEW_COLUMNS = (
+    ("resume_submission_id", "VARCHAR(36)", None),
+    # EvaluationORM.candidate_id 本已存在；不重复添加。
+)
 
 
 def ensure_schema(engine) -> None:
@@ -34,6 +47,14 @@ def ensure_schema(engine) -> None:
         _record_version(engine, 5, "store stage-aware direction recommendations")
     if current_version < 6:
         _record_version(engine, 6, "store academic verification report with evaluations")
+    if current_version < 7:
+        _migrate_phase_one_columns(engine)
+        _record_version(
+            engine,
+            7,
+            "phase 1: split Person/ResumeSubmission/Candidate; add resume_submissions / "
+            "candidate_sources / engagement_status_history / identity_suggestions / merge_audit",
+        )
     _ensure_indexes(engine)
 
 
@@ -161,8 +182,46 @@ def _ensure_indexes(engine) -> None:
     for table in Base.metadata.sorted_tables:
         if table.name not in table_names:
             continue
+        existing_columns = {column["name"] for column in inspect(engine).get_columns(table.name)}
         for index in table.indexes:
+            # 跳过依赖尚未迁移的新列的索引，等迁移后再创建。
+            if not _index_columns_exist(index, existing_columns):
+                continue
             index.create(bind=engine, checkfirst=True)
+
+
+def _index_columns_exist(index, existing_columns: set[str]) -> bool:
+    for column in index.columns:
+        if column.name not in existing_columns:
+            return False
+    return True
+
+
+def _migrate_phase_one_columns(engine) -> None:
+    """阶段 1 老库升级：candidates / evaluations ALTER TABLE ADD COLUMN。
+
+    新库靠 Base.metadata.create_all 自动带列，本函数只对老库生效。
+    """
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if "candidates" in tables:
+        candidates_columns = {column["name"] for column in inspector.get_columns("candidates")}
+        additions = []
+        for name, column_type, default in CANDIDATES_NEW_COLUMNS:
+            if name in candidates_columns:
+                continue
+            default_clause = f" DEFAULT {default}" if default is not None else ""
+            additions.append(f"{name} {column_type}{default_clause}")
+        _add_columns(engine, "candidates", additions)
+    if "evaluations" in tables:
+        evaluations_columns = {column["name"] for column in inspector.get_columns("evaluations")}
+        additions = []
+        for name, column_type, default in EVALUATIONS_NEW_COLUMNS:
+            if name in evaluations_columns:
+                continue
+            default_clause = f" DEFAULT {default}" if default is not None else ""
+            additions.append(f"{name} {column_type}{default_clause}")
+        _add_columns(engine, "evaluations", additions)
 
 
 def _json_list(value: Any) -> list:
