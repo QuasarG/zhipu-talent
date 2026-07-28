@@ -167,21 +167,34 @@ def manual_admit_person_to_pool(
 
 def update_engagement_status(
     candidate_id: str,
-    status: EngagementStatus,
+    status: EngagementStatus | str,
     changed_by: str,
     note: str,
 ) -> EngagementStatusChange:
     """人工修改 HR 跟进状态，强制要求 ``changed_by`` 与 ``note``。
 
+    ``status`` 接受 ``EngagementStatus`` 枚举或字符串；
+    不合法字符串或未注册的枚举值会抛 ``ValueError``。
     系统不得基于分数、舆情或其他自动规则切换。
     """
+    if isinstance(status, EngagementStatus):
+        normalized = status
+    else:
+        try:
+            normalized = EngagementStatus(status)
+        except ValueError as exc:
+            allowed = sorted(member.value for member in EngagementStatus)
+            raise ValueError(
+                f"status 必须是 {allowed} 之一或对应 EngagementStatus 枚举"
+            ) from exc
+
     from agi_talent_radar.core.database import get_session
 
     with get_session() as session:
         history_row = repository.update_engagement_status(
             session=session,
             candidate_id=candidate_id,
-            status=status.value,
+            status=normalized.value,
             changed_by=changed_by,
             note=note or "",
         )
