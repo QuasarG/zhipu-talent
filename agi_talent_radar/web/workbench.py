@@ -44,10 +44,12 @@ def create_app() -> Flask:
         install_auth_middleware,
     )
     from agi_talent_radar.web.config_api import build_config_blueprint
+    from agi_talent_radar.web.knowledge_api import build_knowledge_blueprint
 
     configure_app_session(app)
     app.register_blueprint(build_auth_blueprint())
     app.register_blueprint(build_config_blueprint())
+    app.register_blueprint(build_knowledge_blueprint())
     install_auth_middleware(app)
 
     @app.get("/")

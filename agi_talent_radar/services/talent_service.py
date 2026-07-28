@@ -202,6 +202,16 @@ def admit_candidate_after_evaluation(evaluation_id: int) -> dict[str, Any]:
             created_by="system:resume_evaluation",
         )
         sources = repository.list_candidate_source_kinds(session, candidate.id)
+
+        # 阶段 7：入库成功后派发向量同步 outbox task（不阻塞主流程）。
+        try:
+            from agi_talent_radar.knowledge_agent.vector_sync import enqueue_vector_sync_task
+
+            enqueue_vector_sync_task(session, person_id, action="upsert")
+        except Exception:
+            # outbox 失败不应让 admit 回滚；可由运维重试。
+            pass
+
         return {
             "candidate_id": candidate.id,
             "person_id": person_id,
