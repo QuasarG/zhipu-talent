@@ -524,3 +524,76 @@ class MergeAuditORM(Base):
     operator = Column(String(128), nullable=False)
     note = Column(Text, default="")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# 阶段 3：论文自述与外部核验拆表（schema_version=9）
+# ---------------------------------------------------------------------------
+
+
+class PublicationClaimORM(Base):
+    """简历中的论文自述（候选人说的话，不等于外部事实）。
+
+    AI 仅做语义提取，不依赖关键词匹配；保留原文证据、理由和置信度。
+    """
+
+    __tablename__ = "publication_claims"
+    __table_args__ = (
+        UniqueConstraint("evaluation_id", "claim_key", name="uq_claim_evaluation_key"),
+        Index("ix_publication_claims_evaluation", "evaluation_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    evaluation_id = Column(Integer, ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False)
+    claim_key = Column(String(64), nullable=False)
+    title = Column(Text, default="")
+    venue = Column(Text, default="")
+    year = Column(String(16), default="")
+    claimed_role = Column(String(32), default="")
+    # 受控枚举：draft/submitted/in_review/accepted/published/unknown
+    claimed_status = Column(String(32), default="unknown", nullable=False)
+    source_quote = Column(Text, default="")
+    rationale = Column(Text, default="")
+    confidence = Column(Float, default=0.0, nullable=False)
+    order_index = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    verification = relationship(
+        "PublicationVerificationORM",
+        back_populates="claim",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class PublicationVerificationORM(Base):
+    """论文的外部核验事实。与自述解耦，可独立重试，不重跑整份评估。
+
+    核验状态枚举：verified / pending / conflict；
+    人工确认状态另存在 ``human_status``，不混为一列。
+    """
+
+    __tablename__ = "publication_verifications"
+    __table_args__ = (
+        Index("ix_publication_verifications_claim", "claim_id"),
+        Index("ix_publication_verifications_status", "verified_status"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    claim_id = Column(Integer, ForeignKey("publication_claims.id", ondelete="CASCADE"), nullable=False)
+    source = Column(String(32), default="openalex", nullable=False)
+    matched_title = Column(Text, default="")
+    verified_status = Column(String(16), default="pending", nullable=False)
+    # match / mismatch / pending
+    author_position_match = Column(String(16), default="pending", nullable=False)
+    identity_confidence = Column(Float, default=0.0, nullable=False)
+    conflicts = Column(JSON, default=list)
+    failure_reason = Column(Text, default="")
+    checked_at = Column(DateTime)
+    # 人工确认：unreviewed / confirmed / dismissed
+    human_status = Column(String(16), default="unreviewed", nullable=False)
+    human_reviewer = Column(String(128), default="")
+    human_note = Column(Text, default="")
+    human_reviewed_at = Column(DateTime)
+
+    claim = relationship("PublicationClaimORM", back_populates="verification")

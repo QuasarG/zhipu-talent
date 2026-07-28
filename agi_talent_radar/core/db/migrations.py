@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 8
+LATEST_SCHEMA_VERSION = 9
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -68,6 +68,15 @@ def ensure_schema(engine) -> None:
             8,
             "phase 2: add stable identifiers and identity_conflict to persons for "
             "deterministic intake identity resolution",
+        )
+    if current_version < 9:
+        # 阶段 3 新表（publication_claims / publication_verifications）
+        # 由 Base.metadata.create_all 自动创建，无需 ALTER。
+        _record_version(
+            engine,
+            9,
+            "phase 3: split publication claims (self-stated) from verifications "
+            "(external facts); both can be retried independently",
         )
     _ensure_indexes(engine)
 
