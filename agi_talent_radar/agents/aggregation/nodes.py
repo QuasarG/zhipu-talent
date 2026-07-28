@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from agi_talent_radar.core.models import TrackAssignment, TrackEvaluation
+from agi_talent_radar.core.scoring_config import DEFAULT as CFG
 
 
 def run_portfolio_aggregator(state: dict) -> dict:
     assignments = [TrackAssignment.model_validate(item) for item in state.get("track_assignments", [])]
     results = [TrackEvaluation.model_validate(item) for item in state.get("track_results", [])]
     result_by_track = {item.track: item for item in results}
-    common_score = max(0.0, min(40.0, float(state.get("common_score", 0))))
+    common_score = max(0.0, min(CFG.aggregate_bounds.common_max, float(state.get("common_score", 0))))
 
     contributions = []
     track_total = 0.0
@@ -26,7 +27,7 @@ def run_portfolio_aggregator(state: dict) -> dict:
             }
         )
 
-    total = max(0.0, min(100.0, common_score + track_total))
+    total = max(CFG.aggregate_bounds.overall_min, min(CFG.aggregate_bounds.overall_max, common_score + track_total))
     overall = int(round(total))
     return {
         "portfolio_assessment": {
@@ -36,8 +37,6 @@ def run_portfolio_aggregator(state: dict) -> dict:
             "track_score": round(track_total, 2),
             "document_score": 0.0,
             "track_contributions": contributions,
-            "level": _level_for_score(overall),
-            "tier": _tier_for_score(overall),
         }
     }
 
@@ -55,24 +54,6 @@ def run_global_critic(state: dict) -> dict:
     for result in results:
         flags.extend(result.critic_flags)
     portfolio = state.get("portfolio_assessment", {})
-    if not 0 <= float(portfolio.get("overall_score", -1)) <= 100:
+    if not CFG.aggregate_bounds.overall_min <= float(portfolio.get("overall_score", -1)) <= CFG.aggregate_bounds.overall_max:
         flags.append("最终分数超出 0-100 范围。")
     return {"global_critic_flags": list(dict.fromkeys(flags))}
-
-
-def _level_for_score(score: int) -> str:
-    if score >= 90:
-        return "S"
-    if score >= 80:
-        return "A"
-    if score >= 60:
-        return "B"
-    return "C"
-
-
-def _tier_for_score(score: int) -> str:
-    if score >= 80:
-        return "强烈建议沟通"
-    if score >= 60:
-        return "建议沟通"
-    return "暂缓 / 需补充信息"

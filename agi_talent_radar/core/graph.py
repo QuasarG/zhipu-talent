@@ -3,6 +3,7 @@ from __future__ import annotations
 from langgraph.graph import END, StateGraph
 
 from agi_talent_radar.agents.aggregation import run_global_critic, run_portfolio_aggregator
+from agi_talent_radar.agents.academic.nodes import run_resume_academic_check
 from agi_talent_radar.agents.common_potential import run_common_critic, run_common_scorer
 from agi_talent_radar.agents.evidence_extractor import run_evidence_extractor
 from agi_talent_radar.agents.formatter import run_formatter
@@ -14,6 +15,7 @@ from agi_talent_radar.core.models import TalentState
 
 NODE_LABELS = {
     "normalizer": "脱敏与标准化",
+    "academic_check": "论文外部核验",
     "evidence_extractor": "深度证据挖掘",
     "track_router": "多 Track 路由",
     "route_auditor": "Track 路由校验",
@@ -34,6 +36,7 @@ NODE_LABELS = {
 def build_graph():
     workflow = StateGraph(TalentState)
     workflow.add_node("normalizer", run_normalizer)
+    workflow.add_node("academic_check", run_resume_academic_check)
     workflow.add_node("evidence_extractor", run_evidence_extractor)
     workflow.add_node("track_router", run_track_router)
     workflow.add_node("route_auditor", run_route_auditor)
@@ -46,7 +49,8 @@ def build_graph():
     workflow.add_node("formatter", run_formatter)
 
     workflow.set_entry_point("normalizer")
-    workflow.add_edge("normalizer", "evidence_extractor")
+    workflow.add_edge("normalizer", "academic_check")
+    workflow.add_edge("academic_check", "evidence_extractor")
     workflow.add_edge("evidence_extractor", "track_router")
     workflow.add_edge("track_router", "route_auditor")
     workflow.add_edge("route_auditor", "common_scorer")

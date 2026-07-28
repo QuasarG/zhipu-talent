@@ -151,12 +151,12 @@ def render_summary_markdown(evaluations: list[CandidateEvaluation]) -> str:
         "",
         "## 横向排序",
         "",
-        "| 排名 | 候选人 | 综合分 | 潜力等级 | 分层 | 一句话画像 |",
-        "| ---: | --- | ---: | --- | --- | --- |",
+        "| 排名 | 候选人 | 能力摘要分 | 一句话画像 |",
+        "| ---: | --- | ---: | --- |",
     ]
     for index, item in enumerate(evaluations, start=1):
         lines.append(
-            f"| {index} | {item.name} | {item.overall_score} | {item.level} | {item.tier} | {item.one_liner} |"
+            f"| {index} | {item.name} | {item.overall_score} | {item.one_liner} |"
         )
     lines.extend(["", "## 候选人明细", ""])
     for item in evaluations:
@@ -164,12 +164,12 @@ def render_summary_markdown(evaluations: list[CandidateEvaluation]) -> str:
             [
                 f"### {item.name}｜{item.target_role}",
                 "",
-                f"- 综合评分：{item.overall_score} / 100（潜力等级 {item.level}，{item.tier}）",
-                f"- 决策方式：{item.decision_method}",
+                f"- 能力摘要：{item.overall_score} / 100（不用于自动筛选或录用分类）",
                 f"- 人才画像：{item.one_liner}",
                 f"- 核心优势：{'；'.join(item.core_strengths)}",
                 f"- 风险 / 待验证：{'；'.join(item.potential_risks)}",
                 f"- 建议培养方向：{'；'.join(item.cultivation_direction)}",
+                f"- 推荐 Track：{'；'.join(f'{track.label} {track.score:.1f}/60' for track in item.recommended_tracks)}",
                 "- 面谈追问：",
             ]
         )

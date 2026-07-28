@@ -15,6 +15,7 @@ from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume
 from agi_talent_radar.core.resume_ingestion import MAX_PDF_BYTES, extract_pdf_text, text_resume
 from agi_talent_radar.core.runner import run_candidate_stream
+from agi_talent_radar.core.scoring_config import DEFAULT as SCORING_CONFIG
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,7 +38,14 @@ def create_app() -> Flask:
 
     @app.get("/")
     def index() -> str:
-        return render_template("workbench.html")
+        return render_template(
+            "workbench.html",
+            scoring_thresholds={
+                "shortlisted": SCORING_CONFIG.thresholds.a,
+                "alternative": SCORING_CONFIG.thresholds.b,
+            },
+            scoring_routing_note=SCORING_CONFIG.thresholds.routing_note(),
+        )
 
     @app.get("/talent-pool")
     def talent_pool() -> str:
@@ -656,8 +664,4 @@ app = create_app()
 
 
 def _group_for_score(score: int) -> str:
-    if score >= 80:
-        return "shortlisted"
-    if score >= 60:
-        return "alternative"
-    return "rejected"
+    return SCORING_CONFIG.thresholds.pool_for_score(score)

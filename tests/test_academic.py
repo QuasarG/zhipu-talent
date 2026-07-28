@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from agi_talent_radar.agents.academic.models import PaperClaim
-from agi_talent_radar.agents.academic.nodes import align_claims, extract_claims, lookup_claim, run_academic_check
+from agi_talent_radar.agents.academic.models import AcademicReport, PaperClaim
+from agi_talent_radar.agents.academic.nodes import align_claims, extract_claims, lookup_claim, run_academic_check, run_resume_academic_check
 from agi_talent_radar.core.connectors.base import ConnectorUnavailableError, Fact
 
 
@@ -18,6 +18,17 @@ def _work_fact(title: str, url: str = "https://openalex.org/W1") -> Fact:
 
 
 class AcademicChainTest(unittest.TestCase):
+    def test_publication_statuses_are_normalized(self) -> None:
+        cases = {
+            "draft": "草稿",
+            "投稿中": "已投稿",
+            "under review": "在审",
+            "已录用": "已接收",
+            "published": "已发表",
+        }
+        for raw, expected in cases.items():
+            self.assertEqual(PaperClaim(title="Paper", claimed_status=raw).claimed_status, expected)
+
     def test_extract_claims_filters_empty_titles(self) -> None:
         llm_response = {
             "claims": [
@@ -80,6 +91,23 @@ class AcademicChainTest(unittest.TestCase):
         self.assertEqual(report.verified_count, 1)
         self.assertEqual(report.mismatch_count, 0)
         self.assertEqual(report.warnings, [])
+
+    def test_resume_pipeline_checks_publications_for_advanced_stage(self) -> None:
+        state = {
+            "normalized": {
+                "id": "c1",
+                "name": "张三",
+                "stage": "博士候选人",
+                "publications": ["A Reliable Agent"],
+                "raw_text": "A Reliable Agent",
+            }
+        }
+        with patch("agi_talent_radar.agents.academic.nodes.run_academic_check") as check:
+            check.return_value = AcademicReport(warnings=["mock"])
+            result = run_resume_academic_check(state)
+
+        check.assert_called_once()
+        self.assertEqual(result["academic_report"]["warnings"], ["mock"])
 
 
 if __name__ == "__main__":

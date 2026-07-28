@@ -48,7 +48,7 @@ def save_candidate(
 
     if classification:
         candidate.import_category = classification.category
-        candidate.import_level = classification.level
+        candidate.import_level = ""
         candidate.import_confidence = classification.confidence
 
     session.commit()
@@ -122,14 +122,17 @@ def save_evaluation(
             raise ValueError("评估运行与候选人不匹配。")
 
     ev.overall_score = evaluation.overall_score
-    ev.level = evaluation.level
-    ev.tier = evaluation.tier
-    ev.decision_method = evaluation.decision_method
+    ev.level = ""
+    ev.tier = ""
+    ev.decision_method = ""
     ev.one_liner = evaluation.one_liner
     ev.core_strengths = evaluation.core_strengths
     ev.potential_risks = evaluation.potential_risks
     ev.interview_questions = evaluation.interview_questions
     ev.cultivation_direction = evaluation.cultivation_direction
+    ev.recommended_tracks = [item.model_dump() for item in evaluation.recommended_tracks]
+    ev.stage_profile = evaluation.stage_profile
+    ev.academic_report = {}
     ev.critic_flags = evaluation.critic_flags
     ev.normalized_education = evaluation.normalized_education
     ev.screening_tags = evaluation.screening_tags
@@ -282,14 +285,13 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
     ]
     return {
         "overall_score": evaluation.overall_score,
-        "level": evaluation.level,
-        "tier": evaluation.tier,
-        "decision_method": evaluation.decision_method or "",
         "one_liner": evaluation.one_liner or "",
         "core_strengths": evaluation.core_strengths or [],
         "potential_risks": evaluation.potential_risks or [],
         "interview_questions": evaluation.interview_questions or [],
         "cultivation_direction": evaluation.cultivation_direction or [],
+        "recommended_tracks": evaluation.recommended_tracks or [],
+        "stage_profile": evaluation.stage_profile or "",
         "dimension_scores": common_dimensions,
         "evidence": evidence,
         "critic_flags": evaluation.critic_flags or [],
@@ -323,7 +325,7 @@ def list_candidates_by_group(session, group: str):
     return (
         session.query(CandidateORM)
         .filter_by(group=group)
-        .order_by(CandidateORM.import_level.desc(), CandidateORM.created_at.desc())
+        .order_by(CandidateORM.created_at.desc())
         .all()
     )
 

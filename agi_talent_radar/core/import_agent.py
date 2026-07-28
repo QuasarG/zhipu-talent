@@ -14,7 +14,6 @@ class ImportItem(BaseModel):
     target_role: str = ""
     stage: str = ""
     category: str
-    level: str = ""
     confidence: float = Field(ge=0, le=1)
     reason: str
 
@@ -29,7 +28,7 @@ IMPORT_PROMPT = """
 输出格式（必须严格遵守）：
 - 只输出 JSON Lines，每行一个候选人
 - 每行必须是一个完整、独立的 JSON 对象
-- 每个对象包含字段：id, name, target_role, stage, category, level, confidence, reason
+- 每个对象包含字段：id, name, target_role, stage, category, confidence, reason
 - 不要输出 markdown 代码块、不要输出顶层数组、不要输出任何解释文字
 
 字段说明：
@@ -44,13 +43,12 @@ IMPORT_PROMPT = """
   - 平台系统型
   - 应用验证型
   - 需补证观察型
-- level: 初筛潜力等级 S / A / B / C，用于导入后的初次排序（S 最高，C 最低），不是岗位职级
 - confidence: 分类置信度 0-1
 - reason: 一句话分类理由
 
 示例输出：
-{"id": "c1", "name": "张三", "target_role": "大模型算法研究员", "stage": "博士在读", "category": "研究探索型", "level": "A", "confidence": 0.9, "reason": "方向匹配度高"}
-{"id": "c2", "name": "李四", "target_role": "AI 工程师", "stage": "硕士", "category": "工程闭环型", "level": "B", "confidence": 0.8, "reason": "工程能力强"}
+{"id": "c1", "name": "张三", "target_role": "大模型算法研究员", "stage": "博士在读", "category": "研究探索型", "confidence": 0.9, "reason": "研究经历以方法探索为主"}
+{"id": "c2", "name": "李四", "target_role": "AI 工程师", "stage": "硕士", "category": "工程闭环型", "confidence": 0.8, "reason": "项目经历以工程交付为主"}
 
 必须覆盖输入里的每一位候选人。
 """.strip()
@@ -92,7 +90,6 @@ def run_import_agent_stream(
             id=item.id,
             name=item.name,
             category=item.category,
-            level=item.level,
             confidence=item.confidence,
             reason=item.reason,
         )

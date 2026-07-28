@@ -303,6 +303,15 @@ class TrackEvaluation(BaseModel):
     critic_flags: list[str] = Field(default_factory=list)
 
 
+class DirectionRecommendation(BaseModel):
+    track: TrackKey
+    label: str
+    score: float = Field(ge=0, le=60)
+    confidence: float = Field(ge=0, le=1)
+    rationale: str = ""
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class DocumentQualityAssessment(BaseModel):
     score: float = Field(default=0, ge=0, le=3)
     available: bool = False
@@ -318,9 +327,6 @@ class CandidateEvaluation(BaseModel):
     target_role: str
     stage: str
     overall_score: int
-    level: Literal["S", "A", "B", "C"]
-    tier: Literal["强烈建议沟通", "建议沟通", "暂缓 / 需补充信息"]
-    decision_method: str = ""
     one_liner: str
     core_strengths: list[str]
     potential_risks: list[str]
@@ -337,6 +343,8 @@ class CandidateEvaluation(BaseModel):
     document_score: float = Field(default=0, ge=0, le=3)
     track_assignments: list[TrackAssignment] = Field(default_factory=list)
     track_evaluations: list[TrackEvaluation] = Field(default_factory=list)
+    recommended_tracks: list[DirectionRecommendation] = Field(default_factory=list)
+    stage_profile: str = ""
     routing_confidence: float = Field(default=0, ge=0, le=1)
     evaluation_mode: str = "multi_track_v1"
 
@@ -345,7 +353,6 @@ class ImportClassification(BaseModel):
     id: str
     name: str
     category: str
-    level: str = ""
     confidence: float = Field(ge=0, le=1)
     reason: str
 

@@ -3,98 +3,139 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-07-15
-- Primary product surfaces: Flask 面试评审工作台、候选人库、PDF 简历视图、多 Track 评估结果。
-- Evidence reviewed: `README.md`、`agi_talent_radar/web/templates/workbench.html`、`agi_talent_radar/web/static/workbench.css`、`agi_talent_radar/web/static/workbench.js`、`agi_talent_radar/web/workbench.py`、`agi_talent_radar/core/graph.py`。
+- Last refreshed: 2026-07-28
+- Primary product surfaces: 简历评估工作台、人才知识问答、人才库结构化浏览与关系图。
+- Evidence reviewed: `CONTEXT.md`、`docs/backend_use_case_decisions.md`、`.omx/plans/talent-platform-implementation-plan.md`、`docs/talent_platform_design.md`、`agi_talent_radar/web/templates/workbench.html`、`agi_talent_radar/web/templates/talent_pool.html`、`agi_talent_radar/web/static/workbench.css`、`docs/AGI talent.png`。
+- Figma target: 三个 1440 x 1024 desktop frames，共享一个组件/变量页；移动版在后续前端实现阶段补充。
 
 ## Brand
 
-- Personality: 冷静、严谨、研究导向，像面试评审台而不是招聘营销页。
-- Trust signals: 原始证据、页码定位、权重公式、路由理由、风险和不确定性可见；前端可核验原始学校/机构，评分侧只使用脱敏档位与实际动作证据。
-- Avoid: 过度营销化、大面积装饰渐变、悬浮页面卡片、只展示总分不展示证据、用学校、公司名或 Logo 暗示候选人质量。
+- Personality: 冷静、可信、研究导向，像人才研究操作台，不像招聘营销页面。
+- Trust signals: 原始证据、来源、时间、核验状态、Agent 实际调用链和不确定性始终可见。
+- Avoid: 自动录取暗示、把分数当通过/不通过、把 Track 推荐当研究组匹配、无来源推断、整页高透明导致文本难读、纯蓝紫单色科技感。
 
 ## Product goals
 
-- Goals: 让评审者快速导入简历、理解 Track 分流、监控并行 Agent、核验原文证据并得到可面试的结论。
-- Non-goals: 自动录用决策、单纯简历排名、把视觉排版当作核心能力、展示无法追溯的模型推断。
-- Success signals: 用户能在一个屏幕内回答“走哪些 Track、为什么、得分如何、证据在哪、面试追问什么”。
+- Goals: 让内部评审者完成简历能力评估、人才档案查询、已知人物调查和证据复核，并能快速在三种核心工作方式间切换。
+- Non-goals: 自动录取、批量发现未知人才、代码仓库核验、多角色权限、未配置研究组要求时生成匹配分。
+- Success signals: 用户能明确区分能力评分、Track 推荐、论文核验、外部事实状态和 HR 跟进状态；任一结论可以回到证据。
 
 ## Personas and jobs
 
-- Primary personas: AI 研究和工程团队面试官、人才项目评审者、技术负责人。
-- User jobs: 批量初筛、单人深评、跨候选人比较、证据核验、生成面谈问题。
-- Key contexts of use: 桌面端长时间工作，一次可能同时评估多位候选人。
+- Primary personas: AI 研究团队负责人、技术面试官、HR/人才项目运营。
+- User jobs: 导入并评估简历、复核论文、查询和比较人才、调查具体人物、查看来源关系、维护 HR 跟进状态。
+- Key contexts of use: 桌面端长时间使用，数据密度高；一次处理多份简历或围绕一位人物连续追问。
 
 ## Information architecture
 
-- Primary navigation: 顶栏提供导入和系统状态；左侧人才库；中间简历和原文；右侧 Agent 运行与评估。
-- Core routes/screens: 工作台单页、候选人详情、PDF/结构化双视图、多 Track 结果。
-- Content hierarchy: 结论和当前状态 > 实习/工作与项目主线 > Track 权重与分数组成 > 维度和风险 > 原始证据。
+- Primary navigation: 左侧窄栏或浮动玻璃导航，包含“简历评估”“人才知识”“人才库”“待核验”“设置”；顶部保留当前页面标题、全局搜索、任务状态和用户菜单。
+- Core routes/screens:
+  1. Resume Evaluation Workspace：简历队列、原文/结构化内容、Agent 进度与评估结果。
+  2. Talent Knowledge Chat：自由提示词、工具调用过程、答案、引用与人物上下文。
+  3. Talent Pool & Graph：人才列表、来源筛选、详情摘要和关系图谱。
+- Content hierarchy: 当前对象与任务状态 > 结论/回答 > 证据与核验状态 > 历史版本 > 次要元数据。
 
 ## Design principles
 
-- Evidence first: 所有评分、路由和风险都应能回到原始简历证据。
-- Honest state: 并行、跳过、失败、重试和低置信度必须如实表达，不用假线性进度。
-- Dense but calm: 优先扫读、对比和重复操作，避免装饰性大标题和卡片嵌套。
-- Low-weight visual quality: 简历表达质量始终明示为最多 3 分的辅助信号。
-- Tradeoffs: 桌面信息密度优先于移动端功能完整性；保留原生 Flask + JavaScript，优先模块化而不做框架迁移。
+- Evidence first: 分数、Track 推荐、论文核验和知识回答都必须能定位来源。
+- Separate dimensions: 能力评分、Track 推荐、研究组匹配、论文核验和 HR 状态使用不同组件与文案，不共享一个“等级”视觉。
+- Glass for chrome, clarity for content: Liquid Glass 用于导航、工具条、浮动控制和上下文切换；长文本、表格和证据正文使用更高不透明度表面。
+- Dense but calm: 保持专业工具的信息密度，不制造营销式 Hero、大标题或装饰卡片墙。
+- Honest state: pending、confirmed、conflict、partial、failed 和 retrying 必须明确显示，不用模糊动画掩盖失败。
+- Tradeoffs: 视觉表现服务于证据阅读；当玻璃质感与对比度冲突时，优先可读性。
 
 ## Visual language
 
-- Color: 中性黑白灰为主，用蓝、绿、琥珀、红区分信息、成功、警告和错误；Track 可有稳定的辅助色，不依赖颜色单独传达状态。
-- Typography: 正文优先高可读的系统无衬线字体；等宽字体只用于分数、状态和技术标识。
-- Spacing/layout rhythm: 4px 基础网格，密集操作使用 8-12px，主区块使用 16-24px。
-- Shape/radius/elevation: 圆角不超过 8px；优先边框和底色分层，少用阴影。
-- Motion: 120-200ms 状态过渡；并行节点可用轻量脉冲，支持 `prefers-reduced-motion`。
-- Imagery/iconography: 界面不需要装饰插画；操作按钮优先熟悉图标和工具提示，候选人证据优先使用原始 PDF 图像。
+- Color: 背景使用冷白 `#EDF2F5` 和浅灰蓝 `#DDE7EC`，辅以青绿 `#2F7D73`、珊瑚红 `#D45D54`、琥珀 `#B7791F`；主文字 `#152126`。禁止以紫蓝渐变统治全屏。
+- Glass material: 控制层填充 `rgba(255,255,255,0.54)`，背景模糊 28-36px，1px 高光边框 `rgba(255,255,255,0.72)`，内侧顶缘高光和轻柔环境阴影。深色浮层使用 `rgba(19,29,34,0.68)`。
+- Typography: 中文优先 `SF Pro Display` / `SF Pro Text` 回退 `PingFang SC`、`Microsoft YaHei`；正文 14-16px，辅助 12-13px，紧凑面板标题 18-24px。等宽字体只用于分数、ID 和技术状态。
+- Spacing/layout rhythm: 4px 基础网格；常规间距 8/12/16/24/32；工作区左右安全边距 24px。
+- Shape/radius/elevation: 数据面板 8px 圆角；导航玻璃壳和 segmented control 可使用 18-24px 或胶囊形；避免卡片套卡片。阴影只用于浮动导航、菜单和工具条。
+- Motion: 180-260ms spring-like ease；玻璃控件切换可有轻微折射位移，内容区不漂浮；支持 reduced motion。
+- Imagery/iconography: 使用 Lucide/SF Symbols 对应图标；图标按钮必须有 tooltip。背景可使用克制的半透明色带和真实内容缩略图，不使用光球、bokeh 或装饰 SVG 插画。
 
 ## Components
 
-- Existing components to reuse: 顶栏、人才库抽屉、候选人条目、证据 Popover、确认 Dialog、Toast、分数条。
-- New/changed components: 批量导入队列（每份简历一行、真实阶段进度线、单条失败隔离）、实习/工作经历密集时间线、论文发表/接收/在投/未知/出版信息不完整标记、PDF/结构化 Tab、并行 Agent 泳道图、Track 权重与完整维度证据折叠组、OCR 兜底提示。
-- Variants and states: ready, queued, running, done, skipped, warning, error, cancelled, retrying。
-- Token/component ownership: 设计 token 继续存放在 `workbench.css :root`；JavaScript 组件按领域拆分，不引入第二套设计系统。
+- Existing components to reuse: 简历队列、候选人条目、证据定位、Agent 节点进度、确认 Dialog、Toast、论文状态卡、分数条。
+- New/changed components:
+  - Glass Navigation Rail：全局页面切换和当前任务状态。
+  - Context Switcher：当前候选人/人物切换胶囊。
+  - Evidence Citation：来源、时间、核验状态和点击定位。
+  - Verification Badge：confirmed / pending / conflict，不能只靠颜色。
+  - Track Recommendation：宽泛方向、理由和置信度；研究组匹配另显示 `尚未配置`。
+  - Agent Trace：展示实际节点和工具调用，支持部分失败。
+  - Talent Source Filter：全部、简历评估、人物调查；双来源去重。
+  - Relationship Graph Legend：颜色表示学校，形状表示主要推荐方向，线型表示关系核验状态。
+- Variants and states: ready, queued, running, done, partial, pending, confirmed, conflict, warning, error, cancelled, retrying, not_configured。
+- Token/component ownership: Figma Variables 与未来 CSS tokens 使用相同语义命名；现有 `workbench.css` 在实现阶段迁移，不引入第二套冲突 token。
+
+## Core screen specifications
+
+### 1. Resume Evaluation Workspace
+
+- Layout: 72px 全局导航；左侧 280px 简历提交队列；中间 520px 原文/结构化双视图；右侧弹性评估区。
+- Header: 当前候选人、评估版本、任务状态、重新评估和更多菜单。
+- Main result: 总分只作为能力概览；下方分开呈现通用潜力、Track 评分、推荐 Track、论文自述/外部核验和培养建议。
+- Paper review: 每篇论文同时显示自述状态、外部核验状态、作者顺序、原文证据和重试按钮。
+- Research group matching: 固定独立行显示“研究组匹配尚未配置”，不得与 Track 推荐合并。
+
+### 2. Talent Knowledge Chat
+
+- Layout: 72px 导航；左侧 280px 会话/人物上下文；中间对话主区；右侧 360px 引用与 Agent Trace 抽屉。
+- Composer: 底部浮动玻璃输入条，支持自然语言，不展示固定人物调查表单。
+- Response: 先给结论摘要，再给结构化研究范围、关键论文、舆情或比较结果；每段带 citation chip。
+- Trace: MySQL/Qdrant/AMiner/OpenAlex/Web Search 的调用状态分开显示；部分失败保留已有答案并明确警告。
+- Fact status: 本次联网新事实标记“待核验”，冲突来源并列；Agent 不提供业务修改按钮。
+
+### 3. Talent Pool & Relationship Graph
+
+- Layout: 72px 导航；顶部搜索和来源 segmented control；左侧 400px 人才列表；右侧列表详情或关系图两种 view tab。
+- List: 姓名、当前机构/学校、主要推荐 Track、来源标签、HR 状态、最近更新时间；不显示自动等级。
+- Detail: 简历版本、评估历史、论文、外部事实、舆情、HR 状态和审核历史使用同一档案 ID。
+- Graph: Person、School、Organization、Direction 为实体节点；共享实体形成聚类，不做人才两两全连接。
+- Visual encoding: 人才颜色表示学校；形状表示主要推荐方向；confirmed 实线、pending 虚线、disproved 当前隐藏；所有边可打开证据。
 
 ## Accessibility
 
-- Target standard: WCAG 2.1 AA 的对比度、键盘操作和语义化基线。
-- Keyboard/focus behavior: 所有 Tab、抽屉、证据链接和操作可键盘访问；对话框维护焦点；显示 `:focus-visible`。
-- Contrast/readability: 小字不使用低对比灰；分数和警告同时有文字标签。
-- Screen-reader semantics: 导入和 Agent 进度通过 `aria-live`通知；Tab 和并行节点使用正确 role 和状态。
-- Reduced motion and sensory considerations: 禁用闪烁；降低动画模式下取消脉冲和位移。
+- Target standard: WCAG 2.1 AA。
+- Keyboard/focus behavior: 导航、segmented control、tabs、引用、图谱节点和 Dialog 均可键盘操作；焦点在玻璃背景上仍有清晰轮廓。
+- Contrast/readability: 玻璃层上的正文必须有足够局部对比；长文本面板提高不透明度；状态同时使用文字、图标和颜色。
+- Screen-reader semantics: Agent 进度和 SSE 结果使用 `aria-live`；图谱提供列表等价视图。
+- Reduced motion and sensory considerations: 减弱玻璃折射和弹性位移，禁用持续漂浮与闪烁。
 
 ## Responsive behavior
 
-- Supported breakpoints/devices: 1280px 及以上桌面为主；768-1279px 可用；小于 768px 保证基本查看和操作。
-- Layout adaptations: 宽屏三栏，右侧 Agent 栏保持 480-560px 以容纳 Track 维度与证据；中栏保持高密度固定网格，顶部概览/基础信息/教育并排，经历独占一行，项目/成果/方向/技能继续并排；中等宽度折叠人才库；小屏将人才库和 Agent 面板改为独立抽屉。
-- Touch/hover differences: 不依赖 hover 才能看到的关键内容；触摸目标最小 40px。
+- Supported breakpoints/devices: 1440px Figma 首稿；1280px 以上完整桌面；768-1279px 折叠辅助栏；小于 768px 提供基本查看和关键操作。
+- Layout adaptations: 中等宽度将左侧队列/会话变成抽屉；右侧引用或详情改为 bottom sheet；三栏不强行压缩。
+- Touch/hover differences: 关键内容不依赖 hover；触摸目标最小 44px；图标 tooltip 在触摸设备提供长按替代。
 
 ## Interaction states
 
-- Loading: 显示当前真实阶段、页码或节点，不伪造精确剩余时间。批量导入时每份简历独立显示进度线与错误阶段，最多并行处理 5 份，其他记录等待槽位且不因单份失败中断。
-- Empty: 说明当前可执行的唯一主操作。
-- Error: 区分文件校验、PDF 文本提取、OCR 依赖、数据库和节点错误，并提供局部重试。
-- Success: 保留成功结果和耗时，将候选人自动聚焦到可审查状态。
-- Disabled: 说明禁用原因，不只降低透明度。
-- Offline/slow network, if applicable: 保留已完成页和节点结果，允许重试未完成部分。
+- Loading: 展示真实节点、工具或索引阶段，不伪造剩余时间。
+- Empty: 每屏只强调一个主操作，例如“导入简历”“开始提问”“添加首位人才”。
+- Error: 区分核心失败与外部服务部分失败，并提供局部重试。
+- Success: 保留结果、耗时、来源和版本；不以大面积绿色庆祝。
+- Disabled: 显示禁用原因；研究组匹配明确写“尚未配置研究组要求”。
+- Offline/slow network: 已完成内容保留，外部调查和向量同步显示延迟/待重试。
 
 ## Content voice
 
-- Tone: 专业、简洁、可核验，不对候选人做夸张或侮辱性表述。
-- Terminology: 统一使用“Track”、“通用潜力”、“专业分”、“简历表达”、“路由置信度”和“待验证”。
-- Microcopy rules: 状态文案说明对象和动作；错误文案说明失败阶段和可执行的下一步。
+- Tone: 专业、克制、可核验，不替 HR 做最终决定。
+- Terminology: 统一使用“简历评估”“Track 推荐”“研究组匹配”“论文自述状态”“论文核验状态”“人才知识 Agent”“待核验外部事实”。
+- Microcopy rules: 状态文案必须说明对象和下一步；禁止使用“通过”“淘汰”“S/A/B/C 人才”等自动分类文案。
 
 ## Implementation constraints
 
-- Framework/styling system: Flask/Jinja + 原生 JavaScript + 原生 CSS；本阶段不引入 React、Tailwind 或新构建链。
-- Design-token constraints: 复用和扩展现有 CSS 变量；卡片圆角不超过 8px；不使用负 letter-spacing。
-- Performance constraints: PDF 预览和节点流转按需渲染；候选人切换不应重新启动评估或重载已缓存详情。
-- Compatibility constraints: Windows 本地开发，现代 Chromium/Edge 为主，保留 Flask SSE 协议。
-- Privacy constraints: 原始机构名称可在数据库与前端展示；路由、证据抽取、通用潜力、Track 评分和结果组装仅接收机构档位/类型/领域与脱敏经历，不得输出具体机构名。
-- Test/screenshot expectations: 每次节点图、三栏布局或 PDF 视图修改都要通过单元测试、JavaScript 语法检查和桌面/移动 Playwright 截图。
+- Framework/styling system: 当前 Flask/Jinja + 原生 JavaScript + CSS；Figma 设计不假设框架迁移。
+- Design-token constraints: Material Design 3 的信息架构和可访问状态规范与 Liquid Glass 视觉材料结合；数据面板圆角保持 8px，胶囊只用于导航和模式切换。
+- Performance constraints: backdrop blur 层级受控；大列表和图谱虚拟化；PDF 与 Agent Trace 按需渲染。
+- Compatibility constraints: Windows 本地开发，现代 Chromium/Edge；保留 Flask SSE。
+- Privacy constraints: 浏览器不直接读取 `.env`；Key 只显示已配置或掩码状态。
+- Test/screenshot expectations: 三个核心界面均需 1440x1024 和 390x844 截图检查；无溢出、重叠、低对比玻璃正文或不可追溯状态。
 
 ## Open questions
 
-- [ ] 人工修改 Track 权重是否在第一版开放，以及是否需要修改审计记录。
-- [ ] PDF 原文是持久化保存还是只在导入期间使用，这决定证据 bbox 高亮的后端存储方案。
-- [ ] 候选人横向比较的最大同屏人数和导出格式待确定。
+- [ ] 次要 Track 在关系图节点中的视觉表达，在图谱开发阶段确认。
+- [ ] 研究组需求取得后，单独设计需求录入和匹配结果界面；当前只显示未配置状态。
+- [ ] Figma 组件命名和变量 collection 在创建目标文件后冻结。
+- [ ] 当前会话未提供 Windows/Figma 控制入口，三张 Frame 尚未实际绘制到 Figma。

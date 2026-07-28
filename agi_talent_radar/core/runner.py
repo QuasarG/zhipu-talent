@@ -166,11 +166,7 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
         for resume in validated_resumes
     ]
     evaluations.sort(key=lambda item: item.overall_score, reverse=True)
-    tiers = {
-        "强烈建议沟通": [item.id for item in evaluations if item.tier == "强烈建议沟通"],
-        "建议沟通": [item.id for item in evaluations if item.tier == "建议沟通"],
-        "暂缓 / 需补充信息": [item.id for item in evaluations if item.tier == "暂缓 / 需补充信息"],
-    }
+    tiers = {"能力评估": [item.id for item in evaluations]}
     _persist_evaluations(evaluations)
     return BatchResult(
         evaluations=evaluations,
@@ -183,7 +179,7 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
             "逐人深评使用 DeepSeek/OpenAI-compatible JSON 模式；没有配置 DEEPSEEK_API_KEY 会直接失败。",
             "通用潜力占 40%，Track 专业能力占 60%。",
             "候选人可进入 1-3 个 Track，专业分按 Track 工作分布权重聚合。",
-            "系统分流规则：80 分及以上进入优选库，60-79 分进入备选库，低于 60 分进入不建议后续沟通。",
+            "分数用于能力摘要与方向推荐，不用于自动筛选、录用或候选人分组。",
             "如果配置了 MySQL，结果会同时持久化到数据库；数据库失败不会中断评估流程。",
             "结果用于初筛辅助，不替代人工面谈和论文 / 项目真实性核验。",
         ],

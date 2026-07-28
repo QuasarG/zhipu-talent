@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.models import DimensionScore, EvidenceItem, NormalizedResume
+from agi_talent_radar.core.scoring_config import DEFAULT as SCORING_CONFIG
 from agi_talent_radar.core.rubric import (
     AUXILIARY_PROFILE_KEYS,
     BREAKTHROUGH_AXIS_KEYS,
@@ -283,18 +284,8 @@ def _has_any(text: str, needles: list[str]) -> bool:
 
 
 def _level_for_score(score: int) -> str:
-    if score >= 90:
-        return "S"
-    if score >= 80:
-        return "A"
-    if score >= 60:
-        return "B"
-    return "C"
+    return SCORING_CONFIG.thresholds.level_for_score(score)
 
 
 def _tier_for_score(score: int) -> str:
-    if score >= 80:
-        return "强烈建议沟通"
-    if score >= 60:
-        return "建议沟通"
-    return "暂缓 / 需补充信息"
+    return SCORING_CONFIG.thresholds.tier_for_score(score)

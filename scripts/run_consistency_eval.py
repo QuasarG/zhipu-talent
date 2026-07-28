@@ -5,7 +5,6 @@ import os
 import statistics
 import sys
 import time
-from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
@@ -54,11 +53,9 @@ def main() -> None:
                     evaluation = future.result()
                     item = _evaluation_item(round_index, evaluation)
                     round_results.append(item)
-                    _rank_round(round_results)
                     _save(rounds)
-                    print(f"  {evaluation.id}: {evaluation.overall_score} {evaluation.level} {evaluation.tier}", flush=True)
+                    print(f"  {evaluation.id}: 能力摘要 {evaluation.overall_score}", flush=True)
 
-        _rank_round(round_results)
         if round_results not in rounds:
             rounds.append(round_results)
         _save(rounds)
@@ -74,8 +71,6 @@ def _evaluation_item(round_index: int, evaluation) -> dict[str, Any]:
         "name": evaluation.name,
         "target_role": evaluation.target_role,
         "overall_score": evaluation.overall_score,
-        "level": evaluation.level,
-        "tier": evaluation.tier,
         "one_liner": evaluation.one_liner,
     }
 
@@ -121,12 +116,6 @@ def _round_results(rounds: list[list[dict[str, Any]]], round_index: int) -> list
     return items
 
 
-def _rank_round(round_results: list[dict[str, Any]]) -> None:
-    ranked = sorted(round_results, key=lambda item: (-item["overall_score"], item["id"]))
-    for rank, item in enumerate(ranked, start=1):
-        item["rank"] = rank
-
-
 def _save(rounds: list[list[dict[str, Any]]]) -> None:
     with SAVE_LOCK:
         completed_rounds = [items for items in rounds if items]
@@ -146,9 +135,6 @@ def _summarize(rounds: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
     summary: list[dict[str, Any]] = []
     for candidate_id, items in by_id.items():
         scores = [int(item["overall_score"]) for item in items]
-        ranks = [int(item["rank"]) for item in items]
-        levels = Counter(str(item["level"]) for item in items)
-        tiers = Counter(str(item["tier"]) for item in items)
         summary.append(
             {
                 "id": candidate_id,
@@ -158,14 +144,9 @@ def _summarize(rounds: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
                 "mean_score": round(statistics.mean(scores), 2),
                 "score_std": round(statistics.pstdev(scores), 2),
                 "score_range": max(scores) - min(scores),
-                "ranks": ranks,
-                "mean_rank": round(statistics.mean(ranks), 2),
-                "rank_range": max(ranks) - min(ranks),
-                "level_counts": dict(levels),
-                "tier_counts": dict(tiers),
             }
         )
-    return sorted(summary, key=lambda item: (item["mean_rank"], -item["mean_score"], item["id"]))
+    return sorted(summary, key=lambda item: item["id"])
 
 
 def _render_markdown(summary: list[dict[str, Any]], rounds: list[list[dict[str, Any]]]) -> str:
@@ -175,41 +156,32 @@ def _render_markdown(summary: list[dict[str, Any]], rounds: list[list[dict[str, 
         "",
         f"- 计划每位候选人独立评估次数：{RUNS_PER_CANDIDATE}",
         f"- 当前已完成完整轮次：{len(completed_runs)}",
-        "- 实验方式：每轮重新跑完整评估链路，并按当轮综合分排序。",
+        "- 实验方式：每轮重新跑完整评估链路，观察能力摘要分的稳定性。",
         "- 脚本支持断点续跑；再次执行会跳过已经完成的候选人。",
         "",
         "## 汇总",
         "",
-        "| 候选人 | 均分 | 分数标准差 | 分数范围 | 平均名次 | 名次范围 | 等级分布 | 分层分布 |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+        "| 候选人 | 能力摘要均分 | 分数标准差 | 分数范围 |",
+        "| --- | ---: | ---: | ---: |",
     ]
     for item in summary:
         lines.append(
-            "| {name} | {mean_score} | {score_std} | {score_range} | {mean_rank} | {rank_range} | {levels} | {tiers} |".format(
+            "| {name} | {mean_score} | {score_std} | {score_range} |".format(
                 name=item["name"],
                 mean_score=item["mean_score"],
                 score_std=item["score_std"],
                 score_range=item["score_range"],
-                mean_rank=item["mean_rank"],
-                rank_range=item["rank_range"],
-                levels=_counter_text(item["level_counts"]),
-                tiers=_counter_text(item["tier_counts"]),
             )
         )
 
-    lines.extend(["", "## 每轮排名", ""])
+    lines.extend(["", "## 每轮结果", ""])
     for round_results in rounds:
         round_index = round_results[0]["round"] if round_results else 0
         lines.extend([f"### 第 {round_index} 轮", ""])
-        ranked = sorted(round_results, key=lambda item: item["rank"])
-        for item in ranked:
-            lines.append(f"{item['rank']}. {item['name']}：{item['overall_score']} 分，{item['level']}，{item['tier']}")
+        for item in round_results:
+            lines.append(f"- {item['name']}：能力摘要 {item['overall_score']}")
         lines.append("")
     return "\n".join(lines)
-
-
-def _counter_text(value: dict[str, int]) -> str:
-    return "、".join(f"{key}×{count}" for key, count in sorted(value.items()))
 
 
 if __name__ == "__main__":

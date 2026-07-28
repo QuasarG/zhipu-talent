@@ -3,9 +3,11 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from agi_talent_radar.core import llm_client
+from agi_talent_radar.core.stage_profile import profile_for_stage
 from agi_talent_radar.core.models import (
     CandidateEvaluation,
     DimensionScore,
+    DirectionRecommendation,
     EvidenceItem,
     NormalizedResume,
     TrackAssignment,
@@ -48,7 +50,7 @@ FORMATTER_PROMPT = """
 - common_scores：跨 Track 通用潜力维度
 - track_assignments：候选人的 Track 权重与路由证据
 - track_evaluations：各 Track 专业得分、风险和维度
-- score_summary：overall_score, common_score, track_score, level, tier
+- score_summary：overall_score, common_score, track_score
 - critic_flags：路由、通用评分、专业评分和全局 Critic 发现的问题
 
 输出要求：
@@ -107,23 +109,23 @@ def run_formatter(state: dict) -> dict:
         temperature=0.2,
     )
     formatted = FormatterOutput.model_validate(response)
+    stage_profile = profile_for_stage(normalized.stage)
+    cultivation_direction = list(formatted.cultivation_direction)
+    if stage_profile.evidence_expectation not in cultivation_direction:
+        cultivation_direction.append(stage_profile.evidence_expectation)
     overall_score = int(assessment["overall_score"])
-    level = _normalize_level(assessment.get("level", "C"), overall_score)
-    tier = _normalize_tier(assessment.get("tier", "暂缓 / 需补充信息"), overall_score)
+    recommendations = _recommend_tracks(track_evaluations, assignments)
     evaluation = CandidateEvaluation(
         id=normalized.id,
         name=normalized.name,
         target_role=normalized.target_role,
         stage=normalized.stage,
         overall_score=overall_score,
-        level=level,
-        tier=tier,
-        decision_method=_decision_method(overall_score, tier, assignments),
         one_liner=formatted.one_liner,
         core_strengths=formatted.core_strengths,
         potential_risks=formatted.potential_risks,
         interview_questions=formatted.interview_questions,
-        cultivation_direction=formatted.cultivation_direction,
+        cultivation_direction=cultivation_direction,
         dimension_scores=common_scores,
         evidence=evidence,
         critic_flags=critic_flags,
@@ -133,42 +135,41 @@ def run_formatter(state: dict) -> dict:
         document_score=0.0,
         track_assignments=assignments,
         track_evaluations=track_evaluations,
+        recommended_tracks=recommendations,
+        stage_profile=stage_profile.label,
         routing_confidence=float(state.get("routing_confidence", 0)),
     )
     return {**state, "final_output": evaluation.model_dump()}
 
 
-def _decision_method(overall_score: int, tier: str, assignments: list[TrackAssignment]) -> str:
-    if overall_score >= 80:
-        pool = "优选库"
-    elif overall_score >= 60:
-        pool = "备选库"
-    else:
-        pool = "不建议后续沟通"
-    track_text = "、".join(f"{item.track} {item.weight:.0%}" for item in assignments) or "未确定 Track"
-    return (
-        f"{overall_score} 分按系统规则进入{pool}；"
-        f"下一轮沟通建议为「{tier}」。Track 分布为 {track_text}；"
-        "最终分由通用潜力（40 分）与按 Track 权重聚合的专业能力（60 分）构成。"
+def _recommend_tracks(
+    evaluations: list[TrackEvaluation],
+    assignments: list[TrackAssignment],
+) -> list[DirectionRecommendation]:
+    assignment_by_track = {item.track: item for item in assignments}
+    ranked = sorted(
+        evaluations,
+        key=lambda item: (item.calibrated_score, item.confidence, item.weight),
+        reverse=True,
     )
-
-
-def _normalize_level(value: str, overall_score: int = 0) -> str:
-    if overall_score >= 90:
-        return "S"
-    if overall_score >= 80:
-        return "A"
-    if overall_score >= 60:
-        return "B"
-    return "C"
-
-
-def _normalize_tier(value: str, overall_score: int = 0) -> str:
-    if overall_score >= 80:
-        return "强烈建议沟通"
-    if overall_score >= 60:
-        return "建议沟通"
-    return "暂缓 / 需补充信息"
+    recommendations: list[DirectionRecommendation] = []
+    for item in ranked:
+        assignment = assignment_by_track.get(item.track)
+        evidence_ids = item.evidence_ids or (assignment.evidence_ids if assignment else [])
+        recommendations.append(
+            DirectionRecommendation(
+                track=item.track,
+                label=item.label,
+                score=item.calibrated_score,
+                confidence=item.confidence,
+                evidence_ids=evidence_ids,
+                rationale=(
+                    f"{item.label} 专业证据得分 {item.calibrated_score:.1f}/60；"
+                    f"路由置信度 {item.confidence:.0%}。"
+                ),
+            )
+        )
+    return recommendations
 
 
 def _stringify_items(value):

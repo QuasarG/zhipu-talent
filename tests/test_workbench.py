@@ -283,9 +283,6 @@ class WorkbenchTest(unittest.TestCase):
             target_role="Agent 工程师",
             stage="博士二年级",
             overall_score=75,
-            level="A",
-            tier="强烈建议沟通",
-            decision_method="75 分按系统规则进入备选库。",
             one_liner="高潜候选人",
             core_strengths=[],
             potential_risks=[],
@@ -306,7 +303,7 @@ class WorkbenchTest(unittest.TestCase):
             self.assertEqual(row.normalized_education, ["学校层级=强研究型；具体学校/GPA/排名已折叠。"])
             self.assertEqual(row.screening_tags, ["强工程闭环"])
             self.assertEqual(row.critic_flags, ["需验证指标真实性"])
-            self.assertEqual(row.decision_method, "75 分按系统规则进入备选库。")
+            self.assertEqual(row.decision_method, "")
 
     @patch("agi_talent_radar.web.workbench.run_import_agent_stream")
     def test_upload_jsonl_sse_stream(self, mock_stream) -> None:

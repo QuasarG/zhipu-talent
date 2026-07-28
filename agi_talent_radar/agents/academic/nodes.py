@@ -13,6 +13,8 @@ from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.connectors import ConnectorUnavailableError, Fact, search_works
 
 from agi_talent_radar.agents.academic.models import AcademicReport, ClaimAlignment, PaperClaim
+from agi_talent_radar.core.models import NormalizedResume
+from agi_talent_radar.core.stage_profile import profile_for_stage
 
 CLAIM_EXTRACTOR_PROMPT = """
 你是论文声称提取 Agent。只输出 JSON 对象，顶层字段必须是 claims。
@@ -24,12 +26,12 @@ CLAIM_EXTRACTOR_PROMPT = """
 - venue: 声称发表的会议/期刊，没有则空串
 - year: 声称年份，没有则空串
 - claimed_role: 一作 / 共同一作 / 通讯 / 其他作者 / 不明
-- claimed_status: 已发表 / 已接收 / 在投 / 不明
+- claimed_status: 草稿 / 已投稿 / 在审 / 已接收 / 已发表 / 不明
 
 规则：
 1. 只提取论文/预印本，专利、竞赛、项目不是论文声称。
 2. 没有明确作者位次信息时 claimed_role 给 不明。
-3. 标注了"在投/投稿中/under review"的 claimed_status 必须是 在投。
+3. 草稿、已投稿、在审、已接收和已发表必须区分；"投稿中"归已投稿，"under review"归在审。
 """.strip()
 
 ALIGNMENT_PROMPT = """
@@ -42,6 +44,7 @@ ALIGNMENT_PROMPT = """
 每条 alignment 输出字段：
 - claim_title: 对应输入声称的标题（原样引用）
 - verdict: verified / mismatch / unverifiable
+- verified_status: 外部可确认的状态，只能是 已发表 / 不明
 - matched_title: 匹配到的 OpenAlex 论文标题，无匹配则空串
 - discrepancies: 事实冲突点列表，如 ["声称一作，OpenAlex 作者列表无此人", "声称已发表实为 2026 年预印本"]
 - cited_by_count: 匹配论文的被引数，无匹配给 0
@@ -54,7 +57,7 @@ ALIGNMENT_PROMPT = """
 2. mismatch 仅限硬性事实冲突：作者列表无此人；声称一作但 first_author 是别人；论文已撤稿但声称正常发表。
 3. 年份或版本差异（预印本/会议版多版本、数据库年份字段与版本更新年份不一致）不构成 mismatch，写进 note 即可。
 4. unverifiable：检索结果中没有可对应的论文；不得把"查不到"说成"造假"。
-5. 声称状态为在投且检索不到时，给 unverifiable 并在 note 说明"在投状态属正常查不到"。
+5. 草稿、已投稿或在审且检索不到时，给 unverifiable 并在 note 说明该状态通常无法由公开数据库确认。
 6. 不得编造检索结果中不存在的论文或作者信息。
 """.strip()
 
@@ -127,6 +130,7 @@ def align_claims(
             ClaimAlignment(
                 claim=claim,
                 verdict=verdict,
+                verified_status=str(raw.get("verified_status", "不明")),
                 matched_title=str(raw.get("matched_title", "")),
                 discrepancies=[str(item) for item in raw.get("discrepancies", [])],
                 cited_by_count=int(raw.get("cited_by_count", 0) or 0),
@@ -154,3 +158,19 @@ def run_academic_check(
             warnings.append(f"{claim.title[:30]}: {warning}")
     alignments = align_claims(name, claims, lookups)
     return AcademicReport(alignments=alignments, warnings=warnings)
+
+
+def run_resume_academic_check(state: dict) -> dict:
+    normalized = NormalizedResume.model_validate(state["normalized"])
+    profile = profile_for_stage(normalized.stage)
+    if not profile.external_verification_expected or not normalized.publications:
+        return {"academic_report": AcademicReport().model_dump()}
+    try:
+        report = run_academic_check(
+            name=normalized.name,
+            publications=normalized.publications,
+            raw_text=normalized.raw_text,
+        )
+    except Exception as exc:
+        report = AcademicReport(warnings=[f"论文外部核验暂不可用：{exc}"])
+    return {"academic_report": report.model_dump()}

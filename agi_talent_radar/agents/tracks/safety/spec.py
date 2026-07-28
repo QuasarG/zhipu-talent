@@ -1,5 +1,6 @@
 from agi_talent_radar.agents.tracks.shared.spec import TrackDimensionSpec as D
 from agi_talent_radar.agents.tracks.shared.spec import TrackSpec
+from agi_talent_radar.agents.tracks.safety.weights import WEIGHTS
 
 
 SPEC = TrackSpec(
@@ -8,11 +9,11 @@ SPEC = TrackSpec(
     evidence_focus="安全问题洞察、威胁与漏洞建模、程序分析/Fuzzing/攻防方法创新、实验验证、可运行安全系统、高质量成果与 AI/Agent 安全迁移证据。",
     high_score_rule="按安全研究者的核心能力评价，不要要求同一人同时覆盖攻击、防御、治理和所有 AI 安全子方向。多项独立负责的安全项目、有方法创新的可运行工具、已正式发表的高水平同行评议成果，可支撑 4-5 分。简历未写全检测率、误报率或消融细节时，只在「实验验证」维度保守并记为面试待核验点，不得在方法、工程和成果维度重复扣分。",
     dimensions=(
-        D("security_insight", "安全问题洞察与威胁建模", 10, "3 分：能定义具体攻击面和目标；4 分：多个真实问题中都有独立建模与边界判断；5 分：形成可迁移的威胁建模方法并产生广泛影响。"),
-        D("method_innovation", "方法创新与技术深度", 14, "3 分：改造具体安全方法或工具；4 分：提出原创机制并有多条项目/论文证据；5 分：方法成为可复用的技术路线。程序分析、Fuzzing、攻击或防御任一专长都可高分。"),
-        D("validation_rigor", "实验验证与研究严谨性", 12, "3 分：有基本测试或项目验收；4 分：有完整对照、量化指标或多项同行评议成果交叉验证；5 分：有强复现、失败归因和外部采用。简历未展开实验表时不得低估已正式发表成果的基本验证价值。"),
-        D("research_impact", "研究成果与外部验证", 10, "3 分：有可核验项目、专利或投稿；4 分：有两项及以上已发表高水平同行评议成果或高含金量验收；5 分：形成学术/产业广泛影响。拟投与已接收必须区分。"),
-        D("security_engineering", "安全工程与系统实现", 8, "3 分：实现可运行原型或自动化工具；4 分：多个系统产物与研究方法闭环；5 分：系统可复用、可扩展并被外部使用。"),
-        D("ai_safety_transfer", "AI / Agent 安全迁移潜力", 6, "3 分：有明确 AI/Agent 安全课题或成果；4 分：已将安全方法迁移到 Agent/模型并形成方法；5 分：迁移经过强验证且可泛化。该项评价迁移潜力，不用来否定经典安全专长。"),
+        D("security_insight", "安全问题洞察与威胁建模", WEIGHTS["security_insight"], "3 分：能定义具体攻击面和目标；4 分：多个真实问题中都有独立建模与边界判断；5 分：形成可迁移的威胁建模方法并产生广泛影响。"),
+        D("method_innovation", "方法创新与技术深度", WEIGHTS["method_innovation"], "3 分：改造具体安全方法或工具；4 分：提出原创机制并有多条项目/论文证据；5 分：方法成为可复用的技术路线。程序分析、Fuzzing、攻击或防御任一专长都可高分。"),
+        D("validation_rigor", "实验验证与研究严谨性", WEIGHTS["validation_rigor"], "3 分：有基本测试或项目验收；4 分：有完整对照、量化指标或多项同行评议成果交叉验证；5 分：有强复现、失败归因和外部采用。简历未展开实验表时不得低估已正式发表成果的基本验证价值。"),
+        D("research_impact", "研究成果与外部验证", WEIGHTS["research_impact"], "3 分：有可核验项目、专利或投稿；4 分：有两项及以上已发表高水平同行评议成果或高含金量验收；5 分：形成学术/产业广泛影响。拟投与已接收必须区分。"),
+        D("security_engineering", "安全工程与系统实现", WEIGHTS["security_engineering"], "3 分：实现可运行原型或自动化工具；4 分：多个系统产物与研究方法闭环；5 分：系统可复用、可扩展并被外部使用。"),
+        D("ai_safety_transfer", "AI / Agent 安全迁移潜力", WEIGHTS["ai_safety_transfer"], "3 分：有明确 AI/Agent 安全课题或成果；4 分：已将安全方法迁移到 Agent/模型并形成方法；5 分：迁移经过强验证且可泛化。该项评价迁移潜力，不用来否定经典安全专长。"),
     ),
 )

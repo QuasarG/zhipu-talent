@@ -21,11 +21,12 @@ EVIDENCE_PROMPT = """
 4. Track 专业证据必须标注 track_hints，可多选 base, agent, safety, multimodal, systems, ai4science。
 5. 如果某维度没有直接证据，不要硬凑，直接跳过。
 6. 优先捕捉能区分“真正高潜”与“简历光鲜”的证据：问题约束、baseline、评测、错误归因、验证方式、本人负责范围和可复现产物。
-7. 必须区分「已发表/已接收」与「在投/拟投」：高水平正式发表成果可给 strength 4，若同时有作者位置或本人贡献可给 5；仅有在投题目通常不高于 2。
+7. 必须区分「草稿、已投稿、在审、已接收、已发表」：高水平正式发表成果可给 strength 4，若同时有作者位置或本人贡献可给 5；草稿、已投稿或在审题目通常不高于 2。
 8. 论文或项目未在简历中展开 baseline/消融/指标时，不得编造实验细节；但也不要将已正式发表成果误标为“只有论文题目”。
-9. 对每项论文成果，优先在 signals 中保留「发表状态:已发表/在投」、「作者位置:第一作者/共同一作/其他」、「会议或期刊:xxx」。只有原简历明确标注第一作者、共同一作、通讯作者或明确本人主要贡献时，has_ownership 才可为 true。
+9. 对每项论文成果，优先在 signals 中保留「发表状态:草稿/已投稿/在审/已接收/已发表」、「作者位置:第一作者/共同一作/其他」、「会议或期刊:xxx」。只有原简历明确标注第一作者、共同一作、通讯作者或明确本人主要贡献时，has_ownership 才可为 true。
 10. 实习/工作经历与项目、论文是并列证据来源。必须根据岗位中的实际动作、方法、指标、产物和贡献边界分配通用维度与 track_hints；不得因机构档位、机构类型、岗位名称或任职时长直接加分。
 11. 经历证据的 source 只能写「实习/工作经历：脱敏机构档位 + 岗位」，quote 不得恢复、猜测或输出具体机构名称。
+12. academic_report 是外部论文核验结果：verified 可作为发表状态与作者归属的辅助事实；mismatch 必须写入风险项；unverifiable 只表示未核验，不得推断造假。
 
 可用通用维度：
 problem_definition, research_rigor, learning_transfer, ownership,
@@ -70,6 +71,7 @@ def run_evidence_extractor(state: dict) -> dict:
             ],
             "track_rubrics": {key: spec.as_prompt_dict() for key, spec in TRACK_SPECS.items()},
             "resume": normalized.model_dump(exclude={"education_raw", "experiences_raw"}),
+            "academic_report": state.get("academic_report", {}),
             "repair_feedback": repair_feedback,
             "repair_instruction": (
                 "如果 repair_feedback 非空，请重抽对应 evidence：quote 改为可在原文中直接定位的短句，"

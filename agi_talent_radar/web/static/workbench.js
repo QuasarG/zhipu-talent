@@ -5,6 +5,7 @@
 
 const { NODE_LABELS, NODE_ORDER, STAGES } = window.AgentGraph;
 const BULK_EVALUATION_CONCURRENCY = 3;
+const scoringConfig = window.TALENT_SCORING_CONFIG;
 
 const els = {
   drawerToggles: document.querySelectorAll(".drawer-toggle"),
@@ -246,8 +247,8 @@ function pendingCandidateIds() {
 
 function groupForScore(score) {
   const value = Number(score);
-  if (value >= 80) return "shortlisted";
-  if (value >= 60) return "alternative";
+  if (value >= scoringConfig.thresholds.shortlisted) return "shortlisted";
+  if (value >= scoringConfig.thresholds.alternative) return "alternative";
   return "rejected";
 }
 
@@ -935,7 +936,7 @@ function requestBulkEvaluation() {
   }
   if (bulkEvaluating) return;
 
-  const message = `将同时提交 ${ids.length} 位待评价候选人并开始评估。完成后，80 分及以上进入优选库，60-79 分进入备选库，低于 60 分进入不建议后续沟通。`;
+  const message = `将同时提交 ${ids.length} 位待评价候选人并开始评估。完成后，${scoringConfig.routing_note}`;
   if (!els.bulkConfirmDialog?.showModal) {
     if (confirm(message)) evaluatePendingCandidates(ids);
     return;

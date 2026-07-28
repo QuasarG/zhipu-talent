@@ -1,6 +1,7 @@
 from agi_talent_radar.agents.tracks.safety.spec import SPEC
 from agi_talent_radar.agents.tracks.shared.engine import apply_dimension_floors, run_track_chain
 from agi_talent_radar.core.models import DimensionScore, EvidenceItem
+from agi_talent_radar.agents.tracks.safety.weights import PORTFOLIO_FLOORS
 
 
 def run_safety_track(state: dict) -> dict:
@@ -19,13 +20,7 @@ def _calibrate_security_portfolio(
         return scores
     return apply_dimension_floors(
         scores,
-        {
-            "security_insight": 4.5,
-            "method_innovation": 4.5,
-            "validation_rigor": 4.0,
-            "research_impact": 4.5,
-            "security_engineering": 4.5,
-        },
+        PORTFOLIO_FLOORS,
         "多项独立安全项目、可运行工具和至少两项正式发表成果交叉验证了成熟的安全研究组合",
     )
 

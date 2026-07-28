@@ -105,6 +105,9 @@
       </div>
     </form>
   </dialog>
+  <script>
+    window.TALENT_SCORING_CONFIG = {{ {"thresholds": scoring_thresholds, "routing_note": scoring_routing_note}|tojson }};
+  </script>
   <script src="{{ url_for('static', filename='workbench-agent-graph.js') }}"></script>
   <script src="{{ url_for('static', filename='workbench-import.js') }}"></script>
   <script src="{{ url_for('static', filename='workbench-publications.js') }}"></script>
