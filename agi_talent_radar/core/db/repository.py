@@ -9,7 +9,9 @@ from sqlalchemy import func
 
 from agi_talent_radar.core.db.orm import (
     CandidateORM,
+    CandidateSourceORM,
     DimensionScoreORM,
+    EngagementStatusHistoryORM,
     EvaluationEvidenceORM,
     EvaluationNodeRunORM,
     EvaluationORM,
@@ -465,3 +467,221 @@ def update_task(
         task.error_message = error
     session.commit()
     return task
+
+
+# ---------------------------------------------------------------------------
+# 阶段 1：ResumeSubmission / 人才档案入库 / 来源追加 / HR 状态变更
+# ---------------------------------------------------------------------------
+
+
+def save_resume_submission(
+    session,
+    resume_id: str,
+    source_format: str,
+    raw_text: str = "",
+    structured: dict[str, Any] | None = None,
+    filename: str = "",
+    parse_status: str = "pending",
+    candidate_id: str | None = None,
+    person_id: str | None = None,
+    parse_error: str = "",
+) -> ResumeSubmissionORM:
+    """保存一次简历导入动作。阶段 1 之后，导入仅写 submission，不写 candidate。
+
+    兼容期允许同时绑定 ``candidate_id`` 用于老 workbench id 复用；
+    阶段 1.7 之后 ``talent_service.admit_candidate_after_evaluation`` 会
+    切断这条路径。
+    """
+    import uuid as _uuid
+
+    from agi_talent_radar.core.db.orm import ResumeSubmissionORM
+
+    submission = session.get(ResumeSubmissionORM, resume_id)
+    if submission is None:
+        submission = ResumeSubmissionORM(id=resume_id or _uuid.uuid4().hex)
+        session.add(submission)
+    submission.source_format = source_format
+    submission.filename = filename or submission.filename
+    submission.raw_text = raw_text or submission.raw_text
+    submission.structured = structured if structured is not None else submission.structured or {}
+    submission.parse_status = parse_status or submission.parse_status or "pending"
+    submission.parse_error = parse_error or submission.parse_error or ""
+    if candidate_id is not None:
+        submission.candidate_id = candidate_id
+    if person_id is not None:
+        submission.person_id = person_id
+    session.commit()
+    session.refresh(submission)
+    return submission
+
+
+def create_resume_version(
+    session,
+    submission_id: str,
+    raw_text: str = "",
+    structured: dict[str, Any] | None = None,
+    note: str = "",
+) -> ResumeVersionORM:
+    """创建一份简历版本；同一 submission 下 version 自增。原文永不被覆盖。"""
+    import uuid as _uuid
+
+    from agi_talent_radar.core.db.orm import ResumeVersionORM
+
+    last_version = (
+        session.query(ResumeVersionORM)
+        .filter_by(submission_id=submission_id)
+        .order_by(ResumeVersionORM.version.desc())
+        .first()
+    )
+    next_version = (last_version.version if last_version else 0) + 1
+    row = ResumeVersionORM(
+        id=_uuid.uuid4().hex,
+        submission_id=submission_id,
+        version=next_version,
+        raw_text=raw_text,
+        structured=structured or {},
+        note=note,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def find_candidate_by_person(session, person_id: str) -> CandidateORM | None:
+    """同一 person 至多一个 Candidate；阶段 1 后所有候选人通过 person 归并。"""
+    return session.query(CandidateORM).filter_by(person_id=person_id).first()
+
+
+def find_or_create_candidate_for_person(
+    session,
+    person_id: str,
+    name: str = "",
+    target_role: str = "",
+    stage: str = "",
+    group: str = "pending",
+) -> CandidateORM:
+    """按 person 查找或创建 Candidate。返回的 CandidateORM 已 flush。"""
+    import uuid as _uuid
+
+    candidate = find_candidate_by_person(session, person_id)
+    if candidate is not None:
+        return candidate
+    candidate = CandidateORM(
+        id=_uuid.uuid4().hex[:32],
+        name=name,
+        target_role=target_role,
+        stage=stage,
+        group=group,
+        person_id=person_id,
+        engagement_status="newly_admitted",
+        admitted_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    session.add(candidate)
+    session.flush()
+    return candidate
+
+
+def append_candidate_source(
+    session,
+    candidate_id: str,
+    source_kind: str,
+    source_record_id: str = "",
+    note: str = "",
+    created_by: str = "",
+) -> CandidateSourceORM | None:
+    """为人才档案追加一个来源；同 ``source_kind`` 幂等返回已有记录。
+
+    ``source_kind`` 必须属于 ``CANDIDATE_SOURCE_KINDS``，否则抛出 ``ValueError``。
+    """
+    from agi_talent_radar.core.db.orm import CANDIDATE_SOURCE_KINDS, CandidateSourceORM
+
+    if source_kind not in CANDIDATE_SOURCE_KINDS:
+        raise ValueError(f"source_kind 必须是 {CANDIDATE_SOURCE_KINDS} 之一")
+    existing = (
+        session.query(CandidateSourceORM)
+        .filter_by(candidate_id=candidate_id, source_kind=source_kind)
+        .first()
+    )
+    if existing is not None:
+        return existing
+    row = CandidateSourceORM(
+        candidate_id=candidate_id,
+        source_kind=source_kind,
+        source_record_id=source_record_id,
+        note=note,
+        created_by=created_by,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def list_candidate_source_kinds(session, candidate_id: str) -> list[str]:
+    """获取人才档案所有来源类型，按创建时间升序。"""
+    from agi_talent_radar.core.db.orm import CandidateSourceORM
+
+    rows = (
+        session.query(CandidateSourceORM)
+        .filter_by(candidate_id=candidate_id)
+        .order_by(CandidateSourceORM.created_at, CandidateSourceORM.id)
+        .all()
+    )
+    return [row.source_kind for row in rows]
+
+
+def update_engagement_status(
+    session,
+    candidate_id: str,
+    status: str,
+    changed_by: str,
+    note: str = "",
+) -> EngagementStatusHistoryORM:
+    """修改 HR 跟进状态；写入不可变审计记录。
+
+    - ``status`` 必须在 6 种初值之一（newly_admitted / to_contact / contacted /
+      interviewing / ongoing_follow / closed）。
+    - ``changed_by`` 强制要求；不接受自动入参。
+    """
+    from agi_talent_radar.core.db.orm import EngagementStatusHistoryORM
+
+    allowed = {
+        "newly_admitted",
+        "to_contact",
+        "contacted",
+        "interviewing",
+        "ongoing_follow",
+        "closed",
+    }
+    if status not in allowed:
+        raise ValueError(f"status 必须是 {sorted(allowed)} 之一")
+    if not changed_by or not changed_by.strip():
+        raise ValueError("changed_by 必填，禁止基于评分自动切换。")
+    candidate = session.get(CandidateORM, candidate_id)
+    if candidate is None:
+        raise ValueError(f"候选人不存在: {candidate_id}")
+    previous = candidate.engagement_status or ""
+    history = EngagementStatusHistoryORM(
+        candidate_id=candidate_id,
+        previous_status=previous,
+        current_status=status,
+        changed_by=changed_by,
+        note=note or "",
+    )
+    session.add(history)
+    candidate.engagement_status = status
+    session.commit()
+    session.refresh(history)
+    return history
+
+
+def list_engagement_history(session, candidate_id: str) -> list[EngagementStatusHistoryORM]:
+    from agi_talent_radar.core.db.orm import EngagementStatusHistoryORM
+
+    return (
+        session.query(EngagementStatusHistoryORM)
+        .filter_by(candidate_id=candidate_id)
+        .order_by(EngagementStatusHistoryORM.created_at, EngagementStatusHistoryORM.id)
+        .all()
+    )
