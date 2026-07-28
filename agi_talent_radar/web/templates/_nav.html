@@ -1,0 +1,49 @@
+{# _nav.html：72px 悬浮 Liquid Glass 导航轨（三张界面共享） #}
+<nav class="nav-rail glass" aria-label="主导航">
+  <a href="/" class="nav-logo" aria-label="智谱人才研究平台首页">
+    <span class="nav-logo-letter">Z</span>
+  </a>
+
+  <ul class="nav-items">
+    <li>
+      <a href="/" class="nav-item {% if nav_active == 'resume' %}is-active{% endif %}"
+         aria-label="简历评估" {% if nav_active == 'resume' %}aria-current="page"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#icon-resume"></use></svg>
+        <span class="nav-label">简历评估</span>
+      </a>
+    </li>
+    <li>
+      <a href="/knowledge" class="nav-item {% if nav_active == 'knowledge' %}is-active{% endif %}"
+         aria-label="人才知识" {% if nav_active == 'knowledge' %}aria-current="page"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#icon-chat"></use></svg>
+        <span class="nav-label">人才知识</span>
+      </a>
+    </li>
+    <li>
+      <a href="/talent-pool" class="nav-item {% if nav_active == 'pool' %}is-active{% endif %}"
+         aria-label="人才库" {% if nav_active == 'pool' %}aria-current="page"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+        <span class="nav-label">人才库</span>
+      </a>
+    </li>
+    <li>
+      <a href="/review" class="nav-item {% if nav_active == 'review' %}is-active{% endif %}"
+         aria-label="待核验" {% if nav_active == 'review' %}aria-current="page"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#icon-review"></use></svg>
+        <span class="nav-label">待核验</span>
+      </a>
+    </li>
+    <li>
+      <a href="/settings" class="nav-item {% if nav_active == 'settings' %}is-active{% endif %}"
+         aria-label="设置" {% if nav_active == 'settings' %}aria-current="page"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#icon-settings"></use></svg>
+        <span class="nav-label">设置</span>
+      </a>
+    </li>
+  </ul>
+
+  <div class="nav-user">
+    <span class="nav-avatar">HR</span>
+    <span class="nav-online-dot" aria-label="在线"></span>
+  </div>
+</nav>

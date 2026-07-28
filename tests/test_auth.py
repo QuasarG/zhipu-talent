@@ -25,7 +25,11 @@ from agi_talent_radar.web.auth import (
 
 
 def _make_app() -> Flask:
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        template_folder="../agi_talent_radar/web/templates",
+        static_folder="../agi_talent_radar/web/static",
+    )
     app.config["TESTING"] = True
     configure_app_session(app)
     install_auth_middleware(app)

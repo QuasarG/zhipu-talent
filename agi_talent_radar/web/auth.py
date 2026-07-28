@@ -19,7 +19,6 @@ from typing import Any, Callable
 
 from flask import (  # type: ignore[import-not-found]
     Blueprint,
-    Response,
     current_app,
     jsonify,
     redirect,
@@ -165,13 +164,11 @@ def build_auth_blueprint() -> Blueprint:
 
     @bp.get("/login")
     def login_page():
-        # 极简登录页（前端阶段 9 重写为 MD3）。
+        from flask import render_template
+
         if is_authenticated():
             return redirect("/")
-        return Response(
-            _LOGIN_HTML,
-            mimetype="text/html",
-        )
+        return render_template("login.html", nav_active="")
 
     @bp.get("/health")
     def health():
@@ -184,37 +181,6 @@ def build_auth_blueprint() -> Blueprint:
         return jsonify(report.to_dict()), status_code
 
     return bp
-
-
-_LOGIN_HTML = """<!doctype html>
-<html lang="zh-CN">
-<head><meta charset="utf-8"><title>登录 · AGI Talent Radar</title></head>
-<body>
-<h1>AGI Talent Radar · 登录</h1>
-<form id="login-form">
-  <label>访问密码 <input type="password" name="password" required></label>
-  <button type="submit">登录</button>
-</form>
-<div id="error" style="color:#c00"></div>
-<script>
-document.getElementById('login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const password = form.password.value;
-  const res = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({password}),
-  });
-  if (res.ok) {
-    window.location.href = '/';
-  } else {
-    document.getElementById('error').textContent = '密码错误或未配置访问密码。';
-  }
-});
-</script>
-</body>
-</html>"""
 
 
 def configure_app_session(app) -> None:

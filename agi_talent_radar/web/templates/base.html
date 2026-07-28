@@ -1,0 +1,26 @@
+{# base.html：三张界面统一骨架（head + 玻璃导航轨 + 内容插槽 + 脚本插槽） #}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}智谱人才研究平台{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='tokens.css') }}">
+  {% block styles %}{% endblock %}
+</head>
+<body>
+  {# inline SVG 图标 sprite（零依赖，currentColor 着色） #}
+  {% include "_icons.html" %}
+
+  {# 72px 悬浮 Liquid Glass 导航轨 #}
+  {% set nav_active = nav_active | default('') %}
+  {% include "_nav.html" %}
+
+  {# 主内容区：导航轨右侧，留 nav-width + margin #}
+  <main class="app-main" {% block main_attrs %}{% endblock %}>
+    {% block body %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

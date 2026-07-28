@@ -305,3 +305,121 @@ a:hover { color: var(--color-accent); }
   border-radius: var(--radius-pill);
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(21, 33, 38, 0.28); }
+
+/* ============================================================================
+   全局布局：导航轨 + 主内容区
+   ========================================================================== */
+
+.app-main {
+  margin-left: calc(var(--nav-width) + var(--nav-rail-margin));
+  padding: var(--nav-rail-margin);
+  min-height: 100vh;
+  max-width: var(--content-max);
+}
+
+/* ---- 72px 悬浮 Liquid Glass 导航轨 ---- */
+.nav-rail {
+  position: fixed;
+  top: var(--nav-rail-margin);
+  left: var(--nav-rail-margin);
+  bottom: var(--nav-rail-margin);
+  width: var(--nav-width);
+  border-radius: var(--radius-xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-4) 0;
+  z-index: 100;
+  contain: layout paint;
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  text-decoration: none;
+  margin-bottom: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.nav-items {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  width: 100%;
+  align-items: center;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: var(--space-2) var(--space-1);
+  border-radius: var(--radius-md);
+  color: var(--color-fg-secondary);
+  text-decoration: none;
+  font-size: var(--fs-xs);
+  transition: all var(--transition-fast);
+  width: 56px;
+}
+
+.nav-item:hover {
+  color: var(--color-fg);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.nav-item.is-active {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.nav-item .icon {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.8;
+}
+
+.nav-label {
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.nav-user {
+  position: relative;
+  margin-top: auto;
+}
+
+.nav-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface-mist);
+  color: var(--ink-700);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.nav-online-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--teal-500);
+  border: 2px solid var(--surface-cool);
+}
