@@ -20,3 +20,5 @@ flask_*.pid
 
 # ZCode agent 临时目录
 .zcode/
+frontend/node_modules
+agi_talent_radar/web/static/dist/

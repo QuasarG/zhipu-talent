@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   智谱人才研究平台 · Liquid Glass 设计令牌
+   macOS 26 / iOS 26 Liquid Glass 风格
+   ========================================================================== */
+
+@theme {
+  /* 原始色板 */
+  --color-teal: #2F7D73;
+  --color-teal-light: #3B9A8E;
+  --color-teal-soft: #E6F2F0;
+  --color-coral: #D45D54;
+  --color-coral-soft: #FBEAE8;
+  --color-amber-glow: #B7791F;
+  --color-amber-soft: #FBF1DD;
+  --color-blue: #3B82F6;
+  --color-blue-soft: #E0EDFE;
+  --color-ink: #152126;
+  --color-ink-secondary: #708086;
+  --color-ink-muted: #A8B4B8;
+  --color-surface-cool: #EDF2F5;
+  --color-surface-mist: #DDE7EC;
+  --color-surface-paper: #F7FAFB;
+
+  /* 玻璃材质 */
+  --color-glass-fill: rgba(255, 255, 255, 0.54);
+  --color-glass-fill-strong: rgba(255, 255, 255, 0.72);
+
+  /* 字体 */
+  --font-display: -apple-system, "SF Pro Display", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-body: -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Consolas, monospace;
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+}
+
+/* ============================================================================
+   全局重置
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  min-height: 100vh;
+  /* 背景色域：冷白底 + 低饱和 radial-gradient */
+  background-color: var(--color-surface-cool);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(47, 125, 115, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 50% at 85% 85%, rgba(212, 93, 84, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 50% 50%, rgba(221, 231, 236, 0.50) 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ============================================================================
+   Liquid Glass 工具类
+   ========================================================================== */
+
+.glass {
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(180%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0% 8%, transparent 24%),
+    rgba(255, 255, 255, 0.54);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 8px 24px rgba(15, 33, 38, 0.10);
+  border: 1px solid transparent;
+}
+
+.glass-strong {
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(180%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0% 9%, transparent 26%),
+    rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 8px 24px rgba(15, 33, 38, 0.10);
+}
+
+.glass-dark {
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(180%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0% 9%, transparent 26%),
+    rgba(19, 29, 34, 0.68);
+  color: #EAF2F5;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 12px 32px rgba(15, 33, 38, 0.16);
+}
+
+/* ============================================================================
+   可访问性
+   ========================================================================== */
+
+:focus-visible {
+  outline: 2px solid var(--color-teal);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(21, 33, 38, 0.15); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(21, 33, 38, 0.28); }
