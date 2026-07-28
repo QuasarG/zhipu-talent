@@ -42,13 +42,85 @@ from agi_talent_radar.core.domain_models import (
 def evaluate_resume(submission_id: str) -> dict[str, Any]:
     """驱动一次简历评估。返回评估摘要（不含 HR 状态、不含录取等级）。
 
-    阶段 4 实装：身份归并 → 标准化 → 论文自述提取 → 证据提取 → 通用潜力 →
-    Track 路由/评分 → 汇总 → 格式化。
+    阶段 4 编排实装：
 
-    评估成功且需要入库时，必须调用 ``admit_candidate_after_evaluation``，
+    1. 从 ``submission_id``（兼容期复用 candidate_id）加载 CandidateORM。
+    2. 调老 ``run_candidate`` 跑 LangGraph（身份归并节点阶段 2 已留接口，
+       但老 graph 暂未串入；这里先跑现有评估链路）。
+    3. ``save_evaluation`` 写 EvaluationORM（内部已写 person_id）。
+    4. ``admit_candidate_after_evaluation`` 入库 + 追加 resume_evaluation 来源。
+    5. 派发论文核验 task（pending）。
+
+    评估成功且需要入库时，必须经 ``admit_candidate_after_evaluation``，
     不允许直接修改 ``CandidateORM.group``。
     """
-    raise NotImplementedError("阶段 1 仅实装事务接口；阶段 4 编排实装。")
+    from agi_talent_radar.core.database import get_session, save_evaluation, start_evaluation_run
+    from agi_talent_radar.core.db.orm import CandidateORM
+    from agi_talent_radar.core.runner import run_candidate
+
+    with get_session() as session:
+        candidate = session.get(CandidateORM, submission_id)
+        if candidate is None:
+            raise ValueError(f"候选人 / 简历提交不存在: {submission_id}")
+        resume = _candidate_orm_to_resume(candidate)
+        evaluation_run = start_evaluation_run(session, submission_id)
+        evaluation_run_id = evaluation_run.id
+
+    # 跑评估 graph（同步）；失败由上层捕获并 fail_evaluation_run
+    evaluation = run_candidate(resume)
+    evaluation.id = submission_id
+
+    with get_session() as session:
+        save_evaluation(session, evaluation, evaluation_id=evaluation_run_id)
+
+    # 入库（admit 内部会校验 status=completed + person_id）
+    admit_result = admit_candidate_after_evaluation(evaluation_run_id)
+
+    # 派发论文核验 task（不阻塞主流程）
+    try:
+        retry_publication_verification(evaluation_run_id)
+    except Exception:
+        pass
+
+    return {
+        "evaluation_id": evaluation_run_id,
+        "overall_score": evaluation.overall_score,
+        "admit": admit_result,
+    }
+
+
+def _candidate_orm_to_resume(candidate) -> "CandidateResume":
+    """从 CandidateORM 重建 CandidateResume（兼容老字段）。"""
+    import json as _json
+
+    from agi_talent_radar.core.models import CandidateResume
+
+    def _loads(value):
+        if isinstance(value, (list, dict)):
+            return value
+        if isinstance(value, str) and value:
+            try:
+                return _json.loads(value)
+            except _json.JSONDecodeError:
+                return []
+        return []
+
+    return CandidateResume.model_validate({
+        "id": candidate.id,
+        "name": candidate.name,
+        "target_role": candidate.target_role,
+        "stage": candidate.stage,
+        "raw_text": candidate.raw_text,
+        "education": _loads(candidate.education),
+        "directions": _loads(candidate.directions),
+        "experiences": _loads(getattr(candidate, "experiences", "")),
+        "projects": _loads(candidate.projects),
+        "publications": _loads(candidate.publications),
+        "skills": _loads(candidate.skills),
+        "screening_tags": _loads(candidate.screening_tags),
+        "source_format": getattr(candidate, "source_format", "text") or "text",
+        "document_analysis": _loads(getattr(candidate, "document_analysis", "")) or {},
+    })
 
 
 def retry_publication_verification(

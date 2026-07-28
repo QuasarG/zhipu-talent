@@ -283,6 +283,77 @@ class TestUpdateEngagementStatus(_TalentServiceTestBase):
             self.assertEqual(candidate.engagement_status, "contacted")
 
 
+class TestEvaluateResume(_TalentServiceTestBase):
+    """evaluate_resume 编排测试：走 admit 路径，不写 group。"""
+
+    def test_evaluate_resume_unknown_submission_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            talent_service.evaluate_resume("nonexistent")
+
+    @patch("agi_talent_radar.core.runner.run_candidate")
+    @patch("agi_talent_radar.services.talent_service.retry_publication_verification")
+    def test_evaluate_resume_admits_and_does_not_write_group(
+        self, mock_retry, mock_run
+    ) -> None:
+        from agi_talent_radar.core.models import CandidateEvaluation
+
+        mock_run.return_value = CandidateEvaluation(
+            id="c-eval",
+            name="张三",
+            target_role="研究员",
+            stage="博士在读",
+            overall_score=78,
+            one_liner="高潜",
+            core_strengths=[],
+            potential_risks=[],
+            interview_questions=[],
+            cultivation_direction=[],
+            dimension_scores=[],
+            evidence=[],
+        )
+        # 准备 candidate + person + evaluation_run
+        self._seed_person(person_id="p-eval")
+        with self.Session() as session:
+            from agi_talent_radar.core.db.orm import CandidateORM
+            from agi_talent_radar.core.persons import get_or_create_person
+
+            person = get_or_create_person(session, name="张三", direction="Agent")
+            session.add(
+                CandidateORM(
+                    id="c-eval",
+                    name="张三",
+                    target_role="研究员",
+                    stage="博士在读",
+                    group="pending",
+                    person_id=person.id,
+                    raw_text="raw",
+                    education="[]",
+                    directions="[]",
+                    experiences="[]",
+                    projects="[]",
+                    publications="[]",
+                    skills="[]",
+                    screening_tags="[]",
+                )
+            )
+            session.commit()
+
+        result = talent_service.evaluate_resume("c-eval")
+        self.assertIn("evaluation_id", result)
+        self.assertIn("admit", result)
+        self.assertIn("resume_evaluation", result["admit"]["sources"])
+
+        # Candidate.group 不被自动改写
+        with self.Session() as session:
+            from agi_talent_radar.core.db.orm import CandidateORM
+
+            candidate = session.get(CandidateORM, "c-eval")
+            self.assertEqual(candidate.group, "pending")
+
+        # 论文核验 task 被派发
+        mock_retry.assert_called()
+
+
 class TestResearchGroupMatching(_TalentServiceTestBase):
     def test_always_not_configured(self) -> None:
         # 无 candidate 也返回；service 不依赖任何 DB 行。
