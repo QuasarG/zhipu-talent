@@ -5,6 +5,7 @@ import type {
   HealthReport,
   PersonBrief,
   PersonDetail,
+  ReputationReport,
 } from "./types";
 
 const BASE = "";
@@ -50,6 +51,16 @@ export const api = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ changed_by: changedBy, note }),
+      }),
+    reputation: (id: string) =>
+      fetchJSON<ReputationReport[]>(`/api/persons/${id}/reputation`),
+  },
+  reputation: {
+    review: (reportId: number, action: "confirmed" | "dismissed", reviewer: string, note: string) =>
+      fetchJSON<ReputationReport>(`/api/reputation/${reportId}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reviewer, note }),
       }),
   },
   import: (formData: FormData) =>

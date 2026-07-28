@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { api } from "@/lib/api";
-import GlassPanel from "@/components/glass/GlassPanel";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import Icon from "@/components/ui/Icon";
 
 interface LoginProps {
   onLogin: () => void;
@@ -26,13 +28,14 @@ export default function Login({ onLogin }: LoginProps) {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-8">
-      <GlassPanel variant="strong" className="w-full max-w-[400px] p-10 text-center rounded-[20px]">
-        <h1 className="text-2xl mb-2">智谱人才研究平台</h1>
-        <p className="text-sm text-ink-secondary mb-8">内部人才研究、简历评估与知识管理工具</p>
+    <div className="flex items-center justify-center min-h-screen p-8 bg-surface">
+      <Card variant="elevated" className="w-full max-w-[400px] p-10 text-center rounded-xl">
+        <Icon name="radar" size={40} className="text-primary" />
+        <h1 className="text-headline mt-3 mb-2">智谱人才研究平台</h1>
+        <p className="text-body-sm text-on-surface-variant mb-8">内部人才研究、简历评估与知识管理工具</p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-left">
           <label className="flex flex-col gap-2">
-            <span className="text-xs text-ink-secondary font-medium">访问密码</span>
+            <span className="text-label text-on-surface-variant">访问密码</span>
             <input
               type="password"
               value={password}
@@ -41,19 +44,15 @@ export default function Login({ onLogin }: LoginProps) {
               autoFocus
               autoComplete="current-password"
               placeholder="请输入访问密码"
-              className="px-3 py-2 rounded-[10px] border border-ink/10 bg-white/40 text-sm outline-none focus:border-teal transition-colors"
+              className="h-12 px-4 rounded-sm border border-outline bg-transparent text-body outline-none focus:border-primary transition-colors placeholder:text-on-surface-variant"
             />
           </label>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-6 py-2.5 rounded-[10px] border-none bg-teal text-white text-sm font-semibold cursor-pointer hover:bg-teal-light transition-colors disabled:opacity-50"
-          >
+          <Button type="submit" disabled={loading} className="w-full">
             {loading ? "登录中…" : "登录"}
-          </button>
+          </Button>
         </form>
-        {error && <p className="mt-4 text-sm text-coral min-h-[1.2em]">{error}</p>}
-      </GlassPanel>
+        {error && <p className="mt-4 text-body-sm text-error min-h-[1.2em]">{error}</p>}
+      </Card>
     </div>
   );
 }

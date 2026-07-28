@@ -1,11 +1,15 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import type { PersonBrief, PersonDetail } from "@/lib/types";
 import PageToolbar from "@/components/layout/PageToolbar";
-import TalentList from "@/features/pool/TalentList";
+import SearchField from "@/components/ui/SearchField";
+import SegmentedButtons from "@/components/ui/SegmentedButtons";
+import Chip from "@/components/ui/Chip";
+import Card from "@/components/ui/Card";
+import { IconButton } from "@/components/ui/Button";
+import TalentList, { classifyTrack, STATUS_LABELS, TRACKS } from "@/features/pool/TalentList";
 import TalentDetail from "@/features/pool/TalentDetail";
-import GlassPanel from "@/components/glass/GlassPanel";
-import { Search } from "lucide-react";
+import RelationGraph from "@/features/pool/RelationGraph";
 
 export default function TalentPool() {
   const [persons, setPersons] = useState<PersonBrief[]>([]);
@@ -13,6 +17,9 @@ export default function TalentPool() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [trackFilter, setTrackFilter] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState("");
+  const [hrFilter, setHrFilter] = useState("");
+  const [view, setView] = useState<"list" | "graph">("graph");
 
   const load = useCallback(async () => {
     try {
@@ -44,43 +51,122 @@ export default function TalentPool() {
     invest: persons.filter((p) => p.person_type === "guest").length,
   };
 
+  const schools = useMemo(
+    () => Array.from(new Set(persons.map((p) => p.org).filter(Boolean))),
+    [persons]
+  );
+
+  const filtered = useMemo(
+    () =>
+      persons.filter(
+        (p) =>
+          (!trackFilter || classifyTrack(p) === trackFilter) &&
+          (!schoolFilter || p.org === schoolFilter) &&
+          (!hrFilter || (p.engagement_status || "newly_admitted") === hrFilter)
+      ),
+    [persons, trackFilter, schoolFilter, hrFilter]
+  );
+
   return (
     <div>
       <PageToolbar
         title="人才库"
         subtitle="统一档案、来源追踪与关系发现"
         center={
-          <GlassPanel className="flex items-center gap-2 px-3 py-1.5 rounded-[10px] max-w-[480px] w-full">
-            <Search size={16} className="text-ink-secondary shrink-0" />
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索姓名、学校、机构、Track 或论文"
-              className="flex-1 border-none bg-transparent text-sm outline-none placeholder:text-ink-muted"
-            />
-          </GlassPanel>
+          <SearchField
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索姓名、学校、机构、Track 或论文"
+            className="max-w-[480px] w-full"
+          />
         }
         right={
-          <div className="flex gap-1 p-1 rounded-[10px] bg-white/35">
-            <span className="text-xs px-2 py-1 rounded-full bg-teal-soft text-teal">全部 {counts.all}</span>
-            <span className="text-xs px-2 py-1 text-ink-secondary">简历 {counts.resume}</span>
-            <span className="text-xs px-2 py-1 text-ink-secondary">调查 {counts.invest}</span>
-          </div>
+          <>
+            <div className="flex items-center gap-1 h-9 px-1 rounded-full bg-surface-high text-label whitespace-nowrap">
+              <span className="px-2.5 h-7 inline-flex items-center rounded-full bg-primary text-on-primary">
+                全部 {counts.all}
+              </span>
+              <span className="px-2.5 text-on-surface-variant">简历评估 {counts.resume}</span>
+              <span className="px-2.5 text-on-surface-variant">人物调查 {counts.invest}</span>
+            </div>
+            <SegmentedButtons
+              options={[
+                { value: "list", label: "列表详情", icon: "list" },
+                { value: "graph", label: "关系图谱", icon: "account_tree" },
+              ]}
+              value={view}
+              onChange={setView}
+            />
+            <IconButton icon="refresh" variant="outlined" onClick={load} title="刷新" />
+          </>
         }
       />
 
-      <div className="grid grid-cols-[360px_1fr_300px] gap-4 h-[calc(100vh-56px-60px)] min-h-[500px]">
-        <TalentList
-          persons={persons}
-          selectedId={selectedId}
-          onSelect={selectPerson}
-          trackFilter={trackFilter}
-          setTrackFilter={setTrackFilter}
-        />
-        <div className="rounded-[14px] bg-surface-paper border border-ink/10 overflow-hidden p-6 flex items-center justify-center">
-          <p className="text-sm text-ink-secondary">关系图谱（Canvas 力导向）— 开发中</p>
+      <div className="flex items-center gap-2 mb-4 flex-wrap px-2">
+        <Chip selected={!trackFilter} onClick={() => setTrackFilter("")}>
+          全部
+        </Chip>
+        {TRACKS.map((t) => (
+          <Chip key={t} selected={trackFilter === t} onClick={() => setTrackFilter(t)}>
+            <span className="capitalize">{t}</span>
+          </Chip>
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          <select
+            value={schoolFilter}
+            onChange={(e) => setSchoolFilter(e.target.value)}
+            className="h-8 px-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface cursor-pointer"
+          >
+            <option value="">学校：全部</option>
+            {schools.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select
+            value={hrFilter}
+            onChange={(e) => setHrFilter(e.target.value)}
+            className="h-8 px-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface cursor-pointer"
+          >
+            <option value="">HR 状态：全部</option>
+            {Object.entries(STATUS_LABELS).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
         </div>
+      </div>
+
+      <div className="grid grid-cols-[360px_minmax(0,1fr)_320px] gap-4 h-[calc(100vh-56px-130px)] min-h-[500px]">
+        <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
+        {view === "graph" ? (
+          <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
+        ) : (
+          <Card variant="elevated" className="min-h-0 overflow-y-auto p-4">
+            <table className="w-full text-body-sm">
+              <thead>
+                <tr className="text-label text-on-surface-variant text-left">
+                  <th className="pb-2 font-medium">姓名</th>
+                  <th className="pb-2 font-medium">学校</th>
+                  <th className="pb-2 font-medium">Track</th>
+                  <th className="pb-2 font-medium">综合分</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((p) => (
+                  <tr
+                    key={p.id}
+                    onClick={() => selectPerson(p.id)}
+                    className="cursor-pointer border-t border-outline-variant hover:bg-surface-low"
+                  >
+                    <td className="py-2 text-on-surface">{p.name || p.id}</td>
+                    <td className="py-2 text-on-surface-variant">{p.org || "—"}</td>
+                    <td className="py-2 text-on-surface-variant capitalize">{classifyTrack(p) || "—"}</td>
+                    <td className="py-2 text-on-surface-variant">{p.overall_score ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
         <TalentDetail person={selected} personId={selectedId} onUpdated={selectPerson} />
       </div>
     </div>

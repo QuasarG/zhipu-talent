@@ -1,0 +1,33 @@
+{
+  "runId": "talent-liquid-glass-20260728",
+  "fileKey": "qj2UOOnw9rnyNSaYGjTOLg",
+  "fileUrl": "https://www.figma.com/design/qj2UOOnw9rnyNSaYGjTOLg",
+  "phase": "blocked_phase1",
+  "step": "primitive_colors",
+  "entities": {
+    "collections": {
+      "Primitives": "VariableCollectionId:3:2",
+      "Color": "VariableCollectionId:3:3",
+      "Spacing": "VariableCollectionId:3:4",
+      "Radius": "VariableCollectionId:3:5"
+    },
+    "variables": {},
+    "pages": {},
+    "components": {},
+    "screens": {}
+  },
+  "pendingValidations": [
+    "phase1:variables",
+    "phase1:styles"
+  ],
+  "completedSteps": [
+    "phase0",
+    "phase1_collections"
+  ],
+  "constraints": [
+    "Starter plan supports one variable mode; v1 builds Light mode only",
+    "Remote iOS 26 library components cannot be imported with the current seat",
+    "Use local tokens and components while preserving iOS 26 Liquid Glass behavior",
+    "Figma MCP Starter-plan call limit reached before primitive variables were created"
+  ]
+}

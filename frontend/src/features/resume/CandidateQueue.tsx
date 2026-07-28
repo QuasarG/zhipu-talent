@@ -1,7 +1,10 @@
 import { useState } from "react";
 import type { CandidateBrief } from "@/lib/types";
-import GlassPanel from "@/components/glass/GlassPanel";
-import { Search, Upload } from "lucide-react";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
+import SearchField from "@/components/ui/SearchField";
+import SegmentedButtons from "@/components/ui/SegmentedButtons";
+import { StatusChip } from "@/components/ui/Chip";
 import { cn } from "@/lib/cn";
 
 interface Props {
@@ -39,77 +42,70 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onImp
   };
 
   return (
-    <div className="flex flex-col gap-3 min-h-0">
-      {/* 搜索 */}
-      <GlassPanel className="flex items-center gap-2 px-3 py-2 rounded-[10px]">
-        <Search size={16} className="text-ink-secondary shrink-0" />
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="搜索姓名、学校或方向"
-          className="flex-1 border-none bg-transparent text-sm outline-none placeholder:text-ink-muted"
-        />
-      </GlassPanel>
+    <Card variant="filled" className="flex flex-col gap-3 p-3 min-h-0">
+      <SearchField
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="搜索姓名、学校或方向"
+      />
 
-      {/* segmented */}
-      <div className="flex gap-1 p-1 rounded-[10px] bg-white/35">
-        {(["all", "pending", "completed"] as Filter[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-full text-xs transition-colors",
-              filter === f ? "bg-teal-soft text-teal" : "text-ink-secondary hover:text-ink"
-            )}
-          >
-            {f === "all" ? "全部" : f === "pending" ? "待评估" : "已完成"}
-            <span className="opacity-60">{counts[f]}</span>
-          </button>
-        ))}
-      </div>
+      <SegmentedButtons<Filter>
+        className="w-full [&>button]:flex-1"
+        options={[
+          { value: "all", label: `全部 ${counts.all}` },
+          { value: "pending", label: `待评估 ${counts.pending}` },
+          { value: "completed", label: `已完成 ${counts.completed}` },
+        ]}
+        value={filter}
+        onChange={setFilter}
+      />
 
-      {/* 列表 */}
-      <div className="flex-1 overflow-y-auto flex flex-col gap-0.5">
+      {/* 候选人列表 */}
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1">
         {filtered.length === 0 ? (
-          <div className="text-center py-10 text-sm text-ink-secondary">无匹配候选人</div>
+          <div className="text-center py-10 text-body-sm text-on-surface-variant">无匹配候选人</div>
         ) : (
-          filtered.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => onSelect(c.id)}
-              className={cn(
-                "flex flex-col gap-0.5 p-3 rounded-[10px] text-left transition-colors border border-transparent",
-                c.id === selectedId
-                  ? "bg-teal-soft border-teal/20"
-                  : "hover:bg-white/40"
-              )}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold">{c.name || c.id}</span>
-                <span
-                  className={cn(
-                    "w-2 h-2 rounded-full shrink-0",
-                    classifyCandidate(c) === "completed" ? "bg-teal-light" : "bg-ink-muted"
+          filtered.map((c) => {
+            const done = classifyCandidate(c) === "completed";
+            const active = c.id === selectedId;
+            return (
+              <button
+                key={c.id}
+                onClick={() => onSelect(c.id)}
+                className={cn(
+                  "state-layer flex items-start gap-3 p-3 rounded-md text-left cursor-pointer transition-colors duration-150",
+                  active ? "bg-secondary-container" : "bg-transparent"
+                )}
+              >
+                {/* 头像色块：姓名首字 */}
+                <span className="flex items-center justify-center w-9 h-9 rounded-sm bg-primary-container text-on-primary-container text-label shrink-0">
+                  {(c.name || c.id).slice(0, 1)}
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-title truncate">{c.name || c.id}</span>
+                    <StatusChip tone={done ? "success" : "warning"} className="shrink-0">
+                      {done ? "已完成" : "待评估"}
+                    </StatusChip>
+                  </span>
+                  <span className="block text-body-sm text-on-surface-variant truncate">
+                    {c.role || c.stage || "—"}
+                  </span>
+                  {c.admitted_at && (
+                    <span className="block text-label text-on-surface-variant truncate">
+                      {c.admitted_at.slice(0, 10)}
+                    </span>
                   )}
-                />
-              </div>
-              <div className="flex items-center gap-2 text-xs text-ink-secondary">
-                <span className="flex-1 truncate">{c.role || c.stage || "—"}</span>
-              </div>
-            </button>
-          ))
+                </span>
+              </button>
+            );
+          })
         )}
       </div>
 
-      {/* 导入按钮 */}
-      <button
-        onClick={onImport}
-        className="glass flex items-center justify-center gap-2 w-full py-3 rounded-[10px] text-sm font-medium text-teal hover:bg-white/70 transition-colors"
-      >
-        <Upload size={18} />
-        <span>导入简历</span>
-      </button>
-    </div>
+      <Button variant="tonal" icon="upload" onClick={onImport} className="w-full">
+        导入简历
+      </Button>
+    </Card>
   );
 }

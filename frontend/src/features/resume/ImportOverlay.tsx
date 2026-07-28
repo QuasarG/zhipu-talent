@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import { api, parseSSE } from "@/lib/api";
-import GlassPanel from "@/components/glass/GlassPanel";
-import { X } from "lucide-react";
+import Card from "@/components/ui/Card";
+import Icon from "@/components/ui/Icon";
+import { IconButton } from "@/components/ui/Button";
+import { StatusChip } from "@/components/ui/Chip";
 
 interface Props {
   onClose: () => void;
@@ -16,7 +18,7 @@ interface FileState {
 export default function ImportOverlay({ onClose }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<FileState[]>([]);
-  const [importing, setImporting] = useState(false);
+  const [, setImporting] = useState(false);
 
   const handleFiles = async (fileList: FileList) => {
     const list = Array.from(fileList);
@@ -64,40 +66,38 @@ export default function ImportOverlay({ onClose }: Props) {
 
   return (
     <div className="fixed bottom-6 left-[calc(72px+20px+16px)] w-[320px] z-[150]">
-      <GlassPanel variant="strong" className="p-4 rounded-[14px] max-h-[60vh] overflow-y-auto">
+      <Card variant="elevated" className="p-4 max-h-[60vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-3">
-          <span className="font-semibold text-sm">导入简历</span>
-          <button onClick={onClose} className="text-ink-secondary hover:text-ink">
-            <X size={16} />
-          </button>
+          <span className="text-title">导入简历</span>
+          <IconButton icon="close" size={18} onClick={onClose} title="关闭" />
         </div>
 
         {files.length === 0 ? (
           <button
             onClick={() => inputRef.current?.click()}
-            className="w-full py-4 rounded-[10px] border-2 border-dashed border-ink/20 text-sm text-ink-secondary hover:bg-white/30 transition-colors"
+            className="state-layer w-full py-6 rounded-md border border-dashed border-outline text-body-sm text-on-surface-variant cursor-pointer flex flex-col items-center gap-2"
           >
+            <Icon name="upload_file" size={24} />
             选择 PDF / JSONL / MD / TXT 文件
           </button>
         ) : (
           <div className="flex flex-col gap-2">
             {files.map((f, i) => (
-              <div key={i} className="p-2 rounded-[6px] bg-white/35">
+              <div key={i} className="p-2 rounded-sm bg-surface-low">
                 <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <span className="text-xs font-medium truncate">{f.name}</span>
-                  <span
-                    className={
-                      "text-[10px] px-2 py-0.5 rounded-full shrink-0 " +
-                      (f.status === "done" ? "bg-teal-soft text-teal" :
-                       f.status === "error" ? "bg-coral-soft text-coral" :
-                       f.status === "running" ? "bg-blue-soft text-blue" :
-                       "bg-surface-mist text-ink-secondary")
+                  <span className="text-body-sm font-medium truncate">{f.name}</span>
+                  <StatusChip
+                    className="shrink-0"
+                    tone={
+                      f.status === "done" ? "success" :
+                      f.status === "error" ? "error" :
+                      f.status === "running" ? "primary" : "neutral"
                     }
                   >
                     {f.status === "done" ? "完成" : f.status === "error" ? "失败" : f.status === "running" ? f.stage : "等待"}
-                  </span>
+                  </StatusChip>
                 </div>
-                <p className="text-[10px] text-ink-secondary">{f.stage}</p>
+                <p className="text-label text-on-surface-variant">{f.stage}</p>
               </div>
             ))}
           </div>
@@ -111,7 +111,7 @@ export default function ImportOverlay({ onClose }: Props) {
           hidden
           onChange={(e) => e.target.files && handleFiles(e.target.files)}
         />
-      </GlassPanel>
+      </Card>
     </div>
   );
 }

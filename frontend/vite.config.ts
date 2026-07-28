@@ -3,7 +3,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // 构建产物由 Flask 挂在 /static/dist/ 下，CSS 内字体等 URL 必须带此前缀
+  base: command === "build" ? "/static/dist/" : "/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -21,4 +23,4 @@ export default defineConfig({
     outDir: "../agi_talent_radar/web/static/dist",
     emptyOutDir: true,
   },
-});
+}));

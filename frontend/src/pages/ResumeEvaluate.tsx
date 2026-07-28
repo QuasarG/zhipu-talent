@@ -3,12 +3,14 @@ import { api } from "@/lib/api";
 import { parseSSE } from "@/lib/api";
 import type { CandidateBrief, CandidateDetail } from "@/lib/types";
 import PageToolbar from "@/components/layout/PageToolbar";
+import Card from "@/components/ui/Card";
+import Icon from "@/components/ui/Icon";
+import { IconButton } from "@/components/ui/Button";
+import { StatusChip } from "@/components/ui/Chip";
 import CandidateQueue from "@/features/resume/CandidateQueue";
 import ResumeContent from "@/features/resume/ResumeContent";
 import ScoreOverview from "@/features/resume/ScoreOverview";
 import ImportOverlay from "@/features/resume/ImportOverlay";
-import { RefreshCw } from "lucide-react";
-import GlassPanel from "@/components/glass/GlassPanel";
 
 export default function ResumeEvaluate() {
   const [candidates, setCandidates] = useState<CandidateBrief[]>([]);
@@ -70,28 +72,34 @@ export default function ResumeEvaluate() {
         title="简历评估"
         subtitle="能力结构、Track 推荐与论文核验"
         center={
-          <span className="px-4 py-1.5 rounded-full text-sm text-ink-secondary bg-white/35">
+          <span className="inline-flex items-center gap-2 h-9 px-4 rounded-full bg-surface-high text-on-surface-variant text-body-sm">
+            <Icon name="person" size={16} />
             {selected ? `${selected.name} · ${selected.stage || "阶段未知"}` : "未选择候选人"}
+            <Icon name="expand_more" size={16} />
           </span>
         }
         right={
           <>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-surface-mist text-ink-secondary">
-              {evaluating ? "评估中" : selected ? "已就绪" : "空闲"}
-            </span>
-            <button
+            {evaluating ? (
+              <StatusChip tone="warning" size="md" icon="pending">评估中</StatusChip>
+            ) : selected ? (
+              <StatusChip tone="success" size="md" icon="check_circle">已就绪</StatusChip>
+            ) : (
+              <StatusChip tone="neutral" size="md">空闲</StatusChip>
+            )}
+            <IconButton
+              icon="refresh"
+              variant="tonal"
               onClick={handleEvaluate}
               disabled={!selectedId || evaluating}
-              className="w-9 h-9 rounded-[10px] flex items-center justify-center text-ink-secondary hover:bg-white/35 disabled:opacity-40 transition-colors"
               title="重新评估"
-            >
-              <RefreshCw size={18} className={evaluating ? "animate-spin" : ""} />
-            </button>
+              className={evaluating ? "[&_.md-icon]:animate-spin" : ""}
+            />
           </>
         }
       />
 
-      <div className="grid grid-cols-[260px_1fr_1.4fr] gap-4 h-[calc(100vh-56px-60px)] min-h-[500px]">
+      <div className="grid grid-cols-[280px_minmax(0,1fr)_minmax(0,1.2fr)] gap-4 h-[calc(100vh-56px-60px)] min-h-[500px]">
         {/* 左栏：候选人队列 */}
         <CandidateQueue
           candidates={candidates}
@@ -101,30 +109,32 @@ export default function ResumeEvaluate() {
         />
 
         {/* 中栏：简历内容 */}
-        <div className="overflow-y-auto p-4 rounded-[14px]">
+        <Card variant="filled" className="min-h-0 overflow-y-auto p-5">
           {loading ? (
-            <div className="flex items-center justify-center h-full text-ink-secondary">加载中…</div>
+            <div className="flex items-center justify-center h-full text-body text-on-surface-variant">加载中…</div>
           ) : selected ? (
             <ResumeContent detail={selected} />
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-2 text-ink-secondary">
-              <p className="text-base">从左侧选择一位候选人</p>
-              <p className="text-xs text-ink-muted">导入简历后，候选人将出现在队列中</p>
+            <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+              <Icon name="description" size={40} className="text-outline" />
+              <p className="text-title">从左侧选择一位候选人</p>
+              <p className="text-body-sm text-on-surface-variant">导入简历后，候选人将出现在队列中</p>
             </div>
           )}
-        </div>
+        </Card>
 
         {/* 右栏：评估结果 */}
-        <div className="overflow-y-auto p-4 rounded-[14px]">
+        <Card variant="filled" className="min-h-0 overflow-y-auto p-5">
           {selected?.evaluation ? (
             <ScoreOverview evaluation={selected.evaluation} />
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-2 text-ink-secondary">
-              <p className="text-base">评估结果区</p>
-              <p className="text-xs text-ink-muted">选择候选人并评估后，能力评分与 Track 推荐将显示在此</p>
+            <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+              <Icon name="fact_check" size={40} className="text-outline" />
+              <p className="text-title">评估结果区</p>
+              <p className="text-body-sm text-on-surface-variant">选择候选人并评估后，能力评分与 Track 推荐将显示在此</p>
             </div>
           )}
-        </div>
+        </Card>
       </div>
 
       {showImport && <ImportOverlay onClose={() => { setShowImport(false); loadCandidates(); }} />}
