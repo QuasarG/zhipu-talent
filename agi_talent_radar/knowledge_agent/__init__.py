@@ -9,9 +9,15 @@
 - 联网新事实只追加 pending，不覆盖已确认事实；
 - 不得修改 HR 状态、合并人物、加入/删除 Candidate、确认事实或修改评分。
 
-公共接口（阶段 5.3 实装）：
+公共接口：
     ask_talent_knowledge(conversation_id, prompt) -> Iterator[AgentEvent]
 """
 from __future__ import annotations
 
-__all__: list[str] = []
+from agi_talent_radar.knowledge_agent.models import AgentEvent
+from agi_talent_radar.knowledge_agent.service import ask_talent_knowledge
+
+__all__ = [
+    "AgentEvent",
+    "ask_talent_knowledge",
+]
