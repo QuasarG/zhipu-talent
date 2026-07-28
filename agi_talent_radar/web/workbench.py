@@ -63,6 +63,11 @@ def create_app() -> Flask:
             scoring_routing_note=SCORING_CONFIG.thresholds.routing_note(),
         )
 
+    @app.get("/resume-evaluate")
+    def resume_evaluate() -> str:
+        """新简历评估工作台（Liquid Glass 重构版）。"""
+        return render_template("resume_evaluate.html")
+
     @app.get("/talent-pool")
     def talent_pool() -> str:
         return render_template("talent_pool.html")
