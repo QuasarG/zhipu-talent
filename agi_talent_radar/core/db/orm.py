@@ -344,3 +344,142 @@ class TaskORM(Base):
     error_message = Column(Text, default="")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# 阶段 1 新表（schema_version=7）：提交 / 版本 / 来源 / 跟进 / 身份归并
+# ---------------------------------------------------------------------------
+
+
+CANDIDATE_SOURCE_KINDS = ("resume_evaluation", "person_investigation")
+
+
+class ResumeSubmissionORM(Base):
+    """一次简历导入动作。评估完成前不是人才，只是待评估材料。
+
+    ``CandidateORM`` 现阶段仍承担"占位候选人"角色，迁移期允许 CandidateORM
+    拥有相同的 ``id`` 字符串用于兼容；完成阶段 1.7 后会切断 id 复用。
+    """
+
+    __tablename__ = "resume_submissions"
+    __table_args__ = (
+        Index("ix_resume_submissions_status_created", "parse_status", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    candidate_id = Column(String(32), ForeignKey("candidates.id", ondelete="SET NULL"))
+    person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"))
+    source_format = Column(String(16), nullable=False)
+    filename = Column(String(256), default="")
+    raw_text = Column(Text, default="")
+    structured = Column(JSON, default=dict)
+    parse_status = Column(String(16), default="pending", nullable=False)
+    parse_error = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ResumeVersionORM(Base):
+    """同一份简历在不同评估轮次的版本。原文永不被新版本覆盖。"""
+
+    __tablename__ = "resume_versions"
+    __table_args__ = (
+        UniqueConstraint("submission_id", "version", name="uq_resume_version_submission_version"),
+        Index("ix_resume_versions_submission", "submission_id"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    submission_id = Column(String(36), ForeignKey("resume_submissions.id", ondelete="CASCADE"), nullable=False)
+    version = Column(Integer, nullable=False)
+    raw_text = Column(Text, default="")
+    structured = Column(JSON, default=dict)
+    note = Column(String(256), default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+class CandidateSourceORM(Base):
+    """人才档案可以同时拥有多个来源（与 CANDIDATE_SOURCE_KINDS 对应）。
+
+    唯一约束 (candidate_id, source_kind) 保证同一来源不被重复追加；
+    评估成功后会追加 ``resume_evaluation``，人物调查后人工加入追加
+    ``person_investigation``。
+    """
+
+    __tablename__ = "candidate_sources"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "source_kind", name="uq_candidate_source_kind"),
+        Index("ix_candidate_sources_kind", "source_kind"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    candidate_id = Column(String(32), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
+    source_kind = Column(String(32), nullable=False)
+    source_record_id = Column(String(64), default="")
+    note = Column(Text, default="")
+    created_by = Column(String(128), default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+class EngagementStatusHistoryORM(Base):
+    """HR 跟进状态变更的不可变审计记录。
+
+    每次人工修改都新增一行；HR 跟进状态与能力评分、推荐 Track、论文核验
+    完全独立。
+    """
+
+    __tablename__ = "engagement_status_history"
+    __table_args__ = (
+        Index("ix_engagement_history_candidate_created", "candidate_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    candidate_id = Column(String(32), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
+    previous_status = Column(String(32), default="")
+    current_status = Column(String(32), nullable=False)
+    changed_by = Column(String(128), nullable=False)
+    note = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+class IdentitySuggestionORM(Base):
+    """入库身份归并节点的待审核建议。
+
+    首版策略：稳定标识精确一致可自动归并；AI 模糊结果一律先生成
+    ``pending`` 建议，由人工确认后由 ``MergeAuditORM`` 串联处理。
+    """
+
+    __tablename__ = "identity_suggestions"
+    __table_args__ = (
+        Index("ix_identity_suggestions_status", "decision", "status"),
+        Index("ix_identity_suggestions_submission", "submission_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    submission_id = Column(String(36), ForeignKey("resume_submissions.id", ondelete="CASCADE"), nullable=False)
+    matched_person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"))
+    decision = Column(String(16), nullable=False)
+    confidence = Column(Float, default=0.0, nullable=False)
+    supporting_evidence = Column(JSON, default=list)
+    conflicts = Column(JSON, default=list)
+    status = Column(String(16), default="pending", nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    reviewed_at = Column(DateTime)
+    reviewer = Column(String(128), default="")
+    review_note = Column(Text, default="")
+
+
+class MergeAuditORM(Base):
+    """人工合并 / 解除合并的审计记录。"""
+
+    __tablename__ = "merge_audit"
+    __table_args__ = (
+        Index("ix_merge_audit_action", "action", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    action = Column(String(16), nullable=False)  # merge / unmerge
+    primary_person_id = Column(String(36), ForeignKey("persons.id", ondelete="CASCADE"), nullable=False)
+    merged_person_id = Column(String(36), ForeignKey("persons.id", ondelete="CASCADE"), nullable=False)
+    operator = Column(String(128), nullable=False)
+    note = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
