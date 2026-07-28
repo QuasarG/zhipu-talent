@@ -246,3 +246,157 @@
   pointer-events: none;
 }
 .toast.is-visible { opacity: 1; transform: translateY(0); }
+
+/* ============================================================================
+   简历内容区（模块 6）
+   ========================================================================== */
+
+.resume-header {
+  margin-bottom: var(--space-4);
+}
+
+.resume-mode-toggle {
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: var(--radius-md);
+}
+
+/* 标题块 */
+.resume-title-block {
+  margin-bottom: var(--space-6);
+}
+
+.resume-name {
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.resume-affil {
+  font-size: var(--fs-md);
+  margin-top: var(--space-1);
+}
+
+.resume-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* 章节（无框，分隔靠标题） */
+.resume-section {
+  margin-bottom: var(--space-6);
+}
+
+.resume-section-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-secondary);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* 教育 */
+.resume-edu-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  font-size: var(--fs-md);
+}
+.resume-edu-school { font-weight: 500; }
+.resume-edu-degree { font-size: var(--fs-sm); }
+.resume-edu-period { font-size: var(--fs-sm); margin-left: auto; }
+
+/* 实习/工作 */
+.resume-exp-item {
+  padding: var(--space-2) 0;
+}
+.resume-exp-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+.resume-exp-role { font-weight: 500; font-size: var(--fs-md); }
+.resume-exp-org { font-size: var(--fs-sm); }
+.resume-exp-detail {
+  font-size: var(--fs-sm);
+  color: var(--color-fg-secondary);
+  line-height: var(--lh-base);
+  margin-left: var(--space-1);
+}
+
+/* 项目 */
+.resume-proj-item {
+  padding: var(--space-2) 0;
+}
+.resume-proj-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+.resume-proj-name { font-weight: 500; font-size: var(--fs-md); }
+.resume-proj-detail {
+  font-size: var(--fs-sm);
+  color: var(--color-fg-secondary);
+  line-height: var(--lh-base);
+}
+
+/* 证据定位标记 */
+.evidence-loc {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  flex-shrink: 0;
+}
+
+/* 论文 */
+.resume-pub-item {
+  padding: var(--space-2) 0;
+}
+.resume-pub-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.resume-pub-title { font-weight: 500; font-size: var(--fs-md); flex: 1; }
+.resume-pub-meta {
+  font-size: var(--fs-sm);
+  margin-top: var(--space-1);
+}
+
+/* 技能 */
+.resume-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* 原文模式 */
+.resume-raw-text {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-fg);
+  padding: var(--space-3);
+  background: var(--surface-paper);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  max-height: 70vh;
+  overflow-y: auto;
+}
