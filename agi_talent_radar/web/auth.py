@@ -164,11 +164,20 @@ def build_auth_blueprint() -> Blueprint:
 
     @bp.get("/login")
     def login_page():
-        from flask import render_template
+        # SPA 模式：React Router 接管登录页。
+        # 未鉴权时 redirect /login，React App.tsx 显示 Login 组件。
+        from pathlib import Path
+        import os
+        from flask import current_app, render_template
 
-        if is_authenticated():
-            return redirect("/")
-        return render_template("login.html", nav_active="")
+        dist_dir = Path(current_app.static_folder) / "dist"
+        vite_dev = os.getenv("VITE_DEV", "").strip() == "1"
+        dist_assets: list[str] = []
+        if not vite_dev and dist_dir.exists():
+            assets_dir = dist_dir / "assets"
+            if assets_dir.exists():
+                dist_assets = [f"assets/{f.name}" for f in assets_dir.iterdir() if f.suffix in (".js", ".css")]
+        return render_template("index.html", vite_dev=vite_dev, dist_assets=dist_assets)
 
     @bp.get("/health")
     def health():

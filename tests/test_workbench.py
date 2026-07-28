@@ -40,12 +40,11 @@ class WorkbenchTest(unittest.TestCase):
         return events
 
     def test_index_loads(self) -> None:
-        """新前端：GET / 渲染 resume_evaluate.html。"""
+        """React SPA shell：GET / 返回 index.html（React Router 接管）。"""
         response = self.app.get("/")
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
-        self.assertIn("resume-evaluate.css", html)
-        self.assertIn("resume-evaluate.js", html)
+        self.assertIn("root", html)
 
     def test_candidates_group_returns_list(self) -> None:
         response = self.app.get("/api/candidates?group=pending")

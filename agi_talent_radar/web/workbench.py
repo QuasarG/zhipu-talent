@@ -52,35 +52,30 @@ def create_app() -> Flask:
     app.register_blueprint(build_knowledge_blueprint())
     install_auth_middleware(app)
 
-    @app.get("/")
+    # SPA 页面路由：所有前端页面统一返回 React SPA shell。
+    # React Router 接管 / /knowledge /talent-pool /review /settings。
+    import os
+    from pathlib import Path
+
+    dist_dir = Path(app.static_folder) / "dist"
+    vite_dev = os.getenv("VITE_DEV", "").strip() == "1"
+    dist_assets: list[str] = []
+    if not vite_dev and dist_dir.exists():
+        assets_dir = dist_dir / "assets"
+        if assets_dir.exists():
+            dist_assets = [f"assets/{f.name}" for f in assets_dir.iterdir() if f.suffix in (".js", ".css")]
+
     @app.get("/")
     def index() -> str:
-        """简历评估工作台（Liquid Glass 重构版）。"""
-        return render_template("resume_evaluate.html")
-
-    @app.get("/resume-evaluate")
-    def resume_evaluate() -> str:
-        """简历评估工作台（别名）。"""
-        return render_template("resume_evaluate.html")
+        return render_template("index.html", vite_dev=vite_dev, dist_assets=dist_assets)
 
     @app.get("/knowledge")
-    def knowledge_agent_page() -> str:
-        """人才知识 Agent 对话界面。"""
-        return render_template("knowledge_agent.html")
-
     @app.get("/talent-pool")
-    def talent_pool() -> str:
-        return render_template("talent_pool_v2.html")
-
     @app.get("/review")
-    def review_center() -> str:
-        """待核验中心。"""
-        return render_template("review_center.html")
-
     @app.get("/settings")
-    def settings_page() -> str:
-        """全局配置页。"""
-        return render_template("settings.html")
+    @app.get("/resume-evaluate")
+    def spa_pages() -> str:
+        return render_template("index.html", vite_dev=vite_dev, dist_assets=dist_assets)
 
     @app.get("/api/candidates")
     def list_candidates():

@@ -1,0 +1,27 @@
+{# SPA shell：React Router 接管所有页面路由。
+   构建产物在 static/dist/，由 vite build 输出。 #}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>智谱人才研究平台</title>
+  {% if vite_dev %}
+  <script type="module" src="http://localhost:5173/src/main.tsx"></script>
+  {% else %}
+  {% for asset in dist_assets %}
+  {% if asset.endswith('.css') %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='dist/' + asset) }}">
+  {% endif %}
+  {% endfor %}
+  {% for asset in dist_assets %}
+  {% if asset.endswith('.js') %}
+  <script type="module" src="{{ url_for('static', filename='dist/' + asset) }}"></script>
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>
