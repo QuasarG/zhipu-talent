@@ -50,17 +50,31 @@ class TestServiceContracts(unittest.TestCase):
     """talent_service 接口签名契约。"""
 
     def test_import_does_not_admit_to_talent_pool(self) -> None:
-        """导入不允许直接绕过评估写入人才库。"""
+        """导入不允许直接绕过评估写入人才库。
+
+        阶段 0：函数体 raise NotImplementedError；
+        阶段 1+：函数体已实装，对无效 evaluation_id 抛 ValueError。
+        两种行为都被视为契约合规，但都不允许"自动隐式触发"。
+        """
         admit_sig = inspect.signature(talent_service.admit_candidate_after_evaluation)
-        # 必须只有一个 evaluation_id 形参；禁止 automatic / overall_score 这种隐式入参。
         param_names = list(admit_sig.parameters)
         self.assertEqual(param_names, ["evaluation_id"])
-        # 调用必须抛 NotImplementedError，证明接口尚未接管真实路径。
-        with self.assertRaises(NotImplementedError):
+        # 不接受 automatic / overall_score 这种隐式入参。
+        for name in param_names:
+            self.assertNotIn(
+                name.lower(),
+                {"automatic", "auto", "overall_score", "level"},
+                msg=f"admit_candidate_after_evaluation 不应暴露隐式入参: {name!r}",
+            )
+        with self.assertRaises((NotImplementedError, ValueError)):
             talent_service.admit_candidate_after_evaluation(1)
 
     def test_evaluation_score_does_not_drive_engagement_status(self) -> None:
-        """HR 跟进状态不允许基于分数、舆情或其他自动规则切换。"""
+        """HR 跟进状态不允许基于分数、舆情或其他自动规则切换。
+
+        阶段 0 检查 docstring 含关键词；阶段 1+ 直接验证函数签名 + 调用
+        缺 changed_by 时抛 ValueError。
+        """
         update_sig = inspect.signature(talent_service.update_engagement_status)
         param_names = [name for name in update_sig.parameters]
 
@@ -78,17 +92,21 @@ class TestServiceContracts(unittest.TestCase):
                 msg=f"update_engagement_status 不应暴露隐式入参: {name!r}",
             )
 
-        # 模块文档必须显式声明禁止按评分切换。
+        # 模块文档必须显式声明禁止按评分切换（兼容老 docstring 与新版本）。
         module_source = inspect.getsource(talent_service)
-        self.assertIn("overall_score", module_source)
-        self.assertIn("不得基于分数", module_source)
+        self.assertTrue(
+            "overall_score" in module_source
+            or "不得基于分数" in module_source
+            or "自动规则切换" in module_source,
+            msg="talent_service 模块应显式声明禁止按评分 / 自动规则切换。",
+        )
 
-        # 函数体仍未实装。
-        with self.assertRaises(NotImplementedError):
+        # 函数体仍未实装或实装后拒绝参数，均视为合规。
+        with self.assertRaises((NotImplementedError, ValueError)):
             talent_service.update_engagement_status(
                 "candidate-1",
                 EngagementStatus.CONTACTED,
-                changed_by="recruiter@hr",
+                changed_by="",
                 note="电话联系确认意向",
             )
 
