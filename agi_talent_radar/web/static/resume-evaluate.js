@@ -26,6 +26,8 @@
     selectedId: null,
   };
 
+  const btnRefresh = document.getElementById("btn-refresh");
+
   // ---- API ----
   async function fetchCandidates() {
     const resp = await fetch("/api/candidates");
@@ -109,6 +111,7 @@
   // ---- 选中候选人 ----
   async function selectCandidate(id) {
     state.selectedId = id;
+    if (btnRefresh) btnRefresh.disabled = false;
     renderQueue();
     els.toolbarCandidate.textContent = "加载中…";
     try {
