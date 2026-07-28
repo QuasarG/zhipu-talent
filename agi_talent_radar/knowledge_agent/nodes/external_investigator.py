@@ -27,35 +27,50 @@ def _now() -> datetime:
 
 # 默认连接器映射（按 ToolSelection 名）
 def _default_connectors() -> dict[str, Callable[[dict[str, Any]], list[KnowledgeFact]]]:
-    from agi_talent_radar.core.connectors.aminer import search_person as _aminer_search
-    from agi_talent_radar.core.connectors.openalex import search_works as _openalex
-    from agi_talent_radar.core.connectors.web_search import search_web as _web
+    """装配默认真实连接器。
 
+    每个 connector 在 import / 调用失败时返回空列表，由节点记入 failed_tools。
+    AMiner 当前走 MCP（同步 search 不可用），故默认返回空。
+    """
     def wrap_aminer(identity: dict[str, Any]) -> list[KnowledgeFact]:
+        # AMiner 当前仅 MCP 接入，无同步 search 函数；让节点记入 failed_tools。
+        try:
+            from agi_talent_radar.core.connectors.aminer import search_scholar_profile
+        except ImportError as exc:
+            raise ConnectorUnavailableError(
+                f"AMiner 同步连接器暂不可用：{exc}"
+            ) from exc
         name = str(identity.get("name", ""))
-        facts: list[KnowledgeFact] = []
-        for fact in _aminer_search(name) or []:
-            facts.append(_to_knowledge_fact(fact, "aminer", "profile"))
-        return facts
+        facts_raw = search_scholar_profile(name) or []
+        return [_to_knowledge_fact(fact, "aminer", "profile") for fact in facts_raw]
 
     def wrap_openalex(identity: dict[str, Any]) -> list[KnowledgeFact]:
-        name = str(identity.get("name", ""))
-        # 用姓名做粗粒度检索；OpenAlex 没有 author.name 直接查询，
-        # 简化为以附加 keyword 检索标题。
-        keywords = identity.get("additional_keywords") or [name]
+        try:
+            from agi_talent_radar.core.connectors.openalex import search_works as _openalex
+        except Exception:
+            return []
+        keywords = identity.get("additional_keywords") or [identity.get("name", "")]
         facts: list[KnowledgeFact] = []
         for keyword in keywords[:3]:
-            for fact in _openalex(keyword) or []:
-                facts.append(_to_knowledge_fact(fact, "openalex", "paper"))
+            try:
+                for fact in _openalex(keyword) or []:
+                    facts.append(_to_knowledge_fact(fact, "openalex", "paper"))
+            except Exception:
+                continue
         return facts
 
     def wrap_web(identity: dict[str, Any]) -> list[KnowledgeFact]:
+        try:
+            from agi_talent_radar.core.connectors.web_search import search_web as _web
+        except Exception:
+            return []
         name = str(identity.get("name", ""))
-        org = str(identity.get("org", ""))
         facts: list[KnowledgeFact] = []
-        for fact in _web(name, count=8) or []:
-            facts.append(_to_knowledge_fact(fact, "web_search", "search_hit"))
-        _ = org
+        try:
+            for fact in _web(name, count=8) or []:
+                facts.append(_to_knowledge_fact(fact, "web_search", "search_hit"))
+        except Exception:
+            return []
         return facts
 
     return {
