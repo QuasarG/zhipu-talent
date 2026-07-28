@@ -27,19 +27,21 @@ export default function Settings() {
       <div className="flex flex-col gap-6">
         <section>
           <h2 className="text-title-lg mb-3">服务状态</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {health?.services.map((s) => {
               const meta = statusMeta[s.status] ?? statusMeta.down;
               return (
-                <Card key={s.name} variant="filled" className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-2">
+                <Card key={s.name} variant="outlined" className="flex items-center justify-between gap-3 p-4">
+                  <div className="flex items-center gap-2 min-w-0">
                     <Icon name={meta.icon} size={18} className={meta.cls} />
-                    <span className="text-title">{s.name}</span>
+                    <span className="text-title truncate">{s.name}</span>
                     {s.required && <StatusChip tone="error">必需</StatusChip>}
                   </div>
-                  <div className="flex items-center gap-3 text-body-sm text-on-surface-variant">
-                    <span className="font-mono">{s.detail}</span>
-                    <span className="font-mono">{Math.round(s.latency_ms)}ms</span>
+                  <div className="flex flex-col items-end gap-0.5 shrink-0">
+                    <span className="font-mono text-body-sm text-on-surface-variant">{Math.round(s.latency_ms)}ms</span>
+                    <span className="font-mono text-label text-on-surface-variant truncate max-w-[160px]" title={s.detail}>
+                      {s.detail}
+                    </span>
                   </div>
                 </Card>
               );
