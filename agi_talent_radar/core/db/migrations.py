@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 7
+LATEST_SCHEMA_VERSION = 8
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -29,6 +29,12 @@ CANDIDATES_NEW_COLUMNS = (
 EVALUATIONS_NEW_COLUMNS = (
     ("resume_submission_id", "VARCHAR(36)", None),
     # EvaluationORM.candidate_id 本已存在；不重复添加。
+)
+
+# 阶段 2：persons 表新增稳定标识 / 冲突标记列。
+PERSONS_NEW_COLUMNS = (
+    ("identifiers", "JSON", None),
+    ("identity_conflict", "BOOLEAN", "0"),
 )
 
 
@@ -54,6 +60,14 @@ def ensure_schema(engine) -> None:
             7,
             "phase 1: split Person/ResumeSubmission/Candidate; add resume_submissions / "
             "candidate_sources / engagement_status_history / identity_suggestions / merge_audit",
+        )
+    if current_version < 8:
+        _migrate_phase_two_columns(engine)
+        _record_version(
+            engine,
+            8,
+            "phase 2: add stable identifiers and identity_conflict to persons for "
+            "deterministic intake identity resolution",
         )
     _ensure_indexes(engine)
 
@@ -222,6 +236,21 @@ def _migrate_phase_one_columns(engine) -> None:
             default_clause = f" DEFAULT {default}" if default is not None else ""
             additions.append(f"{name} {column_type}{default_clause}")
         _add_columns(engine, "evaluations", additions)
+
+
+def _migrate_phase_two_columns(engine) -> None:
+    """阶段 2 老库升级：persons 加 identifiers / identity_conflict 列。"""
+    inspector = inspect(engine)
+    if "persons" not in inspect(engine).get_table_names():
+        return
+    persons_columns = {column["name"] for column in inspector.get_columns("persons")}
+    additions = []
+    for name, column_type, default in PERSONS_NEW_COLUMNS:
+        if name in persons_columns:
+            continue
+        default_clause = f" DEFAULT {default}" if default is not None else ""
+        additions.append(f"{name} {column_type}{default_clause}")
+    _add_columns(engine, "persons", additions)
 
 
 def _json_list(value: Any) -> list:

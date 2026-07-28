@@ -303,7 +303,11 @@ class DimensionScoreORM(Base):
 
 
 class PersonORM(Base):
-    """人员主档：同一自然人多次评估/邀请归并到一档。"""
+    """人员主档：同一自然人多次评估/邀请归并到一档。
+
+    阶段 2 引入稳定标识 ``identifiers``（JSON 字典，key 为邮箱/ORCID/
+    AMiner ID 等），用于入库身份归并的第一层确定性匹配。
+    """
 
     __tablename__ = "persons"
 
@@ -313,6 +317,10 @@ class PersonORM(Base):
     direction = Column(String(256), default="")
     fingerprint = Column(String(64), unique=True, nullable=False, index=True)
     person_type = Column(String(32), default="student")
+    # 阶段 2：稳定标识字典（{email/orcid/aminer_id/...: value}）。
+    identifiers = Column(JSON, default=dict)
+    # 阶段 2：是否处于身份冲突（pending merge review）状态。
+    identity_conflict = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
