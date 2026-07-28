@@ -173,6 +173,9 @@
   }
 
   // 暴露给后续模块
-  window.ResumeWorkbench = { state, els, selectCandidate, showToast, esc };
+  window.ResumeWorkbench = {
+    state, els, selectCandidate, showToast, esc,
+    fetchCandidates, updateCounts, renderQueue,
+  };
   init();
 })();

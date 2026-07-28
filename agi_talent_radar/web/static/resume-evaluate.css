@@ -695,3 +695,73 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ============================================================================
+   简历导入浮层（模块 9）
+   ========================================================================== */
+
+.import-overlay {
+  position: fixed;
+  bottom: var(--space-6);
+  left: calc(var(--nav-width) + var(--nav-rail-margin) + var(--space-4));
+  width: 320px;
+  z-index: 150;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all var(--transition-base);
+}
+.import-overlay:not(.is-fading) { opacity: 1; transform: translateY(0); }
+
+.import-overlay-card {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.import-overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.import-overlay-title {
+  font-weight: 600;
+  font-size: var(--fs-md);
+}
+
+.import-overlay-count { font-size: var(--fs-sm); }
+
+.import-overlay-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.import-file-row {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.import-file-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 2px;
+}
+
+.import-file-name {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-file-stage {
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+}
