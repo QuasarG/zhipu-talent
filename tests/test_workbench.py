@@ -484,6 +484,7 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(candidate["source_format"], "pdf")
         mock_text_resume.assert_called_once_with("[第 1 页]\nPDF 候选人 简历文本", "candidate.pdf")
 
+    @patch("agi_talent_radar.services.talent_service.admit_candidate_after_evaluation")
     @patch("agi_talent_radar.web.workbench.run_candidate_stream")
     @patch("agi_talent_radar.core.database.record_node_event")
     @patch("agi_talent_radar.core.database.start_evaluation_run")
@@ -500,6 +501,7 @@ class WorkbenchTest(unittest.TestCase):
         mock_start,
         mock_record,
         mock_run_stream,
+        mock_admit,
     ) -> None:
         mock_session.return_value.__enter__.return_value = MagicMock()
         mock_start.return_value.id = 101
@@ -550,8 +552,12 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(events[-1]["result"]["overall_score"], 75)
         mock_save.assert_called_once()
         mock_record.assert_called_once()
-        mock_move.assert_called_once_with(mock_session.return_value.__enter__.return_value, "candidate_01", "alternative")
+        # 阶段 4：评估成功后不再按分数自动 move_candidate_group，
+        # 而是统一走 talent_service.admit_candidate_after_evaluation。
+        mock_move.assert_not_called()
+        mock_admit.assert_called_once_with(101)
 
+    @patch("agi_talent_radar.services.talent_service.admit_candidate_after_evaluation")
     @patch("agi_talent_radar.web.workbench.run_candidate_stream")
     @patch("agi_talent_radar.core.database.start_evaluation_run")
     @patch("agi_talent_radar.core.database.move_candidate_group")
@@ -566,6 +572,7 @@ class WorkbenchTest(unittest.TestCase):
         mock_move,
         mock_start,
         mock_run_stream,
+        mock_admit,
     ) -> None:
         mock_session.return_value.__enter__.return_value = MagicMock()
         mock_start.return_value.id = 102
@@ -585,8 +592,9 @@ class WorkbenchTest(unittest.TestCase):
 
         from agi_talent_radar.core.models import CandidateEvaluation
 
-        for score, expected_group in [(85, "shortlisted"), (75, "alternative"), (55, "rejected")]:
+        for score in (85, 75, 55):
             mock_move.reset_mock()
+            mock_admit.reset_mock()
             evaluation = CandidateEvaluation(
                 id="candidate_01",
                 name="候选人01",
@@ -609,7 +617,10 @@ class WorkbenchTest(unittest.TestCase):
             response = self.app.post("/api/candidates/candidate_01/evaluate")
             self.assertEqual(response.status_code, 200)
             self._parse_sse(response)
-            mock_move.assert_called_once_with(mock_session.return_value.__enter__.return_value, "candidate_01", expected_group)
+            # 阶段 4：任何分数都不再驱动 move_candidate_group；
+            # 全部走 talent_service.admit_candidate_after_evaluation。
+            mock_move.assert_not_called()
+            mock_admit.assert_called_once_with(102)
 
     @patch("agi_talent_radar.core.database.move_candidate_group")
     @patch("agi_talent_radar.core.database.get_candidate_with_latest_evaluation")

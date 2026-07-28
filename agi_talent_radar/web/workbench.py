@@ -120,12 +120,21 @@ def create_app() -> Flask:
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
                 if evaluation:
-                    from agi_talent_radar.core.database import get_session, move_candidate_group, save_evaluation
+                    from agi_talent_radar.core.database import get_session, save_evaluation
 
                     with get_session() as session:
                         save_evaluation(session, evaluation, evaluation_id=evaluation_run_id)
-                        group = _group_for_score(evaluation.overall_score)
-                        move_candidate_group(session, candidate_id, group)
+
+                    # 阶段 4：评估成功才入库，且不按分数自动写 Candidate.group。
+                    # 由 talent_service.admit_candidate_after_evaluation 集中处理。
+                    try:
+                        from agi_talent_radar.services import talent_service
+
+                        talent_service.admit_candidate_after_evaluation(evaluation_run_id)
+                    except (ValueError, RuntimeError):
+                        # 评估未完成 / 缺 person_id 等业务异常不应让 SSE 失败；
+                        # Candidate 入库失败由 talent_service 内部日志记录。
+                        pass
             except Exception as exc:
                 from agi_talent_radar.core.database import fail_evaluation_run, get_session
 
@@ -661,7 +670,3 @@ def _sse_payload(payload: dict[str, Any]) -> str:
 
 
 app = create_app()
-
-
-def _group_for_score(score: int) -> str:
-    return SCORING_CONFIG.thresholds.pool_for_score(score)
