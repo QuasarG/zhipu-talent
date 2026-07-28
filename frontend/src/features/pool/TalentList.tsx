@@ -79,7 +79,7 @@ export default function TalentList({ persons, selectedId, onSelect }: Props) {
                 )}
               >
                 <span className="flex items-center gap-2 min-w-0">
-                  <span className="w-9 h-9 rounded-md bg-primary-container text-on-primary-container flex items-center justify-center text-title shrink-0">
+                  <span className="w-9 h-9 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-title shrink-0">
                     {(p.name || "?").charAt(0)}
                   </span>
                   <span className="min-w-0">

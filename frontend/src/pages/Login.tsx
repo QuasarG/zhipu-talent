@@ -29,7 +29,7 @@ export default function Login({ onLogin }: LoginProps) {
 
   return (
     <div className="flex items-center justify-center min-h-screen p-8 bg-surface">
-      <Card variant="elevated" className="w-full max-w-[400px] p-10 text-center rounded-xl">
+      <Card variant="elevated" className="w-full max-w-[400px] p-8 text-center">
         <Icon name="radar" size={40} className="text-primary" />
         <h1 className="text-headline mt-3 mb-2">智谱人才研究平台</h1>
         <p className="text-body-sm text-on-surface-variant mb-8">内部人才研究、简历评估与知识管理工具</p>

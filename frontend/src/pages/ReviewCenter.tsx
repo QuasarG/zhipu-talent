@@ -127,7 +127,7 @@ export default function ReviewCenter() {
       ) : visible.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-24">
           <Icon name="verified" size={64} className="text-primary" />
-          <p className="text-title text-on-surface">没有待核验的项目</p>
+          <p className="text-title">没有待核验的项目</p>
           <p className="text-body-sm text-on-surface-variant">新的外部事实与舆情报告会出现在这里</p>
         </div>
       ) : (

@@ -78,7 +78,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onImp
                 )}
               >
                 {/* 头像色块：姓名首字 */}
-                <span className="flex items-center justify-center w-9 h-9 rounded-sm bg-primary-container text-on-primary-container text-label shrink-0">
+                <span className="flex items-center justify-center w-9 h-9 rounded-full bg-primary-container text-on-primary-container text-label shrink-0">
                   {(c.name || c.id).slice(0, 1)}
                 </span>
                 <span className="flex-1 min-w-0">

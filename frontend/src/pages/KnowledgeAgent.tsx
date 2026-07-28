@@ -186,7 +186,7 @@ export default function KnowledgeAgent() {
         <div className="flex flex-col gap-4 min-h-0 overflow-y-auto">
           <Card variant="outlined" className="p-3 flex flex-col gap-3 shrink-0">
             <SearchField placeholder="搜索对话或人物" />
-            <Button variant="tonal" icon="add" className="w-full" onClick={resetConversation}>新建调查</Button>
+            <Button variant="filled" icon="add" className="w-full" onClick={resetConversation}>新建调查</Button>
             <div>
               <p className="text-label text-on-surface-variant px-2 py-1">最近会话</p>
               <button
@@ -241,10 +241,10 @@ export default function KnowledgeAgent() {
         <div className="flex flex-col gap-4 min-h-0">
           <div ref={convRef} className="flex-1 overflow-y-auto flex flex-col gap-4 pr-1">
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center gap-3 text-on-surface-variant">
-                <Icon name="psychology" size={40} />
+              <div className="flex flex-col items-center justify-center h-full text-center gap-3">
+                <Icon name="psychology" size={40} className="text-on-surface-variant" />
                 <p className="text-title">询问人才、比较经历，或调查一个明确人物</p>
-                <p className="text-body-sm">可主动调用外部工具；新事实将以待核验状态保存</p>
+                <p className="text-body-sm text-on-surface-variant">可主动调用外部工具；新事实将以待核验状态保存</p>
               </div>
             ) : (
               messages.map((msg, i) =>

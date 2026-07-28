@@ -39,10 +39,10 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
   if (!person) {
     return (
       <Card variant="elevated" className="min-h-0 overflow-y-auto p-4">
-        <div className="flex flex-col items-center justify-center h-full text-center gap-2 text-on-surface-variant">
-          <Icon name="person_search" size={32} />
-          <p className="text-body">从左侧选择一位人才</p>
-          <p className="text-body-sm">查看统一人才档案</p>
+        <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+          <Icon name="person_search" size={32} className="text-on-surface-variant" />
+          <p className="text-body text-on-surface">从左侧选择一位人才</p>
+          <p className="text-body-sm text-on-surface-variant">查看统一人才档案</p>
         </div>
       </Card>
     );

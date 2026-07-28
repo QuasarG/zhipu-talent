@@ -51,9 +51,9 @@ export default function Settings() {
           <h2 className="text-title-lg mb-3">配置项（脱敏）</h2>
           <div className="grid grid-cols-2 gap-3">
             {Object.entries(config).map(([key, val]) => (
-              <Card key={key} variant="outlined" className="flex flex-col gap-1 p-3">
+              <Card key={key} variant="outlined" className="flex flex-col gap-1 p-4">
                 <span className="text-label text-on-surface">{key}</span>
-                <span className="text-body-sm text-on-surface-variant font-mono">
+                <span className="text-body text-on-surface-variant font-mono">
                   {typeof val === "object" && val !== null
                     ? `${(val as Record<string, unknown>).configured ? "已配置" : "未配置"} · ${(val as Record<string, unknown>).masked ?? ""}`
                     : String(val)}

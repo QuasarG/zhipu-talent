@@ -116,7 +116,7 @@ export default function ResumeEvaluate() {
             <ResumeContent detail={selected} />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center gap-2">
-              <Icon name="description" size={40} className="text-outline" />
+              <Icon name="description" size={40} className="text-on-surface-variant" />
               <p className="text-title">从左侧选择一位候选人</p>
               <p className="text-body-sm text-on-surface-variant">导入简历后，候选人将出现在队列中</p>
             </div>
@@ -129,7 +129,7 @@ export default function ResumeEvaluate() {
             <ScoreOverview evaluation={selected.evaluation} />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center gap-2">
-              <Icon name="fact_check" size={40} className="text-outline" />
+              <Icon name="fact_check" size={40} className="text-on-surface-variant" />
               <p className="text-title">评估结果区</p>
               <p className="text-body-sm text-on-surface-variant">选择候选人并评估后，能力评分与 Track 推荐将显示在此</p>
             </div>
