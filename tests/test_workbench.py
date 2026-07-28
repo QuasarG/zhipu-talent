@@ -146,6 +146,11 @@ class WorkbenchTest(unittest.TestCase):
         mock_row.raw_text = "raw"
         mock_row.education = json.dumps(["博士，计算机科学"], ensure_ascii=False)
         mock_row.directions = json.dumps(["LLM Agent"], ensure_ascii=False)
+        # 阶段 1 新字段 mock
+        mock_row.person_id = None
+        mock_row.engagement_status = "newly_admitted"
+        mock_row.admitted_at = None
+        mock_row.sources = []
         mock_row.experiences = json.dumps(
             [{"organization": "某技术公司", "role": "Agent 研发实习生", "details": ["构建评测闭环"]}],
             ensure_ascii=False,

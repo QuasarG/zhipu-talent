@@ -194,6 +194,70 @@ def create_app() -> Flask:
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
+    @app.patch("/api/candidates/<candidate_id>/engagement-status")
+    def update_engagement_status(candidate_id: str):
+        """阶段 1：人工修改 HR 跟进状态。强制 changed_by。"""
+        body = request.get_json(silent=True) or {}
+        status = body.get("status")
+        changed_by = body.get("changed_by", "")
+        note = body.get("note", "")
+        try:
+            from agi_talent_radar.services import talent_service
+
+            result = talent_service.update_engagement_status(
+                candidate_id=candidate_id,
+                status=status,
+                changed_by=changed_by,
+                note=note,
+            )
+            return jsonify(result.model_dump(mode="json"))
+        except ValueError as exc:
+            return jsonify({"detail": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.get("/api/candidates/<candidate_id>/engagement-history")
+    def list_engagement_history(candidate_id: str):
+        """返回 HR 跟进状态变更的不可变审计记录。"""
+        try:
+            from agi_talent_radar.core.database import get_session
+            from agi_talent_radar.core.db.repository import list_engagement_history
+
+            with get_session() as session:
+                history = list_engagement_history(session, candidate_id)
+                return jsonify([
+                    {
+                        "previous_status": h.previous_status,
+                        "current_status": h.current_status,
+                        "changed_by": h.changed_by,
+                        "note": h.note,
+                        "changed_at": h.created_at.isoformat() if h.created_at else None,
+                    }
+                    for h in history
+                ])
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.post("/api/persons/<person_id>/admit")
+    def admit_person_to_pool(person_id: str):
+        """阶段 1：HR 显式把已知人物加入人才库。"""
+        body = request.get_json(silent=True) or {}
+        changed_by = body.get("changed_by", "")
+        note = body.get("note", "")
+        try:
+            from agi_talent_radar.services import talent_service
+
+            result = talent_service.manual_admit_person_to_pool(
+                person_id=person_id,
+                changed_by=changed_by,
+                note=note,
+            )
+            return jsonify(result)
+        except ValueError as exc:
+            return jsonify({"detail": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
     @app.get("/api/persons")
     def list_persons_view():
         person_type = request.args.get("person_type", "")
@@ -514,7 +578,16 @@ def _orm_to_brief(row) -> dict[str, Any]:
         "group": row.group,
         "level": row.import_level,
         "category": row.import_category,
+        # 阶段 1 新字段：HR 跟进状态 + 来源
+        "engagement_status": getattr(row, "engagement_status", "newly_admitted"),
+        "admitted_at": _iso(getattr(row, "admitted_at", None)),
     }
+
+
+def _iso(value) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
 
 def _orm_to_detail(row) -> dict[str, Any]:
@@ -537,6 +610,11 @@ def _orm_to_detail(row) -> dict[str, Any]:
         "screening_tags": _load_json(row.screening_tags),
         "source_format": _string_attr(row, "source_format", "text"),
         "document_analysis": _load_json(getattr(row, "document_analysis", "")) or {},
+        # 阶段 1 新字段：HR 跟进状态 + 来源 + 入库时间
+        "person_id": getattr(row, "person_id", None),
+        "engagement_status": getattr(row, "engagement_status", "newly_admitted"),
+        "admitted_at": _iso(getattr(row, "admitted_at", None)),
+        "sources": [s.source_kind for s in (row.sources or [])],
     }
 
 
