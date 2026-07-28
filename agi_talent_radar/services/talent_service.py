@@ -55,8 +55,27 @@ def retry_publication_verification(
     evaluation_id: int,
     paper_claim_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """仅重试外部论文核验任务，不重跑整份评估。阶段 3 实装。"""
-    raise NotImplementedError("阶段 3 实装。")
+    """仅重试外部论文核验任务，不重跑整份简历评估。
+
+    返回新建 ``TaskORM.id`` 与 payload；实际外部核验由后台 worker 执行。
+    """
+    from agi_talent_radar.core.database import get_session
+
+    with get_session() as session:
+        evaluation = session.get(EvaluationORM, evaluation_id)
+        if evaluation is None:
+            raise ValueError(f"评估运行不存在: {evaluation_id}")
+        task = repository.create_publication_verification_task(
+            session,
+            evaluation_id=evaluation_id,
+            claim_ids=[int(cid) for cid in (paper_claim_ids or [])] or None,
+        )
+        return {
+            "task_id": task.id,
+            "task_type": task.task_type,
+            "status": task.status,
+            "payload": task.payload,
+        }
 
 
 def admit_candidate_after_evaluation(evaluation_id: int) -> dict[str, Any]:

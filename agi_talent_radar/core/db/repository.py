@@ -15,6 +15,8 @@ from agi_talent_radar.core.db.orm import (
     EvaluationEvidenceORM,
     EvaluationNodeRunORM,
     EvaluationORM,
+    PublicationClaimORM,
+    PublicationVerificationORM,
     TaskORM,
     TrackAssignmentORM,
     TrackEvaluationORM,
@@ -687,4 +689,112 @@ def list_engagement_history(session, candidate_id: str) -> list[EngagementStatus
         .filter_by(candidate_id=candidate_id)
         .order_by(EngagementStatusHistoryORM.created_at, EngagementStatusHistoryORM.id)
         .all()
+    )
+
+
+# ---------------------------------------------------------------------------
+# 阶段 3：论文自述（claim）与外部核验（verification）持久化
+# ---------------------------------------------------------------------------
+
+
+def save_publication_claims(
+    session,
+    evaluation_id: int,
+    claims: list[dict[str, Any]],
+) -> list[PublicationClaimORM]:
+    """把 AI 提取的论文自述写入 publication_claims。
+
+    清空旧 claims 后按顺序重写；自述与外部核验分表存储。
+    """
+    existing = session.query(PublicationClaimORM).filter_by(evaluation_id=evaluation_id).all()
+    for row in existing:
+        session.delete(row)
+    session.flush()
+
+    rows: list[PublicationClaimORM] = []
+    for index, item in enumerate(claims):
+        row = PublicationClaimORM(
+            evaluation_id=evaluation_id,
+            claim_key=str(item.get("id") or item.get("claim_key") or f"c{index + 1}"),
+            title=str(item.get("title", "")).strip(),
+            venue=str(item.get("venue", "") or ""),
+            year=str(item.get("year", "") or ""),
+            claimed_role=str(item.get("claimed_role", "") or "不明"),
+            claimed_status=str(item.get("claimed_status", "") or "unknown"),
+            source_quote=str(item.get("source_quote", "") or ""),
+            rationale=str(item.get("rationale", "") or ""),
+            confidence=float(item.get("confidence", 0.0) or 0.0),
+            order_index=index,
+        )
+        session.add(row)
+        rows.append(row)
+    session.commit()
+    for row in rows:
+        session.refresh(row)
+    return rows
+
+
+def save_publication_verification(
+    session,
+    claim_id: int,
+    source: str,
+    matched_title: str = "",
+    verified_status: str = "pending",
+    author_position_match: str = "pending",
+    identity_confidence: float = 0.0,
+    conflicts: list[str] | None = None,
+    failure_reason: str = "",
+    checked_at: datetime | None = None,
+) -> PublicationVerificationORM:
+    """写入或更新某条 claim 的外部核验结果。
+
+    同一 claim_id 至多一条核验（一对一）；
+    重试时覆盖旧记录的核验字段，但 ``human_*`` 字段不动。
+    """
+    row = (
+        session.query(PublicationVerificationORM)
+        .filter_by(claim_id=claim_id)
+        .first()
+    )
+    if row is None:
+        row = PublicationVerificationORM(claim_id=claim_id, source=source)
+        session.add(row)
+    row.source = source
+    row.matched_title = matched_title
+    row.verified_status = verified_status
+    row.author_position_match = author_position_match
+    row.identity_confidence = identity_confidence
+    row.conflicts = conflicts or []
+    row.failure_reason = failure_reason
+    row.checked_at = checked_at or _now()
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def list_publication_claims(session, evaluation_id: int) -> list[PublicationClaimORM]:
+    return (
+        session.query(PublicationClaimORM)
+        .filter_by(evaluation_id=evaluation_id)
+        .order_by(PublicationClaimORM.order_index, PublicationClaimORM.id)
+        .all()
+    )
+
+
+def create_publication_verification_task(
+    session,
+    evaluation_id: int,
+    claim_ids: list[int] | None = None,
+) -> TaskORM:
+    """派发外部论文核验任务。
+
+    ``claim_ids=None`` 表示重试整个 evaluation 的所有 claims。
+    """
+    return create_task(
+        session,
+        task_type="publication_verification",
+        payload={
+            "evaluation_id": evaluation_id,
+            "claim_ids": claim_ids,
+        },
     )
