@@ -400,3 +400,180 @@
   max-height: 70vh;
   overflow-y: auto;
 }
+
+/* ============================================================================
+   评估结果区（模块 7）
+   ========================================================================== */
+
+.result-section {
+  margin-bottom: var(--space-5);
+}
+
+.result-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.result-section-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-secondary);
+  margin-bottom: var(--space-3);
+}
+
+/* 能力总览 */
+.score-overview {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.score-main {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.score-number {
+  font-family: var(--font-display);
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-fg);
+}
+
+.score-unit {
+  font-size: var(--fs-md);
+}
+
+.score-meta { flex: 1; min-width: 120px; }
+.score-label { font-weight: 500; font-size: var(--fs-md); }
+.score-disclaimer { font-size: var(--fs-xs); margin-top: 2px; }
+
+.score-badges {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* 分维度条形图 */
+.dim-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.dim-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 50px;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.dim-label {
+  font-size: var(--fs-sm);
+  color: var(--color-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dim-bar-track {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-mist);
+  overflow: hidden;
+}
+
+.dim-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width var(--transition-slow);
+}
+
+.dim-score {
+  font-size: var(--fs-sm);
+  color: var(--color-fg-secondary);
+  text-align: right;
+}
+
+/* Track 推荐 */
+.track-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.track-item {
+  padding: var(--space-2) 0;
+}
+
+.track-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+
+.track-name {
+  font-weight: 500;
+  font-size: var(--fs-md);
+}
+
+.track-weight {
+  font-size: var(--fs-sm);
+  color: var(--color-accent);
+}
+
+.track-bar-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-mist);
+  overflow: hidden;
+  margin-bottom: var(--space-1);
+}
+
+.track-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  transition: width var(--transition-slow);
+}
+
+.track-rationale {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+
+/* 研究组匹配横条 */
+.rg-match-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-paper);
+  border: 1px solid var(--color-border);
+}
+
+.rg-match-bar.is-pending {
+  background: var(--surface-mist);
+}
+
+.rg-match-title {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+}
+
+.rg-match-note {
+  font-size: var(--fs-xs);
+  text-align: right;
+  max-width: 180px;
+}
