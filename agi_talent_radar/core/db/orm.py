@@ -330,10 +330,26 @@ class PersonORM(Base):
 
 
 class ExternalFactORM(Base):
-    """外部证据缓存：连接器结果落表，TTL 到期才重拉。"""
+    """外部证据缓存 + 版本化外部事实（阶段 6）。
+
+    旧字段：source / fact_type / payload / source_url / fetched_at / expires_at
+    新字段（阶段 6）：
+    - identity_key         稳定身份键（person_id|fact_type|subject）
+    - dedupe_key           稳定去重键（source|fact_type|title|source_url hash）
+    - verification_status  confirmed/pending/conflict/disproved/superseded
+    - valid_from           本版本生效起始时间
+    - supersedes_id        替代了哪条旧事实；NULL 表示首版
+    - superseded_at        被新版本替代的时间；NULL 表示当前版本
+    - query_context        触发本次查询的上下文
+    - raw_payload_hash     原始 payload 哈希，用于检测内容是否变化
+    """
 
     __tablename__ = "external_facts"
-    __table_args__ = (Index("ix_external_facts_person_source", "person_id", "source"),)
+    __table_args__ = (
+        Index("ix_external_facts_person_source", "person_id", "source"),
+        Index("ix_external_facts_identity_key", "identity_key"),
+        Index("ix_external_facts_dedupe_status", "dedupe_key", "verification_status"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     person_id = Column(String(36), ForeignKey("persons.id", ondelete="CASCADE"), nullable=False)
@@ -343,6 +359,15 @@ class ExternalFactORM(Base):
     source_url = Column(Text, default="")
     fetched_at = Column(DateTime, server_default=func.now(), nullable=False)
     expires_at = Column(DateTime)
+    # 阶段 6 版本字段
+    identity_key = Column(String(128), default="")
+    dedupe_key = Column(String(64), default="")
+    verification_status = Column(String(16), default="pending", nullable=False)
+    valid_from = Column(DateTime)
+    supersedes_id = Column(Integer, ForeignKey("external_facts.id", ondelete="SET NULL"))
+    superseded_at = Column(DateTime)
+    query_context = Column(JSON, default=dict)
+    raw_payload_hash = Column(String(64), default="")
 
     person = relationship("PersonORM", back_populates="external_facts")
 

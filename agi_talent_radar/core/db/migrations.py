@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 9
+LATEST_SCHEMA_VERSION = 10
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -35,6 +35,18 @@ EVALUATIONS_NEW_COLUMNS = (
 PERSONS_NEW_COLUMNS = (
     ("identifiers", "JSON", None),
     ("identity_conflict", "BOOLEAN", "0"),
+)
+
+# 阶段 6：external_facts 表新增版本化字段。
+EXTERNAL_FACTS_NEW_COLUMNS = (
+    ("identity_key", "VARCHAR(128)", "''"),
+    ("dedupe_key", "VARCHAR(64)", "''"),
+    ("verification_status", "VARCHAR(16)", "'pending'"),
+    ("valid_from", "DATETIME", None),
+    ("supersedes_id", "INTEGER", None),
+    ("superseded_at", "DATETIME", None),
+    ("query_context", "JSON", None),
+    ("raw_payload_hash", "VARCHAR(64)", "''"),
 )
 
 
@@ -77,6 +89,14 @@ def ensure_schema(engine) -> None:
             9,
             "phase 3: split publication claims (self-stated) from verifications "
             "(external facts); both can be retried independently",
+        )
+    if current_version < 10:
+        _migrate_phase_six_columns(engine)
+        _record_version(
+            engine,
+            10,
+            "phase 6: versioned external facts (identity_key / dedupe_key / "
+            "verification_status / supersedes chain)",
         )
     _ensure_indexes(engine)
 
@@ -260,6 +280,21 @@ def _migrate_phase_two_columns(engine) -> None:
         default_clause = f" DEFAULT {default}" if default is not None else ""
         additions.append(f"{name} {column_type}{default_clause}")
     _add_columns(engine, "persons", additions)
+
+
+def _migrate_phase_six_columns(engine) -> None:
+    """阶段 6 老库升级：external_facts 加版本字段。"""
+    inspector = inspect(engine)
+    if "external_facts" not in inspect(engine).get_table_names():
+        return
+    facts_columns = {column["name"] for column in inspector.get_columns("external_facts")}
+    additions = []
+    for name, column_type, default in EXTERNAL_FACTS_NEW_COLUMNS:
+        if name in facts_columns:
+            continue
+        default_clause = f" DEFAULT {default}" if default is not None else ""
+        additions.append(f"{name} {column_type}{default_clause}")
+    _add_columns(engine, "external_facts", additions)
 
 
 def _json_list(value: Any) -> list:
