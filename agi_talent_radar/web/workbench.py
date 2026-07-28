@@ -68,6 +68,11 @@ def create_app() -> Flask:
         """新简历评估工作台（Liquid Glass 重构版）。"""
         return render_template("resume_evaluate.html")
 
+    @app.get("/knowledge")
+    def knowledge_agent_page() -> str:
+        """人才知识 Agent 对话界面。"""
+        return render_template("knowledge_agent.html")
+
     @app.get("/talent-pool")
     def talent_pool() -> str:
         return render_template("talent_pool.html")
