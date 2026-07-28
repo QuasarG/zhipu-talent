@@ -16,7 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class WorkbenchTest(unittest.TestCase):
     def setUp(self) -> None:
+        # 阶段 8 之后 create_app 注册了鉴权 middleware；
+        # 既有 workbench 测试关注路由行为而非鉴权，统一放行。
+        self._auth_patch = patch(
+            "agi_talent_radar.web.auth.is_authenticated",
+            return_value=True,
+        )
+        self._auth_patch.start()
         self.app = create_app().test_client()
+
+    def tearDown(self) -> None:
+        self._auth_patch.stop()
 
     def _parse_sse(self, response) -> list[dict]:
         events: list[dict] = []

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from agi_talent_radar.core.db.orm import Base, EvaluationORM, PersonORM, ReputationReportORM
 from agi_talent_radar.core.persons import get_person_detail, list_persons
@@ -98,7 +99,15 @@ class TalentPoolRouteTest(unittest.TestCase):
         runtime.get_engine = lambda *a, **k: self.engine
         self._runtime = runtime
 
+        # 阶段 8 之后路由受鉴权保护；路由测试统一放行。
+        self._auth_patch = patch(
+            "agi_talent_radar.web.auth.is_authenticated",
+            return_value=True,
+        )
+        self._auth_patch.start()
+
     def tearDown(self) -> None:
+        self._auth_patch.stop()
         self._runtime.get_engine = self._orig_get_engine
         self.engine.dispose()
 

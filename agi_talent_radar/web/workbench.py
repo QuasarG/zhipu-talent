@@ -36,6 +36,20 @@ def create_app() -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config["JSON_AS_ASCII"] = False
 
+    # 阶段 8：鉴权 + 配置蓝图接入。
+    # 未配置 APP_AUTH_PASSWORD 时鉴权 fail-closed，本地开发需显式设置。
+    from agi_talent_radar.web.auth import (
+        build_auth_blueprint,
+        configure_app_session,
+        install_auth_middleware,
+    )
+    from agi_talent_radar.web.config_api import build_config_blueprint
+
+    configure_app_session(app)
+    app.register_blueprint(build_auth_blueprint())
+    app.register_blueprint(build_config_blueprint())
+    install_auth_middleware(app)
+
     @app.get("/")
     def index() -> str:
         return render_template(
