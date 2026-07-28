@@ -75,7 +75,7 @@ def create_app() -> Flask:
 
     @app.get("/talent-pool")
     def talent_pool() -> str:
-        return render_template("talent_pool.html")
+        return render_template("talent_pool_v2.html")
 
     @app.get("/api/candidates")
     def list_candidates():

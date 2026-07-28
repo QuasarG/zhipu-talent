@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% set nav_active = 'pool' %}
+{% block title %}人才库 · 智谱人才研究平台{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='talent-pool-v2.css') }}">
+{% endblock %}
+
+{% block body %}
+<header class="page-toolbar glass">
+  <div class="toolbar-left">
+    <h1 class="toolbar-title">人才库</h1>
+    <p class="toolbar-subtitle muted">统一档案、来源追踪与关系发现</p>
+  </div>
+  <div class="toolbar-center pool-toolbar-center">
+    <div class="search-box glass pool-search-box">
+      <svg class="icon icon-sm"><use href="#icon-search"></use></svg>
+      <input type="search" id="pool-search" placeholder="搜索姓名、学校、机构、Track 或论文" class="search-input">
+    </div>
+  </div>
+  <div class="toolbar-right">
+    <div class="segmented pool-source-seg" id="pool-source-seg">
+      <button class="pill is-active" data-source="">全部 <span class="count" id="count-all">0</span></button>
+      <button class="pill" data-source="resume_evaluation">简历评估 <span class="count" id="count-resume">0</span></button>
+      <button class="pill" data-source="person_investigation">人物调查 <span class="count" id="count-invest">0</span></button>
+    </div>
+    <div class="segmented pool-view-seg" id="pool-view-seg">
+      <button class="pill" data-view="list">列表详情</button>
+      <button class="pill is-active" data-view="graph">关系图谱</button>
+    </div>
+    <button class="icon-btn" title="筛选"><svg class="icon"><use href="#icon-filter"></use></svg></button>
+    <button class="icon-btn" title="导出"><svg class="icon"><use href="#icon-export"></use></svg></button>
+  </div>
+</header>
+
+<div class="pool-workspace">
+  {# 左栏：人才列表 #}
+  <aside class="pool-list-pane" id="pool-list-pane">
+    <div class="pool-filter-chips" id="pool-filter-chips">
+      <button class="pill is-active" data-track="">全部</button>
+      <button class="pill" data-track="agent">Agent</button>
+      <button class="pill" data-track="safety">Safety</button>
+      <button class="pill" data-track="systems">Systems</button>
+      <button class="pill" data-track="multimodal">Multimodal</button>
+      <button class="pill" data-track="ai4science">AI4Science</button>
+    </div>
+    <div class="pool-list" id="pool-list" role="list">
+      <div class="pool-list-empty muted">加载中…</div>
+    </div>
+  </aside>
+
+  {# 中栏：关系图谱 / 列表详情 #}
+  <section class="pool-graph-pane" id="pool-graph-pane">
+    <div class="pool-graph-canvas-wrap">
+      <canvas id="pool-graph-canvas"></canvas>
+      <div class="pool-graph-legend glass">
+        <div class="legend-item"><span class="legend-dot" style="background:var(--teal-700)"></span>颜色 = 学校</div>
+        <div class="legend-item"><span class="legend-dot" style="border-radius:2px;background:var(--blue-700)"></span>形状 = 主要 Track</div>
+        <div class="legend-item"><span class="legend-line legend-line-solid"></span>实线 = 已确认</div>
+        <div class="legend-item"><span class="legend-line legend-line-dashed"></span>虚线 = 待核验</div>
+      </div>
+      <div class="pool-graph-tools glass">
+        <button class="icon-btn" id="graph-zoom-in" title="放大"><svg class="icon"><use href="#icon-zoom-in"></use></svg></button>
+        <button class="icon-btn" id="graph-zoom-out" title="缩小"><svg class="icon"><use href="#icon-zoom-out"></use></svg></button>
+        <button class="icon-btn" id="graph-fit" title="居中"><svg class="icon"><use href="#icon-target"></use></svg></button>
+        <button class="icon-btn" id="graph-expand" title="适配"><svg class="icon"><use href="#icon-expand"></use></svg></button>
+      </div>
+      <div class="pool-graph-status muted" id="pool-graph-status">加载中…</div>
+    </div>
+  </section>
+
+  {# 右栏：人物详情 #}
+  <aside class="pool-detail-pane" id="pool-detail-pane">
+    <div class="pool-detail-empty muted">
+      <p>从左侧选择一位人才</p>
+      <p class="sub">查看统一人才档案</p>
+    </div>
+  </aside>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='talent-pool-v2.js') }}"></script>
+<script src="{{ url_for('static', filename='relationship-graph.js') }}"></script>
+{% endblock %}
