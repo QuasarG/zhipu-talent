@@ -306,6 +306,9 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
         "routing_confidence": evaluation.routing_confidence or 0,
         "evaluation_mode": evaluation.evaluation_mode or "multi_track_v1",
         "status": evaluation.status,
+        # 阶段 4：研究组匹配与研究组匹配状态独立；
+        # 未配置时永远返回 not_configured，避免伪造匹配分。
+        "research_group_matching_status": "not_configured",
         "node_runs": [
             {
                 "node": item.node_key,

@@ -37,6 +37,7 @@ from agi_talent_radar.core.db.orm import (
     PersonORM,
 )
 from agi_talent_radar.core.db import repository
+from agi_talent_radar.core.db.repository import evaluation_to_dict
 from agi_talent_radar.core.domain_models import (
     EngagementStatus,
     ResearchGroupMatchingStatus,
@@ -289,6 +290,40 @@ class TestResearchGroupMatching(_TalentServiceTestBase):
         self.assertEqual(result.status, ResearchGroupMatchingStatus.NOT_CONFIGURED)
         self.assertEqual(result.requirement_version, None)
         self.assertEqual(result.matches, [])
+
+
+class TestTrackRecommendation(_TalentServiceTestBase):
+    def test_record_track_recommendation_reads_from_evaluation(self) -> None:
+        candidate_id = "candidate-track"
+        self._seed_person(person_id="p-track")
+        self._seed_evaluation(70, candidate_id, "p-track")
+        with self.Session() as session:
+            evaluation = session.get(EvaluationORM, 70)
+            evaluation.recommended_tracks = [
+                {"track": "agent", "weight": 0.6, "confidence": 0.9},
+                {"track": "base", "weight": 0.4, "confidence": 0.8},
+            ]
+            session.commit()
+
+        result = talent_service.record_track_recommendation(70)
+        self.assertEqual(result.evaluation_id, 70)
+        self.assertEqual(len(result.tracks), 2)
+        self.assertEqual(result.tracks[0]["track"], "agent")
+
+    def test_record_track_recommendation_unknown_evaluation_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            talent_service.record_track_recommendation(99999)
+
+    def test_evaluation_to_dict_carries_research_group_matching_status(self) -> None:
+        """评估输出必须显式带 research_group_matching_status=not_configured，
+        避免前端或 Agent 误以为存在匹配分。"""
+        self._seed_person(person_id="p-status-field")
+        self._seed_evaluation(71, "candidate-status-field", "p-status-field")
+        with self.Session() as session:
+            evaluation = session.get(EvaluationORM, 71)
+            data = evaluation_to_dict(evaluation)
+        self.assertIn("research_group_matching_status", data)
+        self.assertEqual(data["research_group_matching_status"], "not_configured")
 
 
 if __name__ == "__main__":

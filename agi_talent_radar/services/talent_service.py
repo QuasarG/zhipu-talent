@@ -209,8 +209,22 @@ def update_engagement_status(
 
 
 def record_track_recommendation(evaluation_id: int) -> TrackRecommendation:
-    """记录一次评估的 Track 推荐，不回写评分与论文核验。阶段 4 实装。"""
-    raise NotImplementedError("阶段 4 实装；当前底层已区分 recommended_tracks 与 research_group_matching。")
+    """记录一次评估的 Track 推荐，不回写评分与论文核验。
+
+    阶段 4 实装：直接从 EvaluationORM.recommended_tracks 读取，
+    与 ``get_research_group_matching`` 字段独立，无回写。
+    """
+    from agi_talent_radar.core.database import get_session
+
+    with get_session() as session:
+        evaluation = session.get(EvaluationORM, evaluation_id)
+        if evaluation is None:
+            raise ValueError(f"评估运行不存在: {evaluation_id}")
+        tracks = list(evaluation.recommended_tracks or [])
+        return TrackRecommendation(
+            evaluation_id=evaluation_id,
+            tracks=tracks,
+        )
 
 
 def get_research_group_matching(candidate_id: str) -> ResearchGroupMatching:
