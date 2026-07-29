@@ -156,7 +156,32 @@ def run_academic_check(
         lookups.append(candidates)
         if warning:
             warnings.append(f"{claim.title[:30]}: {warning}")
-    alignments = align_claims(name, claims, lookups)
+    try:
+        alignments = align_claims(name, claims, lookups)
+    except Exception as exc:
+        # align_claims 抛异常（LLM 调用失败等）时，所有已提取的 claim 降级为 unverifiable
+        warnings.append(f"论文对齐失败：{exc}")
+        alignments = [
+            ClaimAlignment(claim=claim, verdict="unverifiable", note="OpenAlex 核验失败，待人工核验")
+            for claim in claims
+        ]
+    # 补齐：extract_claims 可能漏掉某些 publications（如「参与」措辞），
+    # 确保每篇原始 publication 都至少有一条 alignment，避免前端卡在「核验中」。
+    aligned_titles = {a.claim.title for a in alignments}
+    for pub in publications:
+        pub_title = str(pub).strip()
+        if not pub_title:
+            continue
+        # 粗匹配：已对齐的 title 是否出现在 publication 文本里
+        if any(at and at in pub_title for at in aligned_titles):
+            continue
+        alignments.append(
+            ClaimAlignment(
+                claim=PaperClaim(title=pub_title),
+                verdict="unverifiable",
+                note="未能提取为可核查论文声称，待人工核验",
+            )
+        )
     return AcademicReport(alignments=alignments, warnings=warnings)
 
 

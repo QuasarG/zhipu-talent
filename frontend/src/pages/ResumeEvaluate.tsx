@@ -163,7 +163,12 @@ export default function ResumeEvaluate() {
         </Card>
       </div>
 
-      {showImport && <ImportOverlay onClose={() => { setShowImport(false); loadCandidates(); }} />}
+      {showImport && <ImportOverlay onClose={() => {
+        setShowImport(false);
+        loadCandidates();
+        // 论文核验可能在导入流末尾异步完成，刷新当前选中候选人的详情
+        if (selectedId) selectCandidate(selectedId);
+      }} />}
     </div>
   );
 }

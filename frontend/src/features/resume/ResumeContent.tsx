@@ -210,6 +210,7 @@ function PublicationList({ detail }: { detail: CandidateDetail }) {
   if (!pubs.length) return null;
   // 论文核验对齐表：以 claim.title 为 key
   const alignments = detail.academic_report?.alignments || [];
+  const hasReport = !!detail.academic_report;
   const alignByTitle = new Map<string, typeof alignments[number]>();
   for (const a of alignments) {
     if (a.claim?.title) alignByTitle.set(a.claim.title, a);
@@ -227,7 +228,9 @@ function PublicationList({ detail }: { detail: CandidateDetail }) {
           <div key={i}>
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium text-body flex-1">{title}</span>
-              {align ? <VerdictBadge verdict={align.verdict} /> : (
+              {align ? <VerdictBadge verdict={align.verdict} /> : hasReport ? (
+                <StatusChip tone="warning" icon="help">待核验</StatusChip>
+              ) : (
                 <span className="inline-flex items-center gap-1 text-label text-on-surface-variant shrink-0">
                   <LoadingIndicator size={14} color="text-on-surface-variant" />
                   核验中

@@ -616,6 +616,27 @@ def _stream_import_upload(
             message=f"已完成 {candidate_total} 份简历的结构化解析。",
         )
 
+        # PDF 原文落盘：只有 PDF 上传才有 file_bytes 是 PDF 二进制
+        if suffix == ".pdf":
+            from agi_talent_radar.core.pdf_storage import save_resume_pdf
+
+            for classification in classifications:
+                save_resume_pdf(classification.id, file_bytes)
+
+        # 先 yield 候选人（不含 academic_report），让前端立刻可选中查看结构化简历。
+        # 论文核验（OpenAlex，可能慢）在 yield 之后跑，跑完异步更新 DB。
+        for candidate_index, (classification, resume) in enumerate(zip(classifications, structured_resumes), start=1):
+            yield _file_event(
+                "candidate",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                index=candidate_index,
+                total=candidate_total,
+                candidate=_imported_candidate_payload(classification, resume, {}),
+            )
+
         # 论文核验阶段：对每份简历的 publications 调 OpenAlex 核验，
         # 不受阶段门控——所有论文都查存在性和作者顺序。
         # 核验失败/查不到的论文 verdict=unverifiable/mismatch，
@@ -633,11 +654,9 @@ def _stream_import_upload(
             status="running",
             message=f"正在核验 {candidate_total} 位候选人的论文（OpenAlex）。",
         )
-        academic_reports: dict[str, dict] = {}
         for classification, resume in zip(classifications, structured_resumes):
             pubs = [str(p) for p in (resume.publications or []) if str(p).strip()]
             if not pubs:
-                academic_reports[classification.id] = {}
                 continue
             try:
                 report = run_academic_check(
@@ -645,7 +664,6 @@ def _stream_import_upload(
                     publications=pubs,
                     raw_text=resume.raw_text,
                 )
-                academic_reports[classification.id] = report.model_dump()
                 # 回写 academic_report 到候选人记录
                 try:
                     with get_session() as session:
@@ -659,11 +677,19 @@ def _stream_import_upload(
                     import warnings
 
                     warnings.warn(f"回写论文核验结果失败 {classification.id}: {exc}")
+                # 发送核验完成事件，前端可据此刷新候选人详情
+                yield _file_event(
+                    "academic_done",
+                    file_id,
+                    filename,
+                    file_index,
+                    file_total,
+                    candidate_id=classification.id,
+                )
             except Exception as exc:
                 import warnings
 
                 warnings.warn(f"论文核验失败 {classification.id}: {exc}")
-                academic_reports[classification.id] = {}
         yield _file_event(
             "stage",
             file_id,
@@ -674,26 +700,6 @@ def _stream_import_upload(
             status="done",
             message=f"已完成 {candidate_total} 位候选人的论文核验。",
         )
-
-        # PDF 原文落盘：只有 PDF 上传才有 file_bytes 是 PDF 二进制
-        if suffix == ".pdf":
-            from agi_talent_radar.core.pdf_storage import save_resume_pdf
-
-            for classification in classifications:
-                save_resume_pdf(classification.id, file_bytes)
-        for candidate_index, (classification, resume) in enumerate(zip(classifications, structured_resumes), start=1):
-            yield _file_event(
-                "candidate",
-                file_id,
-                filename,
-                file_index,
-                file_total,
-                index=candidate_index,
-                total=candidate_total,
-                candidate=_imported_candidate_payload(
-                    classification, resume, academic_reports.get(classification.id, {})
-                ),
-            )
     except Exception as exc:
         if isinstance(exc, ImportFileError):
             raise
