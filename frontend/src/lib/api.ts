@@ -34,6 +34,11 @@ export const api = {
     // 待核验论文列表（从 academic_report 提取 unverifiable/mismatch）
     pendingPublications: () =>
       fetchJSON<unknown[]>(`/api/candidates/pending-publications`),
+    // 按需论文核验：选中候选人后触发，返回 academic_report
+    verifyPublications: (id: string) =>
+      fetchJSON<Record<string, unknown>>(`/api/candidates/${id}/verify-publications`, {
+        method: "POST",
+      }),
     evaluateSSE: (id: string, signal?: AbortSignal) =>
       fetch(BASE + `/api/candidates/${id}/evaluate`, { method: "POST", signal }),
     updateEngagement: (id: string, status: string, changedBy: string, note: string) =>

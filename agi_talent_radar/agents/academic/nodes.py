@@ -38,7 +38,7 @@ CLAIM_EXTRACTOR_PROMPT = """
 ALIGNMENT_PROMPT = """
 你是学术事实对齐 Agent。只输出 JSON 对象，顶层字段必须是 alignments。
 
-任务：把候选人的每条论文声称与 OpenAlex 检索结果逐条对齐。
+任务：把候选人的每条论文声称与外部学术数据库（AMiner / OpenAlex）检索结果逐条对齐。
 
 候选人姓名：{name}（注意中文姓名的拼音变体，如 张三 = San Zhang / Zhang S.）
 
@@ -46,20 +46,21 @@ ALIGNMENT_PROMPT = """
 - claim_title: 对应输入声称的标题（原样引用）
 - verdict: verified / mismatch / unverifiable
 - verified_status: 外部可确认的状态，只能是 已发表 / 不明
-- matched_title: 匹配到的 OpenAlex 论文标题，无匹配则空串
-- discrepancies: 事实冲突点列表，如 ["声称一作，OpenAlex 作者列表无此人", "声称已发表实为 2026 年预印本"]
+- matched_title: 匹配到的论文标题，无匹配则空串
+- discrepancies: 事实冲突点列表，如 ["声称一作，作者列表无此人", "声称已发表实为预印本"]
 - cited_by_count: 匹配论文的被引数，无匹配给 0
 - is_retracted: 匹配论文是否已撤稿
-- source_url: 匹配论文的外部链接（AMiner 或 OpenAlex），无匹配则空串
+- source_url: 匹配论文的外部链接（直接从检索结果的 source_url 字段取，原样返回），无匹配则空串
 - note: 50 字内说明
 
 判定规则：
 1. verified：标题基本一致，且作者列表包含候选人（考虑拼音变体），作者位次与声称无冲突。
 2. mismatch 仅限硬性事实冲突：作者列表无此人；声称一作但 first_author 是别人；论文已撤稿但声称正常发表。
-3. 年份或版本差异（预印本/会议版多版本、数据库年份字段与版本更新年份不一致）不构成 mismatch，写进 note 即可。
+3. 年份或版本差异（预印本/会议版多版本）不构成 mismatch，写进 note 即可。
 4. unverifiable：检索结果中没有可对应的论文；不得把"查不到"说成"造假"。
 5. 草稿、已投稿或在审且检索不到时，给 unverifiable 并在 note 说明该状态通常无法由公开数据库确认。
 6. 不得编造检索结果中不存在的论文或作者信息。
+7. source_url 必须从输入的检索结果中原样复制，不要自己编造 URL。
 """.strip()
 
 

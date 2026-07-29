@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
-import type { CandidateDetail } from "@/lib/types";
+import type { CandidateDetail, AcademicReport } from "@/lib/types";
 import Tabs from "@/components/ui/Tabs";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { StatusChip } from "@/components/ui/Chip";
+import { api } from "@/lib/api";
 
 interface Props {
   detail: CandidateDetail;
@@ -14,6 +15,28 @@ interface Props {
 export default function ResumeContent({ detail }: Props) {
   const [mode, setMode] = useState<"structured" | "raw">("structured");
   const directions = (detail.directions || []).filter(Boolean);
+
+  // 论文核验状态：null=未知/loading, AcademicReport=已完成
+  const [academicReport, setAcademicReport] = useState<AcademicReport | null>(detail.academic_report || null);
+  const [verifying, setVerifying] = useState(false);
+
+  // detail 变化（切换候选人）时重置
+  useEffect(() => {
+    setAcademicReport(detail.academic_report || null);
+    setVerifying(false);
+  }, [detail.id, detail.academic_report]);
+
+  // 如果没有 academic_report 且有论文，自动触发核验
+  useEffect(() => {
+    if (academicReport || verifying) return;
+    const pubs = detail.publications || [];
+    if (!pubs.length) return;
+    setVerifying(true);
+    api.candidates.verifyPublications(detail.id)
+      .then((r) => { setAcademicReport(r as AcademicReport); })
+      .catch(() => { /* 核验失败不阻断浏览 */ })
+      .finally(() => { setVerifying(false); });
+  }, [detail.id, academicReport, verifying, detail.publications]);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -59,8 +82,16 @@ export default function ResumeContent({ detail }: Props) {
               <ModuleCard title="项目经历" icon="construction">
                 <ProjectList detail={detail} />
               </ModuleCard>
-              <ModuleCard title="论文与成果" icon="menu_book">
-                <PublicationList detail={detail} />
+              <ModuleCard
+                title="论文与成果"
+                icon="menu_book"
+                headerRight={verifying ? (
+                  <span className="inline-flex items-center gap-1 text-label text-primary">
+                    <LoadingIndicator size={14} color="text-primary" /> 核验中
+                  </span>
+                ) : null}
+              >
+                <PublicationList detail={detail} academicReport={academicReport} verifying={verifying} />
               </ModuleCard>
               <ModuleCard title="技能" icon="bolt" className="col-span-2">
                 <SkillsList detail={detail} />
@@ -123,10 +154,11 @@ interface ModuleCardProps {
   title: string;
   icon: string;
   className?: string;
+  headerRight?: ReactNode;
   children: ReactNode;
 }
 
-function ModuleCard({ title, icon, className, children }: ModuleCardProps) {
+function ModuleCard({ title, icon, className, headerRight, children }: ModuleCardProps) {
   const arr = Array.isArray(children) ? children : [children];
   const hasContent = arr.filter(Boolean).length > 0;
   return (
@@ -134,6 +166,7 @@ function ModuleCard({ title, icon, className, children }: ModuleCardProps) {
       <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-outline-variant bg-surface-low">
         <Icon name={icon} size={16} className="text-on-surface-variant" />
         <h3 className="text-title text-on-surface">{title}</h3>
+        {headerRight && <div className="ml-auto shrink-0">{headerRight}</div>}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {hasContent ? children : (
@@ -205,12 +238,17 @@ function ProjectList({ detail }: { detail: CandidateDetail }) {
   );
 }
 
-function PublicationList({ detail }: { detail: CandidateDetail }) {
+function PublicationList({ detail, academicReport, verifying: _verifying }: {
+  detail: CandidateDetail;
+  academicReport: AcademicReport | null;
+  verifying: boolean;
+}) {
+  void _verifying; // 核验中状态由卡片 header 展示，列表内按 hasReport/align 判断
   const pubs = detail.publications || [];
   if (!pubs.length) return null;
   // 论文核验对齐表：以 claim.title 为 key
-  const alignments = detail.academic_report?.alignments || [];
-  const hasReport = !!detail.academic_report;
+  const alignments = academicReport?.alignments || [];
+  const hasReport = !!academicReport;
   const alignByTitle = new Map<string, typeof alignments[number]>();
   for (const a of alignments) {
     if (a.claim?.title) alignByTitle.set(a.claim.title, a);

@@ -246,9 +246,43 @@ def create_app() -> Flask:
                             "note": a.get("note", ""),
                             "discrepancies": a.get("discrepancies", []),
                             "matched_title": a.get("matched_title", ""),
-                            "source_url": a.get("openalex_url", ""),
+                            "source_url": a.get("openalex_url") or a.get("source_url", ""),
                         })
                 return jsonify(pending)
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.post("/api/candidates/<candidate_id>/verify-publications")
+    def verify_publications(candidate_id: str):
+        """按需论文核验：前端选中候选人后触发。
+        从 candidate 的 publications 调 AMiner/OpenAlex 核验，
+        结果写入 academic_report 并返回。已有结果时直接返回（不重复核验）。"""
+        try:
+            from agi_talent_radar.agents.academic.nodes import run_academic_check
+            from agi_talent_radar.core.db.runtime import get_session
+            from agi_talent_radar.core.db.orm import CandidateORM
+
+            with get_session() as session:
+                cand = session.get(CandidateORM, candidate_id)
+                if not cand:
+                    return jsonify({"detail": "候选人不存在"}), 404
+                # 已有核验结果直接返回（不重复核验）
+                existing = _load_json(getattr(cand, "academic_report", "")) or {}
+                if existing.get("alignments"):
+                    return jsonify(existing)
+                pubs_raw = _load_json(cand.publications)
+                pubs = [str(p) for p in pubs_raw if str(p).strip()]
+                if not pubs:
+                    return jsonify({"alignments": [], "warnings": []})
+                report = run_academic_check(
+                    name=cand.name or "",
+                    publications=pubs,
+                    raw_text=cand.raw_text or "",
+                )
+                result = report.model_dump()
+                cand.academic_report = result
+                session.commit()
+                return jsonify(result)
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
@@ -663,7 +697,7 @@ def _stream_import_upload(
                 save_resume_pdf(classification.id, file_bytes)
 
         # 先 yield 候选人（不含 academic_report），让前端立刻可选中查看结构化简历。
-        # 论文核验（OpenAlex，可能慢）在 yield 之后跑，跑完异步更新 DB。
+        # 论文核验由前端选中候选人后按需触发（POST /verify-publications）。
         for candidate_index, (classification, resume) in enumerate(zip(classifications, structured_resumes), start=1):
             yield _file_event(
                 "candidate",
@@ -675,70 +709,6 @@ def _stream_import_upload(
                 total=candidate_total,
                 candidate=_imported_candidate_payload(classification, resume, {}),
             )
-
-        # 论文核验阶段：对每份简历的 publications 调 OpenAlex 核验，
-        # 不受阶段门控——所有论文都查存在性和作者顺序。
-        # 核验失败/查不到的论文 verdict=unverifiable/mismatch，
-        # 前端据此标记，后续纳入待核验库。
-        from agi_talent_radar.agents.academic.nodes import run_academic_check
-
-        current_stage = "academic_check"
-        yield _file_event(
-            "stage",
-            file_id,
-            filename,
-            file_index,
-            file_total,
-            stage=current_stage,
-            status="running",
-            message=f"正在核验 {candidate_total} 位候选人的论文（AMiner）。",
-        )
-        for classification, resume in zip(classifications, structured_resumes):
-            pubs = [str(p) for p in (resume.publications or []) if str(p).strip()]
-            if not pubs:
-                continue
-            try:
-                report = run_academic_check(
-                    name=resume.name,
-                    publications=pubs,
-                    raw_text=resume.raw_text,
-                )
-                # 回写 academic_report 到候选人记录
-                try:
-                    with get_session() as session:
-                        from agi_talent_radar.core.db.orm import CandidateORM
-
-                        cand = session.get(CandidateORM, classification.id)
-                        if cand:
-                            cand.academic_report = report.model_dump()
-                            session.commit()
-                except Exception as exc:
-                    import warnings
-
-                    warnings.warn(f"回写论文核验结果失败 {classification.id}: {exc}")
-                # 发送核验完成事件，前端可据此刷新候选人详情
-                yield _file_event(
-                    "academic_done",
-                    file_id,
-                    filename,
-                    file_index,
-                    file_total,
-                    candidate_id=classification.id,
-                )
-            except Exception as exc:
-                import warnings
-
-                warnings.warn(f"论文核验失败 {classification.id}: {exc}")
-        yield _file_event(
-            "stage",
-            file_id,
-            filename,
-            file_index,
-            file_total,
-            stage=current_stage,
-            status="done",
-            message=f"已完成 {candidate_total} 位候选人的论文核验。",
-        )
     except Exception as exc:
         if isinstance(exc, ImportFileError):
             raise
