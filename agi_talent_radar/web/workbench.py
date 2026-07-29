@@ -700,7 +700,7 @@ def _stream_import_upload(
                 save_resume_pdf(classification.id, file_bytes)
 
         # 每份简历结构化完立刻 yield + 落库（academic_check_status=none）。
-        # 前端收到 candidate 事件就能看到结构化简历。
+        # 导入流程到这里就结束了——论文核验在后台自动进行，不阻塞导入卡片。
         for candidate_index, (classification, resume) in enumerate(zip(classifications, structured_resumes), start=1):
             yield _file_event(
                 "candidate",
@@ -713,82 +713,20 @@ def _stream_import_upload(
                 candidate=_imported_candidate_payload(classification, resume, {}),
             )
 
-        # 论文核验：所有结构化已 yield，现在并发核验所有有论文的候选人。
-        # 解耦设计：核验在后台跑，每个完成发 academic_done 事件，前端逐个更新。
-        from agi_talent_radar.agents.academic.nodes import run_academic_check
-        from datetime import datetime, timezone
-
-        verify_pairs = [
-            (c, r) for c, r in zip(classifications, structured_resumes)
-            if [str(p) for p in (r.publications or []) if str(p).strip()]
-        ]
-        if verify_pairs:
-            current_stage = "academic_check"
-            yield _file_event(
-                "stage", file_id, filename, file_index, file_total,
-                stage=current_stage, status="running",
-                message=f"正在核验 {len(verify_pairs)} 位候选人的论文（AMiner）。",
-            )
-            # 先把所有候选人标记为 running
-            for classification, _ in verify_pairs:
+        # 论文核验在后台线程池异步进行，不阻塞导入 SSE 流。
+        # 导入卡片此时已经关闭，核验结果通过前端轮询候选人列表刷新。
+        from agi_talent_radar.core.background import trigger_publication_verification
+        for classification, resume in zip(classifications, structured_resumes):
+            pubs = [str(p) for p in (resume.publications or []) if str(p).strip()]
+            if pubs:
+                trigger_publication_verification(classification.id, resume.name, pubs, resume.raw_text)
+            else:
+                # 没有论文直接标记 done
                 try:
+                    from agi_talent_radar.core.db.runtime import get_session
+                    from agi_talent_radar.core.db.orm import CandidateORM
+                    from datetime import datetime, timezone
                     with get_session() as session:
-                        from agi_talent_radar.core.db.orm import CandidateORM
-                        cand = session.get(CandidateORM, classification.id)
-                        if cand:
-                            cand.academic_check_status = "running"
-                            session.commit()
-                except Exception:
-                    pass
-            # 并发核验
-            def _verify_one(cid: str, cname: str, pubs: list[str], raw: str):
-                try:
-                    report = run_academic_check(name=cname, publications=pubs, raw_text=raw)
-                    with get_session() as session:
-                        from agi_talent_radar.core.db.orm import CandidateORM
-                        cand = session.get(CandidateORM, cid)
-                        if cand:
-                            cand.academic_report = report.model_dump()
-                            cand.academic_check_status = "done"
-                            cand.academic_check_at = datetime.now(timezone.utc)
-                            session.commit()
-                except Exception as exc:
-                    import warnings
-                    warnings.warn(f"论文核验失败 {cid}: {exc}")
-                    # 核验失败也标记 done（带空 report），不阻塞评估
-                    with get_session() as session:
-                        from agi_talent_radar.core.db.orm import CandidateORM
-                        cand = session.get(CandidateORM, cid)
-                        if cand:
-                            cand.academic_check_status = "done"
-                            cand.academic_check_at = datetime.now(timezone.utc)
-                            session.commit()
-
-            verify_workers = min(MAX_PARALLEL_IMPORTS, len(verify_pairs))
-            with ThreadPoolExecutor(max_workers=verify_workers, thread_name_prefix="pub-verify") as pool:
-                futures = {}
-                for classification, resume in verify_pairs:
-                    pubs = [str(p) for p in (resume.publications or []) if str(p).strip()]
-                    fut = pool.submit(_verify_one, classification.id, resume.name, pubs, resume.raw_text)
-                    futures[fut] = classification.id
-                import concurrent.futures as cf
-                for fut in cf.as_completed(futures):
-                    cid = futures[fut]
-                    yield _file_event(
-                        "academic_done", file_id, filename, file_index, file_total,
-                        candidate_id=cid,
-                    )
-            yield _file_event(
-                "stage", file_id, filename, file_index, file_total,
-                stage=current_stage, status="done",
-                message=f"已完成 {len(verify_pairs)} 位候选人的论文核验。",
-            )
-        else:
-            # 没有论文的候选人直接标记 done
-            for classification, resume in zip(classifications, structured_resumes):
-                try:
-                    with get_session() as session:
-                        from agi_talent_radar.core.db.orm import CandidateORM
                         cand = session.get(CandidateORM, classification.id)
                         if cand:
                             cand.academic_check_status = "done"
