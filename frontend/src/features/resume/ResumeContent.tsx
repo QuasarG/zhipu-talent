@@ -6,7 +6,6 @@ import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { StatusChip } from "@/components/ui/Chip";
-import { api } from "@/lib/api";
 
 interface Props {
   detail: CandidateDetail;
@@ -16,27 +15,9 @@ export default function ResumeContent({ detail }: Props) {
   const [mode, setMode] = useState<"structured" | "raw">("structured");
   const directions = (detail.directions || []).filter(Boolean);
 
-  // 论文核验状态：null=未知/loading, AcademicReport=已完成
-  const [academicReport, setAcademicReport] = useState<AcademicReport | null>(detail.academic_report || null);
-  const [verifying, setVerifying] = useState(false);
-
-  // detail 变化（切换候选人）时重置
-  useEffect(() => {
-    setAcademicReport(detail.academic_report || null);
-    setVerifying(false);
-  }, [detail.id, detail.academic_report]);
-
-  // 如果没有 academic_report 且有论文，自动触发核验
-  useEffect(() => {
-    if (academicReport || verifying) return;
-    const pubs = detail.publications || [];
-    if (!pubs.length) return;
-    setVerifying(true);
-    api.candidates.verifyPublications(detail.id)
-      .then((r) => { setAcademicReport(r as AcademicReport); })
-      .catch(() => { /* 核验失败不阻断浏览 */ })
-      .finally(() => { setVerifying(false); });
-  }, [detail.id, academicReport, verifying, detail.publications]);
+  // 论文核验结果直接从 detail.academic_report 读取
+  // （核验在导入流程里已完成并写入 DB，前端不需要再触发）
+  const academicReport: AcademicReport | null = detail.academic_report || null;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -82,16 +63,8 @@ export default function ResumeContent({ detail }: Props) {
               <ModuleCard title="项目经历" icon="construction">
                 <ProjectList detail={detail} />
               </ModuleCard>
-              <ModuleCard
-                title="论文与成果"
-                icon="menu_book"
-                headerRight={verifying ? (
-                  <span className="inline-flex items-center gap-1 text-label text-primary">
-                    <LoadingIndicator size={14} color="text-primary" /> 核验中
-                  </span>
-                ) : null}
-              >
-                <PublicationList detail={detail} academicReport={academicReport} verifying={verifying} />
+              <ModuleCard title="论文与成果" icon="menu_book">
+                <PublicationList detail={detail} academicReport={academicReport} />
               </ModuleCard>
               <ModuleCard title="技能" icon="bolt" className="col-span-2">
                 <SkillsList detail={detail} />
@@ -238,12 +211,10 @@ function ProjectList({ detail }: { detail: CandidateDetail }) {
   );
 }
 
-function PublicationList({ detail, academicReport, verifying: _verifying }: {
+function PublicationList({ detail, academicReport }: {
   detail: CandidateDetail;
   academicReport: AcademicReport | null;
-  verifying: boolean;
 }) {
-  void _verifying; // 核验中状态由卡片 header 展示，列表内按 hasReport/align 判断
   const pubs = detail.publications || [];
   if (!pubs.length) return null;
   // 论文核验对齐表：以 claim.title 为 key
