@@ -1,26 +1,21 @@
 """AMiner 开放平台 REST 连接器：论文搜索 + 论文详情。
 
-认证流程（按 aminer 官方文档）：
-  1. 控制台拿 API Key（AMINER_API_KEY）+ 用户 ID（AMINER_USER_ID）
-  2. 用 API Key 当 HMAC-SHA256 密钥，组装 JWT（header sign_type=SIGN）
-  3. JWT 放 Authorization 头（不加 Bearer）+ X-Platform: openclaw
+认证：直接用控制台生成的 JWT Token（AMINER_API_TOKEN），放 Authorization 头。
+JWT 由 AMiner 控制台用 API Key 签发，含 user_id + exp；客户端无需自己生成。
 
 API 用途：
-  - paper_search(title)  免费，按标题搜论文，返回 id/title/year
-  - paper_detail(id)    ¥0.01/次，返回作者列表/venue/被引数
+  - paper_search(title)  免费，按标题搜论文，返回 id/title/year/first_author
+  - paper_detail(id)    ¥0.01/次，返回作者列表（含 name/org）/venue/被引数
 
 本连接器作为论文核验的主力源；OpenAlex 作为兜底（见 openalex.py）。
 """
 from __future__ import annotations
 
 import os
-import time
 import json
 import urllib.request
 import urllib.parse
 import urllib.error
-
-import jwt
 
 from agi_talent_radar.core.connectors.base import ConnectorUnavailableError, Fact
 
@@ -28,33 +23,17 @@ AMINER_BASE = "https://datacenter.aminer.cn/gateway/open_platform"
 _REQUEST_TIMEOUT = 15
 
 
-def _check_auth() -> tuple[str, str]:
-    """返回 (api_key, user_id)，缺失抛 ConnectorUnavailableError。"""
-    api_key = os.getenv("AMINER_API_KEY", "").strip()
-    user_id = os.getenv("AMINER_USER_ID", "").strip()
-    if not api_key:
-        raise ConnectorUnavailableError("缺少 AMINER_API_KEY，AMiner REST 连接器不可用。")
-    if not user_id:
-        raise ConnectorUnavailableError("缺少 AMINER_USER_ID，AMiner REST 连接器不可用。")
-    return api_key, user_id
-
-
-def _generate_token() -> str:
-    """用 API Key 生成 2 小时有效的 JWT。"""
-    api_key, user_id = _check_auth()
-    now = int(time.time())
-    payload = {
-        "user_id": user_id,
-        "exp": now + 7200,
-        "timestamp": now,
-    }
-    headers = {"alg": "HS256", "sign_type": "SIGN"}
-    return jwt.encode(payload, api_key, algorithm="HS256", headers=headers)
+def _get_token() -> str:
+    """取控制台生成的 JWT Token，缺失抛 ConnectorUnavailableError。"""
+    token = os.getenv("AMINER_API_TOKEN", "").strip()
+    if not token:
+        raise ConnectorUnavailableError("缺少 AMINER_API_TOKEN，AMiner REST 连接器不可用。")
+    return token
 
 
 def _request(path: str, params: dict | None = None) -> dict:
     """发 GET 请求，返回解析后的 JSON dict。"""
-    token = _generate_token()
+    token = _get_token()
     url = AMINER_BASE + path
     if params:
         query = urllib.parse.urlencode(
@@ -79,7 +58,7 @@ def _request(path: str, params: dict | None = None) -> dict:
 
 
 def search_aminer_papers_by_title(title: str, size: int = 5) -> list[Fact]:
-    """按标题搜索论文，返回 Fact 列表（含 id/title/year/authors）。
+    """按标题搜索论文，返回 Fact 列表（含 id/title/year/first_author）。
 
     免费接口，返回的 Fact.payload 供 align_claims 的 LLM 对齐用。
     """
@@ -93,7 +72,7 @@ def search_aminer_papers_by_title(title: str, size: int = 5) -> list[Fact]:
     if resp.get("code") != 200:
         raise ConnectorUnavailableError(f"AMiner 搜索失败: {resp.get('msg', '未知')}")
     papers = resp.get("data") or []
-    return [_paper_to_fact(p, title) for p in papers if isinstance(p, dict)]
+    return [_paper_to_fact(title, p) for p in papers if isinstance(p, dict)]
 
 
 def get_aminer_paper_detail(paper_id: str) -> dict:
@@ -114,6 +93,10 @@ def get_aminer_paper_detail(paper_id: str) -> dict:
 
 def _paper_to_fact(query_title: str, paper: dict) -> Fact:
     """AMiner paper_search 结果 -> 标准 Fact（与 openalex 同构）。"""
+    if not isinstance(paper, dict):
+        return Fact(source="aminer", fact_type="paper", payload={"title": "", "query_title": query_title})
+    paper_id = str(paper.get("id") or paper.get("_id") or "")
+    # paper_search 返回 first_author 字符串；如果有 authors 列表则优先用
     authors_raw = paper.get("authors") or []
     if isinstance(authors_raw, list):
         author_names = [
@@ -122,7 +105,9 @@ def _paper_to_fact(query_title: str, paper: dict) -> Fact:
         ]
     else:
         author_names = []
-    paper_id = str(paper.get("id") or paper.get("_id") or "")
+    # paper_search 只有 first_author 字符串，没有 authors 列表
+    if not author_names and paper.get("first_author"):
+        author_names = [str(paper["first_author"])]
     return Fact(
         source="aminer",
         fact_type="paper",
@@ -132,6 +117,8 @@ def _paper_to_fact(query_title: str, paper: dict) -> Fact:
             "year": paper.get("year"),
             "doi": str(paper.get("doi") or ""),
             "authors": author_names,
+            "venue": str(paper.get("venue_name") or ""),
+            "n_citation_bucket": str(paper.get("n_citation_bucket") or ""),
             "query_title": query_title,
         },
         source_url=f"https://www.aminer.cn/pub/{paper_id}" if paper_id else "",
