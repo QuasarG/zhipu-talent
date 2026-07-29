@@ -124,16 +124,16 @@ export default function Settings() {
             </div>
           </section>
 
-          {/* 配置项 */}
+          {/* 外部服务 Key */}
           <section>
-            <h2 className="text-title-lg mb-3">配置项</h2>
+            <h2 className="text-title-lg mb-3">外部服务 Key</h2>
             {saveMsg && (
               <div className={`mb-3 px-3 py-2 rounded-md text-body-sm ${saveMsg.ok ? "bg-success-container text-success" : "bg-error-container text-error"}`}>
                 <Icon name={saveMsg.ok ? "check_circle" : "error"} size={16} className="inline mr-1" />
                 {saveMsg.text}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 max-w-[640px]">
               {configEntries.map(([key, value]) => {
                 const sensitive = isSensitive(value);
                 const isEditing = editingKey === key;
@@ -151,7 +151,10 @@ export default function Settings() {
                     {/* 值显示区（敏感项只显示脱敏，非敏感显示原值） */}
                     {!isEditing && (
                       <div className="flex items-center justify-between gap-2">
-                        <span className={`text-body text-on-surface-variant font-mono ${sensitive ? "select-none" : ""}`}>
+                        <span
+                          className={`text-body text-on-surface-variant font-mono truncate min-w-0 ${sensitive ? "select-none" : ""}`}
+                          title={sensitive ? value.masked || undefined : value || undefined}
+                        >
                           {sensitive ? value.masked || "（未配置）" : value || "—"}
                         </span>
                         <Button

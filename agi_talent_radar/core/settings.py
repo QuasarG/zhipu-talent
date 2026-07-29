@@ -19,24 +19,15 @@ from typing import Any
 
 
 # 敏感字段：GET 时只返回脱敏状态，不返回原文。
+# 设置页只暴露外部服务的认证 Key，其它配置不对外。
 SENSITIVE_KEYS = frozenset({
     "DEEPSEEK_API_KEY",
     "Z_AI_API_KEY",
     "AMINER_API_TOKEN",
-    "DB_PASSWORD",
-    "APP_AUTH_PASSWORD",
-    "FLASK_SESSION_SECRET",
 })
 
-# 设置页可见的非敏感配置：只有 API Key 和模型参数，不含内部基础设施配置。
-NON_SENSITIVE_KEYS = frozenset({
-    "OPENAI_MODEL",
-    "OPENAI_BASE_URL",
-    "OPENAI_TIMEOUT_SECONDS",
-    "Z_AI_MODE",
-    "OPENALEX_MAILTO",
-    "EMBEDDING_MODEL",
-})
+# 非敏感字段：当前为空集，设置页只展示外部服务 Key。
+NON_SENSITIVE_KEYS = frozenset()
 
 
 def mask_key(value: str) -> str:
