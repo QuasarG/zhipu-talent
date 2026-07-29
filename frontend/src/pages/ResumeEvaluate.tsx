@@ -35,6 +35,14 @@ export default function ResumeEvaluate() {
     loadCandidates();
   }, [loadCandidates]);
 
+  // 有候选人正在核验中时，每 5 秒刷新列表拿最新状态
+  useEffect(() => {
+    const hasRunning = candidates.some((c) => c.academic_check_status === "running");
+    if (!hasRunning) return;
+    const timer = setInterval(loadCandidates, 5000);
+    return () => clearInterval(timer);
+  }, [candidates, loadCandidates]);
+
   const selectCandidate = useCallback(async (id: string) => {
     setSelectedId(id);
     setLoading(true);
@@ -100,8 +108,12 @@ export default function ResumeEvaluate() {
           <>
             {evaluating ? (
               <StatusChip tone="warning" size="md" icon="pending">评估中</StatusChip>
+            ) : selected?.academic_check_status === "running" ? (
+              <StatusChip tone="primary" size="md" icon="progress_activity">论文核验中</StatusChip>
+            ) : selected?.academic_check_status === "done" ? (
+              <StatusChip tone="success" size="md" icon="check_circle">可评估</StatusChip>
             ) : selected ? (
-              <StatusChip tone="success" size="md" icon="check_circle">已就绪</StatusChip>
+              <StatusChip tone="warning" size="md">待核验</StatusChip>
             ) : (
               <StatusChip tone="neutral" size="md">空闲</StatusChip>
             )}
@@ -114,8 +126,8 @@ export default function ResumeEvaluate() {
                 icon="refresh"
                 variant="tonal"
                 onClick={handleEvaluate}
-                disabled={!selectedId}
-                title="重新评估"
+                disabled={!selectedId || selected?.academic_check_status !== "done"}
+                title={selected?.academic_check_status === "done" ? "开始评估" : "论文核验完成后方可评估"}
               />
             )}
           </>
@@ -166,8 +178,10 @@ export default function ResumeEvaluate() {
       {showImport && <ImportOverlay onClose={() => {
         setShowImport(false);
         loadCandidates();
-        // 论文核验可能在导入流末尾异步完成，刷新当前选中候选人的详情
-        if (selectedId) selectCandidate(selectedId);
+        // 导入流程已包含论文核验，核验完关闭后刷新列表并选中最新的
+        api.candidates.list().then((list) => {
+          if (list.length > 0) selectCandidate(list[0].id);
+        }).catch(() => {});
       }} />}
     </div>
   );

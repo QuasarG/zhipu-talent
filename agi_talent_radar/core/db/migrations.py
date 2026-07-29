@@ -103,7 +103,8 @@ def ensure_schema(engine) -> None:
         _record_version(
             engine,
             11,
-            "add candidates.academic_report JSON for import-time publication verification",
+            "add candidates.academic_report JSON + academic_check_status + "
+            "academic_check_at for decoupled async paper verification",
         )
     _ensure_indexes(engine)
 
@@ -312,6 +313,13 @@ def _migrate_academic_report_column(engine) -> None:
     candidate_columns = {column["name"] for column in inspector.get_columns("candidates")}
     if "academic_report" not in candidate_columns:
         _add_columns(engine, "candidates", ["academic_report JSON"])
+    additions = []
+    if "academic_check_status" not in candidate_columns:
+        additions.append("academic_check_status VARCHAR(16) DEFAULT 'none'")
+    if "academic_check_at" not in candidate_columns:
+        additions.append("academic_check_at DATETIME")
+    if additions:
+        _add_columns(engine, "candidates", additions)
 
 
 def _json_list(value: Any) -> list:

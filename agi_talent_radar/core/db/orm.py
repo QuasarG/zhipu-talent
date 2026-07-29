@@ -90,6 +90,10 @@ class CandidateORM(Base):
     # 与 EvaluationORM.academic_report 同构，但挂在 candidate 上，
     # 导入时即可产出，不等评估。
     academic_report = Column(JSON, default=dict)
+    # 论文核验状态：none | running | done
+    # 与 academic_report 配合：done 时 verdict 数据已就绪
+    academic_check_status = Column(String(16), default="none", nullable=False)
+    academic_check_at = Column(DateTime)
     # 阶段 1 新增列（保留原 group 作为审计，迁移期允许 NULL）
     person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"), index=True)
     engagement_status = Column(String(32), default="newly_admitted", nullable=False)

@@ -136,6 +136,9 @@ def create_app() -> Flask:
                 candidate_orm, _ = get_candidate_with_latest_evaluation(session, candidate_id)
                 if not candidate_orm:
                     return jsonify({"detail": "候选人不存在"}), 404
+                # 评估前置：论文核验必须完成（未核验不得进入评估流程）
+                if getattr(candidate_orm, "academic_check_status", "none") != "done":
+                    return jsonify({"detail": "论文尚未核验完成，无法进入评估流程"}), 400
                 resume = _orm_to_resume(candidate_orm)
                 evaluation_run = start_evaluation_run(session, candidate_id)
                 evaluation_run_id = evaluation_run.id
@@ -696,9 +699,8 @@ def _stream_import_upload(
             for classification in classifications:
                 save_resume_pdf(classification.id, file_bytes)
 
-        # yield 候选人（不含 academic_report）。导入到结构化解析结束。
-        # 论文核验由前端选中候选人后按需触发（POST /verify-publications），
-        # 在论文卡片内逐条显示核验进度，不阻塞导入流程。
+        # 每份简历结构化完立刻 yield + 落库（academic_check_status=none）。
+        # 前端收到 candidate 事件就能看到结构化简历。
         for candidate_index, (classification, resume) in enumerate(zip(classifications, structured_resumes), start=1):
             yield _file_event(
                 "candidate",
@@ -710,6 +712,90 @@ def _stream_import_upload(
                 total=candidate_total,
                 candidate=_imported_candidate_payload(classification, resume, {}),
             )
+
+        # 论文核验：所有结构化已 yield，现在并发核验所有有论文的候选人。
+        # 解耦设计：核验在后台跑，每个完成发 academic_done 事件，前端逐个更新。
+        from agi_talent_radar.agents.academic.nodes import run_academic_check
+        from datetime import datetime, timezone
+
+        verify_pairs = [
+            (c, r) for c, r in zip(classifications, structured_resumes)
+            if [str(p) for p in (r.publications or []) if str(p).strip()]
+        ]
+        if verify_pairs:
+            current_stage = "academic_check"
+            yield _file_event(
+                "stage", file_id, filename, file_index, file_total,
+                stage=current_stage, status="running",
+                message=f"正在核验 {len(verify_pairs)} 位候选人的论文（AMiner）。",
+            )
+            # 先把所有候选人标记为 running
+            for classification, _ in verify_pairs:
+                try:
+                    with get_session() as session:
+                        from agi_talent_radar.core.db.orm import CandidateORM
+                        cand = session.get(CandidateORM, classification.id)
+                        if cand:
+                            cand.academic_check_status = "running"
+                            session.commit()
+                except Exception:
+                    pass
+            # 并发核验
+            def _verify_one(cid: str, cname: str, pubs: list[str], raw: str):
+                try:
+                    report = run_academic_check(name=cname, publications=pubs, raw_text=raw)
+                    with get_session() as session:
+                        from agi_talent_radar.core.db.orm import CandidateORM
+                        cand = session.get(CandidateORM, cid)
+                        if cand:
+                            cand.academic_report = report.model_dump()
+                            cand.academic_check_status = "done"
+                            cand.academic_check_at = datetime.now(timezone.utc)
+                            session.commit()
+                except Exception as exc:
+                    import warnings
+                    warnings.warn(f"论文核验失败 {cid}: {exc}")
+                    # 核验失败也标记 done（带空 report），不阻塞评估
+                    with get_session() as session:
+                        from agi_talent_radar.core.db.orm import CandidateORM
+                        cand = session.get(CandidateORM, cid)
+                        if cand:
+                            cand.academic_check_status = "done"
+                            cand.academic_check_at = datetime.now(timezone.utc)
+                            session.commit()
+
+            verify_workers = min(MAX_PARALLEL_IMPORTS, len(verify_pairs))
+            with ThreadPoolExecutor(max_workers=verify_workers, thread_name_prefix="pub-verify") as pool:
+                futures = {}
+                for classification, resume in verify_pairs:
+                    pubs = [str(p) for p in (resume.publications or []) if str(p).strip()]
+                    fut = pool.submit(_verify_one, classification.id, resume.name, pubs, resume.raw_text)
+                    futures[fut] = classification.id
+                import concurrent.futures as cf
+                for fut in cf.as_completed(futures):
+                    cid = futures[fut]
+                    yield _file_event(
+                        "academic_done", file_id, filename, file_index, file_total,
+                        candidate_id=cid,
+                    )
+            yield _file_event(
+                "stage", file_id, filename, file_index, file_total,
+                stage=current_stage, status="done",
+                message=f"已完成 {len(verify_pairs)} 位候选人的论文核验。",
+            )
+        else:
+            # 没有论文的候选人直接标记 done
+            for classification, resume in zip(classifications, structured_resumes):
+                try:
+                    with get_session() as session:
+                        from agi_talent_radar.core.db.orm import CandidateORM
+                        cand = session.get(CandidateORM, classification.id)
+                        if cand:
+                            cand.academic_check_status = "done"
+                            cand.academic_check_at = datetime.now(timezone.utc)
+                            session.commit()
+                except Exception:
+                    pass
     except Exception as exc:
         if isinstance(exc, ImportFileError):
             raise
@@ -774,6 +860,10 @@ def _orm_to_brief(row) -> dict[str, Any]:
         "admitted_at": _iso(getattr(row, "admitted_at", None)),
         # 队列用：是否已评估，决定删除/移出语义（未评估=物理删，已评估=仅移出列表）
         "evaluated": bool(getattr(row, "evaluated", False)),
+        # 论文核验状态：none | running | done
+        "academic_check_status": getattr(row, "academic_check_status", "none"),
+        # 能否进入评估：结构化完成 + 论文核验完成
+        "evaluable": bool(getattr(row, "academic_check_status", "none") == "done"),
     }
 
 

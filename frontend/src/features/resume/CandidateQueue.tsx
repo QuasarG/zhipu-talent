@@ -110,9 +110,15 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center justify-between gap-2">
                     <span className="text-title truncate">{c.name || c.id}</span>
-                    <StatusChip tone={done ? "success" : "warning"} className="shrink-0">
-                      {done ? "已完成" : "待评估"}
-                    </StatusChip>
+                    {done ? (
+                      <StatusChip tone="success" className="shrink-0">已完成</StatusChip>
+                    ) : c.academic_check_status === "running" ? (
+                      <StatusChip tone="primary" className="shrink-0" icon="progress_activity">核验中</StatusChip>
+                    ) : c.academic_check_status === "done" ? (
+                      <StatusChip tone="info" className="shrink-0">可评估</StatusChip>
+                    ) : (
+                      <StatusChip tone="warning" className="shrink-0">待评估</StatusChip>
+                    )}
                   </span>
                   <span className="block text-body-sm text-on-surface-variant truncate">
                     {c.role || c.stage || "—"}

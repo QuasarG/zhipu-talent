@@ -11,6 +11,8 @@ export interface CandidateBrief {
   engagement_status: string;
   admitted_at: string | null;
   evaluated?: boolean;
+  academic_check_status?: "none" | "running" | "done";
+  evaluable?: boolean;
 }
 
 export interface CandidateDetail extends CandidateBrief {
