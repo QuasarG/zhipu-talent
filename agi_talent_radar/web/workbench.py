@@ -602,7 +602,8 @@ def _imported_candidate_payload(classification, resume: CandidateResume) -> dict
         "stage": resume.stage,
         "group": "pending",
         "category": classification.category,
-        "level": classification.level,
+        # ImportClassification 无 level 字段；初筛阶段尚未定级，返回空串
+        "level": getattr(classification, "level", ""),
         "confidence": classification.confidence,
         "reason": classification.reason,
         "education": resume.education,
