@@ -800,9 +800,20 @@ def _orm_to_brief(row) -> dict[str, Any]:
         "evaluated": bool(getattr(row, "evaluated", False)),
         # 论文核验状态：none | running | done
         "academic_check_status": getattr(row, "academic_check_status", "none"),
-        # 能否进入评估：结构化完成 + 论文核验完成
-        "evaluable": bool(getattr(row, "academic_check_status", "none") == "done"),
+        # 能否进入评估：核验完成 AND 没有待核验论文（unverifiable/mismatch）
+        "evaluable": _is_evaluable(row),
     }
+
+
+def _is_evaluable(row) -> bool:
+    """核验完成且没有待核验论文才可评估。"""
+    if getattr(row, "academic_check_status", "none") != "done":
+        return False
+    report = _load_json(getattr(row, "academic_report", "")) or {}
+    for a in report.get("alignments", []):
+        if a.get("verdict") in ("unverifiable", "mismatch"):
+            return False
+    return True
 
 
 def _iso(value) -> str | None:
@@ -831,8 +842,11 @@ def _orm_to_detail(row) -> dict[str, Any]:
         "screening_tags": _load_json(row.screening_tags),
         "source_format": _string_attr(row, "source_format", "text"),
         "document_analysis": _load_json(getattr(row, "document_analysis", "")) or {},
-        # 导入阶段论文核验结果（OpenAlex）
+        # 导入阶段论文核验结果
         "academic_report": _load_json(getattr(row, "academic_report", "")) or {},
+        # 论文核验状态 + 可评估标记
+        "academic_check_status": getattr(row, "academic_check_status", "none"),
+        "evaluable": _is_evaluable(row),
         # 阶段 1 新字段：HR 跟进状态 + 来源 + 入库时间
         "person_id": getattr(row, "person_id", None),
         "engagement_status": getattr(row, "engagement_status", "newly_admitted"),

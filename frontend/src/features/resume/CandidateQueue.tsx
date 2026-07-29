@@ -6,6 +6,7 @@ import SearchField from "@/components/ui/SearchField";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
+import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { cn } from "@/lib/cn";
 
 interface Props {
@@ -113,7 +114,12 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                     {done ? (
                       <StatusChip tone="success" className="shrink-0">已完成</StatusChip>
                     ) : c.academic_check_status === "running" ? (
-                      <StatusChip tone="primary" className="shrink-0" icon="progress_activity">核验中</StatusChip>
+                      <span className="inline-flex items-center gap-1 text-label text-primary shrink-0">
+                        <LoadingIndicator size={14} color="text-primary" />
+                        核验中
+                      </span>
+                    ) : c.evaluable === false && c.academic_check_status === "done" ? (
+                      <StatusChip tone="warning" className="shrink-0" icon="help">待核验</StatusChip>
                     ) : c.academic_check_status === "done" ? (
                       <StatusChip tone="info" className="shrink-0">可评估</StatusChip>
                     ) : (
