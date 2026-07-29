@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.connectors import ConnectorUnavailableError, Fact, search_works
+from agi_talent_radar.core.connectors.aminer_rest import search_aminer_papers_by_title
 
 from agi_talent_radar.agents.academic.models import AcademicReport, ClaimAlignment, PaperClaim
 from agi_talent_radar.core.models import NormalizedResume
@@ -78,11 +79,30 @@ def extract_claims(publications: list[str], raw_text: str = "") -> list[PaperCla
     return [claim for claim in claims if claim.title.strip()]
 
 
+def search_papers(title: str, count: int = 5) -> list[Fact]:
+    """统一论文搜索：优先 AMiner REST（内部、便宜），失败兜底 OpenAlex。
+
+    AMiner 失败（缺 key / key 无效 / 网络）时不抛异常，静默降级到 OpenAlex，
+    保证核验流程不被连接器问题阻断。
+    """
+    try:
+        facts = search_aminer_papers_by_title(title, size=count)
+        if facts:
+            return facts
+    except ConnectorUnavailableError:
+        pass  # 静默降级
+    # 兜底：OpenAlex
+    return search_works(title, count=count)
+
+
 def lookup_claim(
     claim: PaperClaim,
-    search_fn: Callable[..., list[Fact]] = search_works,
+    search_fn: Callable[..., list[Fact]] = search_papers,
 ) -> tuple[list[dict], str | None]:
-    """返回 (OpenAlex 候选论文 payload 列表, warning)，按标题相似度排序。"""
+    """返回 (候选论文 payload 列表, warning)，按标题相似度排序。
+
+    search_fn 默认走 search_papers（aminer 优先，openalex 兜底）。
+    """
     try:
         facts = search_fn(claim.title, count=5)
     except ConnectorUnavailableError as exc:
