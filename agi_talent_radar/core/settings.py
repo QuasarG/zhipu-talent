@@ -22,7 +22,6 @@ from typing import Any
 SENSITIVE_KEYS = frozenset({
     "DEEPSEEK_API_KEY",
     "Z_AI_API_KEY",
-    "AMINER_AUTH_TOKEN",
     "AMINER_API_TOKEN",
     "QDRANT_API_KEY",
     "DB_PASSWORD",
@@ -30,22 +29,14 @@ SENSITIVE_KEYS = frozenset({
     "FLASK_SESSION_SECRET",
 })
 
-# 非敏感字段：GET 时返回原值。
+# 设置页可见的非敏感配置：只有 API Key 和模型参数，不含内部基础设施配置。
 NON_SENSITIVE_KEYS = frozenset({
     "OPENAI_MODEL",
     "OPENAI_BASE_URL",
     "OPENAI_TIMEOUT_SECONDS",
     "Z_AI_MODE",
-    "AMINER_MCP_URL",
     "OPENALEX_MAILTO",
-    "DB_USER",
-    "DB_HOST",
-    "DB_PORT",
-    "DB_NAME",
-    "QDRANT_URL",
-    "QDRANT_COLLECTION",
     "EMBEDDING_MODEL",
-    "EMBEDDING_DIM",
 })
 
 
