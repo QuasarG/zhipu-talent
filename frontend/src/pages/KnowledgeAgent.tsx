@@ -161,21 +161,14 @@ export default function KnowledgeAgent() {
         title="人才知识"
         subtitle="库内优先 · 必要时联网调查"
         center={
-          <button
-            type="button"
-            className="state-layer inline-flex items-center gap-2 h-10 px-4 rounded-full bg-surface-high text-on-surface text-body-sm font-medium cursor-pointer"
-          >
-            <Icon name="person" size={18} className="text-on-surface-variant" />
-            当前人物：许闻舟 · 北京大学
-            <Icon name="expand_more" size={18} className="text-on-surface-variant" />
-          </button>
+          <span className="inline-flex items-center gap-2 h-10 px-4 rounded-full bg-surface-high text-on-surface-variant text-body-sm">
+            <Icon name="person" size={18} />
+            未选择人物
+            <Icon name="expand_more" size={18} />
+          </span>
         }
         right={
           <>
-            <div className="hidden xl:flex items-center gap-2">
-              <StatusChip tone="neutral" size="md" icon="lock">业务操作只读</StatusChip>
-              <StatusChip tone="primary" size="md" icon="task_alt">任务：部分完成</StatusChip>
-            </div>
             <Button variant="tonal" icon="add" onClick={resetConversation}>新建对话</Button>
           </>
         }
@@ -189,50 +182,18 @@ export default function KnowledgeAgent() {
             <Button variant="filled" icon="add" className="w-full" onClick={resetConversation}>新建调查</Button>
             <div>
               <p className="text-label text-on-surface-variant px-2 py-1">最近会话</p>
-              <button
-                type="button"
-                className="state-layer w-full text-left px-3 py-2.5 rounded-md bg-secondary-container text-on-secondary-container cursor-pointer"
-              >
-                <div className="text-body font-medium truncate">新对话</div>
-                <div className="text-body-sm opacity-80">刚刚</div>
-              </button>
+              <div className="text-center py-6 text-body-sm text-on-surface-variant">还没有会话</div>
             </div>
           </Card>
 
           <div className="shrink-0">
             <p className="text-label text-on-surface-variant px-2 pb-1">人物上下文</p>
             <Card variant="outlined" className="p-4">
-              <h2 className="text-title-lg">许闻舟</h2>
-              <p className="text-body-sm text-on-surface-variant">北京大学</p>
-              <p className="text-body-sm text-on-surface-variant">机器学习</p>
-              <div className="mt-3 space-y-1.5">
-                <p className="flex items-center gap-1.5 text-body-sm text-success">
-                  <Icon name="check_circle" size={16} fill />人物主档已存在
-                </p>
-                <p className="flex items-center gap-1.5 text-body-sm text-warning">
-                  <Icon name="pending" size={16} />尚未加入人才库
-                </p>
+              <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
+                <Icon name="person_search" size={32} className="text-on-surface-variant" />
+                <p className="text-body text-on-surface">未选择人物</p>
+                <p className="text-body-sm text-on-surface-variant">提问或选择一个人物后，上下文将显示在此</p>
               </div>
-              <dl className="mt-3 pt-3 border-t border-outline-variant space-y-2">
-                {[
-                  ["别名", "许闻舟"],
-                  ["所属机构", "北京大学"],
-                  ["研究方向", "机器学习 · 模型对齐"],
-                  ["首次出现", "2024-06-18（人才库）"],
-                  ["相关记录", "23 条（库内）"],
-                ].map(([k, v]) => (
-                  <div key={k} className="flex items-baseline justify-between gap-3">
-                    <dt className="text-body-sm text-on-surface-variant shrink-0">{k}</dt>
-                    <dd className="text-body-sm text-on-surface text-right">{v}</dd>
-                  </div>
-                ))}
-              </dl>
-              <button
-                type="button"
-                className="state-layer mt-3 inline-flex items-center gap-1 text-label text-primary cursor-pointer rounded-xs"
-              >
-                查看人物主档<Icon name="arrow_forward" size={14} />
-              </button>
             </Card>
           </div>
         </div>
