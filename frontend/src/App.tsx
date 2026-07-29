@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { api } from "./lib/api";
 import NavRail from "./components/layout/NavRail";
+import LoadingIndicator from "./components/ui/LoadingIndicator";
 import Login from "./pages/Login";
 import ResumeEvaluate from "./pages/ResumeEvaluate";
 import KnowledgeAgent from "./pages/KnowledgeAgent";
@@ -19,7 +20,7 @@ function App() {
   if (authed === null) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-body text-on-surface-variant">加载中…</p>
+        <LoadingIndicator size={32} label="加载中…" />
       </div>
     );
   }

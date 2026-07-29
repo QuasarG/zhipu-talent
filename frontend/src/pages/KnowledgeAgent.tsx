@@ -5,6 +5,7 @@ import PageToolbar from "@/components/layout/PageToolbar";
 import Icon from "@/components/ui/Icon";
 import Button, { IconButton } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { StatusChip } from "@/components/ui/Chip";
 import Tabs from "@/components/ui/Tabs";
 import SearchField from "@/components/ui/SearchField";
@@ -145,7 +146,7 @@ export default function KnowledgeAgent() {
   const traceStatusIcon = (status: TraceNode["status"]) =>
     status === "ok" ? <Icon name="check_circle" size={18} fill className="text-success" /> :
     status === "warning" ? <Icon name="warning" size={18} fill className="text-warning" /> :
-    <Icon name="progress_activity" size={18} className="text-primary" />;
+    <LoadingIndicator size={18} color="text-primary" />;
 
   const traceStatusLabel = (status: TraceNode["status"]) =>
     status === "ok" ? <span className="text-label text-success">完成</span> :

@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
+import LoadingIndicator from "@/components/ui/LoadingIndicator";
 
 interface LoginProps {
   onLogin: () => void;
@@ -48,7 +49,11 @@ export default function Login({ onLogin }: LoginProps) {
             />
           </label>
           <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "登录中…" : "登录"}
+            {loading ? (
+              <LoadingIndicator size={18} color="text-on-primary" label="登录中…" />
+            ) : (
+              "登录"
+            )}
           </Button>
         </form>
         {error && <p className="mt-4 text-body-sm text-error min-h-[1.2em]">{error}</p>}

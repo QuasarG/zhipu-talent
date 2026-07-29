@@ -7,6 +7,7 @@ import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
+import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import CandidateQueue from "@/features/resume/CandidateQueue";
 import ResumeContent from "@/features/resume/ResumeContent";
 import ScoreOverview from "@/features/resume/ScoreOverview";
@@ -104,14 +105,19 @@ export default function ResumeEvaluate() {
             ) : (
               <StatusChip tone="neutral" size="md">空闲</StatusChip>
             )}
-            <IconButton
-              icon="refresh"
-              variant="tonal"
-              onClick={handleEvaluate}
-              disabled={!selectedId || evaluating}
-              title="重新评估"
-              className={evaluating ? "[&_.md-icon]:animate-spin" : ""}
-            />
+            {evaluating ? (
+              <span className="inline-flex items-center justify-center w-10 h-10" title="评估中">
+                <LoadingIndicator size={20} color="text-primary" />
+              </span>
+            ) : (
+              <IconButton
+                icon="refresh"
+                variant="tonal"
+                onClick={handleEvaluate}
+                disabled={!selectedId}
+                title="重新评估"
+              />
+            )}
           </>
         }
       />
@@ -129,7 +135,9 @@ export default function ResumeEvaluate() {
         {/* 中栏：简历内容（容器不滚，内部模块卡各自滚动） */}
         <Card variant="filled" className="min-h-0 overflow-hidden p-5">
           {loading ? (
-            <div className="flex items-center justify-center h-full text-body text-on-surface-variant">加载中…</div>
+            <div className="flex items-center justify-center h-full">
+              <LoadingIndicator size={32} label="加载中…" />
+            </div>
           ) : selected ? (
             <ResumeContent detail={selected} />
           ) : (

@@ -7,6 +7,7 @@ import Card from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
+import LoadingIndicator from "@/components/ui/LoadingIndicator";
 
 interface ReviewItem {
   person: PersonBrief;
@@ -121,8 +122,8 @@ export default function ReviewCenter() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-24 text-body-sm text-on-surface-variant">
-          加载中…
+        <div className="flex items-center justify-center py-24">
+          <LoadingIndicator size={32} label="加载中…" />
         </div>
       ) : visible.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-24">

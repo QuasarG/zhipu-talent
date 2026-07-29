@@ -4,6 +4,7 @@ import type { CandidateDetail } from "@/lib/types";
 import Tabs from "@/components/ui/Tabs";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
+import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { StatusChip } from "@/components/ui/Chip";
 
 interface Props {
@@ -86,9 +87,8 @@ function PdfPreview({ candidateId, fallbackText }: { candidateId: string; fallba
 
   if (pdfOk === null) {
     return (
-      <div className="flex items-center justify-center h-full text-body-sm text-on-surface-variant">
-        <Icon name="progress_activity" size={20} className="mr-2 animate-spin" />
-        正在加载 PDF…
+      <div className="flex items-center justify-center h-full">
+        <LoadingIndicator size={28} label="正在加载 PDF…" />
       </div>
     );
   }

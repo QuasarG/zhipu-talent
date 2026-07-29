@@ -191,7 +191,21 @@ body {
 :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  /* Loading indicator 在 reduced-motion 下保留极慢旋转，保证「加载中」语义可见 */
+  .md3-loading-spinner { animation: md3-loading-rotate 3000ms linear infinite !important; }
+  .md3-loading-arc { animation: none !important; }
 }
+
+/* ---- MD3 Loading Indicator（双段动效：匀速旋转 + emphasized 脉冲缩放） ---- */
+@keyframes md3-loading-rotate {
+  to { transform: rotate(360deg); }
+}
+@keyframes md3-loading-pulse {
+  0%   { stroke-dashoffset: 0; opacity: 1; }
+  50%  { stroke-dashoffset: var(--md3-loading-shrink, 0); opacity: 0.6; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+.md3-loading-spinner { transform-origin: center; }
 
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
