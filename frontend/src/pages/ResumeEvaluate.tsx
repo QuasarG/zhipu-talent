@@ -108,12 +108,14 @@ export default function ResumeEvaluate() {
           <>
             {evaluating ? (
               <StatusChip tone="warning" size="md" icon="pending">评估中</StatusChip>
-            ) : selected?.academic_check_status === "running" ? (
+            ) : selected?.verification_result === "running" ? (
               <StatusChip tone="primary" size="md">论文核验中</StatusChip>
-            ) : selected?.evaluable === false && selected?.academic_check_status === "done" ? (
-              <StatusChip tone="warning" size="md" icon="help">有待核验论文</StatusChip>
-            ) : selected?.evaluable ? (
-              <StatusChip tone="success" size="md" icon="check_circle">可评估</StatusChip>
+            ) : selected?.verification_result === "verified" ? (
+              <StatusChip tone="success" size="md" icon="check_circle">核验通过</StatusChip>
+            ) : selected?.verification_result === "rejected" ? (
+              <StatusChip tone="error" size="md" icon="gpp_maybe">核验不通过</StatusChip>
+            ) : selected?.verification_result === "needs_review" ? (
+              <StatusChip tone="warning" size="md" icon="help">待人工核验</StatusChip>
             ) : selected ? (
               <StatusChip tone="warning" size="md">待核验</StatusChip>
             ) : (
@@ -129,7 +131,7 @@ export default function ResumeEvaluate() {
                 variant="tonal"
                 onClick={handleEvaluate}
                 disabled={!selectedId || !selected?.evaluable}
-                title={selected?.evaluable ? "开始评估" : "有待核验论文或核验未完成"}
+                title={selected?.evaluable ? "开始评估" : "核验未完成或有待核验论文"}
               />
             )}
           </>

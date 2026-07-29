@@ -12,6 +12,7 @@ export interface CandidateBrief {
   admitted_at: string | null;
   evaluated?: boolean;
   academic_check_status?: "none" | "running" | "done";
+  verification_result?: "none" | "running" | "verified" | "rejected" | "needs_review";
   evaluable?: boolean;
 }
 

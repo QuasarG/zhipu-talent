@@ -113,17 +113,19 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                     <span className="text-title truncate">{c.name || c.id}</span>
                     {done ? (
                       <StatusChip tone="success" className="shrink-0">已完成</StatusChip>
-                    ) : c.academic_check_status === "running" ? (
+                    ) : c.verification_result === "running" ? (
                       <span className="inline-flex items-center gap-1 text-label text-primary shrink-0">
                         <LoadingIndicator size={14} color="text-primary" />
                         核验中
                       </span>
-                    ) : c.evaluable === false && c.academic_check_status === "done" ? (
-                      <StatusChip tone="warning" className="shrink-0" icon="help">待核验</StatusChip>
-                    ) : c.academic_check_status === "done" ? (
-                      <StatusChip tone="info" className="shrink-0">可评估</StatusChip>
+                    ) : c.verification_result === "verified" ? (
+                      <StatusChip tone="success" className="shrink-0" icon="check_circle">核验通过</StatusChip>
+                    ) : c.verification_result === "rejected" ? (
+                      <StatusChip tone="error" className="shrink-0" icon="gpp_maybe">核验不通过</StatusChip>
+                    ) : c.verification_result === "needs_review" ? (
+                      <StatusChip tone="warning" className="shrink-0" icon="help">待人工核验</StatusChip>
                     ) : (
-                      <StatusChip tone="warning" className="shrink-0">待评估</StatusChip>
+                      <StatusChip tone="warning" className="shrink-0">待核验</StatusChip>
                     )}
                   </span>
                   <span className="block text-body-sm text-on-surface-variant truncate">

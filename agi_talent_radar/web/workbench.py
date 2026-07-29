@@ -136,9 +136,10 @@ def create_app() -> Flask:
                 candidate_orm, _ = get_candidate_with_latest_evaluation(session, candidate_id)
                 if not candidate_orm:
                     return jsonify({"detail": "候选人不存在"}), 404
-                # 评估前置：论文核验必须完成（未核验不得进入评估流程）
-                if getattr(candidate_orm, "academic_check_status", "none") != "done":
-                    return jsonify({"detail": "论文尚未核验完成，无法进入评估流程"}), 400
+                # 评估前置：核验必须完成且不是 needs_review（有待核验论文需人工先确认）
+                vresult = _verification_result(candidate_orm)
+                if vresult not in ("verified", "rejected"):
+                    return jsonify({"detail": "论文尚未核验完成或有待核验论文，无法进入评估流程"}), 400
                 resume = _orm_to_resume(candidate_orm)
                 evaluation_run = start_evaluation_run(session, candidate_id)
                 evaluation_run_id = evaluation_run.id
@@ -800,20 +801,38 @@ def _orm_to_brief(row) -> dict[str, Any]:
         "evaluated": bool(getattr(row, "evaluated", False)),
         # 论文核验状态：none | running | done
         "academic_check_status": getattr(row, "academic_check_status", "none"),
-        # 能否进入评估：核验完成 AND 没有待核验论文（unverifiable/mismatch）
+        # 核验结果：none | running | verified | rejected | needs_review
+        "verification_result": _verification_result(row),
+        # 能否进入评估：只有核验通过才可
         "evaluable": _is_evaluable(row),
     }
 
 
-def _is_evaluable(row) -> bool:
-    """核验完成且没有待核验论文才可评估。"""
-    if getattr(row, "academic_check_status", "none") != "done":
-        return False
+def _verification_result(row) -> str:
+    """根据 academic_check_status + alignments 计算最终核验状态。
+    none / running / verified / rejected / needs_review
+    """
+    status = getattr(row, "academic_check_status", "none")
+    if status == "none":
+        return "none"
+    if status == "running":
+        return "running"
+    # done：根据 verdict 判断
     report = _load_json(getattr(row, "academic_report", "")) or {}
-    for a in report.get("alignments", []):
-        if a.get("verdict") in ("unverifiable", "mismatch"):
-            return False
-    return True
+    aligns = report.get("alignments", [])
+    if not aligns:
+        return "verified"  # 没论文直接通过
+    verdicts = [a.get("verdict", "unverifiable") for a in aligns]
+    if any(v == "mismatch" for v in verdicts):
+        return "rejected"
+    if any(v == "unverifiable" for v in verdicts):
+        return "needs_review"
+    return "verified"
+
+
+def _is_evaluable(row) -> bool:
+    """核验通过或有 mismatch 可评估；needs_review 需人工确认后才可。"""
+    return _verification_result(row) in ("verified", "rejected")
 
 
 def _iso(value) -> str | None:
@@ -844,8 +863,9 @@ def _orm_to_detail(row) -> dict[str, Any]:
         "document_analysis": _load_json(getattr(row, "document_analysis", "")) or {},
         # 导入阶段论文核验结果
         "academic_report": _load_json(getattr(row, "academic_report", "")) or {},
-        # 论文核验状态 + 可评估标记
+        # 论文核验状态 + 结果 + 可评估标记
         "academic_check_status": getattr(row, "academic_check_status", "none"),
+        "verification_result": _verification_result(row),
         "evaluable": _is_evaluable(row),
         # 阶段 1 新字段：HR 跟进状态 + 来源 + 入库时间
         "person_id": getattr(row, "person_id", None),
