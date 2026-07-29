@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
+import Tabs from "@/components/ui/Tabs";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 
@@ -14,7 +15,23 @@ interface ReviewItem {
   report: ReputationReport;
 }
 
+interface PendingPublication {
+  candidate_id: string;
+  candidate_name: string;
+  title: string;
+  claimed_venue?: string;
+  claimed_year?: string;
+  claimed_role?: string;
+  claimed_status?: string;
+  verdict: "unverifiable" | "mismatch";
+  note?: string;
+  discrepancies?: string[];
+  matched_title?: string;
+  source_url?: string;
+}
+
 type Filter = "all" | "pending" | "done";
+type Tab = "reputation" | "publications";
 
 const levelMeta: Record<string, { tone: "error" | "warning" | "success"; label: string }> = {
   red: { tone: "error", label: "红色预警" },
@@ -37,8 +54,10 @@ function formatTime(iso: string | null): string {
 
 export default function ReviewCenter() {
   const [items, setItems] = useState<ReviewItem[]>([]);
+  const [pubs, setPubs] = useState<PendingPublication[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
+  const [tab, setTab] = useState<Tab>("reputation");
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState<number | null>(null);
 
@@ -46,7 +65,11 @@ export default function ReviewCenter() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const persons = await api.persons.list();
+      const [persons, pendingPubs] = await Promise.all([
+        api.persons.list(),
+        api.candidates.pendingPublications().catch(() => []),
+      ]);
+      setPubs(pendingPubs as PendingPublication[]);
       const results = await Promise.allSettled(persons.map((p) => api.persons.reputation(p.id)));
       const merged: ReviewItem[] = [];
       results.forEach((res, i) => {
@@ -97,7 +120,7 @@ export default function ReviewCenter() {
     <div>
       <PageToolbar
         title="待核验"
-        subtitle="外部事实与舆情报告核验"
+        subtitle="论文核验与舆情报告"
         right={
           <Button variant="tonal" icon="refresh" onClick={load} disabled={loading}>
             刷新
@@ -105,6 +128,20 @@ export default function ReviewCenter() {
         }
       />
 
+      <Tabs
+        className="mb-4"
+        items={[
+          { value: "publications" as const, label: "论文核验", ...(pubs.length > 0 ? { badge: pubs.length } : {}) },
+          { value: "reputation" as const, label: "舆情核验", ...(counts.pending > 0 ? { badge: counts.pending } : {}) },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+
+      {tab === "publications" ? (
+        <PendingPubsList pubs={pubs} loading={loading} />
+      ) : (
+        <>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <StatusChip tone="warning" icon="pending">待核验 {counts.pending}</StatusChip>
         <StatusChip tone="success" icon="check_circle">已通过 {counts.confirmed}</StatusChip>
@@ -212,6 +249,62 @@ export default function ReviewCenter() {
           })}
         </div>
       )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---- 论文核验列表 ---- */
+function PendingPubsList({ pubs, loading }: { pubs: PendingPublication[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <LoadingIndicator size={32} label="加载中…" />
+      </div>
+    );
+  }
+  if (pubs.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-24">
+        <Icon name="verified" size={64} className="text-primary" />
+        <p className="text-title">没有待核验的论文</p>
+        <p className="text-body-sm text-on-surface-variant">导入简历后，查不到或存疑的论文会出现在这里</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      {pubs.map((pub, i) => (
+        <Card key={i} variant="filled" className="p-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-title">{pub.candidate_name}</span>
+            <StatusChip tone={pub.verdict === "mismatch" ? "error" : "warning"}>
+              {pub.verdict === "mismatch" ? "存疑" : "待核验"}
+            </StatusChip>
+            <span className="text-body-sm text-on-surface-variant ml-auto">
+              {[pub.claimed_venue, pub.claimed_year].filter(Boolean).join(" · ") || "—"}
+            </span>
+          </div>
+          <p className="mt-2 text-body text-on-surface">{pub.title}</p>
+          {pub.matched_title && (
+            <p className="mt-1 text-body-sm text-on-surface-variant">匹配：{pub.matched_title}</p>
+          )}
+          {pub.note && (
+            <p className="mt-1 text-body-sm text-on-surface-variant">{pub.note}</p>
+          )}
+          {pub.discrepancies && pub.discrepancies.length > 0 && (
+            <ul className="mt-1 ml-4 list-disc text-body-sm text-error">
+              {pub.discrepancies.map((d, j) => <li key={j}>{d}</li>)}
+            </ul>
+          )}
+          {pub.source_url && (
+            <a href={pub.source_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-label text-primary hover:underline">
+              {pub.source_url.includes("aminer") ? "AMiner" : "OpenAlex"} ↗
+            </a>
+          )}
+        </Card>
+      ))}
     </div>
   );
 }

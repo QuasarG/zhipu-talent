@@ -213,6 +213,45 @@ def create_app() -> Flask:
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
+    @app.get("/api/candidates/pending-publications")
+    def list_pending_publications():
+        """待核验论文：从所有候选人的 academic_report 中提取 verdict
+        为 unverifiable / mismatch 的论文，作为待核验项返回。"""
+        try:
+            from agi_talent_radar.core.db.runtime import get_session
+            from agi_talent_radar.core.db.orm import CandidateORM
+            from sqlalchemy import select
+
+            with get_session() as session:
+                rows = session.execute(
+                    select(CandidateORM).where(CandidateORM.group != "dismissed")
+                ).scalars().all()
+                pending = []
+                for c in rows:
+                    report = _load_json(getattr(c, "academic_report", "")) or {}
+                    for a in report.get("alignments", []):
+                        verdict = a.get("verdict", "")
+                        if verdict not in ("unverifiable", "mismatch"):
+                            continue
+                        claim = a.get("claim", {})
+                        pending.append({
+                            "candidate_id": c.id,
+                            "candidate_name": c.name or c.id,
+                            "title": claim.get("title", ""),
+                            "claimed_venue": claim.get("venue", ""),
+                            "claimed_year": claim.get("year", ""),
+                            "claimed_role": claim.get("claimed_role", ""),
+                            "claimed_status": claim.get("claimed_status", ""),
+                            "verdict": verdict,
+                            "note": a.get("note", ""),
+                            "discrepancies": a.get("discrepancies", []),
+                            "matched_title": a.get("matched_title", ""),
+                            "source_url": a.get("openalex_url", ""),
+                        })
+                return jsonify(pending)
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
     @app.get("/api/candidates/<candidate_id>/pdf")
     def get_candidate_pdf(candidate_id: str):
         """流式返回候选人原始简历 PDF（导入时落盘）。
@@ -652,7 +691,7 @@ def _stream_import_upload(
             file_total,
             stage=current_stage,
             status="running",
-            message=f"正在核验 {candidate_total} 位候选人的论文（OpenAlex）。",
+            message=f"正在核验 {candidate_total} 位候选人的论文（AMiner）。",
         )
         for classification, resume in zip(classifications, structured_resumes):
             pubs = [str(p) for p in (resume.publications or []) if str(p).strip()]

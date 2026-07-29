@@ -50,7 +50,7 @@ ALIGNMENT_PROMPT = """
 - discrepancies: 事实冲突点列表，如 ["声称一作，OpenAlex 作者列表无此人", "声称已发表实为 2026 年预印本"]
 - cited_by_count: 匹配论文的被引数，无匹配给 0
 - is_retracted: 匹配论文是否已撤稿
-- openalex_url: 匹配论文的 OpenAlex 链接
+- source_url: 匹配论文的外部链接（AMiner 或 OpenAlex），无匹配则空串
 - note: 50 字内说明
 
 判定规则：
@@ -107,7 +107,7 @@ def lookup_claim(
         facts = search_fn(claim.title, count=5)
     except ConnectorUnavailableError as exc:
         return [], str(exc)
-    candidates = [fact.payload | {"openalex_url": fact.source_url} for fact in facts]
+    candidates = [fact.payload | {"source_url": fact.source_url, "source": fact.source} for fact in facts]
     candidates.sort(key=lambda item: _title_similarity(claim.title, str(item.get("title", ""))), reverse=True)
     return candidates, None
 
@@ -155,7 +155,7 @@ def align_claims(
                 discrepancies=[str(item) for item in raw.get("discrepancies", [])],
                 cited_by_count=int(raw.get("cited_by_count", 0) or 0),
                 is_retracted=bool(raw.get("is_retracted", False)),
-                openalex_url=str(raw.get("openalex_url", "")),
+                openalex_url=str(raw.get("openalex_url") or raw.get("source_url", "")),
                 note=str(raw.get("note", "")),
             )
         )

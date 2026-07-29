@@ -253,9 +253,13 @@ function PublicationList({ detail }: { detail: CandidateDetail }) {
                 {align.cited_by_count ? (
                   <span className="text-label text-on-surface-variant">引用 {align.cited_by_count}</span>
                 ) : null}
-                {align.openalex_url && (
-                  <a href={align.openalex_url} target="_blank" rel="noopener noreferrer" className="text-label text-primary hover:underline">
-                    OpenAlex ↗
+                {(align.openalex_url || align.source_url) && (
+                  <a
+                    href={align.openalex_url || align.source_url}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-label text-primary hover:underline"
+                  >
+                    {(align.openalex_url || align.source_url || "").includes("aminer") ? "AMiner" : "OpenAlex"} ↗
                   </a>
                 )}
                 {align.note && (

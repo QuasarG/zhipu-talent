@@ -43,11 +43,18 @@ export default function ImportOverlay({ onClose }: Props) {
           prev.map((f) => {
             if (f.name !== e.file_name) return f;
             if (e.type === "stage") {
+              // stage 事件只更新进度文案，status 始终 running
+              // （validation → classification → structuring → academic_check）
+              // 文件完成状态由最外层 done 事件决定
               return {
                 ...f,
-                status: e.status === "done" ? "done" : "running",
+                status: "running",
                 stage: e.message || e.stage || "",
               };
+            }
+            if (e.type === "candidate") {
+              // 候选人已落库可选中，但文件还没跑完（academic_check 可能还在后台）
+              return { ...f, status: "running", stage: "候选人已就绪，论文核验中…" };
             }
             if (e.type === "error") {
               return { ...f, status: "error", stage: e.message || `失败于 ${e.stage}` };
@@ -56,6 +63,8 @@ export default function ImportOverlay({ onClose }: Props) {
           })
         );
       }
+      // SSE 流结束（收到顶层 done）后，所有文件标记完成
+      setFiles((prev) => prev.map((f) => (f.status === "running" ? { ...f, status: "done", stage: "完成" } : f)));
     } catch {
       setFiles((prev) => prev.map((f) => (f.status === "waiting" ? { ...f, status: "error", stage: "导入失败" } : f)));
     } finally {

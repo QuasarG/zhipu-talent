@@ -49,6 +49,7 @@ export interface ClaimAlignment {
   cited_by_count?: number;
   is_retracted?: boolean;
   openalex_url?: string;
+  source_url?: string;
   note?: string;
 }
 

@@ -31,6 +31,9 @@ export const api = {
       fetchJSON<{ id: string; group: string; dismissed: boolean }>(`/api/candidates/${id}/dismiss`, {
         method: "POST",
       }),
+    // 待核验论文列表（从 academic_report 提取 unverifiable/mismatch）
+    pendingPublications: () =>
+      fetchJSON<unknown[]>(`/api/candidates/pending-publications`),
     evaluateSSE: (id: string, signal?: AbortSignal) =>
       fetch(BASE + `/api/candidates/${id}/evaluate`, { method: "POST", signal }),
     updateEngagement: (id: string, status: string, changedBy: string, note: string) =>
