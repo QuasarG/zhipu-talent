@@ -11,6 +11,7 @@ import CandidateQueue from "@/features/resume/CandidateQueue";
 import ResumeContent from "@/features/resume/ResumeContent";
 import ScoreOverview from "@/features/resume/ScoreOverview";
 import ImportOverlay from "@/features/resume/ImportOverlay";
+import CandidateMetaDropdown from "@/features/resume/CandidateMetaDropdown";
 
 export default function ResumeEvaluate() {
   const [candidates, setCandidates] = useState<CandidateBrief[]>([]);
@@ -92,11 +93,7 @@ export default function ResumeEvaluate() {
         title="简历评估"
         subtitle="能力结构、Track 推荐与论文核验"
         center={
-          <span className="inline-flex items-center gap-2 h-9 px-4 rounded-full bg-surface-high text-on-surface-variant text-body-sm">
-            <Icon name="person" size={16} />
-            {selected ? `${selected.name} · ${selected.stage || "阶段未知"}` : "未选择候选人"}
-            <Icon name="expand_more" size={16} />
-          </span>
+          <CandidateMetaDropdown candidate={selected} busy={evaluating} />
         }
         right={
           <>
