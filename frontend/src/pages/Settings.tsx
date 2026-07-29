@@ -22,6 +22,25 @@ interface SensitiveValue {
 
 type ConfigValue = string | SensitiveValue;
 
+/** 每个 Key 对应的服务描述（名称 + 用途 + 图标） */
+const KEY_META: Record<string, { label: string; desc: string; icon: string }> = {
+  DEEPSEEK_API_KEY: {
+    label: "DeepSeek LLM",
+    desc: "简历评估、初筛分类、结构化解析、论文对齐等 Agent 工作节点",
+    icon: "neurology",
+  },
+  Z_AI_API_KEY: {
+    label: "智谱 Z.AI",
+    desc: "Web Search 联网搜索 + Embedding 向量化（人才知识库语义检索）",
+    icon: "search",
+  },
+  AMINER_API_TOKEN: {
+    label: "AMiner 学术平台",
+    desc: "论文核验（OpenAlex 兜底）+ 学者画像检索（人才知识调查）",
+    icon: "school",
+  },
+};
+
 /** 判断配置项是否为敏感（值为 {configured, masked} 对象） */
 function isSensitive(v: ConfigValue): v is SensitiveValue {
   return v !== null && typeof v === "object" && "configured" in v;
@@ -137,22 +156,47 @@ export default function Settings() {
               {configEntries.map(([key, value]) => {
                 const sensitive = isSensitive(value);
                 const isEditing = editingKey === key;
+                const meta = KEY_META[key];
+                // 从服务状态找对应的健康检查结果
+                const svcHealth = health?.services.find((s) => {
+                  if (key === "DEEPSEEK_API_KEY") return s.name === "llm";
+                  if (key === "Z_AI_API_KEY") return s.name === "web_search" || s.name === "embedding";
+                  if (key === "AMINER_API_TOKEN") return s.name === "aminer";
+                  return false;
+                });
                 return (
-                  <Card key={key} variant="outlined" className={`flex flex-col gap-1 p-4 ${isEditing ? "ring-2 ring-primary" : ""}`}>
+                  <Card key={key} variant="outlined" className={`flex flex-col gap-2 p-4 ${isEditing ? "ring-2 ring-primary" : ""}`}>
+                    {/* 服务标题行：图标 + 服务名 + 连接状态 */}
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-label text-on-surface">{key}</span>
-                      {/* 状态标记 */}
-                      {sensitive ? (
-                        <StatusChip tone={value.configured ? "success" : "warning"}>
-                          {value.configured ? "已配置" : "未配置"}
-                        </StatusChip>
-                      ) : null}
+                      <div className="flex items-center gap-2 min-w-0">
+                        {meta && <Icon name={meta.icon} size={20} className="text-primary shrink-0" />}
+                        <div className="min-w-0">
+                          <span className="text-title text-on-surface">{meta?.label || key}</span>
+                          <span className="text-label text-on-surface-variant ml-2 font-mono">{key}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* 服务连接状态 */}
+                        {svcHealth && (
+                          <span className="inline-flex items-center gap-1 text-label text-on-surface-variant">
+                            <span className={`w-2 h-2 rounded-full ${svcHealth.status === "ok" ? "bg-success" : svcHealth.status === "degraded" ? "bg-warning" : "bg-error"}`} />
+                            {svcHealth.detail}
+                          </span>
+                        )}
+                        {sensitive && (
+                          <StatusChip tone={value.configured ? "success" : "warning"}>
+                            {value.configured ? "已配置" : "未配置"}
+                          </StatusChip>
+                        )}
+                      </div>
                     </div>
+                    {/* 服务用途描述 */}
+                    {meta && <p className="text-body-sm text-on-surface-variant">{meta.desc}</p>}
                     {/* 值显示区（敏感项只显示脱敏，非敏感显示原值） */}
                     {!isEditing && (
                       <div className="flex items-center justify-between gap-2">
                         <span
-                          className={`text-body text-on-surface-variant font-mono truncate min-w-0 ${sensitive ? "select-none" : ""}`}
+                          className={`text-body-sm text-on-surface-variant font-mono truncate min-w-0 ${sensitive ? "select-none" : ""}`}
                           title={sensitive ? value.masked || undefined : value || undefined}
                         >
                           {sensitive ? value.masked || "（未配置）" : value || "—"}
