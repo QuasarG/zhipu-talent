@@ -371,6 +371,7 @@ class BatchResult(BaseModel):
 class TalentState(TypedDict, total=False):
     resume: dict[str, Any]
     normalized: dict[str, Any]
+    academic_report: dict[str, Any]
     evidence: list[dict[str, Any]]
     evidence_integrity_flags: list[str]
     evidence_repair_feedback: list[str]

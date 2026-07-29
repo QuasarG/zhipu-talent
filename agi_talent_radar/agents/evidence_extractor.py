@@ -56,7 +56,7 @@ evidence_credibility, growth_trajectory, track_specific, background_signal
 
 def run_evidence_extractor(state: dict) -> dict:
     normalized = NormalizedResume.model_validate(state["normalized"])
-    repair_feedback = state.get("evidence_repair_feedback", [])
+    repair_feedback = state.get("evidence_repair_feedback") or []
     response = llm_client.call_llm_json(
         EVIDENCE_PROMPT,
         {

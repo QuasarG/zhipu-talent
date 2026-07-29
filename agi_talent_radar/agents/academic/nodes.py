@@ -164,7 +164,7 @@ def run_resume_academic_check(state: dict) -> dict:
     normalized = NormalizedResume.model_validate(state["normalized"])
     profile = profile_for_stage(normalized.stage)
     if not profile.external_verification_expected or not normalized.publications:
-        return {"academic_report": AcademicReport().model_dump()}
+        return {**state, "academic_report": AcademicReport().model_dump()}
     try:
         report = run_academic_check(
             name=normalized.name,
@@ -173,4 +173,4 @@ def run_resume_academic_check(state: dict) -> dict:
         )
     except Exception as exc:
         report = AcademicReport(warnings=[f"论文外部核验暂不可用：{exc}"])
-    return {"academic_report": report.model_dump()}
+    return {**state, "academic_report": report.model_dump()}
