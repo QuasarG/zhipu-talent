@@ -4,11 +4,13 @@ import { cn } from "@/lib/cn";
 import Card from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Chip";
 import { IconButton } from "@/components/ui/Button";
+import Icon from "@/components/ui/Icon";
 
 interface Props {
   persons: PersonBrief[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onDelete?: (id: string) => void | Promise<void>;
 }
 
 export function classifyTrack(p: { direction?: string }): string {
@@ -44,8 +46,10 @@ function fmtTime(iso: string | null): string {
   return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function TalentList({ persons, selectedId, onSelect }: Props) {
+export default function TalentList({ persons, selectedId, onSelect, onDelete }: Props) {
   const [page, setPage] = useState(1);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   useEffect(() => setPage(1), [persons]);
 
   const pageCount = Math.max(1, Math.ceil(persons.length / PAGE_SIZE));
@@ -69,13 +73,33 @@ export default function TalentList({ persons, selectedId, onSelect }: Props) {
             const track = classifyTrack(p);
             const status = p.engagement_status || "newly_admitted";
             const active = p.id === selectedId;
+            const confirming = confirmingId === p.id;
+            const doDelete = async () => {
+              if (!onDelete) return;
+              setDeleting(true);
+              try {
+                await onDelete(p.id);
+              } finally {
+                setDeleting(false);
+                setConfirmingId(null);
+              }
+            };
             return (
-              <button
+              <div
                 key={p.id}
-                onClick={() => onSelect(p.id)}
+                role="button"
+                tabIndex={0}
+                onClick={() => !confirming && onSelect(p.id)}
+                onKeyDown={(e) => {
+                  if (!confirming && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    onSelect(p.id);
+                  }
+                }}
                 className={cn(
-                  "state-layer grid grid-cols-[minmax(0,1fr)_56px_62px_58px_36px] gap-1.5 items-center px-2 py-2 rounded-md text-left cursor-pointer transition-colors",
-                  active ? "bg-secondary-container" : "hover:bg-surface-low"
+                  "group relative grid grid-cols-[minmax(0,1fr)_56px_62px_58px_36px] gap-1.5 items-center px-2 py-2 rounded-md text-left cursor-pointer transition-colors outline-none",
+                  "focus-visible:ring-2 focus-visible:ring-primary",
+                  confirming ? "bg-error-container" : active ? "bg-secondary-container" : "hover:bg-surface-low"
                 )}
               >
                 <span className="flex items-center gap-2 min-w-0">
@@ -95,7 +119,46 @@ export default function TalentList({ persons, selectedId, onSelect }: Props) {
                   {STATUS_LABELS[status] || status}
                 </StatusChip>
                 <span className="text-label text-on-surface-variant">{fmtTime(p.updated_at)}</span>
-              </button>
+
+                {/* hover 显示的删除按钮 */}
+                {onDelete && !confirming && (
+                  <span className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setConfirmingId(p.id); }}
+                      className="state-layer inline-flex items-center justify-center w-7 h-7 rounded-full bg-surface-lowest text-on-surface-variant hover:text-error cursor-pointer shadow-sm"
+                      title="删除"
+                    >
+                      <Icon name="delete" size={16} />
+                    </button>
+                  </span>
+                )}
+
+                {/* inline 二次确认条 */}
+                {confirming && (
+                  <span className="absolute inset-0 flex items-center justify-center gap-2 bg-error-container rounded-md">
+                    <span className="text-body-sm text-on-error-container">确认删除？</span>
+                    <button
+                      type="button"
+                      disabled={deleting}
+                      onClick={(e) => { e.stopPropagation(); doDelete(); }}
+                      className="state-layer inline-flex items-center justify-center w-6 h-6 rounded-full bg-error text-on-error cursor-pointer disabled:opacity-40"
+                      title="确认删除"
+                    >
+                      <Icon name="check" size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deleting}
+                      onClick={(e) => { e.stopPropagation(); setConfirmingId(null); }}
+                      className="state-layer inline-flex items-center justify-center w-6 h-6 rounded-full text-on-error-container cursor-pointer disabled:opacity-40"
+                      title="取消"
+                    >
+                      <Icon name="close" size={16} />
+                    </button>
+                  </span>
+                )}
+              </div>
             );
           })
         )}

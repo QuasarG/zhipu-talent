@@ -59,6 +59,8 @@ export const api = {
       }),
     reputation: (id: string) =>
       fetchJSON<ReputationReport[]>(`/api/persons/${id}/reputation`),
+    delete: (id: string) =>
+      fetchJSON<{ id: string; deleted: boolean }>(`/api/persons/${id}`, { method: "DELETE" }),
   },
   reputation: {
     review: (reportId: number, action: "confirmed" | "dismissed", reviewer: string, note: string) =>

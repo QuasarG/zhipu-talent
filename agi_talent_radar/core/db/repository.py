@@ -15,6 +15,7 @@ from agi_talent_radar.core.db.orm import (
     EvaluationEvidenceORM,
     EvaluationNodeRunORM,
     EvaluationORM,
+    PersonORM,
     PublicationClaimORM,
     PublicationVerificationORM,
     TaskORM,
@@ -407,6 +408,17 @@ def delete_candidate(session, candidate_id: str) -> CandidateORM | None:
     session.delete(candidate)
     session.commit()
     return candidate
+
+
+def delete_person(session, person_id: str) -> PersonORM | None:
+    """删除人才档案。FK 约束：candidates/evaluations.person_id SET NULL，
+    external_facts/reputation_reports.person_id CASCADE 自动跟着删。"""
+    person = session.get(PersonORM, person_id)
+    if person is None:
+        return None
+    session.delete(person)
+    session.commit()
+    return person
 
 
 def get_candidate_with_latest_evaluation(session, candidate_id: str):

@@ -351,6 +351,20 @@ def create_app() -> Flask:
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
+    @app.delete("/api/persons/<person_id>")
+    def delete_person(person_id: str):
+        try:
+            from agi_talent_radar.core.db.repository import delete_person as _delete_person
+            from agi_talent_radar.core.db.runtime import get_session
+
+            with get_session() as session:
+                deleted = _delete_person(session, person_id)
+                if not deleted:
+                    return jsonify({"detail": "人员不存在"}), 404
+                return jsonify({"id": person_id, "deleted": True})
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
     @app.post("/api/reputation/<int:report_id>/review")
     def review_reputation(report_id: int):
         body = request.get_json(silent=True) or {}

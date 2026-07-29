@@ -45,6 +45,20 @@ export default function TalentPool() {
     }
   };
 
+  // 删除人才档案：调 API → 刷新列表 → 清空选中详情
+  const handleDeletePerson = useCallback(async (id: string) => {
+    try {
+      await api.persons.delete(id);
+      if (selectedId === id) {
+        setSelected(null);
+        setSelectedId(null);
+      }
+      await load();
+    } catch (err) {
+      console.error("删除人才失败", err);
+    }
+  }, [selectedId, load]);
+
   const counts = {
     all: persons.length,
     resume: persons.filter((p) => p.person_type !== "guest").length,
@@ -136,7 +150,7 @@ export default function TalentPool() {
       </div>
 
       <div className="grid grid-cols-[360px_minmax(0,1fr)_320px] gap-4 h-[calc(100vh-56px-130px)] min-h-[500px]">
-        <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
+        <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} />
         {view === "graph" ? (
           <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
         ) : (
