@@ -697,7 +697,7 @@ def _stream_import_upload(
                 save_resume_pdf(classification.id, file_bytes)
 
         # 先 yield 候选人（不含 academic_report），让前端立刻可选中查看结构化简历。
-        # 论文核验由前端选中候选人后按需触发（POST /verify-publications）。
+        # 论文核验在 yield 之后继续跑（同一 SSE 流内），跑完发 academic_done 事件。
         for candidate_index, (classification, resume) in enumerate(zip(classifications, structured_resumes), start=1):
             yield _file_event(
                 "candidate",
@@ -708,6 +708,68 @@ def _stream_import_upload(
                 index=candidate_index,
                 total=candidate_total,
                 candidate=_imported_candidate_payload(classification, resume, {}),
+            )
+
+        # 论文核验：结构化简历已经 yield 出去前端可看了，
+        # 这里继续逐个核验，核验完写 DB + 发事件让前端刷新论文卡片。
+        from agi_talent_radar.agents.academic.nodes import run_academic_check
+
+        current_stage = "academic_check"
+        pubs_total = sum(1 for r in structured_resumes if r.publications)
+        if pubs_total > 0:
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="running",
+                message=f"正在核验 {pubs_total} 位候选人的论文（AMiner）。",
+            )
+            for classification, resume in zip(classifications, structured_resumes):
+                pubs = [str(p) for p in (resume.publications or []) if str(p).strip()]
+                if not pubs:
+                    continue
+                try:
+                    report = run_academic_check(
+                        name=resume.name,
+                        publications=pubs,
+                        raw_text=resume.raw_text,
+                    )
+                    try:
+                        with get_session() as session:
+                            from agi_talent_radar.core.db.orm import CandidateORM
+
+                            cand = session.get(CandidateORM, classification.id)
+                            if cand:
+                                cand.academic_report = report.model_dump()
+                                session.commit()
+                    except Exception as exc:
+                        import warnings
+
+                        warnings.warn(f"回写论文核验结果失败 {classification.id}: {exc}")
+                    yield _file_event(
+                        "academic_done",
+                        file_id,
+                        filename,
+                        file_index,
+                        file_total,
+                        candidate_id=classification.id,
+                    )
+                except Exception as exc:
+                    import warnings
+
+                    warnings.warn(f"论文核验失败 {classification.id}: {exc}")
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="done",
+                message=f"已完成 {pubs_total} 位候选人的论文核验。",
             )
     except Exception as exc:
         if isinstance(exc, ImportFileError):
