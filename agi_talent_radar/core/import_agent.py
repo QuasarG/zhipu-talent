@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +26,8 @@ class ImportOutput(BaseModel):
 IMPORT_PROMPT = """
 你是人才库批量导入 Agent。对导入的候选人做基本信息提取和轻量分类。
 
+当前系统时间：{current_date}
+
 输出格式（必须严格遵守）：
 - 只输出 JSON Lines，每行一个候选人
 - 每行必须是一个完整、独立的 JSON 对象
@@ -35,7 +38,7 @@ IMPORT_PROMPT = """
 - id: 候选人 ID
 - name: 姓名
 - target_role: 目标岗位/方向
-- stage: 当前阶段（如博一、博二、应届博士等）
+- stage: 当前阶段。根据上面的系统时间和简历中的入学/毕业年份，换算成当前实际年级（如「博二」「研一」「博四」）。只有无法推算时才用模糊描述（如「博士在读」）。
 - category: 初步分类短标签，建议从以下选择：
   - 研究探索型
   - 工程闭环型
@@ -46,9 +49,9 @@ IMPORT_PROMPT = """
 - confidence: 分类置信度 0-1
 - reason: 一句话分类理由
 
-示例输出：
-{"id": "c1", "name": "张三", "target_role": "大模型算法研究员", "stage": "博士在读", "category": "研究探索型", "confidence": 0.9, "reason": "研究经历以方法探索为主"}
-{"id": "c2", "name": "李四", "target_role": "AI 工程师", "stage": "硕士", "category": "工程闭环型", "confidence": 0.8, "reason": "项目经历以工程交付为主"}
+示例输出（假设当前为 2025 年）：
+{{"id": "c1", "name": "张三", "target_role": "大模型算法研究员", "stage": "博二", "category": "研究探索型", "confidence": 0.9, "reason": "2023 年博士入学，当前为博二，研究经历以方法探索为主"}}
+{{"id": "c2", "name": "李四", "target_role": "AI 工程师", "stage": "硕士应届", "category": "工程闭环型", "confidence": 0.8, "reason": "2023 年硕士入学，2025 年应届毕业"}}
 
 必须覆盖输入里的每一位候选人。
 """.strip()
@@ -67,9 +70,10 @@ def run_import_agent_stream(
     保证第一个候选人出现后即可被前端展示和评估。
     """
     compact = [_compact_resume(resume) for resume in resumes]
+    current_date = datetime.now().strftime("%Y-%m-%d")
     stream = llm_client.call_llm_stream(
-        IMPORT_PROMPT,
-        {"candidates": compact},
+        IMPORT_PROMPT.format(current_date=current_date),
+        {"candidates": compact, "current_date": current_date},
         temperature=0.1,
     )
     resume_by_id = {resume.id: resume for resume in resumes}

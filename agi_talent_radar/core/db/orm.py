@@ -86,6 +86,10 @@ class CandidateORM(Base):
     screening_tags = Column(Text, default="")
     source_format = Column(String(32), default="text")
     document_analysis = Column(Text, default="")
+    # 导入阶段论文核验结果（OpenAlex）：{alignments:[...], warnings:[...]}
+    # 与 EvaluationORM.academic_report 同构，但挂在 candidate 上，
+    # 导入时即可产出，不等评估。
+    academic_report = Column(JSON, default=dict)
     # 阶段 1 新增列（保留原 group 作为审计，迁移期允许 NULL）
     person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"), index=True)
     engagement_status = Column(String(32), default="newly_admitted", nullable=False)

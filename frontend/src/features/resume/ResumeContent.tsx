@@ -206,28 +206,80 @@ function ProjectList({ detail }: { detail: CandidateDetail }) {
 }
 
 function PublicationList({ detail }: { detail: CandidateDetail }) {
-  if (!(detail.publications || []).length) return null;
+  const pubs = detail.publications || [];
+  if (!pubs.length) return null;
+  // 论文核验对齐表：以 claim.title 为 key
+  const alignments = detail.academic_report?.alignments || [];
+  const alignByTitle = new Map<string, typeof alignments[number]>();
+  for (const a of alignments) {
+    if (a.claim?.title) alignByTitle.set(a.claim.title, a);
+  }
   return (
     <div className="flex flex-col gap-3">
-      {(detail.publications || []).map((pub, i) => {
+      {pubs.map((pub, i) => {
         const item = typeof pub === "string" ? { title: pub } : pub;
+        const title = item.title || item.name || (typeof pub === "string" ? pub : "");
         const status = item.claimed_status || item.status || "";
+        // 匹配核验结果：优先精确 title，否则按包含匹配
+        const align = alignByTitle.get(title)
+          || alignments.find((a) => a.claim?.title && title.includes(a.claim.title));
         return (
           <div key={i}>
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-body flex-1">{item.title || item.name || (typeof pub === "string" ? pub : "")}</span>
-              {status && <PubBadge status={status} />}
+              <span className="font-medium text-body flex-1">{title}</span>
+              {align ? <VerdictBadge verdict={align.verdict} /> : (
+                <span className="inline-flex items-center gap-1 text-label text-on-surface-variant shrink-0">
+                  <LoadingIndicator size={14} color="text-on-surface-variant" />
+                  核验中
+                </span>
+              )}
             </div>
             {(item.venue || item.journal || item.year || item.claimed_role || item.role) && (
               <p className="text-body-sm text-on-surface-variant mt-0.5">
                 {[item.venue || item.journal, item.year, item.claimed_role || item.role].filter(Boolean).join(" · ")}
               </p>
             )}
+            {align && (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {status && <PubBadge status={status} />}
+                {align.matched_title && (
+                  <span className="text-label text-on-surface-variant truncate max-w-[200px]" title={align.matched_title}>
+                    匹配：{align.matched_title}
+                  </span>
+                )}
+                {align.cited_by_count ? (
+                  <span className="text-label text-on-surface-variant">引用 {align.cited_by_count}</span>
+                ) : null}
+                {align.openalex_url && (
+                  <a href={align.openalex_url} target="_blank" rel="noopener noreferrer" className="text-label text-primary hover:underline">
+                    OpenAlex ↗
+                  </a>
+                )}
+                {align.note && (
+                  <span className="text-label text-on-surface-variant">{align.note}</span>
+                )}
+              </div>
+            )}
+            {align?.discrepancies && align.discrepancies.length > 0 && (
+              <ul className="mt-1 ml-4 list-disc text-body-sm text-error">
+                {align.discrepancies.map((d, j) => <li key={j}>{d}</li>)}
+              </ul>
+            )}
           </div>
         );
       })}
     </div>
   );
+}
+
+function VerdictBadge({ verdict }: { verdict: "verified" | "mismatch" | "unverifiable" }) {
+  const config = {
+    verified: { tone: "success" as const, icon: "verified", label: "已验证" },
+    mismatch: { tone: "error" as const, icon: "gpp_maybe", label: "存疑" },
+    unverifiable: { tone: "warning" as const, icon: "help", label: "待核验" },
+  };
+  const c = config[verdict] || config.unverifiable;
+  return <StatusChip tone={c.tone} icon={c.icon}>{c.label}</StatusChip>;
 }
 
 function SkillsList({ detail }: { detail: CandidateDetail }) {

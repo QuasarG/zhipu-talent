@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from agi_talent_radar.core import llm_client
@@ -22,17 +24,19 @@ class ParsedResume(BaseModel):
 RESUME_PARSER_PROMPT = """
 你是简历解析 Agent。只输出 JSON 对象。
 
+当前系统时间：{current_date}
+
 任务：
 从任意格式的简历文本中提取结构化字段。文本可能是 Markdown、纯文本、JSONL 片段或 OCR 结果。
 
 输出字段：
 - name: 姓名，如果没有则留空
 - target_role: 目标岗位/求职意向
-- stage: 当前阶段（如博一、博二、应届博士、博士在读等）
+- stage: 当前阶段。根据上面的系统时间和简历中的入学/毕业年份，换算成当前实际年级（如「博二」「研一」「博四」）。只有无法推算时才用模糊描述（如「博士在读」）。
 - education: 教育背景列表，每项一条字符串
 - directions: 研究方向列表
-- experiences: 实习/工作/产业研究经历列表，每项 {"organization": "机构", "role": "岗位", "experience_type": "实习/全职/访问研究", "start_date": "", "end_date": "", "period": "", "details": ["职责/成果"]}
-- projects: 项目/科研经历列表，每项 {"name": "项目名", "details": ["细节1", "细节2"]}
+- experiences: 实习/工作/产业研究经历列表，每项 {{"organization": "机构", "role": "岗位", "experience_type": "实习/全职/访问研究", "start_date": "", "end_date": "", "period": "", "details": ["职责/成果"]}}
+- projects: 项目/科研经历列表，每项 {{"name": "项目名", "details": ["细节1", "细节2"]}}
 - publications: 代表成果/论文列表
 - skills: 技能关键词列表
 - screening_tags: 筛选用标签，如方向、岗位关键词
@@ -49,9 +53,10 @@ RESUME_PARSER_PROMPT = """
 def parse_raw_resume(resume_id: str, raw_text: str) -> CandidateResume:
     if not raw_text.strip():
         return CandidateResume(id=resume_id)
+    current_date = datetime.now().strftime("%Y-%m-%d")
     response = llm_client.call_llm_json(
-        RESUME_PARSER_PROMPT,
-        {"resume_id": resume_id, "raw_text": raw_text},
+        RESUME_PARSER_PROMPT.format(current_date=current_date),
+        {"resume_id": resume_id, "raw_text": raw_text, "current_date": current_date},
         temperature=0.1,
     )
     parsed = ParsedResume.model_validate(response)

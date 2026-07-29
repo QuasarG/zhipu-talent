@@ -27,8 +27,34 @@ export interface CandidateDetail extends CandidateBrief {
   document_analysis: Record<string, unknown>;
   person_id: string | null;
   sources: string[];
+  academic_report?: AcademicReport;
   evaluation?: Evaluation;
   latest_evaluation?: Evaluation;
+}
+
+export interface PaperClaim {
+  title: string;
+  venue?: string;
+  year?: string;
+  claimed_role?: string;
+  claimed_status?: string;
+}
+
+export interface ClaimAlignment {
+  claim: PaperClaim;
+  verdict: "verified" | "mismatch" | "unverifiable";
+  verified_status?: string;
+  matched_title?: string;
+  discrepancies?: string[];
+  cited_by_count?: number;
+  is_retracted?: boolean;
+  openalex_url?: string;
+  note?: string;
+}
+
+export interface AcademicReport {
+  alignments?: ClaimAlignment[];
+  warnings?: string[];
 }
 
 export interface EduItem {

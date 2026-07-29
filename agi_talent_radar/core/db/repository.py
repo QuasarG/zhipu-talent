@@ -30,6 +30,7 @@ def save_candidate(
     session,
     resume: CandidateResume,
     classification: ImportClassification | None = None,
+    academic_report: dict | None = None,
 ) -> CandidateORM:
     candidate = session.get(CandidateORM, resume.id)
     if candidate is None:
@@ -49,6 +50,8 @@ def save_candidate(
     candidate.screening_tags = _json_text(resume.screening_tags)
     candidate.source_format = resume.source_format
     candidate.document_analysis = _json_text(resume.document_analysis)
+    if academic_report is not None:
+        candidate.academic_report = academic_report
 
     if classification:
         candidate.import_category = classification.category

@@ -98,6 +98,13 @@ def ensure_schema(engine) -> None:
             "phase 6: versioned external facts (identity_key / dedupe_key / "
             "verification_status / supersedes chain)",
         )
+    if current_version < 11:
+        _migrate_academic_report_column(engine)
+        _record_version(
+            engine,
+            11,
+            "add candidates.academic_report JSON for import-time publication verification",
+        )
     _ensure_indexes(engine)
 
 
@@ -295,6 +302,16 @@ def _migrate_phase_six_columns(engine) -> None:
         default_clause = f" DEFAULT {default}" if default is not None else ""
         additions.append(f"{name} {column_type}{default_clause}")
     _add_columns(engine, "external_facts", additions)
+
+
+def _migrate_academic_report_column(engine) -> None:
+    """导入阶段论文核验：candidates 加 academic_report JSON 列。"""
+    inspector = inspect(engine)
+    if "candidates" not in inspector.get_table_names():
+        return
+    candidate_columns = {column["name"] for column in inspector.get_columns("candidates")}
+    if "academic_report" not in candidate_columns:
+        _add_columns(engine, "candidates", ["academic_report JSON"])
 
 
 def _json_list(value: Any) -> list:
