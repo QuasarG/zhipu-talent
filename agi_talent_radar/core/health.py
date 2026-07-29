@@ -130,11 +130,16 @@ def check_embedding() -> str:
 
 
 def check_aminer() -> str:
-    """AMiner 探测：检查 token 是否配置（MCP 同步调用不可用，仅配置检查）。"""
-    token = os.getenv("AMINER_AUTH_TOKEN", "").strip()
-    if not token:
-        return "unconfigured"
-    return "configured"
+    """AMiner REST 连接测试：用 person_search 查一个知名学者。"""
+    try:
+        from agi_talent_radar.core.connectors.aminer_rest import check_aminer_connection
+
+        result = check_aminer_connection()
+        if result == "ok":
+            return "connected"
+        return result
+    except Exception as exc:
+        return f"error: {exc}"
 
 
 def check_openalex() -> str:

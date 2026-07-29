@@ -30,18 +30,18 @@ def _default_connectors() -> dict[str, Callable[[dict[str, Any]], list[Knowledge
     """装配默认真实连接器。
 
     每个 connector 在 import / 调用失败时返回空列表，由节点记入 failed_tools。
-    AMiner 当前走 MCP（同步 search 不可用），故默认返回空。
+    AMiner 走 REST（datacenter.aminer.cn），不再用 MCP。
     """
     def wrap_aminer(identity: dict[str, Any]) -> list[KnowledgeFact]:
-        # AMiner 当前仅 MCP 接入，无同步 search 函数；让节点记入 failed_tools。
         try:
-            from agi_talent_radar.core.connectors.aminer import search_scholar_profile
+            from agi_talent_radar.core.connectors.aminer_rest import search_aminer_scholar
         except ImportError as exc:
             raise ConnectorUnavailableError(
-                f"AMiner 同步连接器暂不可用：{exc}"
+                f"AMiner REST 连接器不可用：{exc}"
             ) from exc
         name = str(identity.get("name", ""))
-        facts_raw = search_scholar_profile(name) or []
+        org = str(identity.get("org", ""))
+        facts_raw = search_aminer_scholar(name, org=org, size=5) or []
         return [_to_knowledge_fact(fact, "aminer", "profile") for fact in facts_raw]
 
     def wrap_openalex(identity: dict[str, Any]) -> list[KnowledgeFact]:

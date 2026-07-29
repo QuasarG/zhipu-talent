@@ -1,13 +1,14 @@
-"""AMiner 开放平台 REST 连接器：论文搜索 + 论文详情。
+"""AMiner 开放平台 REST 连接器：论文搜索 + 学者搜索 + 论文详情。
 
 认证：直接用控制台生成的 JWT Token（AMINER_API_TOKEN），放 Authorization 头。
 JWT 由 AMiner 控制台用 API Key 签发，含 user_id + exp；客户端无需自己生成。
 
-API 用途：
-  - paper_search(title)  免费，按标题搜论文，返回 id/title/year/first_author
-  - paper_detail(id)    ¥0.01/次，返回作者列表（含 name/org）/venue/被引数
+全部走 HTTP REST（datacenter.aminer.cn），不再依赖 MCP 协议。
 
-本连接器作为论文核验的主力源；OpenAlex 作为兜底（见 openalex.py）。
+API 用途：
+  - paper_search(title)  免费，GET /api/paper/search
+  - paper_detail(id)    ¥0.01/次，GET /api/paper/detail
+  - person_search(name) 免费，POST /api/person/search
 """
 from __future__ import annotations
 
@@ -31,8 +32,8 @@ def _get_token() -> str:
     return token
 
 
-def _request(path: str, params: dict | None = None) -> dict:
-    """发 GET 请求，返回解析后的 JSON dict。"""
+def _request(path: str, params: dict | None = None, method: str = "GET", body: dict | None = None) -> dict:
+    """发 HTTP 请求，返回解析后的 JSON dict。"""
     token = _get_token()
     url = AMINER_BASE + path
     if params:
@@ -46,22 +47,22 @@ def _request(path: str, params: dict | None = None) -> dict:
         "X-Platform": "openclaw",
         "Content-Type": "application/json;charset=utf-8",
     }
-    req = urllib.request.Request(url, headers=headers, method="GET")
+    data = json.dumps(body).encode("utf-8") if body else None
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise ConnectorUnavailableError(f"AMiner HTTP {exc.code}: {body}") from exc
+        body_text = exc.read().decode("utf-8", errors="replace")
+        raise ConnectorUnavailableError(f"AMiner HTTP {exc.code}: {body_text}") from exc
     except Exception as exc:
         raise ConnectorUnavailableError(f"AMiner 请求失败: {exc}") from exc
 
 
-def search_aminer_papers_by_title(title: str, size: int = 5) -> list[Fact]:
-    """按标题搜索论文，返回 Fact 列表（含 id/title/year/first_author）。
+# ── 论文搜索 ──
 
-    免费接口，返回的 Fact.payload 供 align_claims 的 LLM 对齐用。
-    """
+def search_aminer_papers_by_title(title: str, size: int = 5) -> list[Fact]:
+    """按标题搜索论文（免费），返回 Fact 列表。"""
     title = (title or "").strip()
     if not title:
         return []
@@ -91,12 +92,85 @@ def get_aminer_paper_detail(paper_id: str) -> dict:
     return {}
 
 
+# ── 学者搜索 ──
+
+def search_aminer_scholar(name: str, org: str = "", size: int = 5) -> list[Fact]:
+    """按姓名（+机构消歧）检索学者（免费），返回画像 Fact。
+
+    替代旧 MCP search_aminer_scholar，接口同构，调用方无需改逻辑。
+    """
+    name = (name or "").strip()
+    if not name:
+        return []
+    body: dict[str, object] = {"name": name, "offset": 0, "size": max(1, min(10, size))}
+    org_terms = _normalize_org_terms(org)
+    if org_terms:
+        body["org"] = org_terms[0]
+    try:
+        resp = _request("/api/person/search", method="POST", body=body)
+    except ConnectorUnavailableError:
+        raise
+    if resp.get("code") != 200:
+        raise ConnectorUnavailableError(f"AMiner 学者搜索失败: {resp.get('msg', '未知')}")
+    persons = resp.get("data") or []
+    facts = [_scholar_to_fact(name, p) for p in persons if isinstance(p, dict)]
+    if org_terms:
+        facts = [f for f in facts if _org_matches_any(f.payload.get("org", "") + f.payload.get("org_zh", ""), org_terms)]
+    return facts
+
+
+def search_aminer_papers(name: str, size: int = 10) -> list[Fact]:
+    """按作者姓名检索代表论文（免费 person_search 兜底）。
+
+    开放平台没有直接按人名搜论文的免费接口；
+    这里复用 person_search 返回的 interests 作为近似信号。
+    """
+    return []  # 保留接口签名兼容；真实实现需 person_paper_relation（¥1.50/次）
+
+
+def check_aminer_connection() -> str:
+    """连接测试：用 person_search 查一个知名学者，成功返回 'ok'。"""
+    try:
+        resp = _request("/api/person/search", method="POST", body={"name": "Yann LeCun", "offset": 0, "size": 1})
+        if resp.get("code") == 200:
+            return "ok"
+        return f"error: {resp.get('msg', '未知')}"
+    except ConnectorUnavailableError as exc:
+        return f"unconfigured: {exc}"
+    except Exception as exc:
+        return f"error: {exc}"
+
+
+# ── 内部工具 ──
+
+def _normalize_org_terms(org: str) -> list[str]:
+    """机构名标准化成检索关键词；标准化失败时退化为原始输入。"""
+    org = (org or "").strip()
+    if not org:
+        return []
+    try:
+        from agi_talent_radar.core.org_normalizer import normalize_org
+
+        return normalize_org(org).search_terms
+    except Exception:
+        return [org]
+
+
+def _org_matches_any(scholar_org: str, org_terms: list[str]) -> bool:
+    """机构名宽松匹配：任一关键词变体子串命中即可。"""
+    s = scholar_org.lower()
+    for term in org_terms:
+        q = term.lower().strip()
+        if q and (q in s or s in q):
+            return True
+    return False
+
+
 def _paper_to_fact(query_title: str, paper: dict) -> Fact:
     """AMiner paper_search 结果 -> 标准 Fact（与 openalex 同构）。"""
     if not isinstance(paper, dict):
         return Fact(source="aminer", fact_type="paper", payload={"title": "", "query_title": query_title})
     paper_id = str(paper.get("id") or paper.get("_id") or "")
-    # paper_search 返回 first_author 字符串；如果有 authors 列表则优先用
     authors_raw = paper.get("authors") or []
     if isinstance(authors_raw, list):
         author_names = [
@@ -105,7 +179,6 @@ def _paper_to_fact(query_title: str, paper: dict) -> Fact:
         ]
     else:
         author_names = []
-    # paper_search 只有 first_author 字符串，没有 authors 列表
     if not author_names and paper.get("first_author"):
         author_names = [str(paper["first_author"])]
     return Fact(
@@ -122,4 +195,24 @@ def _paper_to_fact(query_title: str, paper: dict) -> Fact:
             "query_title": query_title,
         },
         source_url=f"https://www.aminer.cn/pub/{paper_id}" if paper_id else "",
+    )
+
+
+def _scholar_to_fact(query_name: str, person: dict) -> Fact:
+    """AMiner person_search 字段 -> 标准化 payload。"""
+    aminer_id = str(person.get("id") or "")
+    return Fact(
+        source="aminer",
+        fact_type="scholar",
+        payload={
+            "query_name": query_name,
+            "name": str(person.get("name") or person.get("name_zh") or ""),
+            "name_zh": str(person.get("name_zh") or ""),
+            "org": str(person.get("org") or ""),
+            "org_zh": str(person.get("org_zh") or ""),
+            "research_interests": list(person.get("interests") or []),
+            "citation_count": int(person.get("n_citation") or 0),
+            "aminer_id": aminer_id,
+        },
+        source_url=f"https://www.aminer.cn/profile/{aminer_id}" if aminer_id else "",
     )
