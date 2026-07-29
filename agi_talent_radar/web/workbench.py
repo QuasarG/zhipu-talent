@@ -32,6 +32,15 @@ class ImportFileError(ValueError):
         self.stage = stage
 
 
+def _has_structure(resume: CandidateResume) -> bool:
+    """判断 resume 是否已有结构化字段（非纯 raw_text）。"""
+    return any([
+        resume.name, resume.target_role, resume.stage,
+        resume.education, resume.directions, resume.experiences,
+        resume.projects, resume.publications, resume.skills,
+    ])
+
+
 def create_app() -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config["JSON_AS_ASCII"] = False
@@ -540,16 +549,66 @@ def _stream_import_upload(
             message=f"正在对 {len(resumes)} 份简历进行初筛分类。",
         )
         resume_by_id = {resume.id: resume for resume in resumes}
-        classifications = list(run_import_agent_stream(resumes, persist=True))
+        classifications = list(run_import_agent_stream(resumes, persist=False))
         candidate_total = len(classifications)
+
+        # 结构化解析阶段：把 raw_text 拆成 name/education/experiences/projects 等，
+        # 让导入后即可在「结构化简历」面板展示，不必等手动评估。
+        from agi_talent_radar.agents.resume_parser import parse_raw_resume
+        from agi_talent_radar.core.database import get_session, save_candidate
+
+        current_stage = "structuring"
+        yield _file_event(
+            "stage",
+            file_id,
+            filename,
+            file_index,
+            file_total,
+            stage=current_stage,
+            status="running",
+            message=f"正在解析 {candidate_total} 份简历的结构化字段。",
+        )
+        structured_resumes: list[CandidateResume] = []
+        for classification in classifications:
+            resume = resume_by_id[classification.id]
+            if resume.raw_text and not _has_structure(resume):
+                parsed = parse_raw_resume(resume.id, resume.raw_text)
+                parsed = parsed.model_copy(
+                    update={
+                        "source_format": resume.source_format,
+                        "document_analysis": resume.document_analysis,
+                    }
+                )
+                structured_resumes.append(parsed)
+                resume = parsed
+            else:
+                structured_resumes.append(resume)
+            # 落库（含结构化字段 + 初筛分类）
+            try:
+                with get_session() as session:
+                    save_candidate(session, resume, classification)
+            except Exception as exc:
+                import warnings
+
+                warnings.warn(f"保存候选人 {classification.id} 失败: {exc}")
+        yield _file_event(
+            "stage",
+            file_id,
+            filename,
+            file_index,
+            file_total,
+            stage=current_stage,
+            status="done",
+            message=f"已完成 {candidate_total} 份简历的结构化解析。",
+        )
+
         # PDF 原文落盘：只有 PDF 上传才有 file_bytes 是 PDF 二进制
         if suffix == ".pdf":
             from agi_talent_radar.core.pdf_storage import save_resume_pdf
 
             for classification in classifications:
                 save_resume_pdf(classification.id, file_bytes)
-        for candidate_index, classification in enumerate(classifications, start=1):
-            resume = resume_by_id[classification.id]
+        for candidate_index, (classification, resume) in enumerate(zip(classifications, structured_resumes), start=1):
             yield _file_event(
                 "candidate",
                 file_id,
@@ -560,16 +619,6 @@ def _stream_import_upload(
                 total=candidate_total,
                 candidate=_imported_candidate_payload(classification, resume),
             )
-        yield _file_event(
-            "stage",
-            file_id,
-            filename,
-            file_index,
-            file_total,
-            stage=current_stage,
-            status="done",
-            message=f"已完成 {candidate_total} 位候选人的初筛分类。",
-        )
     except Exception as exc:
         if isinstance(exc, ImportFileError):
             raise
