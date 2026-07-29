@@ -130,7 +130,7 @@ def align_claims(
         ALIGNMENT_PROMPT.format(name=name or "未知"),
         {
             "claims": [
-                {"claim": claim.model_dump(), "openalex_candidates": candidates}
+                {"claim": claim.model_dump(), "search_candidates": candidates}
                 for claim, candidates in zip(claims, lookups)
             ]
         },
@@ -142,25 +142,48 @@ def align_claims(
             by_title[str(raw.get("claim_title", ""))] = raw
 
     alignments: list[ClaimAlignment] = []
-    for claim in claims:
+    for claim, candidates in zip(claims, lookups):
         raw = by_title.get(claim.title, {})
         verdict = str(raw.get("verdict", "unverifiable"))
         if verdict not in {"verified", "mismatch", "unverifiable"}:
             verdict = "unverifiable"
+        matched_title = str(raw.get("matched_title", ""))
+        # URL 不信任 LLM 返回——直接从 candidates 里按 matched_title 找真实 source_url
+        source_url = _find_source_url(matched_title, candidates)
         alignments.append(
             ClaimAlignment(
                 claim=claim,
                 verdict=verdict,
                 verified_status=str(raw.get("verified_status", "不明")),
-                matched_title=str(raw.get("matched_title", "")),
+                matched_title=matched_title,
                 discrepancies=[str(item) for item in raw.get("discrepancies", [])],
                 cited_by_count=int(raw.get("cited_by_count", 0) or 0),
                 is_retracted=bool(raw.get("is_retracted", False)),
-                openalex_url=str(raw.get("openalex_url") or raw.get("source_url", "")),
+                openalex_url=source_url,
                 note=str(raw.get("note", "")),
             )
         )
     return alignments
+
+
+def _find_source_url(matched_title: str, candidates: list[dict]) -> str:
+    """根据 matched_title 从 candidates 里找真实 source_url，不信任 LLM 编的 URL。"""
+    if not matched_title or not candidates:
+        return ""
+    # 精确匹配优先
+    for c in candidates:
+        if str(c.get("title", "")).strip().lower() == matched_title.strip().lower():
+            return str(c.get("source_url", ""))
+    # 相似度匹配
+    best_url = ""
+    best_score = 0.0
+    for c in candidates:
+        title = str(c.get("title", ""))
+        score = _title_similarity(matched_title, title)
+        if score > best_score and score > 0.8:
+            best_score = score
+            best_url = str(c.get("source_url", ""))
+    return best_url
 
 
 def run_academic_check(
