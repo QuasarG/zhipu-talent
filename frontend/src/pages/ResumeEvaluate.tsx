@@ -66,6 +66,26 @@ export default function ResumeEvaluate() {
     }
   };
 
+  // 移出候选人：
+  // - 已评估 → dismiss（软移出，数据保留在人才库）
+  // - 未评估 → delete（物理删除）
+  const handleDelete = useCallback(async (id: string, evaluated: boolean) => {
+    try {
+      if (evaluated) {
+        await api.candidates.dismiss(id);
+      } else {
+        await api.candidates.delete(id);
+      }
+      if (selectedId === id) {
+        setSelected(null);
+        setSelectedId(null);
+      }
+      await loadCandidates();
+    } catch (err) {
+      console.error("移出候选人失败", err);
+    }
+  }, [selectedId, loadCandidates]);
+
   return (
     <div>
       <PageToolbar
@@ -105,11 +125,12 @@ export default function ResumeEvaluate() {
           candidates={candidates}
           selectedId={selectedId}
           onSelect={selectCandidate}
+          onDelete={handleDelete}
           onImport={() => setShowImport(true)}
         />
 
-        {/* 中栏：简历内容 */}
-        <Card variant="filled" className="min-h-0 overflow-y-auto p-5">
+        {/* 中栏：简历内容（容器不滚，内部模块卡各自滚动） */}
+        <Card variant="filled" className="min-h-0 overflow-hidden p-5">
           {loading ? (
             <div className="flex items-center justify-center h-full text-body text-on-surface-variant">加载中…</div>
           ) : selected ? (

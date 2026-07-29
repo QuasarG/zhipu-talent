@@ -26,6 +26,11 @@ export const api = {
     get: (id: string) => fetchJSON<CandidateDetail>(`/api/candidates/${id}`),
     delete: (id: string) =>
       fetchJSON<{ id: string; deleted: boolean }>(`/api/candidates/${id}`, { method: "DELETE" }),
+    // 已评估候选人软移出：数据保留（已在人才库），仅退出队列
+    dismiss: (id: string) =>
+      fetchJSON<{ id: string; group: string; dismissed: boolean }>(`/api/candidates/${id}/dismiss`, {
+        method: "POST",
+      }),
     evaluateSSE: (id: string, signal?: AbortSignal) =>
       fetch(BASE + `/api/candidates/${id}/evaluate`, { method: "POST", signal }),
     updateEngagement: (id: string, status: string, changedBy: string, note: string) =>

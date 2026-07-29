@@ -19,7 +19,7 @@ from agi_talent_radar.core.scoring_config import DEFAULT as SCORING_CONFIG
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VALID_GROUPS = {"pending", "shortlisted", "alternative", "rejected"}
+VALID_GROUPS = {"pending", "shortlisted", "alternative", "rejected", "dismissed"}
 VALID_IMPORT_SUFFIXES = {".pdf", ".jsonl", ".md", ".txt"}
 MAX_BATCH_FILES = 50
 MAX_BATCH_BYTES = 200 * 1024 * 1024
@@ -82,6 +82,7 @@ def create_app() -> Flask:
         group = request.args.get("group")
         try:
             from agi_talent_radar.core.database import get_session, list_candidates, list_candidates_by_group
+            from agi_talent_radar.core.db.repository import list_candidates_for_queue
 
             with get_session() as session:
                 if group:
@@ -89,7 +90,8 @@ def create_app() -> Flask:
                         return jsonify({"detail": "group 必须是 pending/shortlisted/alternative/rejected"}), 400
                     rows = list_candidates_by_group(session, group)
                 else:
-                    rows = list_candidates(session)
+                    # 队列默认视图：3 天保留期过滤 + 评估标记
+                    rows = list_candidates_for_queue(session)
                 candidates = [_orm_to_brief(row) for row in rows]
             return jsonify(candidates)
         except Exception as exc:
@@ -184,6 +186,37 @@ def create_app() -> Flask:
                 if not deleted:
                     return jsonify({"detail": "候选人不存在"}), 404
                 return jsonify({"id": candidate_id, "deleted": True})
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.post("/api/candidates/<candidate_id>/dismiss")
+    def dismiss_candidate(candidate_id: str):
+        """已评估候选人的软移出：仅改 group=dismissed 让其退出队列，
+        数据保留（人物档案已在人才库）。前端对已评估项调用此接口。"""
+        try:
+            from agi_talent_radar.core.database import get_session, move_candidate_group
+
+            with get_session() as session:
+                moved = move_candidate_group(session, candidate_id, "dismissed")
+                if not moved:
+                    return jsonify({"detail": "候选人不存在"}), 404
+                return jsonify({"id": moved.id, "group": moved.group, "dismissed": True})
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.get("/api/candidates/<candidate_id>/pdf")
+    def get_candidate_pdf(candidate_id: str):
+        """流式返回候选人原始简历 PDF（导入时落盘）。
+        历史数据无 PDF 时返回 404，前端回退到 raw_text。"""
+        from flask import send_from_directory
+
+        from agi_talent_radar.core.pdf_storage import _ROOT, get_resume_pdf_path
+
+        try:
+            pdf_path = get_resume_pdf_path(candidate_id)
+            if pdf_path is None:
+                return jsonify({"detail": "该候选人无原始 PDF（可能是历史数据或非 PDF 导入）"}), 404
+            return send_from_directory(_ROOT, pdf_path.name, mimetype="application/pdf")
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
@@ -509,6 +542,12 @@ def _stream_import_upload(
         resume_by_id = {resume.id: resume for resume in resumes}
         classifications = list(run_import_agent_stream(resumes, persist=True))
         candidate_total = len(classifications)
+        # PDF 原文落盘：只有 PDF 上传才有 file_bytes 是 PDF 二进制
+        if suffix == ".pdf":
+            from agi_talent_radar.core.pdf_storage import save_resume_pdf
+
+            for classification in classifications:
+                save_resume_pdf(classification.id, file_bytes)
         for candidate_index, classification in enumerate(classifications, start=1):
             resume = resume_by_id[classification.id]
             yield _file_event(
@@ -591,6 +630,8 @@ def _orm_to_brief(row) -> dict[str, Any]:
         # 阶段 1 新字段：HR 跟进状态 + 来源
         "engagement_status": getattr(row, "engagement_status", "newly_admitted"),
         "admitted_at": _iso(getattr(row, "admitted_at", None)),
+        # 队列用：是否已评估，决定删除/移出语义（未评估=物理删，已评估=仅移出列表）
+        "evaluated": bool(getattr(row, "evaluated", False)),
     }
 
 

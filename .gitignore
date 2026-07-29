@@ -22,3 +22,6 @@ flask_*.pid
 .zcode/
 frontend/node_modules
 agi_talent_radar/web/static/dist/
+
+# 候选人原始简历 PDF（隐私数据，不入库不入 git）
+data/

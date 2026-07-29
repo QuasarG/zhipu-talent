@@ -5,12 +5,14 @@ import Button from "@/components/ui/Button";
 import SearchField from "@/components/ui/SearchField";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import { StatusChip } from "@/components/ui/Chip";
+import Icon from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
 
 interface Props {
   candidates: CandidateBrief[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onDelete: (id: string, evaluated: boolean) => void | Promise<void>;
   onImport: () => void;
 }
 
@@ -22,9 +24,12 @@ function classifyCandidate(c: CandidateBrief): Filter {
   return "completed";
 }
 
-export default function CandidateQueue({ candidates, selectedId, onSelect, onImport }: Props) {
+export default function CandidateQueue({ candidates, selectedId, onSelect, onDelete, onImport }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
+  // 删除二次确认：记录正在确认删除的候选人 id，null = 未进入确认态
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const filtered = candidates.filter((c) => {
     if (filter !== "all" && classifyCandidate(c) !== filter) return false;
@@ -68,13 +73,34 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onImp
           filtered.map((c) => {
             const done = classifyCandidate(c) === "completed";
             const active = c.id === selectedId;
+            const confirming = confirmingId === c.id;
+            // evaluated=true → 已评估移出（软），否则删除（硬）
+            const evaluated = !!c.evaluated;
+            const doDelete = async () => {
+              setDeleting(true);
+              try {
+                await onDelete(c.id, evaluated);
+              } finally {
+                setDeleting(false);
+                setConfirmingId(null);
+              }
+            };
             return (
-              <button
+              <div
                 key={c.id}
-                onClick={() => onSelect(c.id)}
+                role="button"
+                tabIndex={0}
+                onClick={() => !confirming && onSelect(c.id)}
+                onKeyDown={(e) => {
+                  if (!confirming && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    onSelect(c.id);
+                  }
+                }}
                 className={cn(
-                  "state-layer flex items-start gap-3 p-3 rounded-md text-left cursor-pointer transition-colors duration-150",
-                  active ? "bg-secondary-container" : "bg-transparent"
+                  "group relative flex items-start gap-3 p-3 rounded-md text-left cursor-pointer transition-colors duration-150 outline-none",
+                  "focus-visible:ring-2 focus-visible:ring-primary",
+                  confirming ? "bg-error-container" : active ? "bg-secondary-container" : "bg-transparent hover:bg-surface-low"
                 )}
               >
                 {/* 头像色块：姓名首字 */}
@@ -96,8 +122,48 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onImp
                       {c.admitted_at.slice(0, 10)}
                     </span>
                   )}
+                  {confirming ? (
+                    /* inline 二次确认条：不再 hover 出现，常驻直到 ✓/✗ */
+                    <span className="mt-1.5 flex items-center gap-2">
+                      <span className="text-body-sm text-on-error-container">
+                        {evaluated ? "确认移出？" : "确认删除？"}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={(e) => { e.stopPropagation(); doDelete(); }}
+                        className="state-layer inline-flex items-center justify-center w-6 h-6 rounded-full bg-error text-on-error cursor-pointer disabled:opacity-40"
+                        title={evaluated ? "确认移出" : "确认删除"}
+                      >
+                        <Icon name="check" size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={(e) => { e.stopPropagation(); setConfirmingId(null); }}
+                        className="state-layer inline-flex items-center justify-center w-6 h-6 rounded-full text-on-error-container cursor-pointer disabled:opacity-40"
+                        title="取消"
+                      >
+                        <Icon name="close" size={16} />
+                      </button>
+                    </span>
+                  ) : null}
                 </span>
-              </button>
+
+                {/* hover 显示的删除按钮（不在确认态时才浮现） */}
+                {!confirming && (
+                  <span className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setConfirmingId(c.id); }}
+                      className="state-layer inline-flex items-center justify-center w-7 h-7 rounded-full bg-surface-lowest text-on-surface-variant hover:text-error cursor-pointer shadow-sm"
+                      title={evaluated ? "移出队列" : "删除"}
+                    >
+                      <Icon name={evaluated ? "archive" : "delete"} size={16} />
+                    </button>
+                  </span>
+                )}
+              </div>
             );
           })
         )}

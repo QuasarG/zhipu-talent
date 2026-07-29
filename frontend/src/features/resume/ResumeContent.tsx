@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import type { CandidateDetail } from "@/lib/types";
 import Tabs from "@/components/ui/Tabs";
+import Card from "@/components/ui/Card";
+import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 
 interface Props {
@@ -13,130 +15,231 @@ export default function ResumeContent({ detail }: Props) {
   const directions = (detail.directions || []).filter(Boolean);
 
   return (
-    <div>
+    <div className="flex flex-col h-full min-h-0">
       <Tabs
-        className="mb-5"
+        className="mb-4 shrink-0"
         items={[
           { value: "structured", label: "结构化简历" },
-          { value: "raw", label: "原文" },
+          { value: "raw", label: "简历原文" },
         ]}
         value={mode}
         onChange={setMode}
       />
 
-      {mode === "raw" ? (
-        <pre className="font-mono text-body-sm leading-relaxed whitespace-pre-wrap break-words p-4 rounded-md bg-surface-lowest border border-outline-variant text-on-surface-variant max-h-[70vh] overflow-y-auto">
-          {detail.raw_text || "（无原文）"}
-        </pre>
-      ) : (
-        <div>
-          {/* 标题块 */}
-          <div className="mb-6">
-            <h2 className="text-headline">{detail.name || detail.id}</h2>
-            <p className="text-body-sm text-on-surface-variant mt-1">
-              {detail.stage}
-              {detail.role ? ` · ${detail.role}` : ""}
-            </p>
-            {directions.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {directions.map((d) => (
-                  <StatusChip key={d} tone="info">{d}</StatusChip>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 章节 */}
-          <Section title="教育经历">
-            {(detail.education || []).map((edu, i) => {
-              const item = typeof edu === "string" ? { school: edu } : edu;
-              return (
-                <div key={i} className="flex items-baseline gap-3 py-0.5 text-body">
-                  <span className="font-medium">{item.school || item.organization || item.name || (typeof edu === "string" ? edu : "")}</span>
-                  {item.degree || item.major ? <span className="text-body-sm text-on-surface-variant">{item.degree || item.major}</span> : null}
-                  {item.period || item.year ? <span className="text-body-sm text-on-surface-variant ml-auto">{item.period || item.year}</span> : null}
+      <div className="flex-1 min-h-0">
+        {mode === "raw" ? (
+          <PdfPreview candidateId={detail.id} fallbackText={detail.raw_text || ""} />
+        ) : (
+          <div className="h-full min-h-0 flex flex-col gap-4">
+            {/* 标题块：固定不滚 */}
+            <div className="shrink-0">
+              <h2 className="text-headline">{detail.name || detail.id}</h2>
+              <p className="text-body-sm text-on-surface-variant mt-1">
+                {detail.stage}
+                {detail.role ? ` · ${detail.role}` : ""}
+              </p>
+              {directions.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {directions.map((d) => (
+                    <StatusChip key={d} tone="info">{d}</StatusChip>
+                  ))}
                 </div>
-              );
-            })}
-          </Section>
-
-          <Section title="实习 / 工作经历">
-            {(detail.experiences || []).map((exp, i) => (
-              <div key={i} className="py-1">
-                <div className="flex items-baseline gap-2 mb-0.5">
-                  <span className="font-medium text-body">{exp.role}</span>
-                  {exp.organization && <span className="text-body-sm text-on-surface-variant">{exp.organization}</span>}
-                </div>
-                {(exp.details || []).map((d, j) => (
-                  <p key={j} className="text-body-sm text-on-surface-variant ml-1">{d}</p>
-                ))}
-              </div>
-            ))}
-          </Section>
-
-          <Section title="项目经历">
-            {(detail.projects || []).map((proj, i) => (
-              <div key={i} className="py-1">
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <span className="font-medium text-body">{proj.name || "未命名项目"}</span>
-                  {proj.page && (
-                    <span className="font-mono text-label px-1.5 rounded-xs bg-primary-container text-on-primary-container shrink-0">
-                      P{proj.page}
-                    </span>
-                  )}
-                </div>
-                {(proj.details || []).map((d, j) => (
-                  <p key={j} className="text-body-sm text-on-surface-variant">{d}</p>
-                ))}
-              </div>
-            ))}
-          </Section>
-
-          <Section title="论文与成果">
-            {(detail.publications || []).map((pub, i) => {
-              const item = typeof pub === "string" ? { title: pub } : pub;
-              const status = item.claimed_status || item.status || "";
-              return (
-                <div key={i} className="py-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-body flex-1">{item.title || item.name || (typeof pub === "string" ? pub : "")}</span>
-                    {status && <PubBadge status={status} />}
-                  </div>
-                  {(item.venue || item.journal || item.year || item.claimed_role || item.role) && (
-                    <p className="text-body-sm text-on-surface-variant mt-0.5">
-                      {[item.venue || item.journal, item.year, item.claimed_role || item.role].filter(Boolean).join(" · ")}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </Section>
-
-          <Section title="技能">
-            <div className="flex flex-wrap gap-2">
-              {(detail.skills || []).map((s) => (
-                <span key={s} className="text-body-sm px-2.5 py-1 rounded-sm bg-surface-high text-on-surface-variant">
-                  {s}
-                </span>
-              ))}
+              )}
             </div>
-          </Section>
-        </div>
-      )}
+
+            {/* 卡片网格：页不滚，每张卡内部可滚 */}
+            <div className="flex-1 min-h-0 grid grid-cols-2 gap-4 overflow-hidden">
+              <ModuleCard title="教育经历" icon="school">
+                <EducationList detail={detail} />
+              </ModuleCard>
+              <ModuleCard title="实习 / 工作经历" icon="work">
+                <ExperienceList detail={detail} />
+              </ModuleCard>
+              <ModuleCard title="项目经历" icon="construction">
+                <ProjectList detail={detail} />
+              </ModuleCard>
+              <ModuleCard title="论文与成果" icon="menu_book">
+                <PublicationList detail={detail} />
+              </ModuleCard>
+              <ModuleCard title="技能" icon="bolt" className="col-span-2">
+                <SkillsList detail={detail} />
+              </ModuleCard>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  const arr = Array.isArray(children) ? children : [children];
-  if (!arr.filter(Boolean).length) return null;
+/* ---- PDF 预览（含 raw_text fallback）---- */
+function PdfPreview({ candidateId, fallbackText }: { candidateId: string; fallbackText: string }) {
+  const [pdfOk, setPdfOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setPdfOk(null);
+    // HEAD 探测 PDF 是否存在；同源请求自动带 session cookie
+    fetch(`/api/candidates/${candidateId}/pdf`, { method: "HEAD" })
+      .then((r) => setPdfOk(r.ok))
+      .catch(() => setPdfOk(false));
+  }, [candidateId]);
+
+  if (pdfOk === null) {
+    return (
+      <div className="flex items-center justify-center h-full text-body-sm text-on-surface-variant">
+        <Icon name="progress_activity" size={20} className="mr-2 animate-spin" />
+        正在加载 PDF…
+      </div>
+    );
+  }
+
+  if (pdfOk) {
+    return (
+      <iframe
+        key={candidateId}
+        src={`/api/candidates/${candidateId}/pdf`}
+        title="简历 PDF"
+        className="w-full h-full rounded-lg border border-outline-variant bg-surface-lowest"
+      />
+    );
+  }
+
+  // 无 PDF（历史数据 / 非 PDF 导入）→ fallback 显示提取文本
   return (
-    <section className="mb-6">
-      <h3 className="text-label uppercase tracking-wider text-on-surface-variant mb-3 pb-2 border-b border-outline-variant">
-        {title}
-      </h3>
-      {children}
-    </section>
+    <div className="flex flex-col h-full min-h-0">
+      <div className="shrink-0 flex items-center gap-2 px-3 py-2 mb-2 rounded-md bg-warning-container text-warning text-body-sm">
+        <Icon name="info" size={16} />
+        原始 PDF 不可用，以下为提取文本
+      </div>
+      <pre className="flex-1 min-h-0 overflow-y-auto font-mono text-body-sm leading-relaxed whitespace-pre-wrap break-words p-4 rounded-lg bg-surface-lowest border border-outline-variant text-on-surface-variant">
+        {fallbackText || "（无文本内容）"}
+      </pre>
+    </div>
+  );
+}
+
+/* ---- 模块卡片：标题固定，内容区可滚 ---- */
+interface ModuleCardProps {
+  title: string;
+  icon: string;
+  className?: string;
+  children: ReactNode;
+}
+
+function ModuleCard({ title, icon, className, children }: ModuleCardProps) {
+  const arr = Array.isArray(children) ? children : [children];
+  const hasContent = arr.filter(Boolean).length > 0;
+  return (
+    <Card variant="outlined" className={`flex flex-col min-h-0 overflow-hidden ${className || ""}`}>
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-outline-variant bg-surface-low">
+        <Icon name={icon} size={16} className="text-on-surface-variant" />
+        <h3 className="text-title text-on-surface">{title}</h3>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        {hasContent ? children : (
+          <p className="text-body-sm text-on-surface-variant">暂无数据</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ---- 各模块内容 ---- */
+function EducationList({ detail }: { detail: CandidateDetail }) {
+  if (!(detail.education || []).length) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      {(detail.education || []).map((edu, i) => {
+        const item = typeof edu === "string" ? { school: edu } : edu;
+        return (
+          <div key={i} className="flex items-baseline gap-3 text-body">
+            <span className="font-medium">{item.school || item.organization || item.name || (typeof edu === "string" ? edu : "")}</span>
+            {item.degree || item.major ? <span className="text-body-sm text-on-surface-variant">{item.degree || item.major}</span> : null}
+            {item.period || item.year ? <span className="text-body-sm text-on-surface-variant ml-auto">{item.period || item.year}</span> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ExperienceList({ detail }: { detail: CandidateDetail }) {
+  if (!(detail.experiences || []).length) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      {(detail.experiences || []).map((exp, i) => (
+        <div key={i}>
+          <div className="flex items-baseline gap-2 mb-1">
+            <span className="font-medium text-body">{exp.role}</span>
+            {exp.organization && <span className="text-body-sm text-on-surface-variant">{exp.organization}</span>}
+          </div>
+          {(exp.details || []).map((d, j) => (
+            <p key={j} className="text-body-sm text-on-surface-variant ml-1">{d}</p>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProjectList({ detail }: { detail: CandidateDetail }) {
+  if (!(detail.projects || []).length) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      {(detail.projects || []).map((proj, i) => (
+        <div key={i}>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-medium text-body">{proj.name || "未命名项目"}</span>
+            {proj.page && (
+              <span className="font-mono text-label px-1.5 rounded-xs bg-primary-container text-on-primary-container shrink-0">
+                P{proj.page}
+              </span>
+            )}
+          </div>
+          {(proj.details || []).map((d, j) => (
+            <p key={j} className="text-body-sm text-on-surface-variant">{d}</p>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PublicationList({ detail }: { detail: CandidateDetail }) {
+  if (!(detail.publications || []).length) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      {(detail.publications || []).map((pub, i) => {
+        const item = typeof pub === "string" ? { title: pub } : pub;
+        const status = item.claimed_status || item.status || "";
+        return (
+          <div key={i}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-body flex-1">{item.title || item.name || (typeof pub === "string" ? pub : "")}</span>
+              {status && <PubBadge status={status} />}
+            </div>
+            {(item.venue || item.journal || item.year || item.claimed_role || item.role) && (
+              <p className="text-body-sm text-on-surface-variant mt-0.5">
+                {[item.venue || item.journal, item.year, item.claimed_role || item.role].filter(Boolean).join(" · ")}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SkillsList({ detail }: { detail: CandidateDetail }) {
+  if (!(detail.skills || []).length) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {(detail.skills || []).map((s) => (
+        <span key={s} className="text-body-sm px-2.5 py-1 rounded-sm bg-surface-high text-on-surface-variant">
+          {s}
+        </span>
+      ))}
+    </div>
   );
 }
 

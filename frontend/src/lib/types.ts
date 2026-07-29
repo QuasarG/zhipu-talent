@@ -10,6 +10,7 @@ export interface CandidateBrief {
   category: string;
   engagement_status: string;
   admitted_at: string | null;
+  evaluated?: boolean;
 }
 
 export interface CandidateDetail extends CandidateBrief {

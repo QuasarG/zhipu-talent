@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, exists
 
 from agi_talent_radar.core.db.orm import (
     CandidateORM,
@@ -326,6 +326,57 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
 
 def list_candidates(session):
     return session.query(CandidateORM).order_by(CandidateORM.created_at.desc()).all()
+
+
+# 已评估候选人展示 N 天后自动从队列移除（数据保留，仅不入列表）
+EVALUATED_QUEUE_RETENTION_DAYS = 3
+
+
+def list_candidates_for_queue(session):
+    """简历评估队列专用列表：
+
+    - 已评估（存在 evaluations 记录）且评估完成超过
+      ``EVALUATED_QUEUE_RETENTION_DAYS`` 天的候选人不再返回；
+      其人物档案已进入人才库（persons），评估留痕仍在 evaluations，
+      故此处只做查询时过滤，不物理删除。
+    - 未评估的候选人全部返回（需人工处理）。
+    每行额外挂一个 ``evaluated`` 布尔，供前端区分删除/移出语义。
+    """
+    retention_cutoff = datetime.now(timezone.utc) - timedelta(days=EVALUATED_QUEUE_RETENTION_DAYS)
+    # 子查询：每个候选人最近一次评估完成时间（completed_at）
+    latest_eval_subq = (
+        session.query(
+            EvaluationORM.candidate_id.label("cid"),
+            func.max(EvaluationORM.completed_at).label("latest"),
+        )
+        .group_by(EvaluationORM.candidate_id)
+        .subquery()
+    )
+    has_eval_subq = (
+        session.query(EvaluationORM.candidate_id)
+        .filter(EvaluationORM.candidate_id == CandidateORM.id)
+        .exists()
+    )
+    rows = (
+        session.query(CandidateORM, latest_eval_subq.c.latest, has_eval_subq.label("evaluated"))
+        .outerjoin(latest_eval_subq, latest_eval_subq.c.cid == CandidateORM.id)
+        .filter(CandidateORM.group != "dismissed")
+        .order_by(CandidateORM.created_at.desc())
+        .all()
+    )
+    result = []
+    for candidate, latest_completed, evaluated in rows:
+        # 已评估但完成时间超过保留期 → 跳过（UTC vs naive 兼容比较）
+        if evaluated and latest_completed is not None:
+            comp = latest_completed
+            if comp.tzinfo is None:
+                comp = comp.replace(tzinfo=timezone.utc)
+            if comp < retention_cutoff:
+                continue
+        # 用 setattr 挂载临时字段，避免改动 ORM 模型
+        candidate.evaluated = bool(evaluated)  # type: ignore[attr-defined]
+        result.append(candidate)
+    return result
 
 
 def list_candidates_by_group(session, group: str):
