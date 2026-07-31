@@ -13,7 +13,12 @@ from openai import OpenAI
 load_dotenv()
 
 
-def call_llm_json(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1) -> dict[str, Any]:
+def call_llm_json(
+    system_prompt: str,
+    payload: dict[str, Any],
+    temperature: float = 0.1,
+    enable_thinking: bool = False,
+) -> dict[str, Any]:
     client = _client()
     model = _required_env("OPENAI_MODEL")
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
@@ -21,13 +26,14 @@ def call_llm_json(system_prompt: str, payload: dict[str, Any], temperature: floa
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
+    thinking_kwargs = _thinking_kwargs(enable_thinking)
     response = client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=temperature,
         response_format={"type": "json_object"},
         timeout=timeout_seconds,
-        extra_body={"thinking": {"type": "disabled"}},
+        **thinking_kwargs,
     )
     content = response.choices[0].message.content or ""
     try:
@@ -51,7 +57,7 @@ def call_llm_json(system_prompt: str, payload: dict[str, Any], temperature: floa
             temperature=0,
             response_format={"type": "json_object"},
             timeout=timeout_seconds,
-            extra_body={"thinking": {"type": "disabled"}},
+            **_thinking_kwargs(False),
         )
         retry_content = retry_response.choices[0].message.content or ""
         try:
@@ -92,6 +98,17 @@ def _client() -> OpenAI:
     api_key = _required_env("DEEPSEEK_API_KEY")
     base_url = _required_env("OPENAI_BASE_URL")
     return OpenAI(api_key=api_key, base_url=base_url)
+
+
+def _thinking_kwargs(enable_thinking: bool) -> dict[str, Any]:
+    """按是否启用思考返回对应请求参数。
+
+    开启：低强度思考（提升事实对齐准确度，核验阶段专用）。
+    关闭：纯生成模式（评估等 17 处调用保持原行为）。
+    """
+    if enable_thinking:
+        return {"reasoning_effort": "low", "extra_body": {"thinking": {"type": "enabled"}}}
+    return {"extra_body": {"thinking": {"type": "disabled"}}}
 
 
 def _required_env(name: str) -> str:
