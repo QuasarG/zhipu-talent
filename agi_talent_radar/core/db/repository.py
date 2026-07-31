@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import func, exists
+from sqlalchemy import func, exists, or_
 
 from agi_talent_radar.core.db.orm import (
     CandidateORM,
@@ -15,14 +15,19 @@ from agi_talent_radar.core.db.orm import (
     EvaluationEvidenceORM,
     EvaluationNodeRunORM,
     EvaluationORM,
+    IdentitySuggestionORM,
+    MergeAuditORM,
     PersonORM,
     PublicationClaimORM,
     PublicationVerificationORM,
+    ResumeSubmissionORM,
+    ResumeVersionORM,
     TaskORM,
     TrackAssignmentORM,
     TrackEvaluationORM,
 )
 from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume, ImportClassification
+from agi_talent_radar.core.domain_models import EngagementStatus
 from agi_talent_radar.core.persons import get_or_create_person
 from agi_talent_radar.core.scoring_version import current_scoring_version
 
@@ -42,13 +47,21 @@ def save_candidate(
     candidate.target_role = resume.target_role or candidate.target_role
     candidate.stage = resume.stage or candidate.stage
     candidate.raw_text = resume.raw_text or candidate.raw_text
-    candidate.education = _json_text(resume.education)
-    candidate.directions = _json_text(resume.directions)
-    candidate.experiences = _json_text([experience.model_dump() for experience in resume.experiences])
-    candidate.projects = _json_text([project.model_dump() for project in resume.projects])
-    candidate.publications = _json_text(resume.publications)
-    candidate.skills = _json_text(resume.skills)
-    candidate.screening_tags = _json_text(resume.screening_tags)
+    # 结构化字段同名字段一样用「非空才覆盖」：空解析结果不得清掉已有数据
+    if resume.education:
+        candidate.education = _json_text(resume.education)
+    if resume.directions:
+        candidate.directions = _json_text(resume.directions)
+    if resume.experiences:
+        candidate.experiences = _json_text([experience.model_dump() for experience in resume.experiences])
+    if resume.projects:
+        candidate.projects = _json_text([project.model_dump() for project in resume.projects])
+    if resume.publications:
+        candidate.publications = _json_text(resume.publications)
+    if resume.skills:
+        candidate.skills = _json_text(resume.skills)
+    if resume.screening_tags:
+        candidate.screening_tags = _json_text(resume.screening_tags)
     candidate.source_format = resume.source_format
     candidate.document_analysis = _json_text(resume.document_analysis)
     if academic_report is not None:
@@ -140,7 +153,7 @@ def save_evaluation(
     ev.cultivation_direction = evaluation.cultivation_direction
     ev.recommended_tracks = [item.model_dump() for item in evaluation.recommended_tracks]
     ev.stage_profile = evaluation.stage_profile
-    ev.academic_report = {}
+    ev.academic_report = evaluation.academic_report or {}
     ev.critic_flags = evaluation.critic_flags
     ev.normalized_education = evaluation.normalized_education
     ev.screening_tags = evaluation.screening_tags
@@ -260,6 +273,8 @@ def _dimension_row(
 
 
 def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
+    from agi_talent_radar.core.graph import evaluation_graph_catalog
+
     evidence = [_evidence_dict(item) for item in evaluation.evidence_items]
     common_dimensions = [
         _dimension_dict(item)
@@ -291,15 +306,28 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
         }
         for item in evaluation.track_evaluations
     ]
+    assignment_by_track = {item["track"]: item for item in assignments}
+    evaluation_by_track = {item["track"]: item for item in track_evaluations}
+    recommended_tracks = []
+    for raw_item in evaluation.recommended_tracks or []:
+        item = dict(raw_item)
+        track = str(item.get("track", ""))
+        weight = item.get("weight")
+        if not isinstance(weight, (int, float)) or weight <= 0:
+            fallback = assignment_by_track.get(track) or evaluation_by_track.get(track) or {}
+            item["weight"] = float(fallback.get("weight", 0) or 0)
+        recommended_tracks.append(item)
     return {
+        "id": evaluation.id,
         "overall_score": evaluation.overall_score,
         "one_liner": evaluation.one_liner or "",
         "core_strengths": evaluation.core_strengths or [],
         "potential_risks": evaluation.potential_risks or [],
         "interview_questions": evaluation.interview_questions or [],
         "cultivation_direction": evaluation.cultivation_direction or [],
-        "recommended_tracks": evaluation.recommended_tracks or [],
+        "recommended_tracks": recommended_tracks,
         "stage_profile": evaluation.stage_profile or "",
+        "academic_report": evaluation.academic_report or {},
         "dimension_scores": common_dimensions,
         "evidence": evidence,
         "critic_flags": evaluation.critic_flags or [],
@@ -312,9 +340,38 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
         "routing_confidence": evaluation.routing_confidence or 0,
         "evaluation_mode": evaluation.evaluation_mode or "multi_track_v1",
         "status": evaluation.status,
+        "error_message": evaluation.error_message or "",
+        "created_at": _iso_datetime(evaluation.created_at),
+        "completed_at": _iso_datetime(evaluation.completed_at),
         # 阶段 4：研究组匹配与研究组匹配状态独立；
         # 未配置时永远返回 not_configured，避免伪造匹配分。
         "research_group_matching_status": "not_configured",
+        "evaluation_graph": evaluation_graph_catalog(),
+        "node_runs": [
+            {
+                "node": item.node_key,
+                "phase": item.phase,
+                "status": item.status,
+                "message": item.message or "",
+                "sequence": item.sequence,
+            }
+            for item in evaluation.node_runs
+        ],
+    }
+
+
+def evaluation_run_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
+    """Serialize the durable portion of any evaluation run, including active runs."""
+    from agi_talent_radar.core.graph import evaluation_graph_catalog
+
+    return {
+        "id": evaluation.id,
+        "candidate_id": evaluation.candidate_id,
+        "status": evaluation.status,
+        "error_message": evaluation.error_message or "",
+        "created_at": _iso_datetime(evaluation.created_at),
+        "completed_at": _iso_datetime(evaluation.completed_at),
+        "evaluation_graph": evaluation_graph_catalog(),
         "node_runs": [
             {
                 "node": item.node_key,
@@ -379,6 +436,9 @@ def list_candidates_for_queue(session):
                 continue
         # 用 setattr 挂载临时字段，避免改动 ORM 模型
         candidate.evaluated = bool(evaluated)  # type: ignore[attr-defined]
+        latest_run = get_latest_evaluation_run(session, candidate.id)
+        candidate.evaluation_status = latest_run.status if latest_run else "idle"  # type: ignore[attr-defined]
+        candidate.evaluation_run_id = latest_run.id if latest_run else None  # type: ignore[attr-defined]
         result.append(candidate)
     return result
 
@@ -411,13 +471,83 @@ def delete_candidate(session, candidate_id: str) -> CandidateORM | None:
 
 
 def delete_person(session, person_id: str) -> PersonORM | None:
-    """删除人才档案。FK 约束：candidates/evaluations.person_id SET NULL，
-    external_facts/reputation_reports.person_id CASCADE 自动跟着删。"""
+    """彻底删除人物主档及其简历、候选档案、评估与核验记录。"""
     person = session.get(PersonORM, person_id)
     if person is None:
         return None
+
+    candidates = session.query(CandidateORM).filter_by(person_id=person_id).all()
+    candidate_ids = [candidate.id for candidate in candidates]
+    evaluations = session.query(EvaluationORM).filter(
+        or_(
+            EvaluationORM.person_id == person_id,
+            EvaluationORM.candidate_id.in_(candidate_ids) if candidate_ids else False,
+        )
+    ).all()
+    evaluation_ids = [evaluation.id for evaluation in evaluations]
+    submissions = session.query(ResumeSubmissionORM).filter(
+        or_(
+            ResumeSubmissionORM.person_id == person_id,
+            ResumeSubmissionORM.candidate_id.in_(candidate_ids) if candidate_ids else False,
+        )
+    ).all()
+    submission_ids = [submission.id for submission in submissions]
+
+    if evaluation_ids:
+        claim_ids = [
+            row.id
+            for row in session.query(PublicationClaimORM.id)
+            .filter(PublicationClaimORM.evaluation_id.in_(evaluation_ids))
+            .all()
+        ]
+        if claim_ids:
+            session.query(PublicationVerificationORM).filter(
+                PublicationVerificationORM.claim_id.in_(claim_ids)
+            ).delete(synchronize_session=False)
+        session.query(PublicationClaimORM).filter(
+            PublicationClaimORM.evaluation_id.in_(evaluation_ids)
+        ).delete(synchronize_session=False)
+    suggestion_filter = IdentitySuggestionORM.matched_person_id == person_id
+    if submission_ids:
+        suggestion_filter = or_(
+            suggestion_filter,
+            IdentitySuggestionORM.submission_id.in_(submission_ids),
+        )
+    session.query(IdentitySuggestionORM).filter(suggestion_filter).delete(synchronize_session=False)
+    if submission_ids:
+        session.query(ResumeVersionORM).filter(
+            ResumeVersionORM.submission_id.in_(submission_ids)
+        ).delete(synchronize_session=False)
+
+    for evaluation in evaluations:
+        session.delete(evaluation)
+    for submission in submissions:
+        session.delete(submission)
+    for candidate in candidates:
+        session.delete(candidate)
+    session.query(MergeAuditORM).filter(
+        or_(
+            MergeAuditORM.primary_person_id == person_id,
+            MergeAuditORM.merged_person_id == person_id,
+        )
+    ).delete(synchronize_session=False)
+    for task in session.query(TaskORM).all():
+        payload = task.payload if isinstance(task.payload, dict) else {}
+        if (
+            payload.get("person_id") == person_id
+            or payload.get("candidate_id") in candidate_ids
+            or payload.get("evaluation_id") in evaluation_ids
+        ):
+            session.delete(task)
     session.delete(person)
     session.commit()
+
+    from agi_talent_radar.core.pdf_storage import get_resume_pdf_path
+
+    for candidate_id in candidate_ids:
+        path = get_resume_pdf_path(candidate_id)
+        if path is not None:
+            path.unlink(missing_ok=True)
     return person
 
 
@@ -432,6 +562,21 @@ def get_candidate_with_latest_evaluation(session, candidate_id: str):
         .first()
     )
     return candidate, latest_evaluation
+
+
+def get_latest_evaluation_run(session, candidate_id: str) -> EvaluationORM | None:
+    return (
+        session.query(EvaluationORM)
+        .filter_by(candidate_id=candidate_id)
+        .order_by(EvaluationORM.created_at.desc(), EvaluationORM.id.desc())
+        .first()
+    )
+
+
+def _iso_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat()
 
 
 def _dimension_dict(item: DimensionScoreORM) -> dict[str, Any]:
@@ -501,15 +646,40 @@ def _now() -> datetime:
 
 
 def _link_person(session, evaluation: CandidateEvaluation):
-    """把评估挂到人员主档：优先取候选人记录里的姓名和方向。"""
+    """把评估挂到人员主档：优先取候选人记录里的姓名和方向。
+
+    候选人带教育经历时，同步结构化学校列表到主档（persons.schools），
+    并把 org 刷新为最高学历学校（联培不作学位授予校）。
+    """
     candidate = session.get(CandidateORM, evaluation.id)
+    if candidate and candidate.person_id:
+        person = session.get(PersonORM, candidate.person_id)
+        if person is not None:
+            _refresh_person_schools(person, candidate)
+            return person
     name = (candidate.name if candidate else "") or evaluation.name
     direction = ""
     if candidate and candidate.directions:
         items = _as_list(candidate.directions)
         if items:
             direction = str(items[0])[:256]
-    return get_or_create_person(session, name=name, direction=direction)
+    person = get_or_create_person(session, name=name, direction=direction)
+    if candidate is not None:
+        _refresh_person_schools(person, candidate)
+    return person
+
+
+def _refresh_person_schools(person, candidate) -> None:
+    """用候选人 education 自由文本重建主档学校列表 + 最高学历 org。"""
+    from agi_talent_radar.core.education import highest_school, parse_education_entries
+
+    entries = parse_education_entries(_as_list(candidate.education))
+    if not entries:
+        return
+    person.schools = [entry.to_dict() for entry in entries]
+    top = highest_school(entries)
+    if top:
+        person.org = top
 
 
 def create_task(session, task_type: str, payload: dict[str, Any] | None = None, task_id: str | None = None) -> TaskORM:
@@ -711,20 +881,12 @@ def update_engagement_status(
 ) -> EngagementStatusHistoryORM:
     """修改 HR 跟进状态；写入不可变审计记录。
 
-    - ``status`` 必须在 6 种初值之一（newly_admitted / to_contact / contacted /
-      interviewing / ongoing_follow / closed）。
+    - ``status`` 必须是招聘生命周期中的有效状态。
     - ``changed_by`` 强制要求；不接受自动入参。
     """
     from agi_talent_radar.core.db.orm import EngagementStatusHistoryORM
 
-    allowed = {
-        "newly_admitted",
-        "to_contact",
-        "contacted",
-        "interviewing",
-        "ongoing_follow",
-        "closed",
-    }
+    allowed = set(EngagementStatus.accepted())
     if status not in allowed:
         raise ValueError(f"status 必须是 {sorted(allowed)} 之一")
     if not changed_by or not changed_by.strip():

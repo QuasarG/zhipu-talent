@@ -6,7 +6,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-TrackKey = Literal["base", "agent", "safety", "multimodal", "systems", "ai4science"]
+TrackKey = Literal["base", "agent", "safety", "multimodal", "ai_infra", "ai4science"]
 
 
 class ResumeProject(BaseModel):
@@ -111,7 +111,7 @@ class CandidateResume(BaseModel):
     name: str = ""
     target_role: str = ""
     stage: str = ""
-    education: list[str] = Field(default_factory=list)
+    education: list[dict | str] = Field(default_factory=list)
     directions: list[str] = Field(default_factory=list)
     experiences: list[ResumeExperience] = Field(default_factory=list)
     projects: list[ResumeProject] = Field(default_factory=list)
@@ -121,6 +121,8 @@ class CandidateResume(BaseModel):
     raw_text: str = ""
     source_format: str = "text"
     document_analysis: dict[str, Any] = Field(default_factory=dict)
+    # 扫描页经本地 OCR 提取的页码；非空时结构化 LLM 会启用 OCR 消歧规则
+    ocr_pages: list[int] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -140,7 +142,6 @@ class CandidateResume(BaseModel):
         return data
 
     @field_validator(
-        "education",
         "directions",
         "publications",
         "skills",
@@ -150,6 +151,29 @@ class CandidateResume(BaseModel):
     @classmethod
     def normalize_visual_text_lists(cls, value: Any) -> list[str]:
         return _text_items(value)
+
+    @field_validator("education", mode="before")
+    @classmethod
+    def normalize_education_keeps_structured(cls, value: Any) -> list[dict | str]:
+        """education 保留结构化 dict，只把非 dict/str 项压平为文本。
+
+        其他可视化列表（directions 等）统一压成字符串；但教育经历需保留
+        school/degree/major/period 结构供前端分字段渲染，故单独豁免。
+        """
+        if value in (None, ""):
+            return []
+        values = value if isinstance(value, (list, tuple, set)) else [value]
+        result: list[dict | str] = []
+        for item in values:
+            if isinstance(item, dict):
+                result.append(item)
+            elif isinstance(item, str):
+                result.append(item)
+            else:
+                text = _structured_text(item)
+                if text:
+                    result.append(text)
+        return result
 
 
 _FIELD_LABELS = {
@@ -232,7 +256,7 @@ class NormalizedResume(BaseModel):
     name: str
     target_role: str = ""
     stage: str = ""
-    education_raw: list[str] = Field(default_factory=list)
+    education_raw: list[dict | str] = Field(default_factory=list)
     education_blind: list[str] = Field(default_factory=list)
     background_signal_tiers: BackgroundSignalTiers = Field(default_factory=BackgroundSignalTiers)
     directions: list[str] = Field(default_factory=list)
@@ -307,6 +331,7 @@ class DirectionRecommendation(BaseModel):
     track: TrackKey
     label: str
     score: float = Field(ge=0, le=60)
+    weight: float = Field(default=0, ge=0, le=1)
     confidence: float = Field(ge=0, le=1)
     rationale: str = ""
     evidence_ids: list[str] = Field(default_factory=list)
@@ -345,6 +370,7 @@ class CandidateEvaluation(BaseModel):
     track_evaluations: list[TrackEvaluation] = Field(default_factory=list)
     recommended_tracks: list[DirectionRecommendation] = Field(default_factory=list)
     stage_profile: str = ""
+    academic_report: dict[str, Any] = Field(default_factory=dict)
     routing_confidence: float = Field(default=0, ge=0, le=1)
     evaluation_mode: str = "multi_track_v1"
 
@@ -355,6 +381,11 @@ class ImportClassification(BaseModel):
     category: str
     confidence: float = Field(ge=0, le=1)
     reason: str
+    identity_decision: Literal["same_person", "new_person"] = "new_person"
+    matched_candidate_id: str = ""
+    identity_confidence: float = Field(default=0, ge=0, le=1)
+    identity_evidence: list[str] = Field(default_factory=list)
+    identity_conflicts: list[str] = Field(default_factory=list)
 
 
 class BatchResult(BaseModel):

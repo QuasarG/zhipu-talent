@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 10
+LATEST_SCHEMA_VERSION = 12
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -105,6 +105,21 @@ def ensure_schema(engine) -> None:
             11,
             "add candidates.academic_report JSON + academic_check_status + "
             "academic_check_at for decoupled async paper verification",
+        )
+    if current_version < 12:
+        _migrate_person_schools(engine)
+        _record_version(
+            engine,
+            12,
+            "phase 12: structured person education (persons.schools JSON), "
+            "org = highest degree school, backfilled from candidates.education",
+        )
+    if current_version < 13:
+        _migrate_supplementary_info_column(engine)
+        _record_version(
+            engine,
+            13,
+            "phase 13: candidates.supplementary_info for HR-provided extra info injected into evaluation",
         )
     _ensure_indexes(engine)
 
@@ -303,6 +318,57 @@ def _migrate_phase_six_columns(engine) -> None:
         default_clause = f" DEFAULT {default}" if default is not None else ""
         additions.append(f"{name} {column_type}{default_clause}")
     _add_columns(engine, "external_facts", additions)
+
+
+def _migrate_supplementary_info_column(engine) -> None:
+    """阶段 13：candidates 加 supplementary_info（HR 补充信息，评估时注入）。"""
+    inspector = inspect(engine)
+    if "candidates" not in inspector.get_table_names():
+        return
+    candidate_columns = {column["name"] for column in inspector.get_columns("candidates")}
+    if "supplementary_info" not in candidate_columns:
+        # MySQL 不允许 TEXT 列带 DEFAULT；NULL 由读取侧 getattr(...) or "" 兼容
+        _add_columns(engine, "candidates", ["supplementary_info TEXT"])
+
+
+def _migrate_person_schools(engine) -> None:
+    """阶段 12：persons 加 schools JSON 列，并从候选人教育经历回填学校和最高学历 org。"""
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if "persons" not in tables:
+        return
+    persons_columns = {column["name"] for column in inspector.get_columns("persons")}
+    if "schools" not in persons_columns:
+        _add_columns(engine, "persons", ["schools JSON"])
+    if "candidates" not in tables:
+        return
+    candidates_columns = {column["name"] for column in inspector.get_columns("candidates")}
+    if not {"id", "person_id", "education"} <= candidates_columns:
+        return  # 老到连 education 都没有的库：跳过回填，只加列
+    from agi_talent_radar.core.db.orm import PersonORM
+    from agi_talent_radar.core.education import highest_school, parse_education_entries
+
+    # 老库 candidates 列可能不全，用裸 SQL 只取需要的三列，避开 ORM 全列查询
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text("SELECT id, person_id, education FROM candidates WHERE person_id IS NOT NULL")
+        ).mappings().all()
+    if not rows:
+        return
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        for raw in rows:
+            person = session.get(PersonORM, raw["person_id"])
+            if person is None or person.schools:
+                continue
+            entries = parse_education_entries(_json_list(raw["education"]))
+            if not entries:
+                continue
+            person.schools = [entry.to_dict() for entry in entries]
+            top = highest_school(entries)
+            if top:
+                person.org = top
+        session.commit()
 
 
 def _migrate_academic_report_column(engine) -> None:

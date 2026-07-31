@@ -353,8 +353,24 @@ def _redact_resume_organization_references(resume: CandidateResume) -> Candidate
     )
 
 
-def _infer_background_tiers(education: list[str]) -> BackgroundSignalTiers:
-    text = " ".join(education)
+def _education_to_text(education: list[dict | str]) -> str:
+    """把 education 列表（含 dict 结构化对象）拍平成拼接文本。
+
+    resumes 路径上 education 现在是 list[dict | str]，旧代码多处用
+    " ".join(education) 假设纯字符串，遇到 dict 会崩。这里统一归一。
+    """
+    parts: list[str] = []
+    for item in education or []:
+        if isinstance(item, str):
+            parts.append(item)
+        elif isinstance(item, dict):
+            # 结构化教育对象：拼成 "学校 学位 专业 时间"
+            parts.append(" ".join(str(v) for v in item.values() if v))
+    return " ".join(parts)
+
+
+def _infer_background_tiers(education: list[dict | str]) -> BackgroundSignalTiers:
+    text = _education_to_text(education)
     school_tier = _school_tier(text)
     gpa_tier = _gpa_tier(text)
     rank_tier = _rank_tier(text)
@@ -445,13 +461,15 @@ def _academic_signal_tier(school_tier: str, gpa_tier: str, rank_tier: str, degre
     return "weak_or_unknown"
 
 
-def _blind_education(education: list[str], tiers: BackgroundSignalTiers, notes: list[str]) -> list[str]:
+def _blind_education(education: list[dict | str], tiers: BackgroundSignalTiers, notes: list[str]) -> list[str]:
     if not education:
         return notes
     result: list[str] = []
     for item in education:
-        degree = _degree_label(item, tiers.degree_tier)
-        field = _field_hint(item)
+        # education 现含结构化 dict，进 _degree_label/_field_hint 前先拍平成文本
+        text = _education_item_to_text(item)
+        degree = _degree_label(text, tiers.degree_tier)
+        field = _field_hint(text)
         result.append(
             f"学校层级={_tier_label('school_tier', tiers.school_tier)}；"
             f"学历阶段={degree}；"
@@ -459,6 +477,15 @@ def _blind_education(education: list[str], tiers: BackgroundSignalTiers, notes: 
             f"专业方向={field}；具体学校/GPA/排名已折叠。"
         )
     return list(dict.fromkeys(result + notes))
+
+
+def _education_item_to_text(item: dict | str) -> str:
+    """单个 education 项拍平成文本：dict 取各字段值拼接，str 原样返回。"""
+    if isinstance(item, str):
+        return item
+    if isinstance(item, dict):
+        return " ".join(str(v) for v in item.values() if v)
+    return str(item)
 
 
 def _degree_label(text: str, fallback: str) -> str:
