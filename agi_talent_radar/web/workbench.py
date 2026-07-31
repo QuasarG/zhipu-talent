@@ -3,33 +3,111 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from queue import Queue
+from threading import Lock, Thread
 from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 from agi_talent_radar.core.import_agent import run_import_agent_stream
+from agi_talent_radar.core.education import top_school_names
 from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.models import CandidateEvaluation, CandidateResume
-from agi_talent_radar.core.resume_ingestion import MAX_PDF_BYTES, extract_pdf_text, text_resume
+from agi_talent_radar.core.resume_ingestion import (
+    MAX_PDF_BYTES,
+    extract_image_text,
+    extract_pdf_text,
+    text_resume,
+)
 from agi_talent_radar.core.runner import run_candidate_stream
 from agi_talent_radar.core.scoring_config import DEFAULT as SCORING_CONFIG
 
 
 ROOT = Path(__file__).resolve().parents[2]
 VALID_GROUPS = {"pending", "shortlisted", "alternative", "rejected", "dismissed"}
-VALID_IMPORT_SUFFIXES = {".pdf", ".jsonl", ".md", ".txt"}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+VALID_IMPORT_SUFFIXES = {".pdf", ".jsonl", ".md", ".txt"} | IMAGE_SUFFIXES
 MAX_BATCH_FILES = 50
 MAX_BATCH_BYTES = 200 * 1024 * 1024
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_PARALLEL_IMPORTS = max(1, min(5, int(os.getenv("IMPORT_CONCURRENCY", "5"))))
+_IMPORT_IDENTITY_LOCK = Lock()
+_EVALUATION_START_LOCK = Lock()
+_ACTIVE_EVALUATIONS_LOCK = Lock()
+_ACTIVE_EVALUATIONS: set[int] = set()
 
 
 class ImportFileError(ValueError):
     def __init__(self, stage: str, message: str):
         super().__init__(message)
         self.stage = stage
+
+
+def _set_evaluation_active(evaluation_id: int, active: bool) -> None:
+    with _ACTIVE_EVALUATIONS_LOCK:
+        if active:
+            _ACTIVE_EVALUATIONS.add(evaluation_id)
+        else:
+            _ACTIVE_EVALUATIONS.discard(evaluation_id)
+
+
+def _is_evaluation_active(evaluation_id: int) -> bool:
+    with _ACTIVE_EVALUATIONS_LOCK:
+        return evaluation_id in _ACTIVE_EVALUATIONS
+
+
+def _run_evaluation_job(
+    candidate_id: str,
+    evaluation_run_id: int,
+    resume: CandidateResume,
+    academic_report: dict[str, Any],
+    event_queue: Queue,
+) -> None:
+    """Run an evaluation independently from the browser's SSE connection."""
+    evaluation = None
+    try:
+        for event in run_candidate_stream(resume, academic_report=academic_report):
+            if event["type"] == "node":
+                from agi_talent_radar.core.database import get_session, record_node_event
+
+                with get_session() as session:
+                    record_node_event(session, evaluation_run_id, event)
+                event_queue.put(event)
+            elif event["type"] == "result":
+                evaluation = CandidateEvaluation.model_validate(event["result"])
+                evaluation.id = candidate_id
+            else:
+                event_queue.put(event)
+
+        if evaluation is None:
+            raise RuntimeError("评估流程未返回结果。")
+
+        from agi_talent_radar.core.database import get_session, save_evaluation
+
+        with get_session() as session:
+            save_evaluation(session, evaluation, evaluation_id=evaluation_run_id)
+
+        try:
+            from agi_talent_radar.services import talent_service
+
+            talent_service.admit_candidate_after_evaluation(evaluation_run_id)
+        except (ValueError, RuntimeError):
+            pass
+
+        event_queue.put({"type": "result", "result": evaluation.model_dump()})
+    except Exception as exc:
+        from agi_talent_radar.core.database import fail_evaluation_run, get_session
+
+        with get_session() as session:
+            fail_evaluation_run(session, evaluation_run_id, exc)
+        event_queue.put({"type": "error", "message": str(exc)})
+    finally:
+        _set_evaluation_active(evaluation_run_id, False)
+        event_queue.put(None)
 
 
 def _has_structure(resume: CandidateResume) -> bool:
@@ -68,23 +146,23 @@ def create_app() -> Flask:
 
     dist_dir = Path(app.static_folder) / "dist"
     vite_dev = os.getenv("VITE_DEV", "").strip() == "1"
-    dist_assets: list[str] = []
-    if not vite_dev and dist_dir.exists():
-        assets_dir = dist_dir / "assets"
-        if assets_dir.exists():
-            dist_assets = [f"assets/{f.name}" for f in assets_dir.iterdir() if f.suffix in (".js", ".css")]
+
+    def render_spa() -> str:
+        assets = [] if vite_dev else _list_dist_assets(dist_dir)
+        return render_template("index.html", vite_dev=vite_dev, dist_assets=assets)
 
     @app.get("/")
     def index() -> str:
-        return render_template("index.html", vite_dev=vite_dev, dist_assets=dist_assets)
+        return render_spa()
 
     @app.get("/knowledge")
     @app.get("/talent-pool")
+    @app.get("/talent-pool/<path:person_path>")
     @app.get("/review")
     @app.get("/settings")
     @app.get("/resume-evaluate")
     def spa_pages() -> str:
-        return render_template("index.html", vite_dev=vite_dev, dist_assets=dist_assets)
+        return render_spa()
 
     @app.get("/api/candidates")
     def list_candidates():
@@ -109,16 +187,32 @@ def create_app() -> Flask:
     @app.get("/api/candidates/<candidate_id>")
     def get_candidate(candidate_id: str):
         try:
-            from agi_talent_radar.core.database import get_candidate_with_latest_evaluation, get_session
+            from agi_talent_radar.core.database import (
+                evaluation_run_to_dict,
+                fail_evaluation_run,
+                get_candidate_with_latest_evaluation,
+                get_latest_evaluation_run,
+                get_session,
+            )
 
             with get_session() as session:
                 candidate_orm, evaluation = get_candidate_with_latest_evaluation(session, candidate_id)
                 if not candidate_orm:
                     return jsonify({"detail": "候选人不存在"}), 404
+                latest_run = get_latest_evaluation_run(session, candidate_id)
+                if (
+                    latest_run
+                    and latest_run.status == "running"
+                    and not _is_evaluation_active(latest_run.id)
+                ):
+                    fail_evaluation_run(session, latest_run.id, "服务重启或连接恢复时发现评估任务已中断。")
+                    session.refresh(latest_run)
                 data = _orm_to_detail(candidate_orm)
                 if evaluation:
                     data["evaluation"] = _orm_to_evaluation(evaluation)
                     data["latest_evaluation"] = data["evaluation"]
+                if latest_run is not None and getattr(latest_run, "status", None) in {"running", "completed", "failed"}:
+                    data["evaluation_run"] = evaluation_run_to_dict(latest_run)
                 return jsonify(data)
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
@@ -127,67 +221,79 @@ def create_app() -> Flask:
     def evaluate_candidate(candidate_id: str):
         try:
             from agi_talent_radar.core.database import (
+                fail_evaluation_run,
                 get_candidate_with_latest_evaluation,
+                get_latest_evaluation_run,
                 get_session,
                 start_evaluation_run,
             )
 
-            with get_session() as session:
-                candidate_orm, _ = get_candidate_with_latest_evaluation(session, candidate_id)
-                if not candidate_orm:
-                    return jsonify({"detail": "候选人不存在"}), 404
-                # 评估前置：核验必须完成且不是 needs_review（有待核验论文需人工先确认）
-                vresult = _verification_result(candidate_orm)
-                if vresult not in ("verified", "rejected"):
-                    return jsonify({"detail": "论文尚未核验完成或有待核验论文，无法进入评估流程"}), 400
-                resume = _orm_to_resume(candidate_orm)
-                evaluation_run = start_evaluation_run(session, candidate_id)
-                evaluation_run_id = evaluation_run.id
+            with _EVALUATION_START_LOCK:
+                with get_session() as session:
+                    candidate_orm, _ = get_candidate_with_latest_evaluation(session, candidate_id)
+                    if not candidate_orm:
+                        return jsonify({"detail": "候选人不存在"}), 404
+                    latest_run = get_latest_evaluation_run(session, candidate_id)
+                    if latest_run and latest_run.status == "running":
+                        if _is_evaluation_active(latest_run.id):
+                            return jsonify({
+                                "detail": "该候选人的评估正在后台运行。",
+                                "evaluation_id": latest_run.id,
+                            }), 409
+                        fail_evaluation_run(session, latest_run.id, "服务重启后原评估任务已中断。")
+
+                    vresult = _verification_result(candidate_orm)
+                    if vresult not in ("verified", "rejected"):
+                        return jsonify({"detail": "论文尚未核验完成或有待核验论文，无法进入评估流程"}), 400
+                    resume = _orm_to_resume(candidate_orm)
+                    academic_report = _evaluation_academic_report(candidate_orm)
+                    evaluation_run = start_evaluation_run(session, candidate_id)
+                    evaluation_run_id = evaluation_run.id
+
+                event_queue: Queue = Queue()
+                _set_evaluation_active(evaluation_run_id, True)
+                worker = Thread(
+                    target=_run_evaluation_job,
+                    args=(candidate_id, evaluation_run_id, resume, academic_report, event_queue),
+                    name=f"evaluation-{evaluation_run_id}",
+                    daemon=True,
+                )
+                worker.start()
         except Exception as exc:
             return jsonify({"detail": f"读取候选人失败: {exc}"}), 500
 
         def generate():
-            evaluation = None
-            try:
-                for event in run_candidate_stream(resume):
-                    if event["type"] == "node":
-                        from agi_talent_radar.core.database import get_session, record_node_event
-
-                        with get_session() as session:
-                            record_node_event(session, evaluation_run_id, event)
-                    if event["type"] == "result":
-                        evaluation = CandidateEvaluation.model_validate(event["result"])
-                        evaluation.id = candidate_id
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
-                if evaluation:
-                    from agi_talent_radar.core.database import get_session, save_evaluation
-
-                    with get_session() as session:
-                        save_evaluation(session, evaluation, evaluation_id=evaluation_run_id)
-
-                    # 阶段 4：评估成功才入库，且不按分数自动写 Candidate.group。
-                    # 由 talent_service.admit_candidate_after_evaluation 集中处理。
-                    try:
-                        from agi_talent_radar.services import talent_service
-
-                        talent_service.admit_candidate_after_evaluation(evaluation_run_id)
-                    except (ValueError, RuntimeError):
-                        # 评估未完成 / 缺 person_id 等业务异常不应让 SSE 失败；
-                        # Candidate 入库失败由 talent_service 内部日志记录。
-                        pass
-            except Exception as exc:
-                from agi_talent_radar.core.database import fail_evaluation_run, get_session
-
-                with get_session() as session:
-                    fail_evaluation_run(session, evaluation_run_id, exc)
-                yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'started', 'evaluation_id': evaluation_run_id}, ensure_ascii=False)}\n\n"
+            while True:
+                event = event_queue.get()
+                if event is None:
+                    break
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
         response = Response(stream_with_context(generate()), mimetype="text/event-stream")
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["X-Accel-Buffering"] = "no"
         return response
+
+    @app.patch("/api/candidates/<candidate_id>/supplementary")
+    def update_supplementary_info(candidate_id: str):
+        """保存 HR 手动补充的信息（简历上没有的），评估时并入输入。"""
+        body = request.get_json(silent=True) or {}
+        content = str(body.get("content", ""))[:4000]
+        try:
+            from agi_talent_radar.core.database import get_session
+            from agi_talent_radar.core.db.orm import CandidateORM
+
+            with get_session() as session:
+                candidate = session.get(CandidateORM, candidate_id)
+                if not candidate:
+                    return jsonify({"detail": "候选人不存在"}), 404
+                candidate.supplementary_info = content
+                session.commit()
+                return jsonify({"id": candidate_id, "supplementary_info": candidate.supplementary_info})
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
 
     @app.delete("/api/candidates/<candidate_id>")
     def delete_candidate(candidate_id: str):
@@ -219,8 +325,7 @@ def create_app() -> Flask:
 
     @app.get("/api/candidates/pending-publications")
     def list_pending_publications():
-        """待核验论文：从所有候选人的 academic_report 中提取 verdict
-        为 unverifiable / mismatch 的论文，作为待核验项返回。"""
+        """返回仍需人工处理的论文：unverifiable（待核验）与 mismatch（待平反）。"""
         try:
             from agi_talent_radar.core.db.runtime import get_session
             from agi_talent_radar.core.db.orm import CandidateORM
@@ -233,13 +338,16 @@ def create_app() -> Flask:
                 pending = []
                 for c in rows:
                     report = _load_json(getattr(c, "academic_report", "")) or {}
-                    for a in report.get("alignments", []):
+                    for alignment_index, a in enumerate(report.get("alignments", [])):
                         verdict = a.get("verdict", "")
-                        if verdict not in ("unverifiable", "mismatch"):
+                        if verdict not in {"unverifiable", "mismatch"}:
+                            continue
+                        if a.get("human_status", "unreviewed") != "unreviewed":
                             continue
                         claim = a.get("claim", {})
                         pending.append({
                             "candidate_id": c.id,
+                            "alignment_index": alignment_index,
                             "candidate_name": c.name or c.id,
                             "title": claim.get("title", ""),
                             "claimed_venue": claim.get("venue", ""),
@@ -247,12 +355,69 @@ def create_app() -> Flask:
                             "claimed_role": claim.get("claimed_role", ""),
                             "claimed_status": claim.get("claimed_status", ""),
                             "verdict": verdict,
+                            # verify=待核验（查不到）；rehabilitate=待平反（机器判不通过，人工可平反）
+                            "review_kind": "rehabilitate" if verdict == "mismatch" else "verify",
                             "note": a.get("note", ""),
                             "discrepancies": a.get("discrepancies", []),
                             "matched_title": a.get("matched_title", ""),
                             "source_url": a.get("openalex_url") or a.get("source_url", ""),
                         })
                 return jsonify(pending)
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
+    @app.post("/api/candidates/<candidate_id>/publications/<int:alignment_index>/review")
+    def review_publication(candidate_id: str, alignment_index: int):
+        """人工裁决论文自述：unverifiable 可确认/驳回；mismatch 可由 HR 平反（confirmed）。"""
+        body = request.get_json(silent=True) or {}
+        action = str(body.get("action", "")).strip()
+        reviewer = str(body.get("reviewer", "")).strip()
+        note = str(body.get("note", "")).strip()
+        if action not in {"confirmed", "dismissed"}:
+            return jsonify({"detail": "action 必须是 confirmed 或 dismissed"}), 400
+        if not reviewer:
+            return jsonify({"detail": "reviewer 不能为空"}), 400
+
+        try:
+            from agi_talent_radar.core.db.orm import CandidateORM
+            from agi_talent_radar.core.db.runtime import get_session
+
+            with get_session() as session:
+                candidate = session.get(CandidateORM, candidate_id)
+                if not candidate:
+                    return jsonify({"detail": "候选人不存在"}), 404
+                if getattr(candidate, "academic_check_status", "none") != "done":
+                    return jsonify({"detail": "论文机器核验尚未完成"}), 409
+
+                report = deepcopy(_load_json(getattr(candidate, "academic_report", "")) or {})
+                alignments = report.get("alignments", [])
+                if alignment_index < 0 or alignment_index >= len(alignments):
+                    return jsonify({"detail": "论文核验项不存在"}), 404
+                alignment = alignments[alignment_index]
+                verdict = alignment.get("verdict")
+                if verdict == "unverifiable":
+                    pass  # 待核验：confirmed / dismissed 均可
+                elif verdict == "mismatch" and action == "confirmed":
+                    pass  # 平反：核验不通过的论文由 HR 确认属实
+                else:
+                    return jsonify({"detail": "该论文不在可人工裁决状态"}), 409
+
+                alignment.update({
+                    "human_status": action,
+                    "human_reviewer": reviewer,
+                    "human_note": note,
+                    "human_reviewed_at": datetime.now(timezone.utc).isoformat(),
+                })
+                candidate.academic_report = report
+                session.commit()
+
+                return jsonify({
+                    "candidate_id": candidate_id,
+                    "alignment_index": alignment_index,
+                    "human_status": action,
+                    "verification_result": _verification_result(candidate),
+                    "evaluable": _is_evaluable(candidate),
+                })
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
@@ -292,17 +457,25 @@ def create_app() -> Flask:
 
     @app.get("/api/candidates/<candidate_id>/pdf")
     def get_candidate_pdf(candidate_id: str):
-        """流式返回候选人原始简历 PDF（导入时落盘）。
-        历史数据无 PDF 时返回 404，前端回退到 raw_text。"""
+        """流式返回候选人原始简历文件（PDF/图片/MD/TXT 等按实际后缀）。
+        历史数据无原件时返回 404，前端回退到 raw_text。"""
         from flask import send_from_directory
 
-        from agi_talent_radar.core.pdf_storage import _ROOT, get_resume_pdf_path
+        from agi_talent_radar.core.pdf_storage import _ROOT, get_resume_original_path
 
         try:
-            pdf_path = get_resume_pdf_path(candidate_id)
-            if pdf_path is None:
-                return jsonify({"detail": "该候选人无原始 PDF（可能是历史数据或非 PDF 导入）"}), 404
-            return send_from_directory(_ROOT, pdf_path.name, mimetype="application/pdf")
+            original_path = get_resume_original_path(candidate_id)
+            if original_path is None:
+                return jsonify({"detail": "该候选人无原始简历文件（可能是历史数据）"}), 404
+            mimetype = {
+                ".pdf": "application/pdf",
+                ".png": "image/png",
+                ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".webp": "image/webp",
+                ".md": "text/markdown", ".txt": "text/plain",
+                ".jsonl": "application/jsonl",
+            }.get(original_path.suffix.lower(), "application/octet-stream")
+            return send_from_directory(_ROOT, original_path.name, mimetype=mimetype)
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
@@ -387,6 +560,30 @@ def create_app() -> Flask:
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
+    @app.post("/api/persons")
+    def create_person_view():
+        """HR 手动把人物加入人才库：固定 guest 类型，不参与 Track 分类。"""
+        body = request.get_json(silent=True) or {}
+        name = (body.get("name") or "").strip()
+        if not name:
+            return jsonify({"detail": "姓名必填"}), 400
+        try:
+            from agi_talent_radar.core.database import get_session
+            from agi_talent_radar.core.persons import get_or_create_person
+
+            with get_session() as session:
+                person = get_or_create_person(
+                    session,
+                    name=name,
+                    org=(body.get("org") or "").strip(),
+                    direction=(body.get("direction") or "").strip(),
+                    person_type="guest",
+                )
+                session.commit()
+                return jsonify(_person_to_brief(person)), 201
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
     @app.get("/api/persons")
     def list_persons_view():
         person_type = request.args.get("person_type", "")
@@ -394,10 +591,14 @@ def create_app() -> Flask:
         level = request.args.get("level", "")
         try:
             from agi_talent_radar.core.database import get_session, list_persons
+            from agi_talent_radar.core.db.repository import find_candidate_by_person
 
             with get_session() as session:
                 rows = list_persons(session, person_type=person_type, name=name, level=level)
-                return jsonify([_person_to_brief(row) for row in rows])
+                return jsonify([
+                    _person_to_brief(row, find_candidate_by_person(session, row.id))
+                    for row in rows
+                ])
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
@@ -405,12 +606,14 @@ def create_app() -> Flask:
     def get_person_view(person_id: str):
         try:
             from agi_talent_radar.core.database import get_person_detail, get_session
+            from agi_talent_radar.core.db.repository import find_candidate_by_person
 
             with get_session() as session:
                 person = get_person_detail(session, person_id)
                 if not person:
                     return jsonify({"detail": "人员不存在"}), 404
-                return jsonify(_person_to_detail(person))
+                candidate = find_candidate_by_person(session, person.id)
+                return jsonify(_person_to_detail(person, candidate))
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
@@ -438,6 +641,13 @@ def create_app() -> Flask:
                 deleted = _delete_person(session, person_id)
                 if not deleted:
                     return jsonify({"detail": "人员不存在"}), 404
+                try:
+                    from agi_talent_radar.core.vector_store import QdrantVectorStore
+                    from agi_talent_radar.knowledge_agent.vector_sync import delete_person_vectors
+
+                    delete_person_vectors(person_id, QdrantVectorStore())
+                except Exception:
+                    pass
                 return jsonify({"id": person_id, "deleted": True})
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
@@ -470,7 +680,7 @@ def create_app() -> Flask:
             uploaded_files = [single_file] if single_file else []
         uploaded_files = [file for file in uploaded_files if file and file.filename]
         if not uploaded_files:
-            return jsonify({"detail": "请上传 .pdf / .jsonl / .md / .txt 简历文件"}), 400
+            return jsonify({"detail": "请上传 .pdf / .jsonl / .md / .txt / .png / .jpg / .jpeg / .webp 简历文件"}), 400
         if len(uploaded_files) > MAX_BATCH_FILES:
             return jsonify({"detail": f"单次最多导入 {MAX_BATCH_FILES} 份简历"}), 400
 
@@ -532,6 +742,17 @@ def create_app() -> Flask:
     return app
 
 
+def _list_dist_assets(dist_dir: Path) -> list[str]:
+    assets_dir = dist_dir / "assets"
+    if not assets_dir.exists():
+        return []
+    return sorted(
+        f"assets/{path.name}"
+        for path in assets_dir.iterdir()
+        if path.suffix in {".js", ".css"}
+    )
+
+
 def _run_import_worker(
     event_queue: Queue[dict[str, Any]],
     upload: tuple[str, str, bytes, str],
@@ -568,6 +789,40 @@ def _run_import_worker(
         event_queue.put({"type": "_file_complete", "file_id": file_id, "success": success})
 
 
+def _candidate_identity_context() -> list[dict[str, Any]]:
+    """给初筛 Agent 提供已有候选人的身份证据，不包含历史评分。"""
+    from agi_talent_radar.core.db.orm import CandidateORM
+    from agi_talent_radar.core.db.runtime import get_session
+
+    def decode(value: Any) -> list:
+        if isinstance(value, list):
+            return value
+        if not isinstance(value, str) or not value:
+            return []
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
+
+    with get_session() as session:
+        rows = session.query(CandidateORM).order_by(CandidateORM.updated_at.desc()).all()
+        return [
+            {
+                "id": row.id,
+                "name": row.name or "",
+                "target_role": row.target_role or "",
+                "stage": row.stage or "",
+                "education": decode(row.education)[:6],
+                "directions": decode(row.directions)[:8],
+                "experiences": decode(row.experiences)[:6],
+                "publications": decode(row.publications)[:12],
+                "person_id": row.person_id or "",
+            }
+            for row in rows
+        ]
+
+
 def _stream_import_upload(
     file_id: str,
     filename: str,
@@ -579,7 +834,7 @@ def _stream_import_upload(
     current_stage = "validation"
     try:
         if suffix not in VALID_IMPORT_SUFFIXES:
-            raise ValueError("仅支持 .pdf / .jsonl / .md / .txt 文件")
+            raise ValueError("仅支持 .pdf / .jsonl / .md / .txt / .png / .jpg / .jpeg / .webp 文件")
         if not file_bytes:
             raise ValueError("文件内容为空")
         yield _file_event(
@@ -609,7 +864,7 @@ def _stream_import_upload(
             raw_text, ocr_pages = extract_pdf_text(file_bytes)
             if not raw_text.strip():
                 raise ValueError("PDF 未能提取到任何文字内容。")
-            resumes = [text_resume(raw_text, filename)]
+            resumes = [text_resume(raw_text, filename, ocr_pages=ocr_pages)]
             message = f"已提取 {raw_text.count('[第 ')} 页文本。"
             if ocr_pages:
                 message += f"第 {', '.join(map(str, ocr_pages))} 页为扫描件，已本地 OCR。"
@@ -623,31 +878,37 @@ def _stream_import_upload(
                 status="done",
                 message=message,
             )
+        elif suffix in IMAGE_SUFFIXES:
+            current_stage = "extracting"
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="running",
+                message="正在对图片简历进行本地 OCR。",
+            )
+            raw_text = extract_image_text(file_bytes)
+            if not raw_text.strip():
+                raise ValueError("图片未能提取到任何文字内容。")
+            resumes = [text_resume(raw_text, filename, ocr_pages=[1])]
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="done",
+                message="图片 OCR 完成。",
+            )
         else:
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir) / f"upload{suffix}"
                 temp_path.write_bytes(file_bytes)
                 resumes = load_resumes(temp_path)
-        current_stage = "classification"
-        yield _file_event(
-            "stage",
-            file_id,
-            filename,
-            file_index,
-            file_total,
-            stage=current_stage,
-            status="running",
-            message=f"正在对 {len(resumes)} 份简历进行初筛分类。",
-        )
-        resume_by_id = {resume.id: resume for resume in resumes}
-        classifications = list(run_import_agent_stream(resumes, persist=False))
-        candidate_total = len(classifications)
-
-        # 结构化解析阶段：把 raw_text 拆成 name/education/experiences/projects 等，
-        # 让导入后即可在「结构化简历」面板展示，不必等手动评估。
-        from agi_talent_radar.agents.resume_parser import parse_raw_resume
-        from agi_talent_radar.core.database import get_session, save_candidate
-
         current_stage = "structuring"
         yield _file_event(
             "stage",
@@ -657,31 +918,40 @@ def _stream_import_upload(
             file_total,
             stage=current_stage,
             status="running",
-            message=f"正在解析 {candidate_total} 份简历的结构化字段。",
+            message=f"正在解析 {len(resumes)} 份简历的结构化字段。",
         )
-        structured_resumes: list[CandidateResume] = []
-        for classification in classifications:
-            resume = resume_by_id[classification.id]
+        from agi_talent_radar.agents.resume_parser import iter_parse_resume_chunks
+        structured_inputs: list[CandidateResume] = []
+        for resume in resumes:
             if resume.raw_text and not _has_structure(resume):
-                parsed = parse_raw_resume(resume.id, resume.raw_text)
-                parsed = parsed.model_copy(
+                merged = resume
+                for kind, section_name, done, total, payload in iter_parse_resume_chunks(
+                    resume.id, resume.raw_text, has_ocr=bool(resume.ocr_pages)
+                ):
+                    if kind == "section":
+                        yield _file_event(
+                            "structure",
+                            file_id,
+                            filename,
+                            file_index,
+                            file_total,
+                            stage=current_stage,
+                            status="running",
+                            section=str(section_name),
+                            fields=payload.model_dump(mode="json"),
+                            done=done,
+                            total=total,
+                        )
+                    else:
+                        merged = payload
+                resume = merged.model_copy(
                     update={
                         "source_format": resume.source_format,
                         "document_analysis": resume.document_analysis,
+                        "ocr_pages": resume.ocr_pages,
                     }
                 )
-                structured_resumes.append(parsed)
-                resume = parsed
-            else:
-                structured_resumes.append(resume)
-            # 落库（含结构化字段 + 初筛分类）
-            try:
-                with get_session() as session:
-                    save_candidate(session, resume, classification)
-            except Exception as exc:
-                import warnings
-
-                warnings.warn(f"保存候选人 {classification.id} 失败: {exc}")
+            structured_inputs.append(resume)
         yield _file_event(
             "stage",
             file_id,
@@ -690,15 +960,116 @@ def _stream_import_upload(
             file_total,
             stage=current_stage,
             status="done",
-            message=f"已完成 {candidate_total} 份简历的结构化解析。",
+            message=f"已完成 {len(structured_inputs)} 份简历的结构化解析。",
         )
 
-        # PDF 原文落盘：只有 PDF 上传才有 file_bytes 是 PDF 二进制
-        if suffix == ".pdf":
-            from agi_talent_radar.core.pdf_storage import save_resume_pdf
+        current_stage = "classification"
+        yield _file_event(
+            "stage",
+            file_id,
+            filename,
+            file_index,
+            file_total,
+            stage=current_stage,
+            status="running",
+            message=f"初筛 Agent 正在分类并判定是否属于已有人才。",
+        )
+
+        from agi_talent_radar.core.database import get_session, save_candidate
+        from agi_talent_radar.core.db.repository import create_resume_version, save_resume_submission
+        import uuid
+
+        structured_by_id = {resume.id: resume for resume in structured_inputs}
+        classifications = []
+        structured_resumes: list[CandidateResume] = []
+        with _IMPORT_IDENTITY_LOCK:
+            identity_candidates = _candidate_identity_context()
+            agent_results = list(
+                run_import_agent_stream(
+                    structured_inputs,
+                    persist=False,
+                    identity_candidates=identity_candidates,
+                )
+            )
+            for classification in agent_results:
+                source_id = classification.id
+                resume = structured_by_id[source_id]
+                decision = getattr(classification, "identity_decision", "new_person")
+                matched_id = getattr(classification, "matched_candidate_id", "")
+                decision = decision if decision in {"same_person", "new_person"} else "new_person"
+                matched_id = matched_id if isinstance(matched_id, str) else ""
+                if decision == "same_person" and matched_id:
+                    # 硬性护栏：LLM 身份误判的代价远高于重复建档。
+                    # 新简历无姓名（OCR 质量差无法核验身份）、或姓名与目标候选人不同，
+                    # 一律强制 new_person，不允许并档覆盖。
+                    from agi_talent_radar.core.db.orm import CandidateORM as _CandidateORM
+
+                    with get_session() as session:
+                        existing = session.get(_CandidateORM, matched_id)
+                    new_name = (resume.name or "").strip()
+                    existing_name = (existing.name or "").strip() if existing else ""
+                    if not new_name or (existing_name and new_name != existing_name):
+                        decision = "new_person"
+                        matched_id = ""
+                canonical_id = matched_id if decision == "same_person" and matched_id else source_id
+                if canonical_id != source_id:
+                    resume = resume.model_copy(update={"id": canonical_id})
+                    classification = classification.model_copy(update={"id": canonical_id})
+
+                with get_session() as session:
+                    saved = save_candidate(session, resume, classification)
+                    saved.group = "pending"
+                    identity_confidence = getattr(classification, "identity_confidence", 0)
+                    identity_evidence = getattr(classification, "identity_evidence", [])
+                    identity_conflicts = getattr(classification, "identity_conflicts", [])
+                    identity_payload = {
+                        "decision": decision,
+                        "matched_candidate_id": matched_id,
+                        "confidence": identity_confidence if isinstance(identity_confidence, (int, float)) else 0,
+                        "evidence": identity_evidence if isinstance(identity_evidence, list) else [],
+                        "conflicts": identity_conflicts if isinstance(identity_conflicts, list) else [],
+                    }
+                    submission = save_resume_submission(
+                        session,
+                        resume_id=uuid.uuid4().hex,
+                        source_format=resume.source_format,
+                        raw_text=resume.raw_text,
+                        structured={**resume.model_dump(mode="json"), "identity_resolution": identity_payload},
+                        filename=filename,
+                        parse_status="done",
+                        candidate_id=saved.id,
+                        person_id=saved.person_id,
+                    )
+                    version = create_resume_version(
+                        session,
+                        submission_id=submission.id,
+                        raw_text=resume.raw_text,
+                        structured=resume.model_dump(mode="json"),
+                        note="导入初筛 Agent 完成身份判定",
+                    )
+                    saved.current_resume_version_id = version.id
+                    session.commit()
+                classifications.append(classification)
+                structured_resumes.append(resume)
+
+        candidate_total = len(classifications)
+        yield _file_event(
+            "stage",
+            file_id,
+            filename,
+            file_index,
+            file_total,
+            stage="classification",
+            status="done",
+            message=f"初筛 Agent 已完成 {candidate_total} 份分类与身份判定。",
+        )
+
+        # 原始简历落盘：PDF/图片/MD 等都保存原件，前端按格式智能渲染
+        if suffix in VALID_IMPORT_SUFFIXES:
+            from agi_talent_radar.core.pdf_storage import save_resume_original
 
             for classification in classifications:
-                save_resume_pdf(classification.id, file_bytes)
+                save_resume_original(classification.id, file_bytes, suffix)
 
         # 每份简历结构化完立刻 yield + 落库（academic_check_status=none）。
         # 导入流程到这里就结束了——论文核验在后台自动进行，不阻塞导入卡片。
@@ -805,6 +1176,8 @@ def _orm_to_brief(row) -> dict[str, Any]:
         "verification_result": _verification_result(row),
         # 能否进入评估：只有核验通过才可
         "evaluable": _is_evaluable(row),
+        "evaluation_status": getattr(row, "evaluation_status", "idle"),
+        "evaluation_run_id": getattr(row, "evaluation_run_id", None),
     }
 
 
@@ -822,12 +1195,42 @@ def _verification_result(row) -> str:
     aligns = report.get("alignments", [])
     if not aligns:
         return "verified"  # 没论文直接通过
-    verdicts = [a.get("verdict", "unverifiable") for a in aligns]
+    verdicts = [_effective_alignment_verdict(a) for a in aligns]
     if any(v == "mismatch" for v in verdicts):
         return "rejected"
     if any(v == "unverifiable" for v in verdicts):
         return "needs_review"
     return "verified"
+
+
+def _effective_alignment_verdict(alignment: dict[str, Any]) -> str:
+    human_status = alignment.get("human_status", "unreviewed")
+    if human_status == "confirmed":
+        return "verified"
+    if human_status == "dismissed":
+        return "mismatch"
+    return alignment.get("verdict", "unverifiable")
+
+
+def _evaluation_academic_report(row) -> dict[str, Any]:
+    """生成送入评估图的报告副本，并应用人工裁决的有效 verdict 与人工备注。"""
+    report = deepcopy(_load_json(getattr(row, "academic_report", "")) or {})
+    for alignment in report.get("alignments", []):
+        effective_verdict = _effective_alignment_verdict(alignment)
+        if effective_verdict == alignment.get("verdict"):
+            continue
+        alignment["machine_verdict"] = alignment.get("verdict", "unverifiable")
+        alignment["verdict"] = effective_verdict
+        human_note = str(alignment.get("human_note", "")).strip()
+        if effective_verdict == "mismatch":
+            discrepancies = list(alignment.get("discrepancies", []))
+            discrepancies.append("人工核验驳回该论文自述")
+            alignment["discrepancies"] = list(dict.fromkeys(discrepancies))
+        # 人工裁决与备注显式并入 note，后续评估 agent 可见
+        label = "人工核验确认该论文属实" if effective_verdict == "verified" else "人工核验驳回该论文自述"
+        stamped = label + (f"：{human_note}" if human_note else "")
+        alignment["note"] = " ".join(x for x in [str(alignment.get("note", "")).strip(), stamped] if x).strip()
+    return report
 
 
 def _is_evaluable(row) -> bool:
@@ -842,6 +1245,8 @@ def _iso(value) -> str | None:
 
 
 def _orm_to_detail(row) -> dict[str, Any]:
+    from agi_talent_radar.core.graph import evaluation_graph_catalog
+
     return {
         "id": row.id,
         "name": row.name or row.id,
@@ -852,6 +1257,7 @@ def _orm_to_detail(row) -> dict[str, Any]:
         "category": row.import_category,
         "confidence": row.import_confidence,
         "raw_text": row.raw_text,
+        "supplementary_info": _string_attr(row, "supplementary_info", ""),
         "education": _load_json(row.education),
         "directions": _load_json(row.directions),
         "experiences": _load_json(getattr(row, "experiences", "")),
@@ -862,7 +1268,8 @@ def _orm_to_detail(row) -> dict[str, Any]:
         "source_format": _string_attr(row, "source_format", "text"),
         "document_analysis": _load_json(getattr(row, "document_analysis", "")) or {},
         # 导入阶段论文核验结果
-        "academic_report": _load_json(getattr(row, "academic_report", "")) or {},
+        "academic_report": _evaluation_academic_report(row),
+        "evaluation_graph": evaluation_graph_catalog(),
         # 论文核验状态 + 结果 + 可评估标记
         "academic_check_status": getattr(row, "academic_check_status", "none"),
         "verification_result": _verification_result(row),
@@ -875,7 +1282,26 @@ def _orm_to_detail(row) -> dict[str, Any]:
     }
 
 
-def _person_to_brief(person) -> dict[str, Any]:
+def _dominant_track(evaluation) -> tuple[str, float]:
+    assignments = getattr(evaluation, "track_assignments", None) or []
+    if not assignments:
+        return "", 0.0
+    best = max(assignments, key=lambda item: float(getattr(item, "weight", 0) or 0))
+    return str(getattr(best, "track", "") or ""), float(getattr(best, "weight", 0) or 0)
+
+
+def _person_candidate_fields(candidate, latest_eval) -> dict[str, Any]:
+    track, weight = _dominant_track(latest_eval)
+    return {
+        "candidate_id": getattr(candidate, "id", None),
+        "engagement_status": getattr(candidate, "engagement_status", "newly_admitted"),
+        "source_kinds": [source.source_kind for source in (getattr(candidate, "sources", None) or [])],
+        "dominant_track": track,
+        "dominant_track_weight": weight,
+    }
+
+
+def _person_to_brief(person, candidate=None) -> dict[str, Any]:
     """人才库列表项：主档摘要 + 最新评估/舆情快照。"""
     latest_eval = _latest_evaluation(person)
     latest_rep = _latest_reputation(person)
@@ -885,26 +1311,33 @@ def _person_to_brief(person) -> dict[str, Any]:
         "org": person.org or "",
         "direction": person.direction or "",
         "person_type": person.person_type,
+        "schools": getattr(person, "schools", None) or [],
+        "top_schools": top_school_names(getattr(person, "schools", None) or []),
         "overall_score": latest_eval.overall_score if latest_eval else None,
         "level": latest_eval.level if latest_eval else None,
         "reputation_level": latest_rep.level if latest_rep else None,
         "reputation_status": latest_rep.review_status if latest_rep else None,
         "updated_at": person.updated_at.isoformat() if person.updated_at else None,
+        **_person_candidate_fields(candidate, latest_eval),
     }
 
 
-def _person_to_detail(person) -> dict[str, Any]:
+def _person_to_detail(person, candidate=None) -> dict[str, Any]:
     """人才详情：主档 + 评估历史 + 舆情报告列表。"""
+    latest_eval = _latest_evaluation(person)
     return {
         "id": person.id,
         "name": person.name or person.id,
         "org": person.org or "",
         "direction": person.direction or "",
         "person_type": person.person_type,
+        "schools": getattr(person, "schools", None) or [],
+        "top_schools": top_school_names(getattr(person, "schools", None) or []),
         "created_at": person.created_at.isoformat() if person.created_at else None,
         "updated_at": person.updated_at.isoformat() if person.updated_at else None,
         "evaluations": [_orm_to_evaluation(ev) for ev in sorted(person.evaluations, key=lambda e: e.id, reverse=True)],
         "reputation_reports": [_reputation_report_to_dict(r) for r in sorted(person.reputation_reports, key=lambda r: r.created_at, reverse=True)],
+        **_person_candidate_fields(candidate, latest_eval),
     }
 
 
@@ -937,6 +1370,11 @@ def _latest_reputation(person):
 
 
 def _orm_to_resume(row) -> CandidateResume:
+    raw_text = row.raw_text or ""
+    supplementary = _string_attr(row, "supplementary_info", "").strip()
+    if supplementary:
+        # HR 补充的信息（简历上没有的）并入评估输入
+        raw_text = f"{raw_text}\n\n[HR 补充信息]\n{supplementary}" if raw_text else f"[HR 补充信息]\n{supplementary}"
     return CandidateResume.model_validate({
         "id": row.id,
         "name": row.name,

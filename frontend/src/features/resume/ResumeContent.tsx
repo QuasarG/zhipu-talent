@@ -1,23 +1,31 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import type { CandidateDetail, AcademicReport } from "@/lib/types";
+import type {
+  AcademicReport,
+  CandidateDetail,
+  ClaimAlignment,
+  VerificationCheckStatus,
+} from "@/lib/types";
+import { api } from "@/lib/api";
 import Tabs from "@/components/ui/Tabs";
-import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
+import Button from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { StatusChip } from "@/components/ui/Chip";
+import { getSchoolLogo } from "@/lib/schoolLogos";
+import { useSessionState } from "@/lib/sessionState";
+import TypewriterText from "@/features/resume/TypewriterText";
 
 interface Props {
   detail: CandidateDetail;
 }
 
 export default function ResumeContent({ detail }: Props) {
-  const [mode, setMode] = useState<"structured" | "raw">("structured");
+  const [mode, setMode] = useSessionState<"structured" | "raw">(`resume-evaluate.resume-mode.${detail.id}`, "structured");
   const directions = (detail.directions || []).filter(Boolean);
-
-  // 论文核验结果直接从 detail.academic_report 读取
-  // （核验在导入流程里已完成并写入 DB，前端不需要再触发）
-  const academicReport: AcademicReport | null = detail.academic_report || null;
+  const academicReport = detail.academic_report || null;
+  // 导入预览态：分节字段逐字显式，日常查看直接渲染
+  const importing = detail.group === "importing";
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -25,7 +33,7 @@ export default function ResumeContent({ detail }: Props) {
         className="mb-4 shrink-0"
         items={[
           { value: "structured", label: "结构化简历" },
-          { value: "raw", label: "简历原文" },
+          { value: "raw", label: "简历原件" },
         ]}
         value={mode}
         onChange={setMode}
@@ -33,43 +41,54 @@ export default function ResumeContent({ detail }: Props) {
 
       <div className="flex-1 min-h-0">
         {mode === "raw" ? (
-          <PdfPreview candidateId={detail.id} fallbackText={detail.raw_text || ""} />
+          <OriginalPreview candidateId={detail.id} sourceFormat={detail.source_format} fallbackText={detail.raw_text || ""} />
         ) : (
-          <div className="h-full min-h-0 flex flex-col gap-4">
-            {/* 标题块：固定不滚 */}
-            <div className="shrink-0">
-              <h2 className="text-headline">{detail.name || detail.id}</h2>
-              <p className="text-body-sm text-on-surface-variant mt-1">
-                {detail.stage}
-                {detail.role ? ` · ${detail.role}` : ""}
-              </p>
+          <div className="h-full min-h-0 overflow-y-auto pr-1">
+            <header className="pb-4 border-b-2 border-outline-variant">
+              <h2 className="text-headline font-bold text-on-surface">
+                {importing ? <TypewriterText text={detail.name || "解析中…"} enabled={!!detail.name} /> : (detail.name || "未命名候选人")}
+              </h2>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                <MetaField label="候选阶段" value={importing && detail.stage ? <TypewriterText text={detail.stage} /> : detail.stage} />
+                <MetaField label="目标岗位" value={importing && detail.role ? <TypewriterText text={detail.role} /> : detail.role} />
+              </div>
               {directions.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
-                  {directions.map((d) => (
-                    <StatusChip key={d} tone="info">{d}</StatusChip>
+                  {directions.map((direction) => (
+                    <StatusChip key={direction} tone="info">{direction}</StatusChip>
                   ))}
                 </div>
               )}
+            </header>
+
+            <SupplementaryBox detail={detail} />
+
+            <div className="grid grid-cols-2 gap-4 py-4">
+              <RecordSection title="教育经历" icon="school" importing={importing}>
+                <EducationList detail={detail} importing={importing} />
+              </RecordSection>
+              <RecordSection title="实习 / 工作经历" icon="work" importing={importing}>
+                <ExperienceList detail={detail} importing={importing} />
+              </RecordSection>
             </div>
 
-            {/* 卡片网格：页不滚，每张卡内部可滚 */}
-            <div className="flex-1 min-h-0 grid grid-cols-2 gap-4 overflow-hidden">
-              <ModuleCard title="教育经历" icon="school">
-                <EducationList detail={detail} />
-              </ModuleCard>
-              <ModuleCard title="实习 / 工作经历" icon="work">
-                <ExperienceList detail={detail} />
-              </ModuleCard>
-              <ModuleCard title="项目经历" icon="construction">
-                <ProjectList detail={detail} />
-              </ModuleCard>
-              <ModuleCard title="论文与成果" icon="menu_book">
-                <PublicationList detail={detail} academicReport={academicReport} />
-              </ModuleCard>
-              <ModuleCard title="技能" icon="bolt" className="col-span-2">
-                <SkillsList detail={detail} />
-              </ModuleCard>
-            </div>
+            <RecordSection title="项目经历" icon="construction" className="mb-4" importing={importing}>
+              <ProjectList detail={detail} importing={importing} />
+            </RecordSection>
+
+            <RecordSection
+              title="论文与成果"
+              icon="menu_book"
+              count={(detail.publications || []).length}
+              className="mb-4"
+              importing={importing}
+            >
+              <PublicationList detail={detail} academicReport={academicReport} importing={importing} />
+            </RecordSection>
+
+            <RecordSection title="技能" icon="bolt" importing={importing}>
+              <SkillsList detail={detail} importing={importing} />
+            </RecordSection>
           </div>
         )}
       </div>
@@ -77,251 +96,498 @@ export default function ResumeContent({ detail }: Props) {
   );
 }
 
-/* ---- PDF 预览（含 raw_text fallback）---- */
-function PdfPreview({ candidateId, fallbackText }: { candidateId: string; fallbackText: string }) {
-  const [pdfOk, setPdfOk] = useState<boolean | null>(null);
+/** HR 补充信息框：简历上没有的信息，持久化到后端，评估时并入输入 */
+function SupplementaryBox({ detail }: { detail: CandidateDetail }) {
+  const [value, setValue] = useState(detail.supplementary_info || "");
+  const [state, setState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
 
-  useEffect(() => {
-    setPdfOk(null);
-    // HEAD 探测 PDF 是否存在；同源请求自动带 session cookie
-    fetch(`/api/candidates/${candidateId}/pdf`, { method: "HEAD" })
-      .then((r) => setPdfOk(r.ok))
-      .catch(() => setPdfOk(false));
-  }, [candidateId]);
+  const save = async () => {
+    if (state === "saving") return;
+    setState("saving");
+    try {
+      await api.candidates.updateSupplementary(detail.id, value.trim());
+      setState("saved");
+    } catch {
+      setState("error");
+    }
+  };
 
-  if (pdfOk === null) {
+  return (
+    <RecordSection title="补充信息" icon="note_add" className="mt-4">
+      <div className="px-4 py-3">
+        <p className="text-label text-on-surface-variant mb-2">
+          简历上没有的信息（如推荐人评价、背调笔记），将并入评估输入，随候选人持久保存，刷新不丢失
+        </p>
+        <textarea
+          value={value}
+          onChange={(e) => { setValue(e.target.value); setState("dirty"); }}
+          onBlur={() => { if (state === "dirty") void save(); }}
+          rows={3}
+          placeholder="输入要补充给评估的信息……"
+          className="w-full rounded-sm border border-outline-variant bg-surface-lowest px-3 py-2 text-body text-on-surface outline-none focus:outline-2 focus:outline-primary resize-y"
+        />
+        <div className="flex items-center justify-end gap-2 mt-1.5">
+          <span className="text-label text-on-surface-variant">
+            {state === "saving" ? "保存中…"
+              : state === "saved" ? "已保存"
+              : state === "error" ? "保存失败，请重试"
+              : state === "dirty" ? "未保存" : ""}
+          </span>
+          <Button variant="tonal" className="h-8 px-3 text-xs" disabled={state !== "dirty"} onClick={save}>
+            保存
+          </Button>
+        </div>
+      </div>
+    </RecordSection>
+  );
+}
+
+/** 简历原件预览：按 source_format 智能分流渲染。
+ *  PDF → iframe；图片 → img；MD → 轻量 markdown 渲染；JSON/TXT → 纯文本。
+ *  原件不可用时回退到提取的 raw_text。 */
+function OriginalPreview({ candidateId, sourceFormat, fallbackText }: {
+  candidateId: string;
+  sourceFormat: string;
+  fallbackText: string;
+}) {
+  const fmt = (sourceFormat || "").toLowerCase();
+  const fileUrl = `/api/candidates/${candidateId}/pdf`;
+  const [exists, setExists] = useState<boolean | null>(null);
+
+  useEffect(() => { setExists(null); }, [candidateId]);
+
+  // PDF：探测原件是否存在，有则 iframe
+  if (fmt === "pdf" || fmt === "" ) {
+    if (exists === null) {
+      fetch(fileUrl, { method: "HEAD" })
+        .then((r) => setExists(r.ok))
+        .catch(() => setExists(false));
+      return <div className="flex items-center justify-center h-full"><LoadingIndicator size={28} label="正在加载原件..." /></div>;
+    }
+    if (exists) {
+      return (
+        <iframe key={candidateId} src={fileUrl} title="简历原件"
+          className="w-full h-full rounded-md border border-outline-variant bg-surface-lowest" />
+      );
+    }
+    return <FallbackText text={fallbackText} note="原始文件不可用，以下为提取文本" />;
+  }
+
+  // 图片：直接展示
+  if (["png", "jpg", "jpeg", "webp", "image"].some((s) => fmt.includes(s))) {
+    if (exists === null) {
+      fetch(fileUrl, { method: "HEAD" }).then((r) => setExists(r.ok)).catch(() => setExists(false));
+      return <div className="flex items-center justify-center h-full"><LoadingIndicator size={28} label="正在加载图片..." /></div>;
+    }
+    if (exists) {
+      return (
+        <div className="h-full overflow-y-auto flex justify-center bg-surface-lowest rounded-md border border-outline-variant p-4">
+          <img src={fileUrl} alt="简历原件" className="max-w-full h-auto rounded-sm shadow-sm" />
+        </div>
+      );
+    }
+    return <FallbackText text={fallbackText} note="原始图片不可用，以下为提取文本" />;
+  }
+
+  // Markdown：原件用 iframe 加载源码，回退用轻量渲染提取文本
+  if (fmt.includes("md") || fmt.includes("markdown")) {
+    if (exists === null) {
+      fetch(fileUrl, { method: "HEAD" }).then((r) => setExists(r.ok)).catch(() => setExists(false));
+      return <div className="flex items-center justify-center h-full"><LoadingIndicator size={28} label="正在加载..." /></div>;
+    }
+    if (exists) {
+      return (
+        <iframe key={`${candidateId}-md`} src={fileUrl} title="简历原件 (Markdown)"
+          className="w-full h-full rounded-md border border-outline-variant bg-surface-lowest" />
+      );
+    }
     return (
-      <div className="flex items-center justify-center h-full">
-        <LoadingIndicator size={28} label="正在加载 PDF…" />
+      <div className="h-full overflow-y-auto rounded-md border border-outline-variant bg-surface-lowest p-5">
+        <MarkdownLite text={fallbackText} />
       </div>
     );
   }
 
-  if (pdfOk) {
-    return (
-      <iframe
-        key={candidateId}
-        src={`/api/candidates/${candidateId}/pdf`}
-        title="简历 PDF"
-        className="w-full h-full rounded-lg border border-outline-variant bg-surface-lowest"
-      />
-    );
-  }
+  // JSON / TXT / 其他：纯文本
+  return <FallbackText text={fallbackText} note="" />;
+}
 
-  // 无 PDF（历史数据 / 非 PDF 导入）→ fallback 显示提取文本
+/** Markdown 轻量内联渲染（不引外部依赖），支持标题/加粗/列表/代码。 */
+function MarkdownLite({ text }: { text: string }) {
+  const html = renderMarkdown(text);
+  return <div className="prose-custom text-body leading-relaxed text-on-surface" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+function renderMarkdown(src: string): string {
+  // 转义防 XSS
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  let lines = src.split("\n").map(esc);
+  const out: string[] = [];
+  let inList = false;
+  for (let line of lines) {
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { if (inList) { out.push("</ul>"); inList = false; } out.push(`<h${h[1].length}>${h[2]}</h${h[1].length}>`); continue; }
+    const li = line.match(/^\s*[-*]\s+(.*)$/);
+    if (li) { if (!inList) { out.push("<ul>"); inList = true; } out.push(`<li>${li[1]}</li>`); continue; }
+    if (line.trim() === "") { if (inList) { out.push("</ul>"); inList = false; } out.push(""); continue; }
+    if (inList) { out.push("</ul>"); inList = false; }
+    line = line.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    out.push(`<p>${line}</p>`);
+  }
+  if (inList) out.push("</ul>");
+  return out.join("\n");
+}
+
+function FallbackText({ text, note }: { text: string; note: string }) {
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="shrink-0 flex items-center gap-2 px-3 py-2 mb-2 rounded-md bg-warning-container text-warning text-body-sm">
-        <Icon name="info" size={16} />
-        原始 PDF 不可用，以下为提取文本
-      </div>
-      <pre className="flex-1 min-h-0 overflow-y-auto font-mono text-body-sm leading-relaxed whitespace-pre-wrap break-words p-4 rounded-lg bg-surface-lowest border border-outline-variant text-on-surface-variant">
-        {fallbackText || "（无文本内容）"}
+      {note && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2 mb-2 rounded-md bg-warning-container text-warning text-body-sm">
+          <Icon name="info" size={16} />
+          {note}
+        </div>
+      )}
+      <pre className="flex-1 min-h-0 overflow-y-auto font-mono text-body-sm leading-relaxed whitespace-pre-wrap break-words p-4 rounded-md bg-surface-lowest border border-outline-variant text-on-surface-variant">
+        {text || "（无文本内容）"}
       </pre>
     </div>
   );
 }
 
-/* ---- 模块卡片：标题固定，内容区可滚 ---- */
-interface ModuleCardProps {
+interface RecordSectionProps {
   title: string;
   icon: string;
+  count?: number;
   className?: string;
-  headerRight?: ReactNode;
   children: ReactNode;
+  /** 导入预览态：无内容时显示等待骨架而非"暂无数据" */
+  importing?: boolean;
 }
 
-function ModuleCard({ title, icon, className, headerRight, children }: ModuleCardProps) {
-  const arr = Array.isArray(children) ? children : [children];
-  const hasContent = arr.filter(Boolean).length > 0;
+function RecordSection({ title, icon, count, className, children, importing }: RecordSectionProps) {
   return (
-    <Card variant="outlined" className={`flex flex-col min-h-0 overflow-hidden ${className || ""}`}>
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-outline-variant bg-surface-low">
-        <Icon name={icon} size={16} className="text-on-surface-variant" />
-        <h3 className="text-title text-on-surface">{title}</h3>
-        {headerRight && <div className="ml-auto shrink-0">{headerRight}</div>}
+    <section className={`border border-outline-variant rounded-md overflow-hidden bg-surface-lowest ${className || ""}`}>
+      <div className="flex items-center gap-2 min-h-11 px-4 py-2.5 border-b border-outline-variant bg-surface-low">
+        <Icon name={icon} size={18} className="text-primary" />
+        <h3 className="text-title-lg font-bold text-on-surface">{title}</h3>
+        {count !== undefined && <span className="ml-auto text-label text-on-surface-variant">{count} 条</span>}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-4">
-        {hasContent ? children : (
-          <p className="text-body-sm text-on-surface-variant">暂无数据</p>
-        )}
-      </div>
-    </Card>
+      <div>{children || (importing ? <SkeletonRows /> : <EmptyText />)}</div>
+    </section>
   );
 }
 
-/* ---- 各模块内容 ---- */
-function EducationList({ detail }: { detail: CandidateDetail }) {
-  if (!(detail.education || []).length) return null;
+/** 导入中占位：脉冲骨架行，提示正在等待解析结果返回 */
+function SkeletonRows() {
   return (
-    <div className="flex flex-col gap-2">
-      {(detail.education || []).map((edu, i) => {
-        const item = typeof edu === "string" ? { school: edu } : edu;
+    <div className="px-4 py-3 space-y-2">
+      {[88, 62].map((w, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <span className="skeleton-block h-3.5 w-3.5 rounded-full" />
+          <span className="skeleton-block h-3.5" style={{ width: `${w}%` }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyText() {
+  return <p className="px-4 py-4 text-body-sm text-on-surface-variant">暂无数据</p>;
+}
+
+function MetaField({ label, value, wide = false }: { label: string; value?: ReactNode; wide?: boolean }) {
+  return (
+    <div className={wide ? "col-span-2 min-w-0" : "min-w-0"}>
+      <span className="block text-label font-medium text-on-surface-variant">{label}</span>
+      <span className="block mt-0.5 text-body font-medium text-on-surface break-words">{value || "未提供"}</span>
+    </div>
+  );
+}
+
+function EducationList({ detail, importing }: { detail: CandidateDetail; importing?: boolean }) {
+  if (!(detail.education || []).length) return <EmptyText />;
+  return (
+    <div className="divide-y divide-outline-variant">
+      {(detail.education || []).map((education, index) => {
+        const item = typeof education === "string" ? { school: education } : education;
+        const school = item.school || item.organization || item.name || "";
+        const logo = getSchoolLogo(school);
         return (
-          <div key={i} className="flex items-baseline gap-3 text-body">
-            <span className="font-medium">{item.school || item.organization || item.name || (typeof edu === "string" ? edu : "")}</span>
-            {item.degree || item.major ? <span className="text-body-sm text-on-surface-variant">{item.degree || item.major}</span> : null}
-            {item.period || item.year ? <span className="text-body-sm text-on-surface-variant ml-auto">{item.period || item.year}</span> : null}
-          </div>
+          <article key={index} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 px-4 py-3">
+            <RecordIndex value={index + 1} />
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2 min-w-0">
+              <div className="col-span-2 min-w-0">
+                <span className="block text-label font-medium text-on-surface-variant">院校</span>
+                <p className="mt-0.5 text-body font-medium text-on-surface break-words">
+                  {logo && (
+                    <img
+                      src={logo}
+                      alt=""
+                      className="inline-block h-[1.3em] w-[1.3em] align-[-0.25em] rounded-full object-contain bg-surface-lowest mr-1"
+                    />
+                  )}
+                  {importing && school ? <TypewriterText text={school} /> : (school || "未提供")}
+                </p>
+              </div>
+              <MetaField label="学历 / 专业" value={[item.degree, item.major].filter(Boolean).join(" · ")} />
+              <MetaField label="时间" value={item.period || item.year} />
+            </div>
+          </article>
         );
       })}
     </div>
   );
 }
 
-function ExperienceList({ detail }: { detail: CandidateDetail }) {
-  if (!(detail.experiences || []).length) return null;
+function ExperienceList({ detail, importing }: { detail: CandidateDetail; importing?: boolean }) {
+  if (!(detail.experiences || []).length) return <EmptyText />;
   return (
-    <div className="flex flex-col gap-3">
-      {(detail.experiences || []).map((exp, i) => (
-        <div key={i}>
-          <div className="flex items-baseline gap-2 mb-1">
-            <span className="font-medium text-body">{exp.role}</span>
-            {exp.organization && <span className="text-body-sm text-on-surface-variant">{exp.organization}</span>}
+    <div className="divide-y divide-outline-variant">
+      {(detail.experiences || []).map((experience, index) => (
+        <article key={index} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 px-4 py-3">
+          <RecordIndex value={index + 1} />
+          <div className="min-w-0">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+              <MetaField label="岗位" value={importing && experience.role ? <TypewriterText text={experience.role} /> : experience.role} />
+              <MetaField label="机构" value={importing && experience.organization ? <TypewriterText text={experience.organization} /> : experience.organization} />
+            </div>
+            <DetailLines items={experience.details} />
           </div>
-          {(exp.details || []).map((d, j) => (
-            <p key={j} className="text-body-sm text-on-surface-variant ml-1">{d}</p>
-          ))}
-        </div>
+        </article>
       ))}
     </div>
   );
 }
 
-function ProjectList({ detail }: { detail: CandidateDetail }) {
-  if (!(detail.projects || []).length) return null;
+function ProjectList({ detail, importing }: { detail: CandidateDetail; importing?: boolean }) {
+  if (!(detail.projects || []).length) return <EmptyText />;
   return (
-    <div className="flex flex-col gap-3">
-      {(detail.projects || []).map((proj, i) => (
-        <div key={i}>
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <span className="font-medium text-body">{proj.name || "未命名项目"}</span>
-            {proj.page && (
-              <span className="font-mono text-label px-1.5 rounded-xs bg-primary-container text-on-primary-container shrink-0">
-                P{proj.page}
-              </span>
-            )}
+    <div className="divide-y divide-outline-variant">
+      {(detail.projects || []).map((project, index) => (
+        <article key={index} className="grid grid-cols-[28px_minmax(0,1fr)_44px] gap-3 px-4 py-3">
+          <RecordIndex value={index + 1} />
+          <div className="min-w-0">
+            <h4 className="text-title font-bold text-on-surface">
+              {importing && project.name ? <TypewriterText text={project.name} /> : (project.name || "未命名项目")}
+            </h4>
+            <DetailLines items={project.details} />
           </div>
-          {(proj.details || []).map((d, j) => (
-            <p key={j} className="text-body-sm text-on-surface-variant">{d}</p>
-          ))}
-        </div>
+          <span className="text-label font-mono text-right text-on-surface-variant">{project.page ? `P${project.page}` : ""}</span>
+        </article>
       ))}
     </div>
   );
 }
 
-function PublicationList({ detail, academicReport }: {
-  detail: CandidateDetail;
-  academicReport: AcademicReport | null;
-}) {
-  const pubs = detail.publications || [];
-  if (!pubs.length) return null;
-  // 论文核验对齐表：以 claim.title 为 key
+function DetailLines({ items }: { items?: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <ul className="mt-2 space-y-1">
+      {items.map((item, index) => (
+        <li key={index} className="grid grid-cols-[8px_minmax(0,1fr)] gap-2 text-body-sm text-on-surface-variant">
+          <span className="mt-2 w-1 h-1 rounded-full bg-outline" />
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function RecordIndex({ value }: { value: number }) {
+  return (
+    <span className="flex items-center justify-center w-7 h-7 rounded-sm bg-surface-high text-label font-bold text-on-surface-variant tabular-nums">
+      {String(value).padStart(2, "0")}
+    </span>
+  );
+}
+
+function PublicationList({ detail, academicReport, importing }: { detail: CandidateDetail; academicReport: AcademicReport | null; importing?: boolean }) {
+  const publications = detail.publications || [];
+  if (!publications.length) return <EmptyText />;
   const alignments = academicReport?.alignments || [];
-  const hasReport = !!academicReport;
-  const alignByTitle = new Map<string, typeof alignments[number]>();
-  for (const a of alignments) {
-    if (a.claim?.title) alignByTitle.set(a.claim.title, a);
-  }
+
   return (
-    <div className="flex flex-col gap-3">
-      {pubs.map((pub, i) => {
-        const item = typeof pub === "string" ? { title: pub } : pub;
-        const title = item.title || item.name || (typeof pub === "string" ? pub : "");
-        const status = item.claimed_status || item.status || "";
-        // 匹配核验结果：优先精确 title，否则按包含匹配
-        const align = alignByTitle.get(title)
-          || alignments.find((a) => a.claim?.title && title.includes(a.claim.title));
+    <div className="divide-y-2 divide-outline-variant">
+      {publications.map((publication, index) => {
+        const item = typeof publication === "string" ? { title: publication } : publication;
+        const rawTitle = item.title || item.name || "未命名成果";
+        const alignment = findAlignment(rawTitle, index, alignments);
+        const claim = alignment?.claim;
+        const external = alignment?.external_record;
+        const sourceUrl = external?.source_url || alignment?.source_url || alignment?.openalex_url || "";
+        const sourceName = inferSourceName(external?.source || "") || inferSourceName(sourceUrl) || external?.source || "";
+        const displayTitle = claim?.title || rawTitle;
+
         return (
-          <div key={i}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-body flex-1">{title}</span>
-              {align ? <VerdictBadge verdict={align.verdict} /> : hasReport ? (
-                <StatusChip tone="warning" icon="help">待核验</StatusChip>
+          <article key={`${displayTitle}-${index}`}>
+            <div className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-3 px-4 py-4 bg-surface-lowest">
+              <RecordIndex value={index + 1} />
+              <div className="min-w-0">
+                <span className="text-label font-semibold text-primary">论文</span>
+                <h4 className="mt-1 text-[16px] leading-6 font-bold text-on-surface break-words">
+                  {importing ? <TypewriterText text={displayTitle} /> : displayTitle}
+                </h4>
+              </div>
+              <PublicationVerdict alignment={alignment} running={detail.academic_check_status === "running"} />
+            </div>
+
+            <div className="grid grid-cols-[104px_minmax(0,1fr)] border-t border-outline-variant">
+              <RecordBandLabel icon="description" title="简历自述" />
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
+                <MetaField label="发表载体" value={claim?.venue || item.venue || item.journal} />
+                <MetaField label="年份" value={claim?.year || item.year} />
+                <MetaField label="自述状态" value={claim?.claimed_status || item.claimed_status || item.status} />
+                <MetaField label="作者角色" value={claim?.claimed_role || item.claimed_role || item.role} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[104px_minmax(0,1fr)] border-t border-outline-variant bg-surface-low/40">
+              <RecordBandLabel icon="travel_explore" title="外部记录" />
+              {alignment && (external?.title || alignment.matched_title) ? (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
+                  {/* 数据库标题本身即外链，来源名跟在标题后；有 OpenAlex 补充记录时一并给出 */}
+                  <div className="col-span-2 min-w-0">
+                    <span className="block text-label font-medium text-on-surface-variant">
+                      数据库标题{sourceName ? ` · ${sourceName}` : ""}
+                    </span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {sourceUrl ? (
+                        <a
+                          href={sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-body font-medium text-primary break-words hover:underline underline-offset-2"
+                        >
+                          {external?.title || alignment.matched_title}
+                          <Icon name="open_in_new" size={15} className="shrink-0" />
+                        </a>
+                      ) : (
+                        <span className="text-body font-medium text-on-surface break-words">
+                          {external?.title || alignment.matched_title}
+                        </span>
+                      )}
+                      {!!alignment?.openalex_url && alignment.openalex_url !== sourceUrl && (
+                        <a
+                          href={alignment.openalex_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex shrink-0 items-center gap-0.5 text-label font-semibold text-primary hover:underline underline-offset-2"
+                        >
+                          OpenAlex
+                          <Icon name="open_in_new" size={13} />
+                        </a>
+                      )}
+                    </span>
+                  </div>
+                  <MetaField label="载体 / 年份" value={[external?.venue, external?.year].filter(Boolean).join(" · ")} />
+                  <MetaField label="发表状态" value={external?.publication_status || alignment.verified_status} />
+                  <MetaField label="作者列表" value={external?.authors?.join("、")} wide />
+                  <MetaField label="引用次数" value={external?.cited_by_count ?? alignment.cited_by_count ?? 0} />
+                  <MetaField label="撤稿标记" value={external?.is_retracted || alignment.is_retracted ? "是" : "否"} />
+                </div>
               ) : (
-                <span className="inline-flex items-center gap-1 text-label text-on-surface-variant shrink-0">
-                  <LoadingIndicator size={14} color="text-on-surface-variant" />
-                  核验中
-                </span>
+                <p className="px-4 py-4 text-body-sm text-on-surface-variant">未取得可用的外部论文记录</p>
               )}
             </div>
-            {(item.venue || item.journal || item.year || item.claimed_role || item.role) && (
-              <p className="text-body-sm text-on-surface-variant mt-0.5">
-                {[item.venue || item.journal, item.year, item.claimed_role || item.role].filter(Boolean).join(" · ")}
-              </p>
-            )}
-            {align && (
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                {status && <PubBadge status={status} />}
-                {align.matched_title && (
-                  <span className="text-label text-on-surface-variant truncate max-w-[200px]" title={align.matched_title}>
-                    匹配：{align.matched_title}
-                  </span>
+
+            <div className="grid grid-cols-[104px_minmax(0,1fr)] border-t border-outline-variant">
+              <RecordBandLabel icon="fact_check" title="核验结论" />
+              <div className="px-4 py-3 min-w-0">
+                <div className="grid grid-cols-2 gap-2">
+                  <CheckBadge label="标题" status={alignment?.checks?.title} />
+                  <CheckBadge label="作者身份" status={alignment?.checks?.author_identity} />
+                  <CheckBadge label="作者顺序" status={alignment?.checks?.author_position} />
+                  <CheckBadge label="发表状态" status={alignment?.checks?.publication_status} />
+                </div>
+                {!!alignment?.discrepancies?.length && (
+                  <div className="mt-3 border-l-2 border-error pl-3">
+                    <p className="text-label font-semibold text-error">发现差异</p>
+                    {alignment.discrepancies.map((difference, differenceIndex) => (
+                      <p key={differenceIndex} className="mt-1 text-body-sm font-medium text-error">{difference}</p>
+                    ))}
+                  </div>
                 )}
-                {align.cited_by_count ? (
-                  <span className="text-label text-on-surface-variant">引用 {align.cited_by_count}</span>
-                ) : null}
-                {(align.openalex_url || align.source_url) && (
-                  <a
-                    href={align.openalex_url || align.source_url}
-                    target="_blank" rel="noopener noreferrer"
-                    className="text-label text-primary hover:underline"
-                  >
-                    {(align.openalex_url || align.source_url || "").includes("aminer") ? "AMiner" : "OpenAlex"} ↗
-                  </a>
-                )}
-                {align.note && (
-                  <span className="text-label text-on-surface-variant">{align.note}</span>
-                )}
+                <div className="mt-3 pt-3 border-t border-outline-variant">
+                  <p className="text-body-sm text-on-surface-variant">{alignment?.note || "暂无补充说明"}</p>
+                </div>
               </div>
-            )}
-            {align?.discrepancies && align.discrepancies.length > 0 && (
-              <ul className="mt-1 ml-4 list-disc text-body-sm text-error">
-                {align.discrepancies.map((d, j) => <li key={j}>{d}</li>)}
-              </ul>
-            )}
-          </div>
+            </div>
+          </article>
         );
       })}
     </div>
   );
 }
 
-function VerdictBadge({ verdict }: { verdict: "verified" | "mismatch" | "unverifiable" }) {
-  const config = {
-    verified: { tone: "success" as const, icon: "verified", label: "已验证" },
-    mismatch: { tone: "error" as const, icon: "gpp_maybe", label: "存疑" },
-    unverifiable: { tone: "warning" as const, icon: "help", label: "待核验" },
-  };
-  const c = config[verdict] || config.unverifiable;
-  return <StatusChip tone={c.tone} icon={c.icon}>{c.label}</StatusChip>;
+function findAlignment(title: string, index: number, alignments: ClaimAlignment[]) {
+  const normalized = title.trim().toLowerCase();
+  return alignments.find((alignment) => alignment.claim?.title?.trim().toLowerCase() === normalized)
+    || alignments.find((alignment) => {
+      const claimTitle = alignment.claim?.title?.trim().toLowerCase();
+      return claimTitle && (normalized.includes(claimTitle) || claimTitle.includes(normalized));
+    })
+    || alignments[index];
 }
 
-function SkillsList({ detail }: { detail: CandidateDetail }) {
-  if (!(detail.skills || []).length) return null;
+function inferSourceName(url: string) {
+  const normalized = url.toLowerCase();
+  if (normalized.includes("aminer")) return "AMiner";
+  if (normalized.includes("openalex")) return "OpenAlex";
+  return "";
+}
+
+function RecordBandLabel({ icon, title }: { icon: string; title: string }) {
   return (
-    <div className="flex flex-wrap gap-2">
-      {(detail.skills || []).map((s) => (
-        <span key={s} className="text-body-sm px-2.5 py-1 rounded-sm bg-surface-high text-on-surface-variant">
-          {s}
-        </span>
-      ))}
+    <div className="flex items-start gap-2 px-4 py-3 bg-surface-low border-r border-outline-variant">
+      <Icon name={icon} size={16} className="mt-0.5 text-on-surface-variant" />
+      <span className="text-label font-bold text-on-surface-variant">{title}</span>
     </div>
   );
 }
 
-function PubBadge({ status }: { status: string }) {
-  const s = status.toLowerCase();
-  const tone =
-    s.includes("published") || s.includes("已发表") ? "success" :
-    s.includes("review") || s.includes("在审") || s.includes("submit") || s.includes("投稿") || s.includes("在投") ? "warning" :
-    "neutral";
-  const label =
-    s.includes("published") || s.includes("已发表") ? "已发表" :
-    s.includes("review") || s.includes("在审") ? "在审" :
-    s.includes("submit") || s.includes("投稿") || s.includes("在投") ? "已投稿" :
-    s.includes("accept") || s.includes("接收") ? "已接收" :
-    s.includes("draft") || s.includes("草稿") ? "草稿" : status;
-  return <StatusChip tone={tone} className="shrink-0">{label}</StatusChip>;
+function PublicationVerdict({ alignment, running }: { alignment?: ClaimAlignment; running: boolean }) {
+  if (!alignment && running) {
+    return (
+      <span className="inline-flex h-7 items-center gap-2 px-2 text-label font-semibold text-primary">
+        <LoadingIndicator size={15} color="text-primary" />核验中
+      </span>
+    );
+  }
+  if (!alignment) return <StatusChip tone="warning" variant="filled" icon="schedule">待核验</StatusChip>;
+  if (alignment.human_status === "confirmed") return <StatusChip tone="success" variant="filled" icon="person_check">人工通过</StatusChip>;
+  if (alignment.human_status === "dismissed") return <StatusChip tone="error" variant="filled" icon="person_cancel">人工驳回</StatusChip>;
+  if (alignment.verdict === "verified") return <StatusChip tone="success" variant="filled" icon="verified">核验通过</StatusChip>;
+  if (alignment.verdict === "mismatch") return <StatusChip tone="error" variant="filled" icon="error">存在冲突</StatusChip>;
+  return <StatusChip tone="warning" variant="filled" icon="help">待人工核验</StatusChip>;
+}
+
+function CheckBadge({ label, status }: { label: string; status?: VerificationCheckStatus }) {
+  const config = status === "match"
+    ? { icon: "check_circle", text: "一致", className: "text-success" }
+    : status === "mismatch"
+      ? { icon: "cancel", text: "冲突", className: "text-error" }
+      : { icon: "schedule", text: "未确认", className: "text-on-surface-variant" };
+  return (
+    <div className="grid grid-cols-[72px_18px_minmax(0,1fr)] items-center gap-2 min-h-8 px-2 bg-surface-low rounded-sm">
+      <span className="text-label font-medium text-on-surface-variant">{label}</span>
+      <Icon name={config.icon} size={16} className={config.className} />
+      <span className={`text-label font-bold ${config.className}`}>{config.text}</span>
+    </div>
+  );
+}
+
+function SkillsList({ detail, importing }: { detail: CandidateDetail; importing?: boolean }) {
+  if (!(detail.skills || []).length) return <EmptyText />;
+  return (
+    <div className="grid grid-cols-2 gap-px bg-outline-variant">
+      {(detail.skills || []).map((skill, index) => (
+        <div key={`${skill}-${index}`} className="grid grid-cols-[28px_minmax(0,1fr)] items-center gap-3 px-4 py-2.5 bg-surface-lowest">
+          <RecordIndex value={index + 1} />
+          <span className="text-body font-medium text-on-surface">
+            {importing ? <TypewriterText text={skill} /> : skill}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }

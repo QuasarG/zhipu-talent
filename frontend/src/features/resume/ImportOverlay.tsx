@@ -1,12 +1,18 @@
 import { useRef, useState } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import { api, parseSSE } from "@/lib/api";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
+import { cn } from "@/lib/cn";
 
 interface Props {
   onClose: () => void;
+  /** 每份简历落库（候选人就绪）时回调：用于实时刷新队列，不等整个导入结束 */
+  onCandidate?: () => void;
+  /** 结构化分节解析完成时回调：把该节字段透传给详情窗口实时填充 */
+  onStructure?: (fileName: string, fields: Record<string, unknown>) => void;
 }
 
 interface FileState {
@@ -15,10 +21,29 @@ interface FileState {
   stage: string;
 }
 
-export default function ImportOverlay({ onClose }: Props) {
+export default function ImportOverlay({ onClose, onCandidate, onStructure }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<FileState[]>([]);
-  const [, setImporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+
+  const ACCEPTED_EXTS = [".pdf", ".jsonl", ".md", ".txt", ".png", ".jpg", ".jpeg", ".webp"];
+
+  const startImport = (list: File[]) => {
+    if (!list.length) return;
+    const dt = new DataTransfer();
+    list.forEach((f) => dt.items.add(f));
+    void handleFiles(dt.files);
+  };
+
+  const handleDrop = (e: ReactDragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    const dropped = Array.from(e.dataTransfer.files).filter((f) =>
+      ACCEPTED_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
+    );
+    startImport(dropped);
+  };
 
   const handleFiles = async (fileList: FileList) => {
     const list = Array.from(fileList);
@@ -26,6 +51,7 @@ export default function ImportOverlay({ onClose }: Props) {
     const initial: FileState[] = list.map((f) => ({ name: f.name, status: "waiting", stage: "等待中" }));
     setFiles(initial);
     setImporting(true);
+    let hasError = false;
 
     const formData = new FormData();
     list.forEach((f) => formData.append("files", f));
@@ -34,27 +60,30 @@ export default function ImportOverlay({ onClose }: Props) {
       const resp = await api.import(formData);
       if (!resp.ok) throw new Error("导入失败");
       for await (const event of parseSSE(resp)) {
-        const e = event as { type: string; file_id?: string; file_name?: string; status?: string; stage?: string; message?: string; total?: number; imported_files?: number; failed_files?: number };
+        const e = event as { type: string; file_id?: string; file_name?: string; status?: string; stage?: string; message?: string; section?: string; fields?: Record<string, unknown>; done?: number; total?: number; imported_files?: number; failed_files?: number };
         if (!e.file_id) {
           if (e.type === "done") break;
           continue;
         }
+        if (e.type === "candidate") {
+          // 候选人已落库：该文件卡片立即移除（核验后台进行，队列轮询更新），
+          // 并实时刷新队列，不陪跑同批次其他文件
+          setFiles((prev) => prev.filter((f) => f.name !== e.file_name));
+          onCandidate?.();
+          continue;
+        }
+        if (e.type === "error") hasError = true;
         setFiles((prev) =>
           prev.map((f) => {
             if (f.name !== e.file_name) return f;
+            if (e.type === "structure") {
+              // 分节字段透传给详情窗口实时填充，卡片本身只更新阶段文案
+              onStructure?.(f.name, e.fields || {});
+              return { ...f, status: "running", stage: "正在解析结构化字段…" };
+            }
             if (e.type === "stage") {
               // stage 事件只更新进度文案，status 始终 running
-              // （validation → classification → structuring → academic_check）
-              // 文件完成状态由最外层 done 事件决定
-              return {
-                ...f,
-                status: "running",
-                stage: e.message || e.stage || "",
-              };
-            }
-            if (e.type === "candidate") {
-              // 候选人已落库可选中，但文件还没跑完（academic_check 可能还在后台）
-              return { ...f, status: "running", stage: "候选人已就绪，论文核验中…" };
+              return { ...f, status: "running", stage: e.message || e.stage || "" };
             }
             if (e.type === "error") {
               return { ...f, status: "error", stage: e.message || `失败于 ${e.stage}` };
@@ -63,13 +92,20 @@ export default function ImportOverlay({ onClose }: Props) {
           })
         );
       }
-      // SSE 流结束（收到顶层 done）后，所有文件标记完成
-      setFiles((prev) => prev.map((f) => (f.status === "running" ? { ...f, status: "done", stage: "完成" } : f)));
-    } catch {
-      setFiles((prev) => prev.map((f) => (f.status === "waiting" ? { ...f, status: "error", stage: "导入失败" } : f)));
+      // SSE 流结束（收到顶层 done）后，剩余文件标记完成并移除
+      setFiles((prev) => prev.filter((f) => f.status !== "running"));
+    } catch (error) {
+      hasError = true;
+      const message = error instanceof Error ? error.message : "导入失败";
+      setFiles((prev) => prev.map((f) => (
+        f.status === "done" || f.status === "error"
+          ? f
+          : { ...f, status: "error", stage: message }
+      )));
     } finally {
       setImporting(false);
-      setTimeout(onClose, 1500);
+      // 有失败卡片时保留让用户看到；全部成功则直接关闭
+      if (!hasError) setTimeout(onClose, 1200);
     }
   };
 
@@ -81,13 +117,30 @@ export default function ImportOverlay({ onClose }: Props) {
           <IconButton icon="close" size={18} onClick={onClose} title="关闭" />
         </div>
 
-        {files.length === 0 ? (
+        {files.length === 0 && importing ? (
+          <p className="py-4 text-center text-body-sm text-on-surface-variant">候选人已全部进队列，正在收尾…</p>
+        ) : files.length === 0 ? (
           <button
             onClick={() => inputRef.current?.click()}
-            className="state-layer w-full py-6 rounded-md border border-dashed border-outline text-body-sm text-on-surface-variant cursor-pointer flex flex-col items-center gap-2"
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragActive(true);
+            }}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              setDragActive(true);
+            }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={handleDrop}
+            className={cn(
+              "state-layer w-full py-6 rounded-md border border-dashed text-body-sm cursor-pointer flex flex-col items-center gap-2 transition-colors",
+              dragActive
+                ? "border-primary bg-primary-container/40 text-primary"
+                : "border-outline text-on-surface-variant"
+            )}
           >
             <Icon name="upload_file" size={24} />
-            选择 PDF / JSONL / MD / TXT 文件
+            {dragActive ? "松开以导入文件" : "选择或拖入 PDF / 图片 / JSONL / MD / TXT 文件"}
           </button>
         ) : (
           <div className="flex flex-col gap-2">
@@ -115,7 +168,7 @@ export default function ImportOverlay({ onClose }: Props) {
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.jsonl,.md,.txt"
+          accept=".pdf,.jsonl,.md,.txt,.png,.jpg,.jpeg,.webp"
           multiple
           hidden
           onChange={(e) => e.target.files && handleFiles(e.target.files)}

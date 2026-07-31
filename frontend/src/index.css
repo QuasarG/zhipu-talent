@@ -99,7 +99,7 @@
   /* Track 语义色（降饱和，与薰衣草底和谐） */
   --color-track-agent: #6750A4;
   --color-track-safety: #4F7290;
-  --color-track-systems: #A17C3A;
+  --color-track-ai_infra: #A17C3A;
   --color-track-ai4science: #6E8A63;
   --color-track-multimodal: #A9707C;
   --color-track-base: #6B6B7D;
@@ -140,13 +140,13 @@ body {
 #root { min-height: 100vh; }
 
 /* ---- MD3 Typescale（紧凑桌面密度，字重/字距按 MD3 emphasized） ---- */
-.text-display  { font-size: 40px; line-height: 48px; font-weight: 600; letter-spacing: -0.02em; }
-.text-headline { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -0.01em; }
-.text-title-lg { font-size: 18px; line-height: 26px; font-weight: 600; }
-.text-title    { font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: 0.006em; }
-.text-body     { font-size: 14px; line-height: 20px; font-weight: 400; letter-spacing: 0.014em; }
-.text-body-sm  { font-size: 13px; line-height: 18px; font-weight: 400; letter-spacing: 0.02em; }
-.text-label    { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.04em; }
+.text-display  { font-size: 40px; line-height: 48px; font-weight: 600; letter-spacing: 0; }
+.text-headline { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: 0; }
+.text-title-lg { font-size: 18px; line-height: 26px; font-weight: 600; letter-spacing: 0; }
+.text-title    { font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: 0; }
+.text-body     { font-size: 14px; line-height: 20px; font-weight: 400; letter-spacing: 0; }
+.text-body-sm  { font-size: 13px; line-height: 18px; font-weight: 400; letter-spacing: 0; }
+.text-label    { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0; }
 
 /* ---- MD3 Cards（tonal surface 为主，elevated 用官方双层阴影） ---- */
 .md3-card {
@@ -189,6 +189,7 @@ body {
 
 /* ---- A11y ---- */
 :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+[data-search-field] > input:focus-visible { outline: none; outline-offset: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   /* Loading indicator 在 reduced-motion 下保留极慢旋转，保证「加载中」语义可见 */
@@ -197,6 +198,36 @@ body {
 }
 
 /* ---- MD3 Loading Indicator（双段动效：匀速旋转 + emphasized 脉冲缩放） ---- */
+
+/* 打字光标：导入预览逐字显式时末尾闪烁 */
+.tw-cursor {
+  display: inline-block;
+  width: 0.1em;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: -0.15em;
+  background: currentColor;
+  animation: tw-blink 1s steps(2, start) infinite;
+}
+@keyframes tw-blink { 50% { opacity: 0; } }
+
+/* 骨架脉冲：导入预览空卡片等待动效 */
+.skeleton-block {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-low) 0%,
+    var(--color-surface) 50%,
+    var(--color-surface-low) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 2px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 @keyframes md3-loading-rotate {
   to { transform: rotate(360deg); }
 }
@@ -206,6 +237,35 @@ body {
   100% { stroke-dashoffset: 0; opacity: 1; }
 }
 .md3-loading-spinner { transform-origin: center; }
+
+@keyframes md3-node-rotate {
+  to { transform: rotate(360deg); }
+}
+@keyframes md3-running-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+.md3-node-running { animation: md3-node-rotate 1400ms linear infinite; }
+.md3-running-bar {
+  height: 2px;
+  overflow: hidden;
+  background: var(--color-primary-container);
+}
+.md3-running-bar::after {
+  content: "";
+  display: block;
+  width: 34%;
+  height: 100%;
+  background: var(--color-primary);
+  animation: md3-running-slide 1200ms var(--ease-emphasized) infinite;
+}
+.process-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 300ms var(--ease-emphasized);
+}
+.process-collapse[data-open="true"] { grid-template-rows: 1fr; }
+.process-collapse > div { overflow: hidden; }
 
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
