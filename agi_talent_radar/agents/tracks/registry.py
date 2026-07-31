@@ -13,14 +13,14 @@ from agi_talent_radar.agents.tracks.multimodal import SPEC as MULTIMODAL_SPEC
 from agi_talent_radar.agents.tracks.safety import run_safety_track
 from agi_talent_radar.agents.tracks.safety import SPEC as SAFETY_SPEC
 from agi_talent_radar.agents.tracks.shared.spec import TrackSpec
-from agi_talent_radar.agents.tracks.systems import run_systems_track
-from agi_talent_radar.agents.tracks.systems import SPEC as SYSTEMS_SPEC
+from agi_talent_radar.agents.tracks.ai_infra import run_ai_infra_track
+from agi_talent_radar.agents.tracks.ai_infra import SPEC as AI_INFRA_SPEC
 from agi_talent_radar.core.models import TrackKey
 
 
 TRACK_SPECS: dict[TrackKey, TrackSpec] = {
     spec.key: spec
-    for spec in [BASE_SPEC, AGENT_SPEC, SAFETY_SPEC, MULTIMODAL_SPEC, SYSTEMS_SPEC, AI4SCIENCE_SPEC]
+    for spec in [BASE_SPEC, AGENT_SPEC, SAFETY_SPEC, MULTIMODAL_SPEC, AI_INFRA_SPEC, AI4SCIENCE_SPEC]
 }
 
 TRACK_RUNNERS: dict[TrackKey, Callable[[dict], dict]] = {
@@ -28,6 +28,6 @@ TRACK_RUNNERS: dict[TrackKey, Callable[[dict], dict]] = {
     "agent": run_agent_track,
     "safety": run_safety_track,
     "multimodal": run_multimodal_track,
-    "systems": run_systems_track,
+    "ai_infra": run_ai_infra_track,
     "ai4science": run_ai4science_track,
 }

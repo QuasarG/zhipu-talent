@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PersonBrief } from "@/lib/types";
 import { IconButton } from "@/components/ui/Button";
+import { getSchoolLogo } from "@/lib/schoolLogos";
 import { classifyTrack } from "./TalentList";
 
 interface Props {
@@ -9,31 +10,30 @@ interface Props {
   onSelect: (id: string) => void;
 }
 
-type NodeType = "person" | "school" | "direction";
+type NodeType = "person" | "school" | "track";
 interface GNode {
-  id: string; type: NodeType; label: string;
+  id: string; type: NodeType; label: string; tag: string;
   x: number; y: number; vx: number; vy: number;
-  radius: number; color: string; track: string;
+  radius: number; color: string;
 }
 interface GEdge {
   from: string; to: string;
-  type: "education" | "direction" | "collaboration";
-  status: "confirmed" | "pending";
 }
 interface Palette {
-  schools: string[]; edge: string; label: string; labelStrong: string;
-  personFill: string; ring: string; direction: string;
+  schools: string[]; tracks: Record<string, string>; edge: string; label: string; labelStrong: string;
+  avatarBg: string; avatarText: string; personFill: string; ring: string; direction: string;
 }
 
-const TRACK_SHAPES: Record<string, string> = {
-  agent: "circle", safety: "hexagon", systems: "rect",
-  ai4science: "diamond", multimodal: "ellipse", base: "circle",
-};
-const EDGE_LABELS = { education: "教育经历", direction: "主要方向", collaboration: "共同项目" };
 const SCHOOL_TOKENS = [
-  "--color-track-agent", "--color-track-safety", "--color-track-systems",
+  "--color-track-agent", "--color-track-safety", "--color-track-ai_infra",
   "--color-track-ai4science", "--color-track-multimodal", "--color-tertiary",
 ];
+const TRACK_TOKEN_NAMES: Record<string, string> = {
+  base: "--color-tertiary",
+  agent: "--color-track-agent", safety: "--color-track-safety",
+  ai_infra: "--color-track-ai_infra", ai4science: "--color-track-ai4science",
+  multimodal: "--color-track-multimodal",
+};
 
 // 从 CSS token 读色板，禁止写死 hex
 function readPalette(): Palette {
@@ -41,13 +41,36 @@ function readPalette(): Palette {
   const t = (n: string, fb: string) => css.getPropertyValue(n).trim() || fb;
   return {
     schools: SCHOOL_TOKENS.map((k) => t(k, "#888")),
+    tracks: Object.fromEntries(Object.entries(TRACK_TOKEN_NAMES).map(([k, v]) => [k, t(v, "#888")])),
     edge: t("--color-outline-variant", "#BEC9C8"),
     label: t("--color-on-surface-variant", "#3F4948"),
     labelStrong: t("--color-on-surface", "#161D1D"),
+    avatarBg: t("--color-primary-container", "#9BF1F2"),
+    avatarText: t("--color-on-primary-container", "#002021"),
     personFill: t("--color-surface-lowest", "#FFFFFF"),
     ring: t("--color-primary", "#006A6B"),
     direction: t("--color-outline", "#6F7979"),
   };
+}
+
+// 校徽图片缓存：加载完由 rAF 循环自然重绘，无需额外触发
+const logoCache = new Map<string, HTMLImageElement>();
+function schoolLogoImage(org: string): HTMLImageElement | null {
+  const url = getSchoolLogo(org);
+  if (!url) return null;
+  let img = logoCache.get(url);
+  if (!img) {
+    img = new Image();
+    img.src = url;
+    logoCache.set(url, img);
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
+
+/** 人才的关联学校 = 最高学位层级的全部学校（联培也算，几所就绑几所） */
+function personTopSchools(p: PersonBrief): string[] {
+  if (p.top_schools?.length) return p.top_schools;
+  return p.org ? [p.org] : [];
 }
 
 function buildGraph(persons: PersonBrief[], w: number, h: number, pal: Palette) {
@@ -55,58 +78,63 @@ function buildGraph(persons: PersonBrief[], w: number, h: number, pal: Palette) 
   const edges: GEdge[] = [];
   const entityMap = new Map<string, GNode>();
   const schoolColor = new Map<string, string>();
+  const colorOf = (school: string) => {
+    if (!schoolColor.has(school)) schoolColor.set(school, pal.schools[schoolColor.size % pal.schools.length]);
+    return schoolColor.get(school)!;
+  };
+
+  const position = (id: string, spreadX: number, spreadY: number) => {
+    let hash = 2166136261;
+    for (const char of id) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    const angle = ((hash >>> 0) % 360) * Math.PI / 180;
+    const radius = 0.35 + (((hash >>> 8) & 255) / 255) * 0.65;
+    return { x: w / 2 + Math.cos(angle) * spreadX * radius, y: h / 2 + Math.sin(angle) * spreadY * radius };
+  };
 
   persons.forEach((p) => {
-    const track = classifyTrack(p);
+    const topSchools = personTopSchools(p);
+    // 头像描边与标签色以学位授予校（org）为准，标签展示全部最高层级学校
+    const primary = p.org || topSchools[0] || "";
     const personNode: GNode = {
-      id: p.id, type: "person", label: p.name || p.id,
-      x: w / 2 + (Math.random() - 0.5) * 300, y: h / 2 + (Math.random() - 0.5) * 200,
-      vx: 0, vy: 0, radius: 22, color: pal.personFill, track,
+      id: p.id, type: "person", label: p.name || "未命名", tag: topSchools.join(" · "),
+      ...position(`person:${p.id}`, Math.min(260, w * 0.38), Math.min(180, h * 0.34)),
+      vx: 0, vy: 0, radius: 20, color: primary ? colorOf(primary) : pal.direction,
     };
-    if (p.org) {
-      if (!schoolColor.has(p.org)) schoolColor.set(p.org, pal.schools[schoolColor.size % pal.schools.length]);
-      personNode.color = schoolColor.get(p.org)!;
-      const key = "school:" + p.org;
+    nodes.push(personNode);
+
+    topSchools.forEach((school) => {
+      const key = "school:" + school;
       if (!entityMap.has(key)) {
         const sn: GNode = {
-          id: key, type: "school", label: p.org,
-          x: w / 2 + (Math.random() - 0.5) * 400, y: h / 2 + (Math.random() - 0.5) * 300,
-          vx: 0, vy: 0, radius: 12, color: personNode.color, track: "",
+          id: key, type: "school", label: school, tag: "",
+          ...position(key, Math.min(320, w * 0.44), Math.min(230, h * 0.4)),
+          vx: 0, vy: 0, radius: getSchoolLogo(school) ? 16 : 14,
+          color: colorOf(school),
         };
         entityMap.set(key, sn);
         nodes.push(sn);
       }
-      edges.push({ from: personNode.id, to: key, type: "education", status: "confirmed" });
-    }
+      edges.push({ from: personNode.id, to: key });
+    });
+
+    // Track 节点：只有简历评估人才参与（人物调查 classifyTrack 返回 ""）
+    const track = classifyTrack(p);
     if (track) {
-      const key = "direction:" + track;
+      const key = "track:" + track;
       if (!entityMap.has(key)) {
-        const dn: GNode = {
-          id: key, type: "direction", label: track,
-          x: w / 2 + (Math.random() - 0.5) * 400, y: h / 2 + (Math.random() - 0.5) * 300,
-          vx: 0, vy: 0, radius: 10, color: pal.direction, track: "",
+        const tn: GNode = {
+          id: key, type: "track", label: track, tag: "",
+          ...position(key, Math.min(190, w * 0.3), Math.min(140, h * 0.28)),
+          vx: 0, vy: 0, radius: 10,
+          color: pal.tracks[track] || pal.direction,
         };
-        entityMap.set(key, dn);
-        nodes.push(dn);
+        entityMap.set(key, tn);
+        nodes.push(tn);
       }
-      edges.push({ from: personNode.id, to: key, type: "direction", status: "confirmed" });
+      edges.push({ from: personNode.id, to: key });
     }
-    nodes.push(personNode);
   });
 
-  // 同校同 Track 直连（确定性确认/待核验，避免每帧抖动）
-  const personNodes = nodes.filter((n) => n.type === "person");
-  for (let i = 0; i < personNodes.length; i++) {
-    for (let j = i + 1; j < personNodes.length; j++) {
-      const a = personNodes[i], b = personNodes[j];
-      if (a.color === b.color && a.track && a.track === b.track) {
-        edges.push({
-          from: a.id, to: b.id, type: "collaboration",
-          status: (i + j) % 2 === 0 ? "confirmed" : "pending",
-        });
-      }
-    }
-  }
   return { nodes, edges };
 }
 
@@ -124,7 +152,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
   const selectedRef = useRef<string | null>(null);
   const fitRef = useRef(0);
   const fitViewRef = useRef<() => void>(() => {});
-  const [stats, setStats] = useState({ persons: 0, schools: 0, collabs: 0 });
+  const [stats, setStats] = useState({ persons: 0, schools: 0, tracks: 0 });
 
   useEffect(() => {
     selectedRef.current = selectedId;
@@ -140,7 +168,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
     setStats({
       persons: nodes.filter((n) => n.type === "person").length,
       schools: nodes.filter((n) => n.type === "school").length,
-      collabs: edges.filter((e) => e.type === "collaboration").length,
+      tracks: nodes.filter((n) => n.type === "track").length,
     });
     // 等布局稳定后自动 fit 视图
     fitRef.current = 200;
@@ -186,7 +214,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         if (!a || !b) return;
         const dx = b.x - a.x, dy = b.y - a.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const target = a.type === "person" && b.type !== "person" ? 80 : 120;
+        const target = 80;
         const f = (dist - target) * ATTRACTION;
         a.vx += (dx / dist) * f; a.vy += (dy / dist) * f;
         b.vx -= (dx / dist) * f; b.vy -= (dy / dist) * f;
@@ -206,42 +234,66 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         (e) => (e.from === n.id && e.to === target) || (e.to === n.id && e.from === target)
       );
 
-    const drawShape = (n: GNode, shape: string, isSelected: boolean) => {
+    const drawNode = (n: GNode, isSelected: boolean) => {
       const pal = palRef.current!;
       const r = n.radius;
-      ctx.beginPath();
-      if (shape === "rect") ctx.roundRect(n.x - r, n.y - r * 0.8, r * 2, r * 1.6, 6);
-      else if (shape === "hexagon") {
-        for (let i = 0; i < 6; i++) {
-          const a = (Math.PI / 3) * i - Math.PI / 2;
-          const px = n.x + Math.cos(a) * r, py = n.y + Math.sin(a) * r;
-          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-        }
-        ctx.closePath();
-      } else if (shape === "diamond") {
-        ctx.moveTo(n.x, n.y - r); ctx.lineTo(n.x + r, n.y);
-        ctx.lineTo(n.x, n.y + r); ctx.lineTo(n.x - r, n.y); ctx.closePath();
-      } else if (shape === "ellipse") ctx.ellipse(n.x, n.y, r, r * 0.7, 0, 0, Math.PI * 2);
-      else ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-
       if (n.type === "person") {
-        ctx.fillStyle = pal.personFill;
+        // 姓氏头像：与列表同款圆形首字
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = pal.avatarBg;
         ctx.fill();
-        ctx.strokeStyle = n.color || pal.direction;
+        ctx.strokeStyle = n.color;
         ctx.lineWidth = isSelected ? 3 : 2;
         ctx.stroke();
+        ctx.fillStyle = pal.avatarText;
+        ctx.font = `600 ${Math.round(r * 0.85)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText((n.label || "?").charAt(0), n.x, n.y + 1);
+      } else if (n.type === "track") {
+        // Track：实心小圆点，取 track 主题色
         ctx.beginPath();
-        ctx.arc(n.x, n.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = n.color || pal.direction;
+        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+        ctx.globalAlpha *= 0.75;
+        ctx.fillStyle = n.color;
         ctx.fill();
-      } else {
-        ctx.globalAlpha *= 0.6;
-        ctx.fillStyle = n.color || pal.direction;
-        ctx.fill();
-        ctx.globalAlpha /= 0.6;
-        ctx.strokeStyle = n.color || pal.direction;
+        ctx.globalAlpha /= 0.75;
+        ctx.strokeStyle = n.color;
         ctx.lineWidth = 1.5;
         ctx.stroke();
+      } else {
+        const logo = schoolLogoImage(n.label);
+        if (logo) {
+          // 有校徽：白底圆裁剪后贴图
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = pal.personFill;
+          ctx.fill();
+          ctx.clip();
+          ctx.drawImage(logo, n.x - r, n.y - r, r * 2, r * 2);
+          ctx.restore();
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+          ctx.strokeStyle = n.color;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        } else {
+          // 无校徽：和姓氏头像同款的圆形占位，用学校首字 + 学校色
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = pal.personFill;
+          ctx.fill();
+          ctx.strokeStyle = n.color;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.fillStyle = n.color;
+          ctx.font = `600 ${Math.round(r * 0.8)}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText((n.label || "?").charAt(0), n.x, n.y + 1);
+        }
       }
       if (isSelected) {
         ctx.beginPath();
@@ -276,17 +328,8 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.strokeStyle = pal.edge;
-        ctx.lineWidth = e.type === "collaboration" ? 1.5 : 1;
-        ctx.setLineDash(e.status === "confirmed" ? [] : [4, 4]);
+        ctx.lineWidth = 1;
         ctx.stroke();
-        ctx.setLineDash([]);
-        if (e.type !== "direction" && !dimmed) {
-          ctx.fillStyle = pal.label;
-          ctx.font = "9px sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "bottom";
-          ctx.fillText(EDGE_LABELS[e.type], (a.x + b.x) / 2, (a.y + b.y) / 2 - 2);
-        }
         ctx.globalAlpha = 1;
       });
 
@@ -294,13 +337,18 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         const isSelected = n.id === sel;
         const dimmed = sel && !isSelected && !isRelated(n, sel);
         ctx.globalAlpha = dimmed ? 0.4 : 1;
-        const shape = n.type === "person" ? TRACK_SHAPES[n.track] || "circle" : "circle";
-        drawShape(n, shape, isSelected);
+        drawNode(n, isSelected);
+        // 人名 + 学校标签（最高学历学校）
         ctx.fillStyle = isSelected ? pal.labelStrong : pal.label;
         ctx.font = n.type === "person" ? "600 12px sans-serif" : "500 10px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillText(n.label, n.x, n.y + n.radius + 4);
+        if (n.type === "person" && n.tag) {
+          ctx.font = "400 10px sans-serif";
+          ctx.fillStyle = pal.label;
+          ctx.fillText(n.tag, n.x, n.y + n.radius + 20);
+        }
         ctx.globalAlpha = 1;
       });
       ctx.restore();
@@ -316,7 +364,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         minX = Math.min(minX, n.x - n.radius - 10);
         maxX = Math.max(maxX, n.x + n.radius + 10);
         minY = Math.min(minY, n.y - n.radius - 10);
-        maxY = Math.max(maxY, n.y + n.radius + 24);
+        maxY = Math.max(maxY, n.y + n.radius + 34);
       });
       const bw = maxX - minX || 1, bh = maxY - minY || 1;
       const pad = 60;
@@ -423,7 +471,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
   };
 
   return (
-    <div ref={wrapRef} className="md3-card-elevated relative min-h-0 overflow-hidden bg-surface-lowest">
+    <div ref={wrapRef} className="md3-card relative w-full max-w-full min-w-0 min-h-0 overflow-hidden">
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing" />
 
       {/* 图例 */}
@@ -432,34 +480,22 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
           {SCHOOL_TOKENS.slice(0, 5).map((t) => (
             <span key={t} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: `var(${t})` }} />
           ))}
-          <span className="ml-1">颜色 = 学校</span>
+          <span className="ml-1">头像描边颜色 = 学校</span>
         </div>
         <div className="flex items-center gap-1.5">
-          {(["circle", "hexagon", "rect", "diamond", "ellipse"] as const).map((s) => (
-            <svg key={s} width="12" height="12" viewBox="0 0 12 12" className="text-outline">
-              {s === "circle" && <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.2" />}
-              {s === "hexagon" && <polygon points="6,1 10.3,3.5 10.3,8.5 6,11 1.7,8.5 1.7,3.5" fill="none" stroke="currentColor" strokeWidth="1.2" />}
-              {s === "rect" && <rect x="1.5" y="2.5" width="9" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />}
-              {s === "diamond" && <polygon points="6,1 11,6 6,11 1,6" fill="none" stroke="currentColor" strokeWidth="1.2" />}
-              {s === "ellipse" && <ellipse cx="6" cy="6" rx="5" ry="3.5" fill="none" stroke="currentColor" strokeWidth="1.2" />}
-            </svg>
-          ))}
-          <span className="ml-1">形状 = 主要 Track</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+          <span className="ml-1">实心圆点 = Track（仅简历评估）</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-5 border-t border-outline" />
-          <span>实线 = 已确认关系</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-5 border-t border-dashed border-outline" />
-          <span>虚线 = 待核验关系</span>
+          <span>连线 = 教育经历 / Track</span>
         </div>
       </div>
 
       {/* 底部控制条 */}
       <div className="absolute bottom-3 inset-x-3 flex items-center justify-between pointer-events-none">
         <span className="text-label text-on-surface-variant">
-          当前显示 {stats.persons} 位人才 · {stats.schools} 所学校 · {stats.collabs} 条合作关系
+          当前显示 {stats.persons} 位人才 · {stats.schools} 所学校 · {stats.tracks} 个 Track
         </span>
         <div className="flex items-center rounded-full border border-outline-variant bg-surface-lowest pointer-events-auto">
           <IconButton icon="remove" size={18} onClick={() => zoom(0.8)} title="缩小" />

@@ -13,7 +13,7 @@ TRACK_ROUTER_PROMPT = """
 只输出 JSON 对象，顶层字段必须是 assignments。
 
 任务：根据候选人实际工作分布，将其分配到 1-3 个 Track，并给出归一化权重。
-可用 Track：base, agent, safety, multimodal, systems, ai4science。
+可用 Track：base, agent, safety, multimodal, ai_infra, ai4science。
 
 权重判断依据：
 - 45% 项目、实习/工作内容与投入时间占比。
@@ -138,7 +138,7 @@ def _is_track_eligible(
         "multimodal": (
             "多模态", "视觉", "vlm", "图像", "视频", "3d", "ocr", "clip", "跨模态",
         ),
-        "systems": (
+        "ai_infra": (
             "训练系统", "推理系统", "大模型系统", "serving", "吞吐", "显存",
             "gpu", "cuda", "triton", "算子", "分布式训练", "并行训练", "低精度",
             "量化", "模型压缩", "ml编译器", "推理引擎", "vllm", "deepspeed",
@@ -164,7 +164,7 @@ def _fallback_assignments(normalized: NormalizedResume, evidence: list[EvidenceI
         "agent": ("agent", "智能体", "工具调用", "workflow", "memory", "swe-bench"),
         "safety": ("安全", "攻击", "防御", "漏洞", "越狱", "隐私", "投毒"),
         "multimodal": ("多模态", "视觉", "vlm", "图像", "视频", "3d", "ocr"),
-        "systems": ("推理", "训练系统", "triton", "cuda", "显存", "吞吐", "编译器", "量化"),
+        "ai_infra": ("推理", "训练系统", "triton", "cuda", "显存", "吞吐", "编译器", "量化"),
         "ai4science": ("ai4science", "科学智能", "生物", "蛋白", "药物", "材料", "医学"),
     }
     scores: dict[TrackKey, int] = {track: sum(text.count(word) for word in words) for track, words in keywords.items()}

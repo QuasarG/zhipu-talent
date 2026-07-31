@@ -7,11 +7,18 @@ from sqlalchemy.orm import sessionmaker
 
 from agi_talent_radar.core.db.orm import (
     Base,
+    CandidateORM,
+    CandidateSourceORM,
     DimensionScoreORM,
+    EngagementStatusHistoryORM,
     EvaluationEvidenceORM,
     EvaluationNodeRunORM,
     EvaluationORM,
     PersonORM,
+    PublicationClaimORM,
+    PublicationVerificationORM,
+    ResumeSubmissionORM,
+    ResumeVersionORM,
     SchemaVersionORM,
     TaskORM,
     TrackAssignmentORM,
@@ -20,6 +27,7 @@ from agi_talent_radar.core.db.orm import (
 from agi_talent_radar.core.db.migrations import LATEST_SCHEMA_VERSION, ensure_schema
 from agi_talent_radar.core.db.repository import (
     create_task,
+    delete_person,
     evaluation_to_dict,
     get_candidate_with_latest_evaluation,
     record_node_event,
@@ -33,6 +41,7 @@ from agi_talent_radar.core.models import (
     CandidateEvaluation,
     CandidateResume,
     DimensionScore,
+    DirectionRecommendation,
     EvidenceItem,
     TrackAssignment,
     TrackEvaluation,
@@ -62,7 +71,28 @@ class DatabaseTest(unittest.TestCase):
                     "message": "路由至 Agent 70% 和 Systems 30%",
                 },
             )
-            saved = save_evaluation(session, _evaluation(82), evaluation_id=run.id)
+            evaluation = _evaluation(82)
+            evaluation.recommended_tracks = [
+                DirectionRecommendation(
+                    track="agent",
+                    label="Agent Track",
+                    score=50,
+                    confidence=0.92,
+                    rationale="Agent 推荐",
+                    evidence_ids=["e1"],
+                )
+            ]
+            evaluation.academic_report = {
+                "alignments": [
+                    {
+                        "claim": {"title": "Verified Paper"},
+                        "verdict": "mismatch",
+                        "discrepancies": ["作者顺序不一致"],
+                    }
+                ],
+                "warnings": [],
+            }
+            saved = save_evaluation(session, evaluation, evaluation_id=run.id)
 
             self.assertEqual(_count(session, EvaluationORM), 1)
             self.assertEqual(_count(session, EvaluationNodeRunORM), 1)
@@ -74,9 +104,25 @@ class DatabaseTest(unittest.TestCase):
             payload = evaluation_to_dict(saved)
             self.assertEqual(payload["status"], "completed")
             self.assertEqual(payload["track_assignments"][0]["evidence_ids"], ["e1"])
+            self.assertEqual(payload["recommended_tracks"][0]["weight"], 0.7)
             self.assertEqual(payload["track_evaluations"][0]["dimension_scores"][0]["key"], "agent_architecture")
             self.assertEqual(payload["dimension_scores"][0]["evidence_ids"], ["e1", "e2"])
             self.assertEqual(payload["node_runs"][0]["node"], "track_router")
+            self.assertEqual(payload["academic_report"]["alignments"][0]["verdict"], "mismatch")
+            graph_nodes = [
+                node["node"]
+                for phase in payload["evaluation_graph"]["phases"]
+                for group in phase["groups"]
+                for node in group["nodes"]
+            ]
+            self.assertEqual(len(graph_nodes), 15)
+            # 论文核验前移到导入阶段后，academic_check 不再出现在展示图谱
+            self.assertNotIn("academic_check", graph_nodes)
+            self.assertIn("ai4science_track", graph_nodes)
+            self.assertEqual(
+                [phase["key"] for phase in payload["evaluation_graph"]["phases"]],
+                ["preparation", "routing", "parallel", "aggregation"],
+            )
 
     def test_repeated_evaluations_preserve_history(self) -> None:
         with self.Session() as session:
@@ -111,6 +157,66 @@ class DatabaseTest(unittest.TestCase):
             self.assertEqual(early.id, later.id)
             self.assertEqual(later.org, "某大学")
             self.assertEqual(_count(session, PersonORM), 1)
+
+    def test_delete_person_removes_complete_resume_record_tree(self) -> None:
+        with self.Session() as session:
+            person = PersonORM(id="person-delete", name="待删除", fingerprint="fp-delete")
+            candidate = CandidateORM(id="candidate-delete", name="待删除", person_id=person.id)
+            evaluation = EvaluationORM(
+                id=901,
+                candidate_id=candidate.id,
+                person_id=person.id,
+                status="completed",
+            )
+            submission = ResumeSubmissionORM(
+                id="submission-delete",
+                candidate_id=candidate.id,
+                person_id=person.id,
+                source_format="pdf",
+                raw_text="原始简历",
+            )
+            session.add_all([person, candidate, evaluation, submission])
+            session.flush()
+            session.add_all([
+                ResumeVersionORM(
+                    id="version-delete",
+                    submission_id=submission.id,
+                    version=1,
+                    raw_text="原始简历",
+                ),
+                CandidateSourceORM(candidate_id=candidate.id, source_kind="resume_evaluation"),
+                EngagementStatusHistoryORM(
+                    candidate_id=candidate.id,
+                    previous_status="newly_admitted",
+                    current_status="contacted",
+                    changed_by="hr",
+                ),
+            ])
+            claim = PublicationClaimORM(
+                evaluation_id=evaluation.id,
+                claim_key="paper-1",
+                title="Paper A",
+            )
+            session.add(claim)
+            session.flush()
+            session.add(PublicationVerificationORM(claim_id=claim.id, source="aminer"))
+            session.commit()
+
+            deleted = delete_person(session, person.id)
+
+            self.assertIsNotNone(deleted)
+            for model in (
+                PersonORM,
+                CandidateORM,
+                EvaluationORM,
+                ResumeSubmissionORM,
+                ResumeVersionORM,
+                CandidateSourceORM,
+                EngagementStatusHistoryORM,
+                PublicationClaimORM,
+                PublicationVerificationORM,
+            ):
+                self.assertEqual(_count(session, model), 0, msg=f"{model.__name__} 未清理")
 
     def test_ensure_schema_creates_platform_tables(self) -> None:
         ensure_schema(self.engine)
@@ -210,7 +316,7 @@ def _evaluation(score: int) -> CandidateEvaluation:
             signals=["对照实验"],
             strength=4,
             has_metric=True,
-            track_hints=["systems"],
+            track_hints=["ai_infra"],
         ),
     ]
     common_dimension = DimensionScore(
@@ -260,7 +366,7 @@ def _evaluation(score: int) -> CandidateEvaluation:
         routing_confidence=0.9,
         track_assignments=[
             TrackAssignment(track="agent", weight=0.7, confidence=0.92, rationale="e1", evidence_ids=["e1"]),
-            TrackAssignment(track="systems", weight=0.3, confidence=0.84, rationale="e2", evidence_ids=["e2"]),
+            TrackAssignment(track="ai_infra", weight=0.3, confidence=0.84, rationale="e2", evidence_ids=["e2"]),
         ],
         track_evaluations=[
             TrackEvaluation(
@@ -274,7 +380,7 @@ def _evaluation(score: int) -> CandidateEvaluation:
                 evidence_ids=["e1"],
             ),
             TrackEvaluation(
-                track="systems",
+                track="ai_infra",
                 label="Systems Track",
                 weight=0.3,
                 confidence=0.84,

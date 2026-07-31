@@ -184,7 +184,7 @@ class MultiTrackTest(unittest.TestCase):
                     "confidence": 0.8,
                     "evidence_ids": ["e_agent_1", "e_agent_2"],
                 },
-                {"track": "systems", "weight": 0.1, "confidence": 0.6, "evidence_ids": ["e_engine"]},
+                {"track": "ai_infra", "weight": 0.1, "confidence": 0.6, "evidence_ids": ["e_engine"]},
             ],
             normalized,
             evidence,
@@ -278,7 +278,7 @@ class MultiTrackTest(unittest.TestCase):
     def test_each_track_rubric_has_sixty_points(self) -> None:
         self.assertEqual(
             set(TRACK_SPECS),
-            {"base", "agent", "safety", "multimodal", "systems", "ai4science"},
+            {"base", "agent", "safety", "multimodal", "ai_infra", "ai4science"},
         )
         for spec in TRACK_SPECS.values():
             self.assertEqual(spec.max_points, 60)

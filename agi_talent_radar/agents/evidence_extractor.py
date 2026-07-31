@@ -18,7 +18,7 @@ EVIDENCE_PROMPT = """
 1. 像尽调律师一样，优先提取「具体技术栈 / 具体动作动词 / 量化结果 / ownership 信号 / 验证闭环」。
 2. 每条 evidence.quote 必须尽量使用简历原文短句；允许裁剪或压缩，但必须可从原文追溯，禁止扩写、脑补、编造数据。
 3. 通用潜力不看学校、GPA、名企或热门方向。已正式发表的同行评议成果可作为研究验证和证据可信度信号，但不能单凭会议名称推断本人贡献。
-4. Track 专业证据必须标注 track_hints，可多选 base, agent, safety, multimodal, systems, ai4science。
+4. Track 专业证据必须标注 track_hints，可多选 base, agent, safety, multimodal, ai_infra, ai4science。
 5. 如果某维度没有直接证据，不要硬凑，直接跳过。
 6. 优先捕捉能区分“真正高潜”与“简历光鲜”的证据：问题约束、baseline、评测、错误归因、验证方式、本人负责范围和可复现产物。
 7. 必须区分「草稿、已投稿、在审、已接收、已发表」：高水平正式发表成果可给 strength 4，若同时有作者位置或本人贡献可给 5；草稿、已投稿或在审题目通常不高于 2。
@@ -27,6 +27,7 @@ EVIDENCE_PROMPT = """
 10. 实习/工作经历与项目、论文是并列证据来源。必须根据岗位中的实际动作、方法、指标、产物和贡献边界分配通用维度与 track_hints；不得因机构档位、机构类型、岗位名称或任职时长直接加分。
 11. 经历证据的 source 只能写「实习/工作经历：脱敏机构档位 + 岗位」，quote 不得恢复、猜测或输出具体机构名称。
 12. academic_report 是外部论文核验结果：verified 可作为发表状态与作者归属的辅助事实；mismatch 必须写入风险项；unverifiable 只表示未核验，不得推断造假。
+13. 人工裁决优先于机器结论：「人工核验确认属实」的论文按已核实对待，「人工核验驳回」按不属实对待；note 中的人工备注是 HR 的一手信息，应纳入证据评估。
 
 可用通用维度：
 problem_definition, research_rigor, learning_transfer, ownership,
@@ -43,7 +44,7 @@ evidence_credibility, growth_trajectory, track_specific, background_signal
   "has_metric": true/false,
   "has_specific_tool": true/false,
   "has_ownership": true/false,
-  "track_hints": ["systems", "base"],
+  "track_hints": ["ai_infra", "base"],
   "page": null,
   "bbox": [],
   "extraction_confidence": 1.0

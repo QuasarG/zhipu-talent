@@ -1,13 +1,14 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { PersonDetail } from "@/lib/types";
 import { api } from "@/lib/api";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import { IconButton } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
 import Progress from "@/components/ui/Progress";
 import Icon from "@/components/ui/Icon";
-import { classifyTrack, STATUS_LABELS } from "./TalentList";
+import { getSchoolLogo } from "@/lib/schoolLogos";
+import EngagementStatusControl from "./EngagementStatusControl";
 
 interface Props {
   person: PersonDetail | null;
@@ -15,11 +16,9 @@ interface Props {
   onUpdated: (id: string) => void;
 }
 
-const STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }));
-
 const TRACK_TOKENS: Record<string, string> = {
   agent: "var(--color-track-agent)", safety: "var(--color-track-safety)",
-  systems: "var(--color-track-systems)", ai4science: "var(--color-track-ai4science)",
+  ai_infra: "var(--color-track-ai_infra)", ai4science: "var(--color-track-ai4science)",
   multimodal: "var(--color-track-multimodal)",
 };
 
@@ -33,12 +32,13 @@ function fmtTime(iso: string | null): string {
 }
 
 export default function TalentDetail({ person, personId, onUpdated }: Props) {
-  const [engagement, setEngagement] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const navigate = useNavigate();
 
   if (!person) {
     return (
-      <Card variant="elevated" className="min-h-0 overflow-y-auto p-4">
+      <Card variant="filled" className="min-h-0 overflow-y-auto p-4">
         <div className="flex flex-col items-center justify-center h-full text-center gap-2">
           <Icon name="person_search" size={32} className="text-on-surface-variant" />
           <p className="text-body text-on-surface">从左侧选择一位人才</p>
@@ -52,18 +52,17 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
   const latest = evaluations[0];
   const reputation = person.reputation_reports || [];
   const initials = (person.name || "?").charAt(0);
-  const candidateId = personId || "";
-  const track = classifyTrack(person);
+  const candidateId = person.candidate_id || "";
 
-  const saveEngagement = async () => {
-    if (!engagement || !candidateId) return;
+  const saveEngagement = async (engagement: string) => {
+    if (!candidateId) return;
     setSaving(true);
+    setSaveError("");
     try {
-      // person.id 作为 candidate_id 兜底
       await api.candidates.updateEngagement(candidateId, engagement, "hr-web", "网页修改");
-      onUpdated(candidateId);
-    } catch {
-      // person_id 可能不等于 candidate_id，尝试 person admit 后再 update
+      await onUpdated(person.id);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "状态更新失败");
     } finally {
       setSaving(false);
     }
@@ -72,69 +71,65 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
   const tracks = [...(latest?.recommended_tracks || [])].sort((a, b) => b.weight - a.weight).slice(0, 3);
 
   return (
-    <Card variant="elevated" className="min-h-0 overflow-y-auto flex flex-col">
-      <div className="p-4 pb-3 border-b border-outline-variant">
-        <div className="flex items-start gap-3">
-          <div className="w-12 h-12 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-title-lg shrink-0">
+    <Card variant="filled" className="w-full max-w-full min-h-0 min-w-0 overflow-hidden flex flex-col">
+      <div className="px-4 py-3 border-b border-outline-variant shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-title shrink-0">
             {initials}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-1">
+            <div className="flex items-center gap-1.5">
               <span className="text-title-lg text-on-surface truncate">{person.name}</span>
-              <IconButton icon="more_vert" size={18} className="w-8 h-8 shrink-0" />
-            </div>
-            <p className="text-body-sm text-on-surface-variant truncate">
-              {person.org || "—"} · {person.direction || "—"}
-            </p>
-            <div className="flex gap-1 mt-1.5">
-              <StatusChip tone={person.person_type === "guest" ? "info" : "primary"}>
+              <StatusChip tone={person.person_type === "guest" ? "info" : "primary"} className="shrink-0 ml-auto">
                 {person.person_type === "guest" ? "人物调查" : "简历评估"}
               </StatusChip>
-              {track && <StatusChip tone="neutral" className="capitalize">{track}</StatusChip>}
             </div>
+            <p className="text-body-sm text-on-surface-variant truncate mt-0.5">
+              {person.org || "—"} · {person.direction || "—"}
+            </p>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 p-4 flex flex-col gap-5">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2 flex flex-col gap-3 justify-between">
         {/* HR 跟进状态 */}
         <section>
-          <h3 className="text-title mb-2">HR 跟进状态</h3>
-          <div className="flex items-center gap-2">
-            <select
-              value={engagement}
-              onChange={(e) => setEngagement(e.target.value)}
-              className="h-9 px-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface cursor-pointer"
-            >
-              <option value="">选择状态…</option>
-              {STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            <Button variant="tonal" className="h-9 px-4" onClick={saveEngagement} disabled={!engagement || saving}>
-              保存
-            </Button>
-          </div>
+          <h3 className="text-title mb-1.5">HR 跟进状态</h3>
+          {candidateId ? (
+            <EngagementStatusControl
+              compact
+              value={person.engagement_status || "newly_admitted"}
+              saving={saving}
+              onChange={saveEngagement}
+            />
+          ) : (
+            <p className="text-body-sm text-on-surface-variant">该人物没有关联简历，暂不能跟进</p>
+          )}
+          {saveError && <p className="mt-2 text-label text-error">{saveError}</p>}
         </section>
 
-        {/* 能力概览 */}
+        {/* 能力概览：大分 + 全部维度带进度条，清晰度优先 */}
         {latest && (
           <section>
-            <h3 className="text-title mb-2">能力概览</h3>
-            <div className="flex items-baseline gap-2">
-              <span className="text-display text-on-surface">{latest.overall_score ?? "—"}</span>
-              <span className="text-body-sm text-on-surface-variant">/100</span>
-              <span className="ml-auto text-label text-on-surface-variant text-right">
-                能力描述，<br />不代表录取结论
-              </span>
+            <h3 className="text-title mb-1.5 flex items-baseline justify-between gap-2">
+              能力概览
+              <span className="text-label font-normal text-on-surface-variant">能力描述，不代表录取结论</span>
+            </h3>
+            <div className="flex items-baseline gap-1">
+              <span className="text-headline text-on-surface">{latest.overall_score ?? "—"}</span>
+              <span className="text-body-sm text-on-surface-variant">/100 综合</span>
             </div>
             {latest.dimension_scores?.length > 0 && (
-              <div className="flex gap-4 mt-2">
-                {latest.dimension_scores.slice(0, 3).map((d) => (
-                  <div key={d.key}>
-                    <p className="text-label text-on-surface-variant">{d.label}</p>
-                    <p className="text-body font-medium text-on-surface">
-                      {d.score} <span className="text-on-surface-variant font-normal">/ {d.max_points}</span>
+              <div className="grid grid-cols-3 gap-x-3 gap-y-2.5 mt-2">
+                {latest.dimension_scores.map((d) => (
+                  <div key={d.key} className="min-w-0" title={d.label}>
+                    <p className="text-label text-on-surface-variant truncate">{d.label}</p>
+                    <Progress
+                      value={d.max_points ? Math.min(100, (d.weighted_score / d.max_points) * 100) : 0}
+                      className="my-1"
+                    />
+                    <p className="text-label font-medium text-on-surface tabular-nums">
+                      {d.weighted_score}<span className="text-on-surface-variant font-normal"> / {d.max_points}</span>
                     </p>
                   </div>
                 ))}
@@ -146,8 +141,8 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
         {/* 推荐 Track */}
         {tracks.length > 0 && (
           <section>
-            <h3 className="text-title mb-2">推荐 Track</h3>
-            <div className="flex flex-col gap-2">
+            <h3 className="text-title mb-1.5">推荐 Track</h3>
+            <div className="flex flex-col gap-1.5">
               {tracks.map((t, i) => {
                 const name = t.track || t.name || "";
                 return (
@@ -163,20 +158,29 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
           </section>
         )}
 
-        {/* 研究组匹配 */}
-        <section className="rounded-md bg-surface-low p-3">
-          <h3 className="text-title mb-1.5">研究组匹配</h3>
-          <StatusChip tone="neutral">尚未配置研究组要求</StatusChip>
-          <p className="text-label text-on-surface-variant mt-1.5">Track 推荐不等于具体研究组匹配</p>
+        {/* 研究组匹配：占位信息压成一行 */}
+        <section className="flex items-center gap-2">
+          <h3 className="text-title shrink-0">研究组匹配</h3>
+          <StatusChip tone="neutral" className="min-w-0 truncate" title="Track 推荐不等于具体研究组匹配">
+            尚未配置研究组要求
+          </StatusChip>
         </section>
 
         {/* 关系证据 */}
         <section>
-          <h3 className="text-title mb-2">关系证据</h3>
-          <div className="flex flex-col gap-2">
+          <h3 className="text-title mb-1.5">关系证据</h3>
+          <div className="flex flex-col gap-1.5">
             {person.org && (
               <div className="flex items-center gap-2">
-                <Icon name="school" size={18} className="text-on-surface-variant shrink-0" />
+                {getSchoolLogo(person.org) ? (
+                  <img
+                    src={getSchoolLogo(person.org)!}
+                    alt=""
+                    className="w-5 h-5 rounded-full object-contain shrink-0 bg-surface-lowest"
+                  />
+                ) : (
+                  <Icon name="school" size={18} className="text-on-surface-variant shrink-0" />
+                )}
                 <span className="text-body-sm text-on-surface flex-1 truncate">{person.org}</span>
                 <span className="text-label text-on-surface-variant">教育经历</span>
                 <StatusChip tone="success">已确认</StatusChip>
@@ -200,38 +204,37 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
           </div>
         </section>
 
-        {/* 最近更新 */}
+        {/* 最近更新：三项压成一行 */}
         <section>
-          <h3 className="text-title mb-2">最近更新</h3>
-          <div className="flex flex-col gap-1.5 text-body-sm">
-            <div className="flex items-center gap-2">
-              <Icon name="description" size={16} className="text-on-surface-variant" />
-              <span className="text-on-surface flex-1">简历评估</span>
+          <h3 className="text-title mb-1.5">最近更新</h3>
+          <div className="flex flex-nowrap items-center gap-x-3 text-label overflow-hidden whitespace-nowrap">
+            <span className="flex items-center gap-1">
+              <Icon name="description" size={15} className="text-on-surface-variant" />
+              <span className="text-on-surface">简历评估</span>
               <span className="text-on-surface-variant">{evaluations.length ? `v${evaluations.length}` : "—"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Icon name="fact_check" size={16} className="text-on-surface-variant" />
-              <span className="text-on-surface flex-1">舆情核查</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <Icon name="fact_check" size={15} className="text-on-surface-variant" />
+              <span className="text-on-surface">舆情核查</span>
               <span className="text-on-surface-variant">{reputation.length ? `${reputation.length} 条` : "—"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Icon name="schedule" size={16} className="text-on-surface-variant" />
-              <span className="text-on-surface flex-1">档案更新</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <Icon name="schedule" size={15} className="text-on-surface-variant" />
+              <span className="text-on-surface">档案</span>
               <span className="text-on-surface-variant">{fmtTime(person.updated_at)}</span>
-            </div>
+            </span>
           </div>
         </section>
       </div>
 
-      <div className="p-4 pt-3 border-t border-outline-variant flex items-center gap-2">
+      <div className="px-4 py-2 border-t border-outline-variant shrink-0">
         <Button
           variant="filled"
-          className="flex-1"
-          onClick={() => window.open(`/api/persons/${candidateId}`, "_blank")}
+          className="w-full"
+          onClick={() => navigate(`/talent-pool/${personId || person.id}`)}
         >
           查看完整档案
         </Button>
-        <IconButton icon="more_vert" variant="outlined" size={18} />
       </div>
     </Card>
   );

@@ -105,7 +105,7 @@ def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: flo
             ]
         ).lower()
         if "agent" in resume_text or "智能体" in resume_text:
-            assignments = [("agent", 0.7), ("systems", 0.3)]
+            assignments = [("agent", 0.7), ("ai_infra", 0.3)]
         elif "多模态" in resume_text or "视觉" in resume_text or "3d" in resume_text:
             assignments = [("multimodal", 0.7), ("base", 0.3)]
         elif "安全" in resume_text:
@@ -113,7 +113,7 @@ def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: flo
         elif "生物" in resume_text or "science" in resume_text:
             assignments = [("ai4science", 0.7), ("multimodal", 0.3)]
         else:
-            assignments = [("base", 0.65), ("systems", 0.35)]
+            assignments = [("base", 0.65), ("ai_infra", 0.35)]
         return {
             "assignments": [
                 {

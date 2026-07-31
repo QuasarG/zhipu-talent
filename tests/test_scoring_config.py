@@ -47,7 +47,7 @@ class ScoringConfigTest(unittest.TestCase):
                 "base": 60,
                 "multimodal": 60,
                 "safety": 60,
-                "systems": 60,
+                "ai_infra": 60,
             },
         )
 
