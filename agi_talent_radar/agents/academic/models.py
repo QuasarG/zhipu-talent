@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -30,6 +32,28 @@ class PaperClaim(BaseModel):
         return "不明"
 
 
+CheckStatus = Literal["match", "mismatch", "pending"]
+
+
+class VerificationChecks(BaseModel):
+    title: CheckStatus = "pending"
+    author_identity: CheckStatus = "pending"
+    author_position: CheckStatus = "pending"
+    publication_status: CheckStatus = "pending"
+
+
+class ExternalPaperRecord(BaseModel):
+    source: str = ""
+    source_url: str = ""
+    title: str = ""
+    authors: list[str] = Field(default_factory=list)
+    venue: str = ""
+    year: str = ""
+    publication_status: str = "不明"
+    cited_by_count: int = 0
+    is_retracted: bool = False
+
+
 class ClaimAlignment(BaseModel):
     claim: PaperClaim
     verdict: str                    # verified / mismatch / unverifiable
@@ -39,6 +63,13 @@ class ClaimAlignment(BaseModel):
     cited_by_count: int = 0
     is_retracted: bool = False
     openalex_url: str = ""
+    source_url: str = ""
+    # 候选人在外部作者列表中的实际位次（1-based，0=未找到/未匹配）
+    candidate_author_position: int = 0
+    # 匹配到的那个外部作者名（原样引用，便于复核）
+    candidate_author_name: str = ""
+    external_record: ExternalPaperRecord = Field(default_factory=ExternalPaperRecord)
+    checks: VerificationChecks = Field(default_factory=VerificationChecks)
     note: str = ""
 
     @field_validator("verified_status", mode="before")
