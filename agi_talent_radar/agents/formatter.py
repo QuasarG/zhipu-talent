@@ -137,6 +137,7 @@ def run_formatter(state: dict) -> dict:
         track_evaluations=track_evaluations,
         recommended_tracks=recommendations,
         stage_profile=stage_profile.label,
+        academic_report=state.get("academic_report", {}),
         routing_confidence=float(state.get("routing_confidence", 0)),
     )
     return {**state, "final_output": evaluation.model_dump()}
@@ -161,6 +162,7 @@ def _recommend_tracks(
                 track=item.track,
                 label=item.label,
                 score=item.calibrated_score,
+                weight=assignment.weight if assignment else item.weight,
                 confidence=item.confidence,
                 evidence_ids=evidence_ids,
                 rationale=(

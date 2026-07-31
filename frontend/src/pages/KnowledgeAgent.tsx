@@ -10,6 +10,7 @@ import { StatusChip } from "@/components/ui/Chip";
 import Tabs from "@/components/ui/Tabs";
 import SearchField from "@/components/ui/SearchField";
 import { cn } from "@/lib/cn";
+import { useSessionState } from "@/lib/sessionState";
 
 interface Message {
   role: "user" | "agent";
@@ -29,12 +30,36 @@ const citationTone = (status: string): { tone: "success" | "error" | "warning"; 
   : { tone: "warning", label: "待核验" };
 
 export default function KnowledgeAgent() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useSessionState<Message[]>("knowledge.messages", []);
   const [input, setInput] = useState("");
   const [asking, setAsking] = useState(false);
   const [traces, setTraces] = useState<TraceNode[]>([]);
-  const [tab, setTab] = useState<"trace" | "citations">("trace");
+  const [tab, setTab] = useSessionState<"trace" | "citations">("knowledge.tab", "trace");
+  const [newPerson, setNewPerson] = useState({ name: "", org: "", direction: "" });
+  const [adding, setAdding] = useState(false);
+  const [addResult, setAddResult] = useState<{ ok: boolean; text: string } | null>(null);
   const convRef = useRef<HTMLDivElement>(null);
+
+  // 手动把人物加入人才库：guest 类型，进列表和图谱但不分 Track
+  const addPersonToPool = async () => {
+    const name = newPerson.name.trim();
+    if (!name || adding) return;
+    setAdding(true);
+    setAddResult(null);
+    try {
+      const brief = await api.persons.create({
+        name,
+        org: newPerson.org.trim(),
+        direction: newPerson.direction.trim(),
+      });
+      setAddResult({ ok: true, text: `已加入人才库：${brief.name}，可在人才库「人物调查」中查看` });
+      setNewPerson({ name: "", org: "", direction: "" });
+    } catch (err) {
+      setAddResult({ ok: false, text: err instanceof Error ? err.message : "加入失败" });
+    } finally {
+      setAdding(false);
+    }
+  };
 
   useEffect(() => {
     convRef.current?.scrollTo(0, convRef.current.scrollHeight);
@@ -195,6 +220,48 @@ export default function KnowledgeAgent() {
                 <p className="text-body text-on-surface">未选择人物</p>
                 <p className="text-body-sm text-on-surface-variant">提问或选择一个人物后，上下文将显示在此</p>
               </div>
+            </Card>
+          </div>
+
+          <div className="shrink-0">
+            <p className="text-label text-on-surface-variant px-2 pb-1">手动加入人才库</p>
+            <Card variant="outlined" className="p-3 flex flex-col gap-2">
+              <input
+                type="text"
+                value={newPerson.name}
+                onChange={(e) => setNewPerson((p) => ({ ...p, name: e.target.value }))}
+                placeholder="姓名（必填）"
+                className="h-9 px-3 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface outline-none focus:outline-2 focus:outline-primary"
+              />
+              <input
+                type="text"
+                value={newPerson.org}
+                onChange={(e) => setNewPerson((p) => ({ ...p, org: e.target.value }))}
+                placeholder="学校 / 机构"
+                className="h-9 px-3 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface outline-none focus:outline-2 focus:outline-primary"
+              />
+              <input
+                type="text"
+                value={newPerson.direction}
+                onChange={(e) => setNewPerson((p) => ({ ...p, direction: e.target.value }))}
+                placeholder="研究方向"
+                className="h-9 px-3 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface outline-none focus:outline-2 focus:outline-primary"
+              />
+              <Button
+                variant="tonal"
+                icon="person_add"
+                className="w-full"
+                disabled={!newPerson.name.trim() || adding}
+                onClick={addPersonToPool}
+              >
+                {adding ? "加入中…" : "加入人才库"}
+              </Button>
+              {addResult && (
+                <p className={cn("text-label", addResult.ok ? "text-success" : "text-error")}>
+                  {addResult.text}
+                </p>
+              )}
+              <p className="text-label text-on-surface-variant">以「人物调查」身份进入列表和图谱，不参与 Track 分类</p>
             </Card>
           </div>
         </div>

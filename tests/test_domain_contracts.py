@@ -119,11 +119,13 @@ class TestDomainEnums(unittest.TestCase):
             EngagementStatus.all(),
             (
                 "newly_admitted",
-                "to_contact",
-                "contacted",
+                "screening",
                 "interviewing",
-                "ongoing_follow",
-                "closed",
+                "offer_pending",
+                "offered",
+                "hired",
+                "departed",
+                "rejected",
             ),
         )
 

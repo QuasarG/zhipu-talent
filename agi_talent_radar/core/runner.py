@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from agi_talent_radar.agents.common_potential.rubric import COMMON_DIMENSION_LABELS, COMMON_RUBRIC_MODELS
 from agi_talent_radar.agents.resume_parser import ensure_structured_resume
@@ -11,20 +11,31 @@ from agi_talent_radar.core.io import load_resumes, render_summary_markdown, save
 from agi_talent_radar.core.models import BatchResult, CandidateEvaluation, CandidateResume, ImportClassification
 
 
-def run_candidate(resume: CandidateResume | dict) -> CandidateEvaluation:
+def run_candidate(
+    resume: CandidateResume | dict,
+    academic_report: dict[str, Any] | None = None,
+) -> CandidateEvaluation:
     validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
     structured = ensure_structured_resume(validated)
     graph = build_graph()
-    state = graph.invoke({"resume": structured.model_dump(), "track_results": [], "loop_count": 0})
+    initial_state = {"resume": structured.model_dump(), "track_results": [], "loop_count": 0}
+    if academic_report is not None:
+        initial_state["academic_report"] = academic_report
+    state = graph.invoke(initial_state)
     return CandidateEvaluation.model_validate(state["final_output"])
 
 
-def run_candidate_stream(resume: CandidateResume | dict):
+def run_candidate_stream(
+    resume: CandidateResume | dict,
+    academic_report: dict[str, Any] | None = None,
+):
     """流式执行单候选人评估，边执行边 yield 节点事件和最终结果。"""
     validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
     structured = ensure_structured_resume(validated)
     graph = build_graph()
     state: dict = {"resume": structured.model_dump(), "track_results": [], "loop_count": 0}
+    if academic_report is not None:
+        state["academic_report"] = academic_report
 
     for event in graph.stream(state):
         for node_key, update in event.items():
@@ -102,7 +113,7 @@ def _node_event_status(node_key: str, update: dict) -> str:
 
 
 def _node_phase(node_key: str) -> str:
-    if node_key in {"normalizer", "evidence_extractor"}:
+    if node_key in {"normalizer", "academic_check", "evidence_extractor"}:
         return "preparation"
     if node_key in {"track_router", "route_auditor"}:
         return "routing"

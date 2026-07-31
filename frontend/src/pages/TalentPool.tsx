@@ -10,16 +10,18 @@ import { IconButton } from "@/components/ui/Button";
 import TalentList, { classifyTrack, STATUS_LABELS, TRACKS } from "@/features/pool/TalentList";
 import TalentDetail from "@/features/pool/TalentDetail";
 import RelationGraph from "@/features/pool/RelationGraph";
+import { useSessionState } from "@/lib/sessionState";
 
 export default function TalentPool() {
   const [persons, setPersons] = useState<PersonBrief[]>([]);
   const [selected, setSelected] = useState<PersonDetail | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [trackFilter, setTrackFilter] = useState("");
-  const [schoolFilter, setSchoolFilter] = useState("");
-  const [hrFilter, setHrFilter] = useState("");
-  const [view, setView] = useState<"list" | "graph">("graph");
+  const [selectedId, setSelectedId] = useSessionState<string | null>("talent-pool.selected-id", null);
+  const [search, setSearch] = useSessionState("talent-pool.search", "");
+  const [typeFilter, setTypeFilter] = useSessionState<"all" | "resume" | "guest">("talent-pool.type-filter", "all");
+  const [trackFilter, setTrackFilter] = useSessionState("talent-pool.track-filter", "");
+  const [schoolFilter, setSchoolFilter] = useSessionState("talent-pool.school-filter", "");
+  const [hrFilter, setHrFilter] = useSessionState("talent-pool.hr-filter", "");
+  const [view, setView] = useSessionState<"list" | "graph">("talent-pool.view", "graph");
 
   const load = useCallback(async () => {
     try {
@@ -35,7 +37,7 @@ export default function TalentPool() {
     return () => clearTimeout(timer);
   }, [load]);
 
-  const selectPerson = async (id: string) => {
+  const selectPerson = useCallback(async (id: string) => {
     setSelectedId(id);
     try {
       const detail = await api.persons.get(id);
@@ -43,7 +45,12 @@ export default function TalentPool() {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [setSelectedId]);
+
+  useEffect(() => {
+    if (!selectedId || selected || !persons.some((person) => person.id === selectedId)) return;
+    selectPerson(selectedId);
+  }, [persons, selected, selectedId, selectPerson]);
 
   // 删除人才档案：调 API → 刷新列表 → 清空选中详情
   const handleDeletePerson = useCallback(async (id: string) => {
@@ -57,7 +64,11 @@ export default function TalentPool() {
     } catch (err) {
       console.error("删除人才失败", err);
     }
-  }, [selectedId, load]);
+  }, [selectedId, load, setSelectedId]);
+
+  const handlePersonUpdated = useCallback(async (id: string) => {
+    await Promise.all([selectPerson(id), load()]);
+  }, [load, selectPerson]);
 
   const counts = {
     all: persons.length,
@@ -74,15 +85,17 @@ export default function TalentPool() {
     () =>
       persons.filter(
         (p) =>
-          (!trackFilter || classifyTrack(p) === trackFilter) &&
+          (typeFilter === "all" ||
+            (typeFilter === "guest" ? p.person_type === "guest" : p.person_type !== "guest")) &&
+          (typeFilter !== "resume" || !trackFilter || classifyTrack(p) === trackFilter) &&
           (!schoolFilter || p.org === schoolFilter) &&
           (!hrFilter || (p.engagement_status || "newly_admitted") === hrFilter)
       ),
-    [persons, trackFilter, schoolFilter, hrFilter]
+    [persons, typeFilter, trackFilter, schoolFilter, hrFilter]
   );
 
   return (
-    <div>
+    <div className="w-full max-w-full h-[calc(100vh-48px)] min-h-0 min-w-0 overflow-hidden flex flex-col">
       <PageToolbar
         title="人才库"
         subtitle="统一档案、来源追踪与关系发现"
@@ -96,13 +109,6 @@ export default function TalentPool() {
         }
         right={
           <>
-            <div className="flex items-center gap-1 h-9 px-1 rounded-full bg-surface-high text-label whitespace-nowrap">
-              <span className="px-2.5 h-7 inline-flex items-center rounded-full bg-primary text-on-primary">
-                全部 {counts.all}
-              </span>
-              <span className="px-2.5 text-on-surface-variant">简历评估 {counts.resume}</span>
-              <span className="px-2.5 text-on-surface-variant">人物调查 {counts.invest}</span>
-            </div>
             <SegmentedButtons
               options={[
                 { value: "list", label: "列表详情", icon: "list" },
@@ -117,14 +123,30 @@ export default function TalentPool() {
       />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap px-2">
-        <Chip selected={!trackFilter} onClick={() => setTrackFilter("")}>
-          全部
-        </Chip>
-        {TRACKS.map((t) => (
-          <Chip key={t} selected={trackFilter === t} onClick={() => setTrackFilter(t)}>
-            <span className="capitalize">{t}</span>
-          </Chip>
-        ))}
+        <SegmentedButtons
+          options={[
+            { value: "all" as const, label: `全部 ${counts.all}` },
+            { value: "resume" as const, label: `简历评估 ${counts.resume}` },
+            { value: "guest" as const, label: `人物调查 ${counts.invest}` },
+          ]}
+          value={typeFilter}
+          onChange={(v) => {
+            setTypeFilter(v);
+            setTrackFilter("");
+          }}
+        />
+        {typeFilter === "resume" && (
+          <>
+            <Chip selected={!trackFilter} onClick={() => setTrackFilter("")}>
+              全部
+            </Chip>
+            {TRACKS.map((t) => (
+              <Chip key={t} selected={trackFilter === t} onClick={() => setTrackFilter(t)}>
+                <span className="capitalize">{t}</span>
+              </Chip>
+            ))}
+          </>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <select
             value={schoolFilter}
@@ -149,12 +171,12 @@ export default function TalentPool() {
         </div>
       </div>
 
-      <div className="grid grid-cols-[360px_minmax(0,1fr)_320px] gap-4 h-[calc(100vh-56px-130px)] min-h-[500px]">
+      <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
         <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} />
         {view === "graph" ? (
           <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
         ) : (
-          <Card variant="elevated" className="min-h-0 overflow-y-auto p-4">
+          <Card variant="filled" className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-5">
             <table className="w-full text-body-sm">
               <thead>
                 <tr className="text-label text-on-surface-variant text-left">
@@ -171,7 +193,7 @@ export default function TalentPool() {
                     onClick={() => selectPerson(p.id)}
                     className="cursor-pointer border-t border-outline-variant hover:bg-surface-low"
                   >
-                    <td className="py-2 text-on-surface">{p.name || p.id}</td>
+                    <td className="py-2 text-on-surface">{p.name || "未命名"}</td>
                     <td className="py-2 text-on-surface-variant">{p.org || "—"}</td>
                     <td className="py-2 text-on-surface-variant capitalize">{classifyTrack(p) || "—"}</td>
                     <td className="py-2 text-on-surface-variant">{p.overall_score ?? "—"}</td>
@@ -181,7 +203,7 @@ export default function TalentPool() {
             </table>
           </Card>
         )}
-        <TalentDetail person={selected} personId={selectedId} onUpdated={selectPerson} />
+        <TalentDetail person={selected} personId={selectedId} onUpdated={handlePersonUpdated} />
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import type {
   CandidateBrief,
   CandidateDetail,
   HealthReport,
+  PendingPublication,
   PersonBrief,
   PersonDetail,
   ReputationReport,
@@ -11,7 +12,7 @@ import type {
 const BASE = "";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(BASE + url, init);
+  const resp = await fetch(BASE + url, { cache: "no-store", ...init });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(err.detail || `HTTP ${resp.status}`);
@@ -31,9 +32,27 @@ export const api = {
       fetchJSON<{ id: string; group: string; dismissed: boolean }>(`/api/candidates/${id}/dismiss`, {
         method: "POST",
       }),
-    // 待核验论文列表（从 academic_report 提取 unverifiable/mismatch）
+    // 仍需人工处理的 unverifiable 论文
     pendingPublications: () =>
-      fetchJSON<unknown[]>(`/api/candidates/pending-publications`),
+      fetchJSON<PendingPublication[]>(`/api/candidates/pending-publications`),
+    reviewPublication: (
+      candidateId: string,
+      alignmentIndex: number,
+      action: "confirmed" | "dismissed",
+      reviewer: string,
+      note: string,
+    ) =>
+      fetchJSON<{
+        candidate_id: string;
+        alignment_index: number;
+        human_status: "confirmed" | "dismissed";
+        verification_result: CandidateBrief["verification_result"];
+        evaluable: boolean;
+      }>(`/api/candidates/${candidateId}/publications/${alignmentIndex}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reviewer, note }),
+      }),
     // 按需论文核验：选中候选人后触发，返回 academic_report
     verifyPublications: (id: string) =>
       fetchJSON<Record<string, unknown>>(`/api/candidates/${id}/verify-publications`, {
@@ -47,6 +66,12 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, changed_by: changedBy, note }),
       }),
+    updateSupplementary: (id: string, content: string) =>
+      fetchJSON<{ id: string; supplementary_info: string }>(`/api/candidates/${id}/supplementary`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      }),
     engagementHistory: (id: string) =>
       fetchJSON<unknown[]>(`/api/candidates/${id}/engagement-history`),
   },
@@ -59,6 +84,12 @@ export const api = {
       return fetchJSON<PersonBrief[]>(`/api/persons?${qs}`);
     },
     get: (id: string) => fetchJSON<PersonDetail>(`/api/persons/${id}`),
+    create: (data: { name: string; org?: string; direction?: string }) =>
+      fetchJSON<PersonBrief>(`/api/persons`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
     admit: (id: string, changedBy: string, note: string) =>
       fetchJSON(`/api/persons/${id}/admit`, {
         method: "POST",

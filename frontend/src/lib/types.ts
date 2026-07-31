@@ -14,11 +14,14 @@ export interface CandidateBrief {
   academic_check_status?: "none" | "running" | "done";
   verification_result?: "none" | "running" | "verified" | "rejected" | "needs_review";
   evaluable?: boolean;
+  evaluation_status?: "idle" | "running" | "completed" | "failed";
+  evaluation_run_id?: number | null;
 }
 
 export interface CandidateDetail extends CandidateBrief {
   confidence: number;
   raw_text: string;
+  supplementary_info?: string;
   education: string[] | EduItem[];
   directions: string[];
   experiences: ExperienceItem[];
@@ -31,8 +34,10 @@ export interface CandidateDetail extends CandidateBrief {
   person_id: string | null;
   sources: string[];
   academic_report?: AcademicReport;
+  evaluation_graph: EvaluationGraph;
   evaluation?: Evaluation;
   latest_evaluation?: Evaluation;
+  evaluation_run?: EvaluationRun;
 }
 
 export interface PaperClaim {
@@ -46,6 +51,7 @@ export interface PaperClaim {
 export interface ClaimAlignment {
   claim: PaperClaim;
   verdict: "verified" | "mismatch" | "unverifiable";
+  machine_verdict?: "verified" | "mismatch" | "unverifiable";
   verified_status?: string;
   matched_title?: string;
   discrepancies?: string[];
@@ -53,7 +59,51 @@ export interface ClaimAlignment {
   is_retracted?: boolean;
   openalex_url?: string;
   source_url?: string;
+  external_record?: ExternalPaperRecord;
+  checks?: VerificationChecks;
   note?: string;
+  human_status?: "unreviewed" | "confirmed" | "dismissed";
+  human_reviewer?: string;
+  human_note?: string;
+  human_reviewed_at?: string;
+}
+
+export type VerificationCheckStatus = "match" | "mismatch" | "pending";
+
+export interface VerificationChecks {
+  title: VerificationCheckStatus;
+  author_identity: VerificationCheckStatus;
+  author_position: VerificationCheckStatus;
+  publication_status: VerificationCheckStatus;
+}
+
+export interface ExternalPaperRecord {
+  source: string;
+  source_url: string;
+  title: string;
+  authors: string[];
+  venue: string;
+  year: string;
+  publication_status: string;
+  cited_by_count: number;
+  is_retracted: boolean;
+}
+
+export interface PendingPublication {
+  candidate_id: string;
+  alignment_index: number;
+  candidate_name: string;
+  title: string;
+  claimed_venue?: string;
+  claimed_year?: string;
+  claimed_role?: string;
+  claimed_status?: string;
+  verdict: "unverifiable" | "mismatch";
+  review_kind?: "verify" | "rehabilitate";
+  note?: string;
+  discrepancies?: string[];
+  matched_title?: string;
+  source_url?: string;
 }
 
 export interface AcademicReport {
@@ -117,9 +167,74 @@ export interface TrackAssignment {
 export interface TrackRecommendation {
   track?: string;
   name?: string;
+  label?: string;
+  score?: number;
   weight: number;
+  confidence?: number;
   rationale?: string;
   reason?: string;
+  evidence_ids?: string[];
+}
+
+export interface TrackEvaluation {
+  track: string;
+  label: string;
+  weight: number;
+  confidence: number;
+  raw_score: number;
+  calibrated_score: number;
+  dimension_scores: DimensionScore[];
+  evidence_ids: string[];
+  risk_notes: string[];
+  critic_flags: string[];
+}
+
+export type EvaluationNodeStatus = "pending" | "running" | "done" | "skipped" | "error";
+
+export interface EvaluationNodeRun {
+  node: string;
+  label?: string;
+  phase: string;
+  status: EvaluationNodeStatus;
+  message: string;
+  sequence?: number;
+}
+
+export interface EvaluationRun {
+  id: number;
+  candidate_id: string;
+  status: "running" | "completed" | "failed";
+  error_message: string;
+  created_at: string | null;
+  completed_at: string | null;
+  evaluation_graph: EvaluationGraph;
+  node_runs: EvaluationNodeRun[];
+}
+
+export interface EvaluationGraphNode {
+  node: string;
+  label: string;
+  description: string;
+  order: number;
+}
+
+export interface EvaluationGraphGroup {
+  key: string;
+  label: string;
+  description?: string;
+  collapsible?: boolean;
+  nodes: EvaluationGraphNode[];
+}
+
+export interface EvaluationGraphPhase {
+  key: string;
+  label: string;
+  description: string;
+  groups: EvaluationGraphGroup[];
+}
+
+export interface EvaluationGraph {
+  phases: EvaluationGraphPhase[];
 }
 
 export interface Alignment {
@@ -140,6 +255,7 @@ export interface Alignment {
 }
 
 export interface Evaluation {
+  id?: number;
   overall_score: number;
   one_liner: string;
   core_strengths: string[];
@@ -156,15 +272,17 @@ export interface Evaluation {
   common_score: number;
   document_score: number;
   track_assignments: TrackAssignment[];
-  track_evaluations: unknown[];
+  track_evaluations: TrackEvaluation[];
   routing_confidence: number;
   evaluation_mode: string;
   status: string;
+  error_message?: string;
+  created_at?: string | null;
+  completed_at?: string | null;
   research_group_matching_status: string;
-  academic_report?: {
-    alignments: Alignment[];
-    warnings: string[];
-  };
+  academic_report?: AcademicReport;
+  evaluation_graph: EvaluationGraph;
+  node_runs: EvaluationNodeRun[];
 }
 
 export interface EvidenceItem {
@@ -181,28 +299,34 @@ export interface EvidenceItem {
   page: number | null;
 }
 
+export interface PersonEducation {
+  school: string;
+  degree: string;
+  period: string;
+}
+
 export interface PersonBrief {
   id: string;
   name: string;
   org: string;
   direction: string;
   person_type: string;
+  schools?: PersonEducation[];
+  top_schools?: string[];
   overall_score: number | null;
   level: string | null;
   reputation_level: string | null;
   reputation_status: string | null;
   updated_at: string | null;
-  engagement_status?: string;
+  candidate_id: string | null;
+  engagement_status: string;
+  source_kinds: string[];
+  dominant_track: string;
+  dominant_track_weight: number;
 }
 
-export interface PersonDetail {
-  id: string;
-  name: string;
-  org: string;
-  direction: string;
-  person_type: string;
+export interface PersonDetail extends PersonBrief {
   created_at: string;
-  updated_at: string;
   evaluations: Evaluation[];
   reputation_reports: ReputationReport[];
 }

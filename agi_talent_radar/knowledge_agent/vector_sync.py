@@ -86,11 +86,7 @@ def delete_person_vectors(
     vector_store: VectorStore,
 ) -> int:
     """删除某 person 在向量库中的全部点（按 person_id payload 过滤）。"""
-    # VectorPoint payload 里 person_id 是过滤键；这里复用 delete_by_record 接口
-    # 但 record_type 不适用，故直接走 search + delete（InMemory 支持按 record_type；
-    # 真实 Qdrant 走 filter）。
-    # 简化：依赖 VectorStore 实现的过滤删除语义。
-    return vector_store.delete_by_record("person", person_id)
+    return vector_store.delete_by_filter({"person_id": person_id})
 
 
 def rebuild_all_vectors(

@@ -3,7 +3,7 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-07-28
+- Last refreshed: 2026-07-30
 - Primary product surfaces: 简历评估工作台、人才知识问答、人才库结构化浏览与关系图。
 - Evidence reviewed: `CONTEXT.md`、`docs/backend_use_case_decisions.md`、`.omx/plans/talent-platform-implementation-plan.md`、`docs/talent_platform_design.md`、`agi_talent_radar/web/templates/workbench.html`、`agi_talent_radar/web/templates/talent_pool.html`、`agi_talent_radar/web/static/workbench.css`、`docs/AGI talent.png`。
 - Figma target: 三个 1440 x 1024 desktop frames，共享一个组件/变量页；移动版在后续前端实现阶段补充。
@@ -33,6 +33,7 @@
   1. Resume Evaluation Workspace：简历队列、原文/结构化内容、Agent 进度与评估结果。
   2. Talent Knowledge Chat：自由提示词、工具调用过程、答案、引用与人物上下文。
   3. Talent Pool & Graph：人才列表、来源筛选、详情摘要和关系图谱。
+  4. Talent Profile：单个人才的完整结构化简历/PDF、评估结果与运行过程。
 - Content hierarchy: 当前对象与任务状态 > 结论/回答 > 证据与核验状态 > 历史版本 > 次要元数据。
 
 ## Design principles
@@ -79,6 +80,19 @@
 - Paper review: 每篇论文同时显示自述状态、外部核验状态、作者顺序、原文证据和重试按钮。
 - Research group matching: 固定独立行显示“研究组匹配尚未配置”，不得与 Track 推荐合并。
 
+#### Structured resume record layout
+
+- 中栏所有模块使用固定记录行，不使用自由流式标签堆叠，也不在模块卡内嵌套子卡片。
+- 记录层级固定为：序号/类型标识 > 主标题 > 具名元数据字段 > 证据或说明；主标题使用 600-700 字重，字段名使用 500，正文使用 400。
+- 教育、经历和项目的机构、岗位、时间、页码使用固定网格列；字段缺失时保留结构但隐藏空值，不让相邻内容跳位。
+- 论文记录固定为四段：论文标题；简历自述事实；外部数据库事实；核验结论、差异与来源链接。
+- 右侧评估区使用“评估结果 / 运行过程”两个同级子页面；切换发生在固定 Tab 中，不改变三栏工作台宽度。
+- 运行过程由后端下发完整图谱目录，按准备、路由、并行评估、汇总输出四阶段展示；节点即使未运行也必须可见。
+- 并行阶段显式拆分通用评分链与专业 Track 组。阶段和 Track 组都可展开收拢，默认展开当前运行阶段。
+- 节点状态只使用待运行、运行中、已完成、已跳过、失败五类；动效仅用于运行中状态和 Tab/折叠过渡，并遵守 reduced-motion。
+- 论文核验 JSON 应分别提供 `claim`、`external_record`、`checks`、`verdict`，前端不得从说明文本反推作者、venue、年份或来源。
+- `checks` 至少拆分标题、作者身份、作者位次和发表状态；状态必须同时使用文字、图标和颜色，verified / mismatch / unverifiable 视觉强度明显不同。
+
 ### 2. Talent Knowledge Chat
 
 - Layout: 72px 导航；左侧 280px 会话/人物上下文；中间对话主区；右侧 360px 引用与 Agent Trace 抽屉。
@@ -94,6 +108,16 @@
 - Detail: 简历版本、评估历史、论文、外部事实、舆情、HR 状态和审核历史使用同一档案 ID。
 - Graph: Person、School、Organization、Direction 为实体节点；共享实体形成聚类，不做人才两两全连接。
 - Visual encoding: 人才颜色表示学校；形状表示主要推荐方向；confirmed 实线、pending 虚线、disproved 当前隐藏；所有边可打开证据。
+- Primary Track: 人才列表和图谱必须使用最新完成评估中权重最大的 `track_assignment`；人物研究方向文本仅作无评估数据时的回退，不得覆盖评估结果。
+- HR status: 招聘生命周期使用 MD3 胶囊组展示：已投递 → 待初筛 → 面试中 → 待发 Offer → 已发 Offer → 已入职 / 已离职 / 已淘汰。第一次点击进入带勾的待确认态，第二次点击同一项才提交并写审计；人才储备是标签，不混入生命周期。
+- Graph integrity: 只展示人物与学校、机构、主要 Track 等有来源实体的关系；不得根据同校、同 Track 自动伪造人物间合作关系。布局必须确定性稳定，筛选或返回页面不应随机跳位。
+
+### 4. Talent Profile
+
+- Route: `/talent-pool/:personId`，从人才库的“查看完整档案”进入，浏览器返回后保留人才库筛选、视图和选中项。
+- Layout: 顶部为人物身份、主要 Track、来源与可换行的 HR 生命周期胶囊；主体为左右双栏。左栏放大版结构化简历/简历原文 PDF，右栏为评估结果/运行过程两个子页面。
+- Data ownership: 路由使用稳定 `person_id`，人物详情接口必须同时返回关联 `candidate_id`；简历、PDF、HR 审计使用 `candidate_id`，人物主档与历史评估使用 `person_id`。
+- Empty cases: 人物调查来源且尚无简历时，左栏显示无简历状态，右栏仍可展示人物调查和舆情；不得请求不存在的 PDF。
 
 ## Accessibility
 
@@ -126,7 +150,7 @@
 
 ## Implementation constraints
 
-- Framework/styling system: 当前 Flask/Jinja + 原生 JavaScript + CSS；Figma 设计不假设框架迁移。
+- Framework/styling system: 当前 Flask API + React/Vite + Tailwind CSS；优先复用现有 `ResumeContent`、`EvaluationWorkspace`、MD3 UI 组件与语义 token，不引入第二套组件库。
 - Design-token constraints: Material Design 3 的信息架构和可访问状态规范与 Liquid Glass 视觉材料结合；数据面板圆角保持 8px，胶囊只用于导航和模式切换。
 - Performance constraints: backdrop blur 层级受控；大列表和图谱虚拟化；PDF 与 Agent Trace 按需渲染。
 - Compatibility constraints: Windows 本地开发，现代 Chromium/Edge；保留 Flask SSE。

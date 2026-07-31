@@ -46,6 +46,8 @@ class VectorStore(Protocol):
 
     def delete_by_record(self, record_type: str, record_id: str) -> int: ...
 
+    def delete_by_filter(self, filters: dict[str, Any]) -> int: ...
+
     def count(self) -> int: ...
 
 
@@ -164,18 +166,15 @@ class QdrantVectorStore:
         ]
 
     def delete_by_record(self, record_type: str, record_id: str) -> int:
+        return self.delete_by_filter({"record_type": record_type, "record_id": record_id})
+
+    def delete_by_filter(self, filters: dict[str, Any]) -> int:
         client = self._get_client()
-        # 按 payload record_type + record_id 过滤删除
         client.delete(
             collection_name=self.collection,
-            points_selector={
-                "must": [
-                    {"key": "record_type", "match": {"value": record_type}},
-                    {"key": "record_id", "match": {"value": record_id}},
-                ]
-            },
+            points_selector=_to_qdrant_filter(filters),
         )
-        return 0  # Qdrant delete 不返回计数
+        return 0
 
     def count(self) -> int:
         client = self._get_client()
@@ -230,11 +229,13 @@ class InMemoryVectorStore:
         ]
 
     def delete_by_record(self, record_type: str, record_id: str) -> int:
+        return self.delete_by_filter({"record_type": record_type, "record_id": record_id})
+
+    def delete_by_filter(self, filters: dict[str, Any]) -> int:
         to_remove = [
             pid
             for pid, point in self._points.items()
-            if point.payload.get("record_type") == record_type
-            and str(point.payload.get("record_id")) == str(record_id)
+            if all(str(point.payload.get(key)) == str(value) for key, value in filters.items())
         ]
         for pid in to_remove:
             del self._points[pid]

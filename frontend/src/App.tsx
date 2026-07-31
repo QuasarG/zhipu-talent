@@ -7,6 +7,7 @@ import Login from "./pages/Login";
 import ResumeEvaluate from "./pages/ResumeEvaluate";
 import KnowledgeAgent from "./pages/KnowledgeAgent";
 import TalentPool from "./pages/TalentPool";
+import TalentProfile from "./pages/TalentProfile";
 import ReviewCenter from "./pages/ReviewCenter";
 import Settings from "./pages/Settings";
 
@@ -38,6 +39,7 @@ function App() {
             <Route path="/" element={<ResumeEvaluate />} />
             <Route path="/knowledge" element={<KnowledgeAgent />} />
             <Route path="/talent-pool" element={<TalentPool />} />
+            <Route path="/talent-pool/:personId" element={<TalentProfile />} />
             <Route path="/review" element={<ReviewCenter />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -17,6 +17,11 @@ class ImportItem(BaseModel):
     category: str
     confidence: float = Field(ge=0, le=1)
     reason: str
+    identity_decision: str = "new_person"
+    matched_candidate_id: str = ""
+    identity_confidence: float = Field(default=0, ge=0, le=1)
+    identity_evidence: list[str] = Field(default_factory=list)
+    identity_conflicts: list[str] = Field(default_factory=list)
 
 
 class ImportOutput(BaseModel):
@@ -31,7 +36,9 @@ IMPORT_PROMPT = """
 输出格式（必须严格遵守）：
 - 只输出 JSON Lines，每行一个候选人
 - 每行必须是一个完整、独立的 JSON 对象
-- 每个对象包含字段：id, name, target_role, stage, category, confidence, reason
+- 每个对象包含字段：id, name, target_role, stage, category, confidence, reason,
+  identity_decision, matched_candidate_id, identity_confidence,
+  identity_evidence, identity_conflicts
 - 不要输出 markdown 代码块、不要输出顶层数组、不要输出任何解释文字
 
 字段说明：
@@ -48,21 +55,39 @@ IMPORT_PROMPT = """
   - 需补证观察型
 - confidence: 分类置信度 0-1
 - reason: 一句话分类理由
+- identity_decision: 只能是 same_person 或 new_person。你必须综合新简历与
+  existing_candidates 中的姓名变体、教育/任职时间线、研究方向、论文与项目判断。
+- matched_candidate_id: 仅 same_person 时填写 existing_candidates 中真实存在的 id。
+- identity_confidence: 身份判断置信度 0-1。
+- identity_evidence: 支持身份判断的具体证据列表。
+- identity_conflicts: 身份信息的冲突点列表，无冲突给空数组。
+
+身份判断规则：
+1. 是否同一人必须由你基于完整证据判断，服务端不使用姓名、邮箱或文本哈希硬编码归并。
+2. 仅姓名相同不足以判 same_person；需要时间线、机构、方向、论文或项目等交叉证据。
+3. existing_candidates 为空时只能判 new_person。
+4. 不得编造 existing_candidates 中不存在的 matched_candidate_id。
 
 示例输出（假设当前为 2025 年）：
-{{"id": "c1", "name": "张三", "target_role": "大模型算法研究员", "stage": "博二", "category": "研究探索型", "confidence": 0.9, "reason": "2023 年博士入学，当前为博二，研究经历以方法探索为主"}}
-{{"id": "c2", "name": "李四", "target_role": "AI 工程师", "stage": "硕士应届", "category": "工程闭环型", "confidence": 0.8, "reason": "2023 年硕士入学，2025 年应届毕业"}}
+{{"id": "c1", "name": "张三", "target_role": "大模型算法研究员", "stage": "博二", "category": "研究探索型", "confidence": 0.9, "reason": "研究经历以方法探索为主", "identity_decision": "same_person", "matched_candidate_id": "existing-1", "identity_confidence": 0.94, "identity_evidence": ["教育与任职时间线一致", "代表论文一致"], "identity_conflicts": []}}
+{{"id": "c2", "name": "李四", "target_role": "AI 工程师", "stage": "硕士应届", "category": "工程闭环型", "confidence": 0.8, "reason": "工程项目闭环完整", "identity_decision": "new_person", "matched_candidate_id": "", "identity_confidence": 0.88, "identity_evidence": ["已有候选中没有一致的教育与项目经历"], "identity_conflicts": []}}
 
 必须覆盖输入里的每一位候选人。
 """.strip()
 
 
-def run_import_agent(resumes: list[CandidateResume], persist: bool = True) -> list[ImportClassification]:
-    return list(run_import_agent_stream(resumes, persist=persist))
+def run_import_agent(
+    resumes: list[CandidateResume],
+    persist: bool = True,
+    identity_candidates: list[dict] | None = None,
+) -> list[ImportClassification]:
+    return list(run_import_agent_stream(resumes, persist=persist, identity_candidates=identity_candidates))
 
 
 def run_import_agent_stream(
-    resumes: list[CandidateResume], persist: bool = True
+    resumes: list[CandidateResume],
+    persist: bool = True,
+    identity_candidates: list[dict] | None = None,
 ):
     """流式返回 ImportClassification，检测到一个完整候选人即 yield。
 
@@ -73,7 +98,11 @@ def run_import_agent_stream(
     current_date = datetime.now().strftime("%Y-%m-%d")
     stream = llm_client.call_llm_stream(
         IMPORT_PROMPT.format(current_date=current_date),
-        {"candidates": compact, "current_date": current_date},
+        {
+            "candidates": compact,
+            "existing_candidates": identity_candidates or [],
+            "current_date": current_date,
+        },
         temperature=0.1,
     )
     resume_by_id = {resume.id: resume for resume in resumes}
@@ -90,12 +119,22 @@ def run_import_agent_stream(
         except json.JSONDecodeError:
             return None
         item = ImportItem.model_validate(data)
+        known_ids = {str(candidate.get("id", "")) for candidate in (identity_candidates or [])}
+        if item.identity_decision not in {"same_person", "new_person"}:
+            raise ValueError(f"初筛 Agent 返回非法 identity_decision: {item.identity_decision}")
+        if item.identity_decision == "same_person" and item.matched_candidate_id not in known_ids:
+            raise ValueError(f"初筛 Agent 返回未知 matched_candidate_id: {item.matched_candidate_id}")
         classification = ImportClassification(
             id=item.id,
             name=item.name,
             category=item.category,
             confidence=item.confidence,
             reason=item.reason,
+            identity_decision=item.identity_decision,
+            matched_candidate_id=item.matched_candidate_id,
+            identity_confidence=item.identity_confidence,
+            identity_evidence=item.identity_evidence,
+            identity_conflicts=item.identity_conflicts,
         )
         if persist:
             _persist_single_import(resume_by_id[item.id], classification)

@@ -102,15 +102,35 @@ class EngagementStatus(str, Enum):
     系统不得基于分数或舆情切换状态。
     """
 
+    APPLIED = "newly_admitted"
     NEWLY_ADMITTED = "newly_admitted"
+    SCREENING = "screening"
+    INTERVIEWING = "interviewing"
+    OFFER_PENDING = "offer_pending"
+    OFFERED = "offered"
+    HIRED = "hired"
+    DEPARTED = "departed"
+    REJECTED = "rejected"
     TO_CONTACT = "to_contact"
     CONTACTED = "contacted"
-    INTERVIEWING = "interviewing"
     ONGOING_FOLLOW = "ongoing_follow"
     CLOSED = "closed"
 
     @classmethod
     def all(cls) -> tuple[str, ...]:
+        return (
+            cls.APPLIED.value,
+            cls.SCREENING.value,
+            cls.INTERVIEWING.value,
+            cls.OFFER_PENDING.value,
+            cls.OFFERED.value,
+            cls.HIRED.value,
+            cls.DEPARTED.value,
+            cls.REJECTED.value,
+        )
+
+    @classmethod
+    def accepted(cls) -> tuple[str, ...]:
         return tuple(member.value for member in cls)
 
 

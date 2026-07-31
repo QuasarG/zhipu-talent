@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import type { PersonBrief, ReputationReport } from "@/lib/types";
+import type { PendingPublication, PersonBrief, ReputationReport } from "@/lib/types";
 import PageToolbar from "@/components/layout/PageToolbar";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -9,25 +9,11 @@ import Icon from "@/components/ui/Icon";
 import Tabs from "@/components/ui/Tabs";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
+import { useSessionState } from "@/lib/sessionState";
 
 interface ReviewItem {
   person: PersonBrief;
   report: ReputationReport;
-}
-
-interface PendingPublication {
-  candidate_id: string;
-  candidate_name: string;
-  title: string;
-  claimed_venue?: string;
-  claimed_year?: string;
-  claimed_role?: string;
-  claimed_status?: string;
-  verdict: "unverifiable" | "mismatch";
-  note?: string;
-  discrepancies?: string[];
-  matched_title?: string;
-  source_url?: string;
 }
 
 type Filter = "all" | "pending" | "done";
@@ -56,8 +42,8 @@ export default function ReviewCenter() {
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [pubs, setPubs] = useState<PendingPublication[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Filter>("all");
-  const [tab, setTab] = useState<Tab>("reputation");
+  const [filter, setFilter] = useSessionState<Filter>("review.filter", "all");
+  const [tab, setTab] = useSessionState<Tab>("review.tab", "reputation");
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState<number | null>(null);
 
@@ -69,7 +55,7 @@ export default function ReviewCenter() {
         api.persons.list(),
         api.candidates.pendingPublications().catch(() => []),
       ]);
-      setPubs(pendingPubs as PendingPublication[]);
+      setPubs(pendingPubs);
       const results = await Promise.allSettled(persons.map((p) => api.persons.reputation(p.id)));
       const merged: ReviewItem[] = [];
       results.forEach((res, i) => {
@@ -139,7 +125,7 @@ export default function ReviewCenter() {
       />
 
       {tab === "publications" ? (
-        <PendingPubsList pubs={pubs} loading={loading} />
+        <PendingPubsList pubs={pubs} loading={loading} onReviewed={load} />
       ) : (
         <>
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -256,7 +242,38 @@ export default function ReviewCenter() {
 }
 
 /* ---- 论文核验列表 ---- */
-function PendingPubsList({ pubs, loading }: { pubs: PendingPublication[]; loading: boolean }) {
+function PendingPubsList({
+  pubs,
+  loading,
+  onReviewed,
+}: {
+  pubs: PendingPublication[];
+  loading: boolean;
+  onReviewed: () => Promise<void>;
+}) {
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState<string | null>(null);
+
+  const reviewKey = (pub: PendingPublication) => `${pub.candidate_id}:${pub.alignment_index}`;
+  const submit = async (pub: PendingPublication, action: "confirmed" | "dismissed") => {
+    const key = reviewKey(pub);
+    setSubmitting(key);
+    try {
+      await api.candidates.reviewPublication(
+        pub.candidate_id,
+        pub.alignment_index,
+        action,
+        "工作台复核",
+        notes[key] ?? "",
+      );
+      await onReviewed();
+    } catch (err) {
+      console.error("论文人工核验失败", err);
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -275,13 +292,19 @@ function PendingPubsList({ pubs, loading }: { pubs: PendingPublication[]; loadin
   }
   return (
     <div className="flex flex-col gap-3">
-      {pubs.map((pub, i) => (
-        <Card key={i} variant="filled" className="p-4">
+      {pubs.map((pub) => {
+        const key = reviewKey(pub);
+        const busy = submitting === key;
+        const rehabilitate = pub.review_kind === "rehabilitate" || pub.verdict === "mismatch";
+        return (
+        <Card key={key} variant="filled" className="p-4">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-title">{pub.candidate_name}</span>
-            <StatusChip tone={pub.verdict === "mismatch" ? "error" : "warning"}>
-              {pub.verdict === "mismatch" ? "存疑" : "待核验"}
-            </StatusChip>
+            {rehabilitate ? (
+              <StatusChip tone="error" variant="filled" icon="gpp_maybe">核验不通过</StatusChip>
+            ) : (
+              <StatusChip tone="warning">待核验</StatusChip>
+            )}
             <span className="text-body-sm text-on-surface-variant ml-auto">
               {[pub.claimed_venue, pub.claimed_year].filter(Boolean).join(" · ") || "—"}
             </span>
@@ -303,8 +326,36 @@ function PendingPubsList({ pubs, loading }: { pubs: PendingPublication[]; loadin
               {pub.source_url.includes("aminer") ? "AMiner" : "OpenAlex"} ↗
             </a>
           )}
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              type="text"
+              value={notes[key] ?? ""}
+              onChange={(event) => setNotes((current) => ({ ...current, [key]: event.target.value }))}
+              placeholder={rehabilitate ? "平反备注（将随论文进入评估）" : "核验备注（将随论文进入评估）"}
+              className="flex-1 h-10 px-3 rounded-sm border border-outline bg-transparent text-body-sm outline-none focus:border-primary placeholder:text-on-surface-variant"
+            />
+            <Button
+              variant="filled"
+              icon={rehabilitate ? "undo" : "check"}
+              disabled={busy}
+              onClick={() => submit(pub, "confirmed")}
+            >
+              {rehabilitate ? "平反" : "确认"}
+            </Button>
+            {!rehabilitate && (
+              <Button
+                variant="outlined"
+                icon="close"
+                disabled={busy}
+                onClick={() => submit(pub, "dismissed")}
+              >
+                驳回
+              </Button>
+            )}
+          </div>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -183,15 +183,27 @@ def admit_candidate_after_evaluation(evaluation_id: int) -> dict[str, Any]:
             candidate_role = evaluation.candidate.target_role or ""
             candidate_stage = evaluation.candidate.stage or ""
 
+        submission_candidate = evaluation.candidate
         candidate = repository.find_candidate_by_person(session, person_id)
         if candidate is None:
-            candidate = repository.find_or_create_candidate_for_person(
-                session,
-                person_id=person_id,
-                name=candidate_name,
-                target_role=candidate_role,
-                stage=candidate_stage,
-            )
+            if submission_candidate is not None:
+                candidate = submission_candidate
+                candidate.person_id = person_id
+                candidate.admitted_at = candidate.admitted_at or datetime.now(timezone.utc).replace(tzinfo=None)
+                session.flush()
+            else:
+                candidate = repository.find_or_create_candidate_for_person(
+                    session,
+                    person_id=person_id,
+                    name=candidate_name,
+                    target_role=candidate_role,
+                    stage=candidate_stage,
+                )
+        elif submission_candidate is not None and submission_candidate.id != candidate.id:
+            _merge_submission_profile(candidate, submission_candidate)
+            submission_candidate.group = "dismissed"
+
+        if evaluation.candidate_id != candidate.id:
             evaluation.candidate_id = candidate.id
 
         repository.append_candidate_source(
@@ -217,6 +229,36 @@ def admit_candidate_after_evaluation(evaluation_id: int) -> dict[str, Any]:
             "person_id": person_id,
             "sources": sources,
         }
+
+
+def _merge_submission_profile(target: CandidateORM, source: CandidateORM) -> None:
+    """把新版简历字段合入人物主档，保留主档身份与 HR 状态。"""
+    profile_fields = (
+        "name",
+        "target_role",
+        "stage",
+        "raw_text",
+        "education",
+        "directions",
+        "experiences",
+        "projects",
+        "publications",
+        "skills",
+        "screening_tags",
+        "source_format",
+        "document_analysis",
+        "import_level",
+        "import_category",
+        "import_confidence",
+        "academic_report",
+        "academic_check_status",
+        "academic_check_at",
+        "current_resume_version_id",
+    )
+    for field in profile_fields:
+        value = getattr(source, field, None)
+        if value not in (None, "", [], {}):
+            setattr(target, field, value)
 
 
 def manual_admit_person_to_pool(

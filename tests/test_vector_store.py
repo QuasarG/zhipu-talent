@@ -97,6 +97,20 @@ class TestInMemoryVectorStore(unittest.TestCase):
         self.assertEqual(deleted, 1)
         self.assertEqual(self.store.count(), 1)
 
+    def test_delete_by_person_filter_removes_all_record_types(self) -> None:
+        from agi_talent_radar.knowledge_agent.vector_sync import delete_person_vectors
+
+        self.store.upsert([
+            VectorPoint(vector=[1.0, 0.0, 0.0], payload=_full_payload(record_type="evaluation", record_id="1", person_id="p-delete")),
+            VectorPoint(vector=[0.0, 1.0, 0.0], payload=_full_payload(record_type="external_fact", record_id="2", person_id="p-delete")),
+            VectorPoint(vector=[0.5, 0.5, 0.0], payload=_full_payload(record_type="evaluation", record_id="3", person_id="p-keep")),
+        ])
+
+        deleted = delete_person_vectors("p-delete", self.store)
+
+        self.assertEqual(deleted, 2)
+        self.assertEqual(self.store.count(), 1)
+
     def test_upsert_replaces_same_point_id(self) -> None:
         p1 = VectorPoint(
             vector=[1.0, 0.0, 0.0],

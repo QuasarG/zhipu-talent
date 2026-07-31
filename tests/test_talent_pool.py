@@ -178,6 +178,35 @@ class TalentPoolRouteTest(unittest.TestCase):
             json={"action": "maybe"},
         )
         self.assertEqual(resp.status_code, 400)
+    def test_create_person_route_adds_guest(self) -> None:
+        from agi_talent_radar.web.workbench import create_app
+
+        client = create_app().test_client()
+        resp = client.post(
+            "/api/persons",
+            json={"name": "赵六", "org": "某实验室", "direction": "Agent"},
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = resp.get_json()
+        self.assertEqual(data["name"], "赵六")
+        self.assertEqual(data["person_type"], "guest")
+
+        # 创建后能在人才库列表中查到，且相同身份重复创建归并到同一档
+        resp2 = client.post(
+            "/api/persons",
+            json={"name": "赵六", "org": "某实验室", "direction": "Agent"},
+        )
+        self.assertEqual(resp2.status_code, 201)
+        self.assertEqual(resp2.get_json()["id"], data["id"])
+        listing = client.get("/api/persons").get_json()
+        self.assertEqual(len([p for p in listing if p["name"] == "赵六"]), 1)
+
+    def test_create_person_route_requires_name(self) -> None:
+        from agi_talent_radar.web.workbench import create_app
+
+        client = create_app().test_client()
+        resp = client.post("/api/persons", json={"org": "某实验室"})
+        self.assertEqual(resp.status_code, 400)
 
 
 if __name__ == "__main__":

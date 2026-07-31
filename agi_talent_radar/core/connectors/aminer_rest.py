@@ -62,7 +62,10 @@ def _request(path: str, params: dict | None = None, method: str = "GET", body: d
 # ── 论文搜索 ──
 
 def search_aminer_papers_by_title(title: str, size: int = 5) -> list[Fact]:
-    """按标题搜索论文（免费），返回 Fact 列表。"""
+    """按标题搜索论文（免费），返回 Fact 列表。
+
+    paper_search 的作者列表常不完整，命中后用免费的 paper/info 按 id 批量补齐。
+    """
     title = (title or "").strip()
     if not title:
         return []
@@ -73,7 +76,65 @@ def search_aminer_papers_by_title(title: str, size: int = 5) -> list[Fact]:
     if resp.get("code") != 200:
         raise ConnectorUnavailableError(f"AMiner 搜索失败: {resp.get('msg', '未知')}")
     papers = resp.get("data") or []
-    return [_paper_to_fact(title, p) for p in papers if isinstance(p, dict)]
+    facts = [_paper_to_fact(title, p) for p in papers if isinstance(p, dict)]
+    _enrich_facts_with_paper_info(facts)
+    return facts
+
+
+def _paper_id_of(fact: Fact) -> str:
+    url = fact.source_url or ""
+    return url.rsplit("/pub/", 1)[1] if "/pub/" in url else ""
+
+
+def _enrich_facts_with_paper_info(facts: list[Fact]) -> None:
+    """用 paper/info 的完整记录就地补齐作者/期刊/年份/卷号；详情失败不拖死搜索。"""
+    ids = [pid for pid in (_paper_id_of(fact) for fact in facts) if pid]
+    if not ids:
+        return
+    try:
+        info_by_id = get_aminer_papers_info(ids)
+    except ConnectorUnavailableError:
+        return
+    for fact in facts:
+        info = info_by_id.get(_paper_id_of(fact))
+        if not info:
+            continue
+        authors = [
+            str(a.get("name") or a.get("name_zh") or "")
+            for a in (info.get("authors") or [])
+            if isinstance(a, dict)
+        ]
+        authors = [name for name in authors if name]
+        if authors:
+            fact.payload["authors"] = authors
+        venue = info.get("venue")
+        if isinstance(venue, dict):
+            venue = venue.get("raw") or venue.get("name") or ""
+        if venue:
+            fact.payload["venue"] = str(venue)
+        if info.get("year"):
+            fact.payload["year"] = info.get("year")
+        if info.get("issue"):
+            fact.payload["issue"] = str(info.get("issue"))
+
+
+def get_aminer_papers_info(ids: list[str]) -> dict[str, dict]:
+    """按论文 id 批量拉详情（免费，POST /api/paper/info），返回 {id: info}。
+
+    详情含完整 authors、venue.raw 期刊名、issue 卷号、year 年份，
+    用于补齐 paper_search 结果里不完整的作者列表。
+    """
+    clean = [str(i).strip() for i in ids if str(i).strip()][:100]
+    if not clean:
+        return {}
+    try:
+        resp = _request("/api/paper/info", method="POST", body={"ids": clean})
+    except ConnectorUnavailableError:
+        raise
+    if resp.get("code") != 200:
+        raise ConnectorUnavailableError(f"AMiner 论文详情失败: {resp.get('msg', '未知')}")
+    data = resp.get("data") or []
+    return {str(item.get("id")): item for item in data if isinstance(item, dict) and item.get("id")}
 
 
 def get_aminer_paper_detail(paper_id: str) -> dict:

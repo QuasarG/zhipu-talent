@@ -108,6 +108,36 @@ def patch(*args, **kwargs):
 
 
 class TestAdmitCandidateAfterEvaluation(_TalentServiceTestBase):
+    def test_admit_promotes_existing_submission_candidate_without_duplicate(self) -> None:
+        """兼容期 Candidate 承载简历提交时，入库应原地晋升并保留核验状态。"""
+        self._seed_person(person_id="p-promote", name="张向宇")
+        with self.Session() as session:
+            session.add(
+                CandidateORM(
+                    id="resume-submission",
+                    name="张向宇",
+                    stage="博四",
+                    raw_text="完整简历原文",
+                    publications='["Paper A"]',
+                    academic_report={"alignments": [{"verdict": "verified"}]},
+                    academic_check_status="done",
+                )
+            )
+            session.commit()
+        self._seed_evaluation(10, "resume-submission", "p-promote")
+
+        result = talent_service.admit_candidate_after_evaluation(10)
+
+        self.assertEqual(result["candidate_id"], "resume-submission")
+        with self.Session() as session:
+            rows = session.query(CandidateORM).all()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].person_id, "p-promote")
+            self.assertEqual(rows[0].academic_check_status, "done")
+            self.assertTrue(rows[0].academic_report)
+            evaluation = session.get(EvaluationORM, 10)
+            self.assertEqual(evaluation.candidate_id, "resume-submission")
+
     def test_double_admit_same_person_creates_one_candidate(self) -> None:
         """同一 person 二次评估 → 一个 Candidate，resume_evaluation 来源幂等。"""
         candidate_id = "candidate-double"

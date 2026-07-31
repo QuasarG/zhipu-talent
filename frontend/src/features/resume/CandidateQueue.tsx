@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSessionState } from "@/lib/sessionState";
 import type { CandidateBrief } from "@/lib/types";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -26,8 +27,8 @@ function classifyCandidate(c: CandidateBrief): Filter {
 }
 
 export default function CandidateQueue({ candidates, selectedId, onSelect, onDelete, onImport }: Props) {
-  const [filter, setFilter] = useState<Filter>("all");
-  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useSessionState<Filter>("resume-evaluate.queue-filter", "all");
+  const [search, setSearch] = useSessionState("resume-evaluate.queue-search", "");
   // 删除二次确认：记录正在确认删除的候选人 id，null = 未进入确认态
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -106,12 +107,17 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
               >
                 {/* 头像色块：姓名首字 */}
                 <span className="flex items-center justify-center w-9 h-9 rounded-full bg-primary-container text-on-primary-container text-label shrink-0">
-                  {(c.name || c.id).slice(0, 1)}
+                  {(c.name || "?").slice(0, 1)}
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center justify-between gap-2">
-                    <span className="text-title truncate">{c.name || c.id}</span>
-                    {done ? (
+                    <span className="text-title truncate">{c.name || "未命名"}</span>
+                    {c.evaluation_status === "running" ? (
+                      <span className="inline-flex items-center gap-1 text-label text-primary shrink-0">
+                        <LoadingIndicator size={14} color="text-primary" />
+                        评估中
+                      </span>
+                    ) : done ? (
                       <StatusChip tone="success" className="shrink-0">已完成</StatusChip>
                     ) : c.verification_result === "running" ? (
                       <span className="inline-flex items-center gap-1 text-label text-primary shrink-0">

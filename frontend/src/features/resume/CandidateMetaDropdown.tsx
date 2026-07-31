@@ -78,8 +78,8 @@ export default function CandidateMetaDropdown({ candidate, busy }: Props) {
           {/* 头部固定：姓名 + 关闭 */}
           <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-outline-variant">
             <div className="min-w-0">
-              <p className="text-title text-on-surface truncate">{candidate.name}</p>
-              <p className="text-label text-on-surface-variant truncate">{candidate.id}</p>
+              <p className="text-title text-on-surface truncate">{candidate.name || "未命名候选人"}</p>
+              <p className="text-label text-on-surface-variant truncate">{candidate.stage || "阶段未知"}</p>
             </div>
             <button
               type="button"
@@ -155,8 +155,10 @@ function sourceFormatLabel(fmt: string): string {
 
 function hrStatusLabel(status: string): string {
   const map: Record<string, string> = {
-    newly_admitted: "新入库", to_contact: "待联系", contacted: "已联系",
-    interviewing: "面试中", ongoing_follow: "持续关注", closed: "已结束",
+    newly_admitted: "已投递", screening: "待初筛", interviewing: "面试中",
+    offer_pending: "待发 Offer", offered: "已发 Offer", hired: "已入职",
+    departed: "已离职", rejected: "已淘汰", to_contact: "待初筛（旧）",
+    contacted: "已联系（旧）", ongoing_follow: "人才储备（旧）", closed: "已结束（旧）",
   };
   return map[status] || status || "—";
 }

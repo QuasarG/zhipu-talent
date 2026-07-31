@@ -97,6 +97,8 @@ class CandidateORM(Base):
     # 阶段 1 新增列（保留原 group 作为审计，迁移期允许 NULL）
     person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"), index=True)
     engagement_status = Column(String(32), default="newly_admitted", nullable=False)
+    # 阶段 13：HR 手动补充的信息（简历上没有的），评估时注入 raw_text
+    supplementary_info = Column(Text, default="")
     # 兼容老 candidate ↔ resume_versions 关系：不带 FK，业务层校验。
     current_resume_version_id = Column(String(36), index=True)
     admitted_at = Column(DateTime)
@@ -327,6 +329,8 @@ class PersonORM(Base):
     person_type = Column(String(32), default="student")
     # 阶段 2：稳定标识字典（{email/orcid/aminer_id/...: value}）。
     identifiers = Column(JSON, default=dict)
+    # 阶段 12：结构化教育经历 [{school, degree, period}]；org 始终等于最高学历学校。
+    schools = Column(JSON, default=list)
     # 阶段 2：是否处于身份冲突（pending merge review）状态。
     identity_conflict = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
