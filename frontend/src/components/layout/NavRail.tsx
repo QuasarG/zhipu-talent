@@ -8,7 +8,6 @@ const navItems = [
   { to: "/", icon: "description", label: "简历评估" },
   { to: "/knowledge", icon: "forum", label: "人才知识" },
   { to: "/talent-pool", icon: "groups", label: "人才库" },
-  { to: "/review", icon: "fact_check", label: "待核验" },
   { to: "/settings", icon: "settings", label: "设置" },
 ];
 

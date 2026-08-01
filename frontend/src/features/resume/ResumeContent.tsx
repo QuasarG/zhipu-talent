@@ -18,9 +18,11 @@ import TypewriterText from "@/features/resume/TypewriterText";
 
 interface Props {
   detail: CandidateDetail;
+  /** 论文人工裁决后的回调：触发上层刷新详情（含核验状态/评估按钮态） */
+  onReviewed?: () => void;
 }
 
-export default function ResumeContent({ detail }: Props) {
+export default function ResumeContent({ detail, onReviewed }: Props) {
   const [mode, setMode] = useSessionState<"structured" | "raw">(`resume-evaluate.resume-mode.${detail.id}`, "structured");
   const directions = (detail.directions || []).filter(Boolean);
   const academicReport = detail.academic_report || null;
@@ -83,7 +85,7 @@ export default function ResumeContent({ detail }: Props) {
               className="mb-4"
               importing={importing}
             >
-              <PublicationList detail={detail} academicReport={academicReport} importing={importing} />
+              <PublicationList detail={detail} academicReport={academicReport} importing={importing} onReviewed={onReviewed} />
             </RecordSection>
 
             <RecordSection title="技能" icon="bolt" importing={importing}>
@@ -401,7 +403,7 @@ function RecordIndex({ value }: { value: number }) {
   );
 }
 
-function PublicationList({ detail, academicReport, importing }: { detail: CandidateDetail; academicReport: AcademicReport | null; importing?: boolean }) {
+function PublicationList({ detail, academicReport, importing, onReviewed }: { detail: CandidateDetail; academicReport: AcademicReport | null; importing?: boolean; onReviewed?: () => void }) {
   const publications = detail.publications || [];
   if (!publications.length) return <EmptyText />;
   const alignments = academicReport?.alignments || [];
@@ -510,6 +512,16 @@ function PublicationList({ detail, academicReport, importing }: { detail: Candid
                 <div className="mt-3 pt-3 border-t border-outline-variant">
                   <p className="text-body-sm text-on-surface-variant">{alignment?.note || "暂无补充说明"}</p>
                 </div>
+                {!importing && alignment && detail.academic_check_status === "done" && (
+                  <div className="mt-3 pt-3 border-t border-outline-variant">
+                    <ReviewActions
+                      candidateId={detail.id}
+                      alignment={alignment}
+                      alignmentIndex={alignments.indexOf(alignment)}
+                      onReviewed={onReviewed}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </article>
@@ -559,6 +571,77 @@ function PublicationVerdict({ alignment, running }: { alignment?: ClaimAlignment
   if (alignment.verdict === "verified") return <StatusChip tone="success" variant="filled" icon="verified">核验通过</StatusChip>;
   if (alignment.verdict === "mismatch") return <StatusChip tone="error" variant="filled" icon="error">存在冲突</StatusChip>;
   return <StatusChip tone="warning" variant="filled" icon="help">待人工核验</StatusChip>;
+}
+
+/** 论文人工裁决：判 AI 核验结论对不对，所有 verdict 都可裁决，备注都进评估 */
+function ReviewActions({ candidateId, alignment, alignmentIndex, onReviewed }: {
+  candidateId: string;
+  alignment: ClaimAlignment;
+  alignmentIndex: number;
+  onReviewed?: () => void;
+}) {
+  const human = alignment.human_status;
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(human === "unreviewed" || !human);
+
+  // 按钮文案随 verdict 变化（语义：判 AI 结论对不对）
+  const presets: Record<string, { ok: { label: string; icon: string }; no: { label: string; icon: string } }> = {
+    verified: { ok: { label: "AI判定正确", icon: "check" }, no: { label: "AI判定有误", icon: "report_problem" } },
+    mismatch: { ok: { label: "AI判定正确", icon: "check" }, no: { label: "AI判定有误", icon: "undo" } },
+    unverifiable: { ok: { label: "确认属实", icon: "person_check" }, no: { label: "驳回", icon: "person_cancel" } },
+  };
+  const preset = presets[alignment.verdict] || presets.unverifiable;
+
+  const submit = async (action: "confirmed" | "dismissed") => {
+    setBusy(true);
+    try {
+      await api.candidates.reviewPublication(candidateId, alignmentIndex, action, "HR审核", note.trim());
+      setEditing(false);
+      onReviewed?.();
+    } catch (err) {
+      console.error("裁决失败", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing && human && human !== "unreviewed") {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusChip tone={human === "confirmed" ? "success" : "error"} variant="filled"
+          icon={human === "confirmed" ? "person_check" : "person_cancel"}>
+          {human === "confirmed" ? "人工确认（AI判定正确）" : "人工驳回（AI判定有误）"}
+        </StatusChip>
+        {alignment.human_reviewer && <span className="text-label text-on-surface-variant">{alignment.human_reviewer}</span>}
+        {alignment.human_note && <span className="text-body-sm text-on-surface-variant">· {alignment.human_note}</span>}
+        <Button variant="text" className="h-7 px-2 text-xs" onClick={() => { setEditing(true); setNote(alignment.human_note || ""); }}>
+          修改
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-label font-medium text-on-surface-variant">人工裁决（判 AI 核验结论对不对，备注将进入评估）</p>
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={2}
+        placeholder="人工备注（可选），将进入后续评估…"
+        className="w-full rounded-sm border border-outline-variant bg-surface-lowest px-3 py-2 text-body-sm text-on-surface outline-none focus:outline-2 focus:outline-primary resize-y"
+      />
+      <div className="flex items-center gap-2">
+        <Button variant="filled" icon={preset.ok.icon} disabled={busy} onClick={() => submit("confirmed")} className="h-8">
+          {preset.ok.label}
+        </Button>
+        <Button variant="tonal" icon={preset.no.icon} disabled={busy} onClick={() => submit("dismissed")} className="h-8">
+          {preset.no.label}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function CheckBadge({ label, status }: { label: string; status?: VerificationCheckStatus }) {

@@ -304,7 +304,7 @@ export default function ResumeEvaluate() {
           ) : importPreview ? (
             <ResumeContent key={importPreview.id} detail={importPreview} />
           ) : selected ? (
-            <ResumeContent key={selected.id} detail={selected} />
+            <ResumeContent key={selected.id} detail={selected} onReviewed={() => selectCandidate(selected.id)} />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center gap-2">
               <Icon name="description" size={40} className="text-on-surface-variant" />
