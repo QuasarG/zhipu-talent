@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import uuid
+from datetime import datetime
+
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -16,6 +19,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.dialects import mysql
 
 
 Base = declarative_base()
@@ -634,3 +638,59 @@ class PublicationVerificationORM(Base):
     human_reviewed_at = Column(DateTime)
 
     claim = relationship("PublicationClaimORM", back_populates="verification")
+
+
+# ---------------------------------------------------------------------------
+# 人才问答：会话与消息持久化
+# ---------------------------------------------------------------------------
+
+
+def _new_uuid() -> str:
+    return uuid.uuid4().hex
+
+
+class ConversationORM(Base):
+    """一段人才问答会话。"""
+
+    __tablename__ = "conversations"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    title = Column(String(200), default="新对话")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    messages = relationship(
+        "ChatMessageORM",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="ChatMessageORM.created_at",
+    )
+
+
+class ChatMessageORM(Base):
+    """会话中的单条消息。
+
+    ``content`` 为 JSON segments：``{segments: [{type:"text",...} | {type:"tool",...}
+    | {type:"action",...}]}``；``pending_action`` 仅在 status=awaiting_action 时有值。
+    """
+
+    __tablename__ = "chat_messages"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    conversation_id = Column(
+        String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role = Column(String(16), nullable=False)  # user / assistant
+    content = Column(JSON, default=dict)
+    citations = Column(JSON)
+    status = Column(String(24), default="completed", nullable=False)  # completed / awaiting_action
+    pending_action = Column(JSON)
+    # 微秒精度保序（MySQL 用 DATETIME(6)，sqlite 测试走通用 DateTime）：秒级会让同秒消息顺序乱掉
+    # 用本地时间：与 MySQL NOW()/func.now() 的会话时区一致，混用 UTC 会把新消息排到旧消息前面
+    created_at = Column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql"),
+        default=lambda: datetime.now(),
+        nullable=False,
+    )
+
+    conversation = relationship("ConversationORM", back_populates="messages")

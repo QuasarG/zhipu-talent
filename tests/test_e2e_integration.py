@@ -7,8 +7,8 @@
    CandidateSource(resume_evaluation) 追加 → vector_sync task 派发 →
    不写 group
 
-2. 人才知识 Agent 主线：
-   ask_talent_knowledge（mock intent=pool_query）→ 不调外部工具 → 返回 answer
+2. 人才问答 Agent 主线：
+   /api/knowledge/ask（mock call_llm_tools）→ SSE 事件流 + 消息落库
 
 3. 健康检查主线：
    /health 路由 → run_health_check → 返回 per-service 报告
@@ -33,8 +33,6 @@ from agi_talent_radar.core.db.orm import (
     TaskORM,
 )
 from agi_talent_radar.core.db import repository
-from agi_talent_radar.knowledge_agent import ask_talent_knowledge
-from agi_talent_radar.knowledge_agent.models import AgentEvent, UserIntent
 from agi_talent_radar.services import talent_service
 
 
@@ -145,37 +143,6 @@ class TestResumeEvaluationE2E(unittest.TestCase):
             mock_retry.assert_called_once()
 
 
-class TestKnowledgeAgentE2E(unittest.TestCase):
-    """人才知识 Agent 端到端：pool_query 不调外部。"""
-
-    def test_pool_query_returns_answer_without_external_tools(self) -> None:
-        events = list(
-            ask_talent_knowledge(
-                "conv-e2e",
-                "人才库里有哪些候选人？",
-                inject_state={"intent": UserIntent.POOL_QUERY.value},
-            )
-        )
-        types = [e.type for e in events]
-        self.assertIn("intent", types)
-        self.assertIn("answer", types)
-        self.assertIn("done", types)
-        # pool_query 不调外部
-        self.assertNotIn("external_fact", types)
-        self.assertNotIn("tool_failure", types)
-
-    def test_talent_discovery_is_unsupported(self) -> None:
-        events = list(
-            ask_talent_knowledge(
-                "conv-e2e-2",
-                "帮我按 Agent 方向发现一批候选人",
-                inject_state={"intent": UserIntent.TALENT_DISCOVERY.value},
-            )
-        )
-        answer_event = next(e for e in events if e.type == "answer")
-        self.assertIn("不在实现范围内", answer_event.payload["answer"])
-
-
 class TestHealthRouteE2E(unittest.TestCase):
     """/health 路由调 run_health_check。"""
 
@@ -229,7 +196,7 @@ class TestHealthRouteE2E(unittest.TestCase):
 
 
 class TestKnowledgeRouteE2E(unittest.TestCase):
-    """/api/knowledge/ask SSE 路由端到端。"""
+    """/api/knowledge/* + /api/conversations 路由（sqlite + mock Agent 事件流）。"""
 
     def setUp(self) -> None:
         from agi_talent_radar.web.auth import (
@@ -240,37 +207,93 @@ class TestKnowledgeRouteE2E(unittest.TestCase):
         from agi_talent_radar.web.knowledge_api import build_knowledge_blueprint
         from flask import Flask
 
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self._session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+
         self.app = Flask(__name__)
         self.app.config["TESTING"] = True
         configure_app_session(self.app)
         self.app.register_blueprint(build_auth_blueprint())
         self.app.register_blueprint(build_knowledge_blueprint())
         install_auth_middleware(self.app)
-        # 放行鉴权（鉴权由 test_auth 独立覆盖）
+        # 放行鉴权（鉴权由 test_auth 独立覆盖）；DB 走 sqlite 内存库
         self._auth = patch(
             "agi_talent_radar.web.auth.is_authenticated", return_value=True
         )
         self._auth.start()
+        self._db = patch(
+            "agi_talent_radar.web.knowledge_api.get_session",
+            lambda: self._session_factory(),
+        )
+        self._db.start()
         self.client = self.app.test_client()
 
     def tearDown(self) -> None:
         self._auth.stop()
+        self._db.stop()
+
+    def _create_conversation(self) -> str:
+        rv = self.client.post("/api/conversations", json={})
+        self.assertEqual(rv.status_code, 201)
+        return rv.get_json()["id"]
 
     def test_ask_returns_sse_stream(self) -> None:
-        rv = self.client.post(
-            "/api/knowledge/ask",
-            json={"prompt": "人才库里有哪些候选人？"},
-        )
+        conversation_id = self._create_conversation()
+        events = [
+            {"type": "meta", "payload": {"conversation_id": conversation_id, "message_id": "m1"}},
+            {"type": "answer_delta", "payload": {"text": "你好"}},
+            {"type": "done", "payload": {"status": "completed"}},
+        ]
+        with patch(
+            "agi_talent_radar.web.knowledge_api.ask_events",
+            return_value=iter(events),
+        ):
+            rv = self.client.post(
+                "/api/knowledge/ask",
+                json={"conversation_id": conversation_id, "prompt": "人才库里有哪些人？"},
+            )
         self.assertEqual(rv.status_code, 200)
         self.assertIn("text/event-stream", rv.content_type)
         body = rv.data.decode("utf-8")
-        # SSE 应包含 data: 前缀的事件
         self.assertIn("data: ", body)
-        self.assertIn('"type"', body)
+        self.assertIn('"answer_delta"', body)
+        self.assertIn('"done"', body)
 
     def test_ask_rejects_empty_prompt(self) -> None:
         rv = self.client.post("/api/knowledge/ask", json={"prompt": ""})
         self.assertEqual(rv.status_code, 400)
+
+    def test_ask_unknown_conversation_404(self) -> None:
+        rv = self.client.post(
+            "/api/knowledge/ask",
+            json={"conversation_id": "no-such-conv", "prompt": "你好"},
+        )
+        self.assertEqual(rv.status_code, 404)
+
+    def test_conversations_crud(self) -> None:
+        conversation_id = self._create_conversation()
+
+        rv = self.client.get("/api/conversations")
+        self.assertEqual(rv.status_code, 200)
+        items = rv.get_json()
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["id"], conversation_id)
+        self.assertEqual(items[0]["title"], "新对话")
+
+        rv = self.client.patch(
+            f"/api/conversations/{conversation_id}", json={"title": "人才对比"}
+        )
+        self.assertEqual(rv.status_code, 200)
+        self.assertEqual(rv.get_json()["title"], "人才对比")
+
+        rv = self.client.get(f"/api/conversations/{conversation_id}/messages")
+        self.assertEqual(rv.status_code, 200)
+        self.assertEqual(rv.get_json(), [])
+
+        rv = self.client.delete(f"/api/conversations/{conversation_id}")
+        self.assertEqual(rv.status_code, 200)
+        self.assertEqual(self.client.get("/api/conversations").get_json(), [])
 
 
 if __name__ == "__main__":
