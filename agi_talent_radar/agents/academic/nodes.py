@@ -61,11 +61,12 @@ ALIGNMENT_PROMPT = """
 - source_url: 匹配论文的外部链接（直接从检索结果的 source_url 字段取，原样返回），无匹配则空串
 - candidate_author_position: 候选人在匹配论文 authors 数组中的位次（整数，1 表示第一位；0 表示未找到/无匹配论文）
 - candidate_author_name: 匹配到的那个外部作者名字（从 authors 数组原样引用；未找到给空串）
+- is_co_first: 该论文是否标注了共同一作（† 符号 / "equal contribution" / "co-first" / "These authors contributed equally"）
 - title_match: match / mismatch / pending
 - author_identity_match: match / mismatch / pending
 - author_position_match: match / mismatch / pending
 - publication_status_match: match / mismatch / pending
-- note: 50 字内说明
+- note: 50 字内说明（如有共一标注请说明）
 
 判定规则：
 1. 作者身份与位次判定（必须按顺序两步走，先身份后位次）：
@@ -80,10 +81,14 @@ ALIGNMENT_PROMPT = """
       找到 → candidate_author_name 填该名字原样，candidate_author_position 填其在数组中的位次（index+1），author_identity_match=match。
       未找到 → candidate_author_position=0，candidate_author_name=空串，author_identity_match=mismatch。
    b. 位次确认：把 candidate_author_position 与 claimed_role 对比：
-      - claimed_role=一作 → 要求 candidate_author_position=1，否则 author_position_match=mismatch
-      - claimed_role=共同一作 → 要求 candidate_author_position≤2，否则 author_position_match=mismatch
-      - claimed_role=通讯 → 通常不约束位次（通讯作者常在末位）→ author_position_match=match
-      - claimed_role=其他作者 / 不明 → author_position_match=match（顺序不构成冲突）
+      - 共同一作识别：论文若标注 † / "equal contribution" / "co-first" /
+        "These authors contributed equally"，is_co_first=true，位次放宽到≤3。
+      - is_co_first=true 时：声称一作/共一 → candidate_author_position≤3 即 match
+      - is_co_first=false 时：
+        - claimed_role=一作 → 要求 candidate_author_position=1，否则 mismatch
+        - claimed_role=共同一作 → 要求 candidate_author_position≤2，否则 mismatch
+      - claimed_role=通讯 → 通常不约束位次 → match
+      - claimed_role=其他作者 / 不明 → match（顺序不构成冲突）
 2. verdict 联动：
    - verified：标题基本一致，且 author_identity_match=match，且 author_position_match=match。
    - mismatch：author_identity_match=mismatch（作者列表无此人）；或 author_position_match=mismatch 且 claimed_role∈{{一作,共同一作}}（谎报位次是硬伤）；或论文已撤稿但声称正常发表。
@@ -230,13 +235,14 @@ def align_claims(
 
         # 单一真相源派生所有结论，杜绝 verdict/checks/disc/note 互相矛盾
         normalized_role = _normalize_role(claim.claimed_role)
-        checks = _derive_checks(has_match, verified_pos, normalized_role, raw)
+        is_co_first = bool(raw.get("is_co_first", False))
+        checks = _derive_checks(has_match, verified_pos, normalized_role, raw, is_co_first)
         discrepancies = _derive_discrepancies(
             [str(item) for item in raw.get("discrepancies", [])],
-            has_match, verified_pos, normalized_role,
+            has_match, verified_pos, normalized_role, is_co_first,
         )
         verdict = _derive_verdict(
-            str(raw.get("verdict", "unverifiable")), has_match, verified_pos, normalized_role,
+            str(raw.get("verdict", "unverifiable")), has_match, verified_pos, normalized_role, is_co_first,
         )
         note = _derive_note(
             str(raw.get("note", "")), llm_position, verified_pos, has_match,
@@ -255,6 +261,7 @@ def align_claims(
                 source_url=source_url,
                 candidate_author_position=verified_pos,
                 candidate_author_name=verified_name,
+                is_co_first=is_co_first,
                 external_record=ExternalPaperRecord(
                     source=str(matched.get("source", "")),
                     source_url=source_url,
@@ -361,12 +368,13 @@ def _normalize_role(claimed_role: str) -> str:
 _VERDICTS = {"verified", "mismatch", "unverifiable"}
 
 
-def _derive_checks(has_match: bool, verified_pos: int, role: str, raw: dict) -> VerificationChecks:
+def _derive_checks(has_match: bool, verified_pos: int, role: str, raw: dict, is_co_first: bool = False) -> VerificationChecks:
     """从真相源派生 4 维度 check，杜绝互相矛盾。
 
     检索不到论文（has_match=False）→ 作者相关维度一律 pending（无从谈起）；
     检索到但候选人不在列表（verified_pos=0）→ identity/position 双 mismatch；
     在列表则 identity=match，position 按角色位次要求判定。
+    is_co_first（论文标注共一）时位次放宽到≤3。
     """
     if not has_match:
         return VerificationChecks(
@@ -379,7 +387,7 @@ def _derive_checks(has_match: bool, verified_pos: int, role: str, raw: dict) -> 
     return VerificationChecks(
         title=_check_status(raw.get("title_match"), "match"),
         author_identity="match" if verified_pos > 0 else "mismatch",
-        author_position=_position_check(role, verified_pos),
+        author_position=_position_check(role, verified_pos, is_co_first),
         publication_status=_check_status(
             raw.get("publication_status_match"),
             "match" if verified_status == "已发表" else "pending",
@@ -387,48 +395,55 @@ def _derive_checks(has_match: bool, verified_pos: int, role: str, raw: dict) -> 
     )
 
 
-def _position_check(role: str, position: int) -> str:
+def _position_check(role: str, position: int, is_co_first: bool = False) -> str:
     """作者顺序维度判定：仅一作/共同一作约束位次，通讯/其他不约束。
 
     候选人不在列表（position=0）时，身份维度已标 mismatch，此处同样 mismatch。
+    is_co_first（论文标注 †/equal contribution）：一作/共一位次放宽到 ≤3。
     """
     if position <= 0:
         return "mismatch"
-    if role == "一作":
-        return "match" if position == 1 else "mismatch"
-    if role == "共同一作":
-        return "match" if position <= 2 else "mismatch"
+    max_allowed = 3 if is_co_first else (2 if role == "共同一作" else 1)
+    if role in {"一作", "共同一作"}:
+        return "match" if position <= max_allowed else "mismatch"
     return "match"  # 通讯 / 其他：不约束位次
 
 
 def _derive_verdict(
-    raw_verdict: str, has_match: bool, verified_pos: int, role: str,
+    raw_verdict: str, has_match: bool, verified_pos: int, role: str, is_co_first: bool = False,
 ) -> str:
     """从真相源派生总 verdict。
 
     verified：匹配到论文 且 候选人在作者列表 且 位次符合声称角色。
     mismatch：匹配到论文 但 候选人不在列表（身份不符），
-             或谎报一作/共同一作（位次不符且角色是硬约束）。
-    unverifiable：检索不到论文（无法判断，不等于造假），或 LLM 本就标 unverifiable。
+             或位次严重不符（非前 3 位且未标共一）。
+    unverifiable：位次轻微信号疑但可能是共一（一作/共一声称 + pos 2-3 位 + 无共一标注）
+                 —— AMiner/OpenAlex 不返共一标注，2-3 位很可能是共一，
+                 不判造假，改待人工核实。
     """
     verdict = raw_verdict if raw_verdict in _VERDICTS else "unverifiable"
     if not has_match:
         return "unverifiable"
     if verified_pos == 0:
         return "mismatch"  # 作者列表无此人 = 硬事实冲突
-    if _position_check(role, verified_pos) == "mismatch" and role in {"一作", "共同一作"}:
-        return "mismatch"  # 谎报一作/共同一作
+    if _position_check(role, verified_pos, is_co_first) == "mismatch" and role in {"一作", "共同一作"}:
+        # 位次落在 2-3 位且无共一标注时，可能是共一（API 不返共一标注）。
+        # 不判造假，改待人工核实，让 HR 确认是否共一后放行。
+        if not is_co_first and 2 <= verified_pos <= 3:
+            return "unverifiable"
+        return "mismatch"  # 位次严重靠后（≥4）或共一仍不匹配 → 硬伤
     return "verified"
 
 
 def _derive_discrepancies(
     raw_discrepancies: list[str],
-    has_match: bool, verified_pos: int, role: str,
+    has_match: bool, verified_pos: int, role: str, is_co_first: bool = False,
 ) -> list[str]:
     """从真相源派生 discrepancies，剔除 LLM 幻觉位次文案。
 
     只保留与作者身份/位次无关的旧条目（如发表状态冲突），
     再按真相源补一条权威描述，保证 disc 与 checks/verdict 完全一致。
+    is_co_first 时位次放宽，不再追加剧烈位次差异描述。
     """
     kept = [
         d for d in raw_discrepancies
@@ -442,8 +457,11 @@ def _derive_discrepancies(
         return kept  # 检索不到，不追加作者相关描述
     if verified_pos == 0:
         kept.append("作者列表中无候选人")
-    elif _position_check(role, verified_pos) == "mismatch" and role in {"一作", "共同一作"}:
-        kept.append(f"声称{role}，实际为第 {verified_pos} 作者")
+    elif _position_check(role, verified_pos, is_co_first) == "mismatch" and role in {"一作", "共同一作"}:
+        if not is_co_first and 2 <= verified_pos <= 3:
+            kept.append(f"声称{role}，实际为第 {verified_pos} 作者，可能是共同一作，待人工核实")
+        else:
+            kept.append(f"声称{role}，实际为第 {verified_pos} 作者")
     return kept
 
 

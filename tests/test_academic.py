@@ -71,21 +71,23 @@ class AcademicChainTest(unittest.TestCase):
         self.assertEqual(alignments[0].cited_by_count, 5)
         self.assertEqual(alignments[1].verdict, "unverifiable")
 
-    def test_author_position_mismatch_for_false_first_author(self) -> None:
-        """复刻截图 bug：声称一作，实际排第 3，必须判 mismatch。"""
+    def test_first_author_at_position_3_yields_unverifiable_pending_review(self) -> None:
+        """声称一作，实际第 3 位（2-3 位可能是共一）→ unverifiable 待人工核实。
+
+        AMiner/OpenAlex 不返共一标注，2-3 位很可能是共同一作——不判造假，
+        改待人工裁决（门禁触发 needs_review，HR 确认后放行评估）。
+        """
         claim = PaperClaim(
             title="Synergizing RAG and Reasoning",
             claimed_role="一作",
             claimed_status="已发表",
         )
-        # authors 列表里候选人在第 3 位（截图真实场景）
         candidate = {
             "title": "Synergizing RAG and Reasoning",
             "authors": ["Yunfan Gao", "Yun Xiong", "San Zhang", "Xingzu Wang"],
             "source": "aminer",
             "source_url": "https://www.aminer.cn/pub/xxx",
         }
-        # 即使 LLM 被误导标了 verified，后端必须纠正
         response = {
             "alignments": [{
                 "claim_title": "Synergizing RAG and Reasoning",
@@ -104,10 +106,11 @@ class AcademicChainTest(unittest.TestCase):
             alignment = align_claims("San Zhang", [claim], [[candidate]])[0]
 
         self.assertEqual(alignment.candidate_author_position, 3)
-        self.assertEqual(alignment.candidate_author_name, "San Zhang")
+        # check 层位次仍 mismatch（位次确实不符一作）
         self.assertEqual(alignment.checks.author_position, "mismatch")
-        self.assertEqual(alignment.verdict, "mismatch")  # 联动 verdict 强制 mismatch
-        self.assertTrue(any("第 3 作者" in d for d in alignment.discrepancies))
+        # 但 verdict 降为待核验（不判造假，让 HR 确认共一）
+        self.assertEqual(alignment.verdict, "unverifiable")
+        self.assertTrue(any("共一" in d or "第 3 作者" in d for d in alignment.discrepancies))
 
     def test_author_position_match_for_real_first_author(self) -> None:
         """真一作：position=1，author_position=match，verdict 不受影响。"""

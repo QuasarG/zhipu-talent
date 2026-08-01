@@ -68,6 +68,8 @@ class ClaimAlignment(BaseModel):
     candidate_author_position: int = 0
     # 匹配到的那个外部作者名（原样引用，便于复核）
     candidate_author_name: str = ""
+    # 论文是否标注了共同一作（† / equal contribution / co-first），放宽位次约束
+    is_co_first: bool = False
     external_record: ExternalPaperRecord = Field(default_factory=ExternalPaperRecord)
     checks: VerificationChecks = Field(default_factory=VerificationChecks)
     note: str = ""

@@ -59,6 +59,9 @@ export interface ClaimAlignment {
   is_retracted?: boolean;
   openalex_url?: string;
   source_url?: string;
+  candidate_author_position?: number;
+  candidate_author_name?: string;
+  is_co_first?: boolean;
   external_record?: ExternalPaperRecord;
   checks?: VerificationChecks;
   note?: string;
