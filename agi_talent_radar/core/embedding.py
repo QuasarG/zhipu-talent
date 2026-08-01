@@ -60,7 +60,8 @@ class ZhipuEmbeddingClient:
         response = httpx.post(
             self.base_url,
             headers={"Authorization": f"Bearer {self.api_key}"},
-            json={"model": model, "input": truncated},
+            # embedding-3 默认返回 2048 维，必须显式指定 dimensions=1024
+            json={"model": model, "input": truncated, "dimensions": EMBEDDING_DIM},
             timeout=self.timeout,
         )
         response.raise_for_status()

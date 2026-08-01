@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any
+import time
+from typing import Any, Callable
 
 from dotenv import load_dotenv
 from json_repair import loads as repair_json_loads
@@ -92,6 +93,96 @@ def call_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: fl
         delta = chunk.choices[0].delta
         if delta.content:
             yield delta.content
+
+
+def call_llm_tools(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    temperature: float = 0.2,
+    on_delta: Callable[[str], None] | None = None,
+    max_retries: int = 3,
+) -> dict[str, Any]:
+    """流式 tool calling：文本 delta 经 on_delta 实时回调，tool_calls 分片累积。
+
+    返回 {"text": 完整文本, "tool_calls": [{id, name, arguments}], "finish_reason": str}。
+    arguments 为原始 JSON 字符串，由调用方负责解析。
+
+    重试取舍：首轮边流边回调 on_delta；若流中途异常，已发出的文本无法收回，
+    故重试轮改为静默收集、不再回调（否则用户会看到重复文本），最终通过返回值的
+    text 字段给出完整文本。只有整轮流完整结束才算成功，否则整轮作废、指数退避重试。
+    """
+    client = _client()
+    model = _required_env("OPENAI_MODEL")
+    timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
+
+    last_error: Exception | None = None
+    for attempt in range(max(1, max_retries)):
+        stream_delta = on_delta if attempt == 0 else None
+        try:
+            return _call_llm_tools_once(
+                client, model, messages, tools, temperature, timeout_seconds, stream_delta
+            )
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            if attempt + 1 < max(1, max_retries):
+                time.sleep(min(8.0, 2.0**attempt))
+    raise RuntimeError(f"call_llm_tools 重试 {max(1, max_retries)} 次后仍失败: {last_error}") from last_error
+
+
+def _call_llm_tools_once(
+    client: OpenAI,
+    model: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    temperature: float,
+    timeout_seconds: float,
+    on_delta: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    """单轮流式调用；任何中途异常都向上抛，由外层整轮重试。"""
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,
+        "timeout": timeout_seconds,
+    }
+    if tools:  # 空列表=无工具收尾调用，不传 tools 参数（部分 API 拒绝空数组）
+        kwargs["tools"] = tools
+    response = client.chat.completions.create(**kwargs)
+    text_parts: list[str] = []
+    tool_fragments: dict[int, dict[str, str]] = {}
+    finish_reason = ""
+    for chunk in response:
+        if not chunk.choices:
+            continue
+        choice = chunk.choices[0]
+        if choice.finish_reason:
+            finish_reason = choice.finish_reason
+        delta = choice.delta
+        if delta is None:
+            continue
+        if delta.content:
+            text_parts.append(delta.content)
+            if on_delta is not None:
+                on_delta(delta.content)
+        for tool_call in delta.tool_calls or []:
+            fragment = tool_fragments.setdefault(
+                tool_call.index, {"id": "", "name": "", "arguments": ""}
+            )
+            if tool_call.id:
+                fragment["id"] += tool_call.id
+            function = tool_call.function
+            if function is not None:
+                if function.name:
+                    fragment["name"] += function.name
+                if function.arguments:
+                    fragment["arguments"] += function.arguments
+
+    return {
+        "text": "".join(text_parts),
+        "tool_calls": [tool_fragments[index] for index in sorted(tool_fragments)],
+        "finish_reason": finish_reason,
+    }
 
 
 def _client() -> OpenAI:

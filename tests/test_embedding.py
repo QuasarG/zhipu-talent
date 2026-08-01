@@ -106,6 +106,19 @@ class TestZhipuClientConfig(unittest.TestCase):
                 client.embed(["x"])
             self.assertIn("Z_AI_API_KEY", str(ctx.exception))
 
+    def test_request_body_pins_dimensions(self) -> None:
+        """请求体必须显式带 dimensions=EMBEDDING_DIM（embedding-3 默认返回 2048 维）。"""
+        from unittest.mock import MagicMock, patch
+
+        response = MagicMock()
+        response.json.return_value = {"data": [{"embedding": [0.0] * EMBEDDING_DIM}]}
+        with patch("httpx.post", return_value=response) as mock_post:
+            ZhipuEmbeddingClient(api_key="fake-key").embed(["x"])
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["dimensions"], EMBEDDING_DIM)
+        self.assertEqual(body["model"], EMBEDDING_MODEL)
+        self.assertEqual(body["input"], ["x"])
+
 
 if __name__ == "__main__":
     unittest.main()
