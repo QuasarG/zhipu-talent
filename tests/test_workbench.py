@@ -873,5 +873,84 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(data["group"], "rejected")
 
 
+class VerificationGateTest(unittest.TestCase):
+    """门禁修复回归：有论文但报告缺失（核验失败）不应判 verified。"""
+
+    def _row(self, status="done", report=None, publications=None):
+        return SimpleNamespace(
+            academic_check_status=status,
+            academic_report=json.dumps(report) if report is not None else "",
+            publications=json.dumps(publications) if publications is not None else "",
+        )
+
+    def test_empty_report_with_pubs_is_needs_review(self) -> None:
+        """bug 根因：done+空报告+有论文 → 必须 needs_review（旧逻辑误判 verified）"""
+        from agi_talent_radar.web.workbench import _verification_result, _is_evaluable
+
+        row = self._row(status="done", report={}, publications=["Paper A", "Paper B"])
+        self.assertEqual(_verification_result(row), "needs_review")
+        self.assertFalse(_is_evaluable(row))
+
+    def test_empty_report_no_pubs_is_verified(self) -> None:
+        """真无论文 → verified 可评估"""
+        from agi_talent_radar.web.workbench import _verification_result, _is_evaluable
+
+        row = self._row(status="done", report={}, publications=[])
+        self.assertEqual(_verification_result(row), "verified")
+        self.assertTrue(_is_evaluable(row))
+
+    def test_unverifiable_unreviewed_blocks_evaluation(self) -> None:
+        """未裁决的 unverifiable → needs_review 阻断"""
+        from agi_talent_radar.web.workbench import _verification_result, _is_evaluable
+
+        row = self._row(
+            report={"alignments": [{"verdict": "unverifiable", "human_status": "unreviewed"}]},
+            publications=["Paper A"],
+        )
+        self.assertEqual(_verification_result(row), "needs_review")
+        self.assertFalse(_is_evaluable(row))
+
+    def test_unverifiable_confirmed_releases_gate(self) -> None:
+        """已裁决（confirmed）的 unverifiable → verified 放行"""
+        from agi_talent_radar.web.workbench import _verification_result, _is_evaluable
+
+        row = self._row(
+            report={"alignments": [{"verdict": "unverifiable", "human_status": "confirmed"}]},
+            publications=["Paper A"],
+        )
+        self.assertEqual(_verification_result(row), "verified")
+        self.assertTrue(_is_evaluable(row))
+
+    def test_mismatch_unreviewed_still_evaluable(self) -> None:
+        """mismatch 不强制人工平反，可评估（rejected 状态可进入评估）"""
+        from agi_talent_radar.web.workbench import _verification_result, _is_evaluable
+
+        row = self._row(
+            report={"alignments": [{"verdict": "mismatch", "human_status": "unreviewed"}]},
+            publications=["Paper A"],
+        )
+        self.assertEqual(_verification_result(row), "rejected")
+        self.assertTrue(_is_evaluable(row))
+
+    def test_mixed_mismatch_and_unverifiable_blocks_on_unverifiable(self) -> None:
+        """mismatch + 未裁决 unverifiable 共存时，unverifiable 优先阻断。
+
+        门禁优先级：unverifiable 未裁决必须先裁决，比 mismatch 强。
+        顺序不能反——否则 mismatch 短路让 unverifiable 不被检查。
+        """
+        from agi_talent_radar.web.workbench import _verification_result, _is_evaluable
+
+        row = self._row(
+            report={"alignments": [
+                {"verdict": "mismatch", "human_status": "unreviewed"},
+                {"verdict": "verified", "human_status": "unreviewed"},
+                {"verdict": "unverifiable", "human_status": "unreviewed"},
+            ]},
+            publications=["Paper A", "Paper B", "Paper C"],
+        )
+        self.assertEqual(_verification_result(row), "needs_review")
+        self.assertFalse(_is_evaluable(row))
+
+
 if __name__ == "__main__":
     unittest.main()

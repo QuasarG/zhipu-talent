@@ -68,10 +68,26 @@ def _run_verification(
         import warnings
 
         warnings.warn(f"论文核验失败 {candidate_id}: {exc}")
-        # 失败也标记 done（带空 report），不阻塞评估
+        # 失败也标记 done，但写真实的 unverifiable 报告（不再写空 {}）
+        # 否则 _verification_result 会误判 verified 放行门禁
+        from agi_talent_radar.agents.academic.models import AcademicReport, ClaimAlignment, PaperClaim
+
+        fallback_report = AcademicReport(
+            warnings=[f"论文核验失败：{exc}"],
+            alignments=[
+                ClaimAlignment(
+                    claim=PaperClaim(title=str(pub)[:200]),
+                    verdict="unverifiable",
+                    note="核验失败，待人工核验",
+                )
+                for pub in publications
+                if str(pub).strip()
+            ],
+        )
         with get_session() as session:
             cand = session.get(CandidateORM, candidate_id)
             if cand:
+                cand.academic_report = fallback_report.model_dump()
                 cand.academic_check_status = "done"
                 cand.academic_check_at = datetime.now(timezone.utc)
                 session.commit()

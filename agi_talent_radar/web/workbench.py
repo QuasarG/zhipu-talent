@@ -394,13 +394,8 @@ def create_app() -> Flask:
                 if alignment_index < 0 or alignment_index >= len(alignments):
                     return jsonify({"detail": "论文核验项不存在"}), 404
                 alignment = alignments[alignment_index]
-                verdict = alignment.get("verdict")
-                if verdict == "unverifiable":
-                    pass  # 待核验：confirmed / dismissed 均可
-                elif verdict == "mismatch" and action == "confirmed":
-                    pass  # 平反：核验不通过的论文由 HR 确认属实
-                else:
-                    return jsonify({"detail": "该论文不在可人工裁决状态"}), 409
+                # HR 可裁决任意论文的核验结论（verified/mismatch/unverifiable 均可），
+                # 语义改为"判 AI 核验结论对不对"，不限 verdict 状态。
 
                 alignment.update({
                     "human_status": action,
@@ -1194,12 +1189,16 @@ def _verification_result(row) -> str:
     report = _load_json(getattr(row, "academic_report", "")) or {}
     aligns = report.get("alignments", [])
     if not aligns:
-        return "verified"  # 没论文直接通过
+        # 区分"真无论文"（publications 空 → verified）和"有论文但报告缺失"（→ needs_review）
+        pubs = _load_json(getattr(row, "publications", "")) or []
+        return "verified" if not pubs else "needs_review"
     verdicts = [_effective_alignment_verdict(a) for a in aligns]
-    if any(v == "mismatch" for v in verdicts):
-        return "rejected"
+    # 门禁优先级：未裁决的 unverifiable 最优先阻断（必须人工全部裁决）；
+    # 再看 mismatch（冲突可不平反也能评估，进评估 prompt 作风险）。
     if any(v == "unverifiable" for v in verdicts):
         return "needs_review"
+    if any(v == "mismatch" for v in verdicts):
+        return "rejected"
     return "verified"
 
 
