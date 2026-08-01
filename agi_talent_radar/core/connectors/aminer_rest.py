@@ -155,29 +155,82 @@ def get_aminer_paper_detail(paper_id: str) -> dict:
 
 # ── 学者搜索 ──
 
-def search_aminer_scholar(name: str, org: str = "", size: int = 5) -> list[Fact]:
-    """按姓名（+机构消歧）检索学者（免费），返回画像 Fact。
+def search_aminer_scholar(
+    name: str,
+    org: str = "",
+    size: int = 5,
+    name_variants: list[str] | None = None,
+) -> list[Fact]:
+    """按姓名（+机构提示）检索学者（免费），返回画像 Fact。
 
-    替代旧 MCP search_aminer_scholar，接口同构，调用方无需改逻辑。
+    支持多名字变体（LLM 提供 + 中文名自动生成拼音变体），逐变体检索后按
+    aminer_id 去重合并；org 只作排序提示（org_match 标注），不做硬过滤——
+    AMiner 大量学者的 org 字段为空，硬过滤会把正确结果误杀。
     """
-    name = (name or "").strip()
-    if not name:
+    variants: list[str] = []
+    for v in [name, *(name_variants or []), *_pinyin_variants(name)]:
+        v = (v or "").strip()
+        if v and v not in variants:
+            variants.append(v)
+    if not variants:
         return []
-    body: dict[str, object] = {"name": name, "offset": 0, "size": max(1, min(10, size))}
     org_terms = _normalize_org_terms(org)
-    if org_terms:
-        body["org"] = org_terms[0]
-    try:
-        resp = _request("/api/person/search", method="POST", body=body)
-    except ConnectorUnavailableError:
-        raise
-    if resp.get("code") != 200:
-        raise ConnectorUnavailableError(f"AMiner 学者搜索失败: {resp.get('msg', '未知')}")
-    persons = resp.get("data") or []
-    facts = [_scholar_to_fact(name, p) for p in persons if isinstance(p, dict)]
-    if org_terms:
-        facts = [f for f in facts if _org_matches_any(f.payload.get("org", "") + f.payload.get("org_zh", ""), org_terms)]
+    merged: dict[str, Fact] = {}
+    errors: list[str] = []
+    for variant in variants:
+        bodies: list[dict[str, object]] = []
+        with_org: dict[str, object] = {"name": variant, "offset": 0, "size": max(1, min(10, size))}
+        if org_terms:
+            with_org["org"] = org_terms[0]
+        bodies.append(with_org)
+        # 服务端 org 只认标准机构实体名（"MIT" 这类缩写会直接零结果），空结果时去掉 org 重试
+        if org_terms:
+            bodies.append({"name": variant, "offset": 0, "size": max(1, min(10, size))})
+        for body in bodies:
+            try:
+                resp = _request("/api/person/search", method="POST", body=body)
+            except ConnectorUnavailableError as exc:
+                errors.append(str(exc))
+                break
+            if resp.get("code") != 200:
+                errors.append(f"{variant}: {resp.get('msg', '未知')}")
+                break
+            data = resp.get("data") or []
+            if not data:
+                continue  # 带 org 零结果 → 尝试下一个 body（无 org）
+            for p in data:
+                if not isinstance(p, dict):
+                    continue
+                pid = str(p.get("id") or "")
+                if pid and pid not in merged:
+                    merged[pid] = _scholar_to_fact(variant, p)
+            break  # 有命中就不再重试该变体
+    if not merged and errors and len(errors) == len(variants):
+        raise ConnectorUnavailableError(f"AMiner 学者搜索失败: {errors[0]}")
+    facts = list(merged.values())
+    for fact in facts:
+        org_text = str(fact.payload.get("org", "")) + str(fact.payload.get("org_zh", ""))
+        fact.payload["org_match"] = bool(org_terms) and _org_matches_any(org_text, org_terms)
+    # org 匹配优先，其次按引用数降序；稳定排序保持 API 原始相关性
+    facts.sort(key=lambda f: -(f.payload.get("citation_count") or 0))
+    facts.sort(key=lambda f: not f.payload["org_match"])
     return facts
+
+
+def _pinyin_variants(name: str) -> list[str]:
+    """中文名生成拼音变体（"何恺明" -> ["Kaiming He", "He Kaiming"]）。"""
+    name = (name or "").strip()
+    if not name or not any("一" <= ch <= "鿿" for ch in name):
+        return []
+    try:
+        from pypinyin import Style, pinyin
+    except ImportError:
+        return []
+    parts = [p[0] for p in pinyin(name, style=Style.NORMAL) if p and p[0]]
+    if len(parts) < 2:
+        return []
+    surname, given = parts[0].capitalize(), "".join(parts[1:]).capitalize()
+    return [f"{given} {surname}", f"{surname} {given}"]
 
 
 def search_aminer_papers(name: str, size: int = 10) -> list[Fact]:
@@ -218,8 +271,10 @@ def _normalize_org_terms(org: str) -> list[str]:
 
 
 def _org_matches_any(scholar_org: str, org_terms: list[str]) -> bool:
-    """机构名宽松匹配：任一关键词变体子串命中即可。"""
-    s = scholar_org.lower()
+    """机构名宽松匹配：任一关键词变体子串命中即可；空机构不算命中。"""
+    s = scholar_org.lower().strip()
+    if not s:
+        return False
     for term in org_terms:
         q = term.lower().strip()
         if q and (q in s or s in q):

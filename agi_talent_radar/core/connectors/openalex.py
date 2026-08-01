@@ -47,32 +47,78 @@ def search_works(title: str, count: int = 5) -> list[Fact]:
     except Exception as exc:
         raise ConnectorUnavailableError(f"OpenAlex 调用失败: {exc}") from exc
 
-    facts = []
-    for work in data.get("results", []):
-        if not isinstance(work, dict):
-            continue
-        source = (work.get("primary_location") or {}).get("source") or {}
-        authors = [
-            str((authorship.get("author") or {}).get("display_name", ""))
-            for authorship in work.get("authorships", [])
-        ]
-        facts.append(
-            Fact(
-                source="openalex",
-                fact_type="paper",
-                payload={
-                    "query_title": title,
-                    "title": str(work.get("title") or ""),
-                    "year": work.get("publication_year"),
-                    "venue": str(source.get("display_name") or ""),
-                    "type": str(work.get("type") or ""),
-                    "cited_by_count": work.get("cited_by_count", 0),
-                    "is_retracted": bool(work.get("is_retracted")),
-                    "authors": authors,
-                    "first_author": authors[0] if authors else "",
-                    "doi": str(work.get("doi") or ""),
-                },
-                source_url=str(work.get("id") or work.get("doi") or ""),
-            )
-        )
-    return facts
+    return [
+        _work_to_fact(work, {"query_title": title})
+        for work in data.get("results", [])
+        if isinstance(work, dict)
+    ]
+
+
+def search_author_works(
+    author_name: str,
+    org: str = "",
+    since_year: int | None = None,
+    count: int = 10,
+) -> list[Fact]:
+    """按作者名检索论文（可按机构/年份收窄），按被引降序。
+
+    用于场景一引用排序与场景二活跃度判断；失败抛 ConnectorUnavailableError。
+    """
+    if not (author_name or "").strip():
+        return []
+    try:
+        import httpx
+    except ImportError as exc:
+        raise ConnectorUnavailableError("缺少 httpx 依赖。") from exc
+
+    filters = [f"authorships.author.search:{author_name.strip()}"]
+    if (org or "").strip():
+        # 机构用原文署名串模糊匹配，对中文机构名更宽容
+        filters.append(f"raw_affiliation_strings.search:{org.strip()}")
+    if since_year:
+        filters.append(f"from_publication_date:{int(since_year)}-01-01")
+    params = {
+        "filter": ",".join(filters),
+        "per-page": max(1, min(25, count)),
+        "sort": "cited_by_count:desc",
+    }
+    mailto = os.getenv("OPENALEX_MAILTO", "").strip()
+    if mailto:
+        params["mailto"] = mailto
+    try:
+        data = _get(httpx, params)
+    except Exception as exc:
+        raise ConnectorUnavailableError(f"OpenAlex 调用失败: {exc}") from exc
+
+    return [
+        _work_to_fact(work, {"query_author": author_name.strip(), "query_org": (org or "").strip()})
+        for work in data.get("results", [])
+        if isinstance(work, dict)
+    ]
+
+
+def _work_to_fact(work: dict, extra_payload: dict) -> Fact:
+    """OpenAlex work 对象 -> 标准化 Fact（payload 字段两种检索共用）。"""
+    source = (work.get("primary_location") or {}).get("source") or {}
+    authors = [
+        str((authorship.get("author") or {}).get("display_name", ""))
+        for authorship in work.get("authorships", [])
+    ]
+    payload = {
+        "title": str(work.get("title") or ""),
+        "year": work.get("publication_year"),
+        "venue": str(source.get("display_name") or ""),
+        "type": str(work.get("type") or ""),
+        "cited_by_count": work.get("cited_by_count", 0),
+        "is_retracted": bool(work.get("is_retracted")),
+        "authors": authors,
+        "first_author": authors[0] if authors else "",
+        "doi": str(work.get("doi") or ""),
+        **extra_payload,
+    }
+    return Fact(
+        source="openalex",
+        fact_type="paper",
+        payload=payload,
+        source_url=str(work.get("id") or work.get("doi") or ""),
+    )
