@@ -361,7 +361,8 @@ def tool_search_web(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 def tool_check_reputation(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     """舆情双面监测：综合查询 + 负面信号查询各一次，分组返回。
 
-    负面信号只是关键词命中，真伪需模型甄别；大部分人查不到负面，属正常。
+    负面轨按"标题/正文是否提及当事人"过滤降噪（否则全是同名新闻），
+    每条只保留标题+摘要片段，保证 LLM 在工具结果预算内看得到摘要。
     """
     from agi_talent_radar.core.connectors.base import ConnectorUnavailableError
     from agi_talent_radar.core.connectors.web_search import search_web
@@ -382,16 +383,32 @@ def tool_check_reputation(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
             citation_id = ctx.register_source(
                 "web_search", str(fact.payload.get("title") or ""), fact.source_url, "pending"
             )
-            items.append({"citation_id": citation_id, **fact.payload, "url": fact.source_url})
+            items.append(
+                {
+                    "citation_id": citation_id,
+                    "title": str(fact.payload.get("title") or ""),
+                    "snippet": str(fact.payload.get("content") or "")[:150],
+                    "publish_date": str(fact.payload.get("publish_date") or ""),
+                    "url": fact.source_url,
+                }
+            )
         return items
 
+    def _mentions_subject(item: dict[str, Any]) -> bool:
+        text = item["title"] + item["snippet"]
+        return (name and name in text) or (org and org in text)
+
     general = _collect(subject)
-    negative = _collect(f"{subject} 争议 学术不端 撤稿 造假 抄袭")
+    negative_all = _collect(f"{subject} 争议 质疑 翻车 夸大")
+    # 降噪：负面轨只留提及当事人的，无关的"撤稿/造假"同名新闻直接丢
+    negative = [it for it in negative_all if _mentions_subject(it)][:6]
+    dropped = len(negative_all) - len(negative)
     result: dict[str, Any] = {
-        "general": general,
+        "general": general[:6],
         "negative_signals": negative,
-        "note": "negative_signals 仅为负面关键词命中，不代表确有其事；为空即未发现公开负面记录",
-        "summary": f"舆情双面监测：综合信息 {len(general)} 条，负面关键词命中 {len(negative)} 条",
+        "note": "negative_signals 已按当事人相关性过滤（含标题含糊的深扒/调查文），仍需甄别真伪；"
+        "为空即未发现公开负面记录" + (f"（已滤掉 {dropped} 条无关命中）" if dropped else ""),
+        "summary": f"舆情双面监测：综合信息 {len(general[:6])} 条，负面信号 {len(negative)} 条（滤掉 {dropped} 条无关）",
     }
     if errors:
         result["errors"] = errors
