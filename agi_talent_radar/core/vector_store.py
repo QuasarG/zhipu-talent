@@ -150,12 +150,13 @@ class QdrantVectorStore:
         filters: dict[str, Any] | None = None,
     ) -> list[SearchHit]:
         client = self._get_client()
-        result = client.search(
+        # qdrant-client>=1.16 移除了 search()，统一走 query_points()
+        result = client.query_points(
             collection_name=self.collection,
-            query_vector=query_vector,
+            query=query_vector,
             limit=top_k,
             query_filter=_to_qdrant_filter(filters) if filters else None,
-        )
+        ).points
         return [
             SearchHit(
                 point_id=str(hit.id),
@@ -169,10 +170,12 @@ class QdrantVectorStore:
         return self.delete_by_filter({"record_type": record_type, "record_id": record_id})
 
     def delete_by_filter(self, filters: dict[str, Any]) -> int:
+        from qdrant_client import models
+
         client = self._get_client()
         client.delete(
             collection_name=self.collection,
-            points_selector=_to_qdrant_filter(filters),
+            points_selector=models.FilterSelector(filter=_to_qdrant_filter(filters)),
         )
         return 0
 
@@ -182,13 +185,16 @@ class QdrantVectorStore:
         return int(result.count)
 
 
-def _to_qdrant_filter(filters: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "must": [
-            {"key": key, "match": {"value": value}}
+def _to_qdrant_filter(filters: dict[str, Any]) -> Any:
+    # qdrant-client>=1.16 的 delete/query 不再接受裸 dict，必须是 models.Filter
+    from qdrant_client import models
+
+    return models.Filter(
+        must=[
+            models.FieldCondition(key=key, match=models.MatchValue(value=value))
             for key, value in filters.items()
         ]
-    }
+    )
 
 
 class InMemoryVectorStore:

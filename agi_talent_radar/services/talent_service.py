@@ -18,8 +18,11 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from agi_talent_radar.core.db import repository
 from agi_talent_radar.core.db.orm import (
@@ -223,6 +226,15 @@ def admit_candidate_after_evaluation(evaluation_id: int) -> dict[str, Any]:
         except Exception:
             # outbox 失败不应让 admit 回滚；可由运维重试。
             pass
+
+        # outbox 暂无独立消费者：就地 best-effort 同步一次，失败静默降级（任务仍在队列可重试）。
+        try:
+            from agi_talent_radar.core.vector_store import QdrantVectorStore
+            from agi_talent_radar.knowledge_agent.vector_sync import sync_person_vectors
+
+            sync_person_vectors(session, person_id, QdrantVectorStore())
+        except Exception:
+            logger.warning("person %s 向量同步失败，等待后续重试", person_id, exc_info=True)
 
         return {
             "candidate_id": candidate.id,

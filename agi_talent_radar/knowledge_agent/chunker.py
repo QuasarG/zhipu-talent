@@ -1,10 +1,11 @@
 """RAG 切片器：从 MySQL 业务数据生成可向量化的文本块。
 
 每个 chunk 必须能回链到 MySQL 原文（record_type + record_id）。
-首版覆盖：评估摘要、评分证据、论文自述/核验、外部事实。
+覆盖：评估摘要、评分证据、论文自述/核验、外部事实、简历画像、简历原文。
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -16,8 +17,13 @@ from agi_talent_radar.core.db.orm import (
     PersonORM,
     PublicationClaimORM,
     PublicationVerificationORM,
+    ResumeSubmissionORM,
 )
 from agi_talent_radar.core.embedding import MAX_CHARS_PER_INPUT, truncate_input
+
+# 简历原文切片参数：目标片长 / 相邻片重叠
+RESUME_RAW_SLICE_CHARS = 800
+RESUME_RAW_OVERLAP_CHARS = 100
 
 
 @dataclass(frozen=True)
@@ -25,7 +31,7 @@ class KnowledgeChunk:
     """一个可向量化的文本块。"""
 
     text: str
-    record_type: str       # evaluation / evidence / publication_claim / external_fact
+    record_type: str       # evaluation / evidence / publication_claim / external_fact / resume_profile / resume_raw
     record_id: str
     person_id: str
     candidate_id: str
@@ -94,7 +100,11 @@ def chunk_evidence(evaluation: EvaluationORM, evidence_item) -> KnowledgeChunk:
     )
 
 
-def chunk_publication_claim(claim: PublicationClaimORM) -> KnowledgeChunk:
+def chunk_publication_claim(
+    claim: PublicationClaimORM,
+    evaluation: EvaluationORM | None = None,
+) -> KnowledgeChunk:
+    """论文自述切片。传入关联 evaluation 可补上 person_id / candidate_id。"""
     return KnowledgeChunk(
         text=_make_text([
             f"论文自述：{claim.title}",
@@ -106,8 +116,8 @@ def chunk_publication_claim(claim: PublicationClaimORM) -> KnowledgeChunk:
         ]),
         record_type="publication_claim",
         record_id=str(claim.id),
-        person_id="",  # claim 不直接挂 person，靠 evaluation 间接
-        candidate_id="",
+        person_id=(evaluation.person_id or "") if evaluation else "",
+        candidate_id=str(evaluation.candidate_id or "") if evaluation else "",
         fact_status="claimed",  # 自述，非外部事实
         source="resume",
         fetched_at=_iso(claim.created_at),
@@ -129,6 +139,114 @@ def chunk_external_fact(fact: ExternalFactORM) -> KnowledgeChunk:
         source=str(fact.source),
         fetched_at=_iso(fact.fetched_at),
     )
+
+
+def _education_text(item) -> str:
+    if isinstance(item, dict):
+        return " ".join(
+            str(item.get(key) or "")
+            for key in ("school", "degree", "major", "period")
+        ).strip()
+    return str(item or "").strip()
+
+
+def chunk_resume_profile(
+    person: PersonORM,
+    submission: ResumeSubmissionORM,
+    candidate_id: str = "",
+) -> KnowledgeChunk | None:
+    """简历结构化画像切片：姓名/学校学历/实习组织岗位/技能/方向的紧凑摘要。"""
+    structured = submission.structured or {}
+    if not isinstance(structured, dict):
+        return None
+    education = "；".join(
+        text for text in (_education_text(item) for item in structured.get("education") or []) if text
+    )
+    experiences = "；".join(
+        " ".join(
+            part
+            for part in (
+                str(exp.get("organization") or ""),
+                str(exp.get("role") or ""),
+                str(exp.get("period") or ""),
+            )
+            if part
+        )
+        for exp in structured.get("experiences") or []
+        if isinstance(exp, dict)
+    )
+    parts = [
+        f"姓名：{structured.get('name') or person.name}",
+        f"机构：{person.org}",
+        f"方向：{person.direction or '、'.join(structured.get('directions') or [])}",
+        f"教育：{education}",
+        f"实习/经历：{experiences}",
+        f"技能：{'、'.join(str(s) for s in structured.get('skills') or [])}",
+        f"目标岗位：{structured.get('target_role') or ''}",
+    ]
+    text = _make_text(parts)
+    if not text.strip():
+        return None
+    return KnowledgeChunk(
+        text=text,
+        record_type="resume_profile",
+        record_id=f"{person.id}:profile",
+        person_id=person.id,
+        candidate_id=candidate_id,
+        fact_status="confirmed",
+        source="resume",
+        fetched_at=_iso(submission.updated_at or submission.created_at),
+    )
+
+
+def _slice_raw_text(
+    text: str,
+    size: int = RESUME_RAW_SLICE_CHARS,
+    overlap: int = RESUME_RAW_OVERLAP_CHARS,
+) -> list[str]:
+    """把长文按 ~size 字切片，段落边界优先，相邻片重叠 ~overlap 字。"""
+    paragraphs = [p.strip() for p in re.split(r"\n+", text) if p.strip()]
+    slices: list[str] = []
+    current = ""
+    for para in paragraphs:
+        candidate = f"{current}\n{para}" if current else para
+        if current and len(candidate) > size:
+            slices.append(current)
+            current = (current[-overlap:] + "\n" + para) if overlap else para
+        else:
+            current = candidate
+        # 单段远超片长时硬切，避免巨型 chunk
+        while len(current) > size + overlap:
+            slices.append(current[:size])
+            current = current[size - overlap:]
+    if current:
+        slices.append(current)
+    return [piece.strip() for piece in slices if piece.strip()]
+
+
+def chunk_resume_raw(
+    person: PersonORM,
+    submission: ResumeSubmissionORM,
+    candidate_id: str = "",
+) -> list[KnowledgeChunk]:
+    """简历原文切片：raw_text 按 ~800 字切，段落边界优先，相邻重叠 ~100 字。"""
+    raw_text = (submission.raw_text or "").strip()
+    if not raw_text:
+        return []
+    fetched_at = _iso(submission.updated_at or submission.created_at)
+    return [
+        KnowledgeChunk(
+            text=truncate_input(piece)[:MAX_CHARS_PER_INPUT],
+            record_type="resume_raw",
+            record_id=f"{person.id}:raw:{index}",
+            person_id=person.id,
+            candidate_id=candidate_id,
+            fact_status="claimed",
+            source="resume",
+            fetched_at=fetched_at,
+        )
+        for index, piece in enumerate(_slice_raw_text(raw_text))
+    ]
 
 
 def collect_chunks_for_person(
@@ -164,7 +282,7 @@ def collect_chunks_for_person(
             .all()
         )
         for claim in claims:
-            chunks.append(chunk_publication_claim(claim))
+            chunks.append(chunk_publication_claim(claim, evaluation))
 
     # 外部事实（当前版本，排除 superseded）
     facts = (
@@ -175,6 +293,23 @@ def collect_chunks_for_person(
     )
     for fact in facts:
         chunks.append(chunk_external_fact(fact))
+
+    # 简历画像 + 原文（取最新一次提交）
+    submission = (
+        session.query(ResumeSubmissionORM)
+        .filter_by(person_id=person_id)
+        .order_by(ResumeSubmissionORM.created_at.desc())
+        .first()
+    )
+    if submission is not None:
+        candidate = (
+            session.query(CandidateORM).filter_by(person_id=person_id).first()
+        )
+        candidate_id = candidate.id if candidate else ""
+        profile = chunk_resume_profile(person, submission, candidate_id)
+        if profile:
+            chunks.append(profile)
+        chunks.extend(chunk_resume_raw(person, submission, candidate_id))
 
     return chunks
 
@@ -200,6 +335,8 @@ __all__ = [
     "chunk_evidence",
     "chunk_publication_claim",
     "chunk_external_fact",
+    "chunk_resume_profile",
+    "chunk_resume_raw",
     "collect_chunks_for_person",
     "chunk_to_payload",
 ]
