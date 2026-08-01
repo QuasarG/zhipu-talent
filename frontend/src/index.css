@@ -190,6 +190,7 @@ body {
 /* ---- A11y ---- */
 :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 [data-search-field] > input:focus-visible { outline: none; outline-offset: 0; }
+[data-chat-input] > textarea:focus-visible { outline: none; outline-offset: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   /* Loading indicator 在 reduced-motion 下保留极慢旋转，保证「加载中」语义可见 */
@@ -266,6 +267,51 @@ body {
 }
 .process-collapse[data-open="true"] { grid-template-rows: 1fr; }
 .process-collapse > div { overflow: hidden; }
+
+/* 消息/工具卡片入场：淡入 + 轻微上移 */
+@keyframes fade-slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.chat-enter { animation: fade-slide-up 250ms var(--ease-emphasized-decelerate); }
+
+/* ---- 问答正文 markdown（无 typography 插件，手工 typescale 对齐） ---- */
+.chat-markdown { font-size: 14px; line-height: 22px; }
+.chat-markdown p { margin: 0 0 8px; }
+.chat-markdown p:last-child { margin-bottom: 0; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3, .chat-markdown h4 {
+  font-weight: 600; margin: 12px 0 6px;
+}
+.chat-markdown h1 { font-size: 18px; line-height: 26px; }
+.chat-markdown h2 { font-size: 16px; line-height: 24px; }
+.chat-markdown h3, .chat-markdown h4 { font-size: 15px; line-height: 22px; }
+.chat-markdown ul, .chat-markdown ol { margin: 0 0 8px; padding-left: 20px; }
+.chat-markdown ul { list-style: disc; }
+.chat-markdown ol { list-style: decimal; }
+.chat-markdown li { margin-bottom: 2px; }
+.chat-markdown strong { font-weight: 600; }
+.chat-markdown a { color: var(--color-primary); text-decoration: underline; }
+.chat-markdown blockquote {
+  margin: 0 0 8px; padding: 4px 12px;
+  border-left: 2px solid var(--color-primary);
+  background: var(--color-surface-low);
+}
+.chat-markdown code {
+  font-family: var(--font-mono); font-size: 12.5px;
+  background: var(--color-surface-high); border-radius: 4px; padding: 1px 4px;
+}
+.chat-markdown pre {
+  margin: 0 0 8px; padding: 10px 12px; overflow-x: auto;
+  background: var(--color-surface-low); border-radius: var(--radius-sm);
+}
+.chat-markdown pre code { background: none; padding: 0; }
+.chat-markdown table { margin: 0 0 8px; border-collapse: collapse; width: 100%; }
+.chat-markdown th, .chat-markdown td {
+  border: 1px solid var(--color-outline-variant);
+  padding: 4px 10px; text-align: left; font-size: 13px;
+}
+.chat-markdown th { background: var(--color-surface-low); font-weight: 600; }
+.chat-markdown hr { margin: 12px 0; border-color: var(--color-outline-variant); }
 
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar { width: 8px; height: 8px; }

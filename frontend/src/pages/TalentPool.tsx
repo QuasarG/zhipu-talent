@@ -7,9 +7,11 @@ import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import Chip from "@/components/ui/Chip";
 import Card from "@/components/ui/Card";
 import { IconButton } from "@/components/ui/Button";
+import Button from "@/components/ui/Button";
 import TalentList, { classifyTrack, STATUS_LABELS, TRACKS } from "@/features/pool/TalentList";
 import TalentDetail from "@/features/pool/TalentDetail";
 import RelationGraph from "@/features/pool/RelationGraph";
+import AddPersonDialog from "@/features/pool/AddPersonDialog";
 import { useSessionState } from "@/lib/sessionState";
 
 export default function TalentPool() {
@@ -22,6 +24,7 @@ export default function TalentPool() {
   const [schoolFilter, setSchoolFilter] = useSessionState("talent-pool.school-filter", "");
   const [hrFilter, setHrFilter] = useSessionState("talent-pool.hr-filter", "");
   const [view, setView] = useSessionState<"list" | "graph">("talent-pool.view", "graph");
+  const [showAddPerson, setShowAddPerson] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -109,6 +112,9 @@ export default function TalentPool() {
         }
         right={
           <>
+            <Button variant="tonal" icon="person_add" onClick={() => setShowAddPerson(true)}>
+              手动加入
+            </Button>
             <SegmentedButtons
               options={[
                 { value: "list", label: "列表详情", icon: "list" },
@@ -205,6 +211,10 @@ export default function TalentPool() {
         )}
         <TalentDetail person={selected} personId={selectedId} onUpdated={handlePersonUpdated} />
       </div>
+
+      {showAddPerson && (
+        <AddPersonDialog onClose={() => setShowAddPerson(false)} onAdded={load} />
+      )}
     </div>
   );
 }

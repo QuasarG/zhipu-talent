@@ -5,9 +5,9 @@ import Icon from "@/components/ui/Icon";
 import logoUrl from "@/assets/zhipu-logo.svg";
 
 const navItems = [
-  { to: "/", icon: "description", label: "简历评估" },
-  { to: "/knowledge", icon: "forum", label: "人才知识" },
+  { to: "/", icon: "forum", label: "人才问答" },
   { to: "/talent-pool", icon: "groups", label: "人才库" },
+  { to: "/resume-evaluate", icon: "description", label: "简历评估" },
   { to: "/settings", icon: "settings", label: "设置" },
 ];
 

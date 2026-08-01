@@ -346,14 +346,68 @@ export interface ReputationReport {
   reviewed_at: string | null;
 }
 
-// 知识 Agent SSE 事件
-export interface AgentEvent {
-  type:
-    | "node" | "intent" | "clarification" | "local_facts"
-    | "tool_plan" | "external_fact" | "tool_failure"
-    | "answer" | "warning" | "done";
-  payload: Record<string, unknown>;
+// ---- 人才问答（ReAct Agent） ----
+
+export interface ChatConversation {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  last_message: string;
 }
+
+export interface ChatCitation {
+  id: string;
+  type: string;
+  title: string;
+  url: string;
+  status: string;
+}
+
+export type ChatActionKind = "select_person" | "propose_add_person" | "resolve_fact_conflict" | "clarify";
+
+export type ChatSegment =
+  | { type: "text"; text: string }
+  | {
+      type: "tool";
+      call_id: string;
+      tool: string;
+      label: string;
+      status?: "ok" | "error";
+      summary?: string;
+      detail?: string;
+      args_summary?: string;
+    }
+  | {
+      type: "action";
+      action_id: string;
+      kind: ChatActionKind;
+      payload: Record<string, unknown>;
+      decision?: Record<string, unknown> | null;
+    };
+
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant";
+  content: { segments: ChatSegment[] };
+  citations: ChatCitation[];
+  status: "completed" | "awaiting_action" | "running";
+  created_at: string;
+}
+
+// 问答 SSE 事件
+export type ChatEvent =
+  | { type: "meta"; payload: { conversation_id: string; message_id: string } }
+  | { type: "answer_delta"; payload: { text: string } }
+  | { type: "tool_start"; payload: { call_id: string; tool: string; label: string; args_summary: string } }
+  | { type: "tool_end"; payload: { call_id: string; tool: string; status: "ok" | "error"; summary: string; detail: string } }
+  | { type: "action_required"; payload: { action_id: string; kind: ChatActionKind; payload: Record<string, unknown> } }
+  | { type: "sources"; payload: { items: ChatCitation[] } }
+  | { type: "message_done"; payload: { message_id: string } }
+  | { type: "error"; payload: { message: string } }
+  | { type: "done"; payload: { status: "completed" | "awaiting_action" } };
 
 // 健康检查
 export interface HealthReport {

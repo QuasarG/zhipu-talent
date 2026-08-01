@@ -1,7 +1,8 @@
 import type {
-  AgentEvent,
   CandidateBrief,
   CandidateDetail,
+  ChatConversation,
+  ChatMessage,
   HealthReport,
   PendingPublication,
   PersonBrief,
@@ -111,12 +112,34 @@ export const api = {
   },
   import: (formData: FormData) =>
     fetch(BASE + "/api/import-file", { method: "POST", body: formData }),
-  knowledge: {
-    askSSE: (prompt: string, conversationId = "default") =>
+  chat: {
+    listConversations: () => fetchJSON<ChatConversation[]>("/api/conversations"),
+    createConversation: () =>
+      fetchJSON<ChatConversation>("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }),
+    getMessages: (id: string) => fetchJSON<ChatMessage[]>(`/api/conversations/${id}/messages`),
+    renameConversation: (id: string, title: string) =>
+      fetchJSON<ChatConversation>(`/api/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      }),
+    deleteConversation: (id: string) =>
+      fetchJSON<{ id: string; deleted: boolean }>(`/api/conversations/${id}`, { method: "DELETE" }),
+    askSSE: (conversationId: string, prompt: string) =>
       fetch(BASE + "/api/knowledge/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, conversation_id: conversationId }),
+        body: JSON.stringify({ conversation_id: conversationId, prompt }),
+      }),
+    actionSSE: (conversationId: string, actionId: string, decision: Record<string, unknown>) =>
+      fetch(BASE + "/api/knowledge/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId, action_id: actionId, decision }),
       }),
   },
   config: {
@@ -146,7 +169,7 @@ export const api = {
 export async function* parseSSE(
   response: Response,
   signal?: AbortSignal
-): AsyncGenerator<AgentEvent | Record<string, unknown>> {
+): AsyncGenerator<Record<string, unknown>> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
