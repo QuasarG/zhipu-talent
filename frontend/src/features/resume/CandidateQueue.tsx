@@ -32,6 +32,10 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
   // 删除二次确认：记录正在确认删除的候选人 id，null = 未进入确认态
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // 批量操作态：进入后状态标签隐藏，卡片变为 checkbox
+  const [batchMode, setBatchMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   const filtered = candidates.filter((c) => {
     if (filter !== "all" && classifyCandidate(c) !== filter) return false;
@@ -46,6 +50,37 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
     all: candidates.length,
     pending: candidates.filter((c) => classifyCandidate(c) === "pending").length,
     completed: candidates.filter((c) => classifyCandidate(c) === "completed").length,
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelected(new Set(filtered.map((c) => c.id)));
+  const clearAll = () => setSelected(new Set());
+
+  const exitBatch = () => {
+    setBatchMode(false);
+    setSelected(new Set());
+  };
+
+  const batchDelete = async () => {
+    if (selected.size === 0 || batchDeleting) return;
+    setBatchDeleting(true);
+    try {
+      for (const id of selected) {
+        const c = candidates.find((it) => it.id === id);
+        if (c) await onDelete(c.id, !!c.evaluated);
+      }
+    } finally {
+      setBatchDeleting(false);
+      exitBatch();
+    }
   };
 
   return (
@@ -78,6 +113,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
             const confirming = confirmingId === c.id;
             // evaluated=true → 已评估移出（软），否则删除（硬）
             const evaluated = !!c.evaluated;
+            const checked = selected.has(c.id);
             const doDelete = async () => {
               setDeleting(true);
               try {
@@ -92,9 +128,12 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                 key={c.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => !confirming && onSelect(c.id)}
+                onClick={() => batchMode ? toggleSelect(c.id) : (!confirming && onSelect(c.id))}
                 onKeyDown={(e) => {
-                  if (!confirming && (e.key === "Enter" || e.key === " ")) {
+                  if (batchMode && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    toggleSelect(c.id);
+                  } else if (!confirming && (e.key === "Enter" || e.key === " ")) {
                     e.preventDefault();
                     onSelect(c.id);
                   }
@@ -102,17 +141,27 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                 className={cn(
                   "group relative flex items-start gap-3 p-3 rounded-md text-left cursor-pointer transition-colors duration-150 outline-none",
                   "focus-visible:ring-2 focus-visible:ring-primary",
-                  confirming ? "bg-error-container" : active ? "bg-secondary-container" : "bg-transparent hover:bg-surface-low"
+                  batchMode && checked ? "bg-secondary-container shadow-[inset_0_0_0_2px_var(--color-primary)]" : confirming ? "bg-error-container" : active ? "bg-secondary-container" : "bg-transparent hover:bg-surface-low"
                 )}
               >
-                {/* 头像色块：姓名首字 */}
-                <span className="flex items-center justify-center w-9 h-9 rounded-full bg-primary-container text-on-primary-container text-label shrink-0">
-                  {(c.name || "?").slice(0, 1)}
-                </span>
+                {/* 头像位：批量态替换为 checkbox */}
+                {batchMode ? (
+                  <span className={cn(
+                    "flex items-center justify-center w-9 h-9 rounded-full shrink-0 border-2 transition-colors",
+                    checked ? "bg-primary border-primary text-on-primary" : "border-outline text-transparent"
+                  )}>
+                    {checked && <Icon name="check" size={18} />}
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center w-9 h-9 rounded-full bg-primary-container text-on-primary-container text-label shrink-0">
+                    {(c.name || "?").slice(0, 1)}
+                  </span>
+                )}
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center justify-between gap-2">
                     <span className="text-title truncate">{c.name || "未命名"}</span>
-                    {c.evaluation_status === "running" ? (
+                    {/* 批量态隐藏状态标签 */}
+                    {batchMode ? null : c.evaluation_status === "running" ? (
                       <span className="inline-flex items-center gap-1 text-label text-primary shrink-0">
                         <LoadingIndicator size={14} color="text-primary" />
                         评估中
@@ -170,8 +219,8 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                   ) : null}
                 </span>
 
-                {/* hover 显示的删除按钮（不在确认态时才浮现） */}
-                {!confirming && (
+                {/* hover 显示的删除按钮（不在批量态/确认态时才浮现） */}
+                {!batchMode && !confirming && (
                   <span className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                     <button
                       type="button"
@@ -189,9 +238,34 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
         )}
       </div>
 
-      <Button variant="tonal" icon="upload" onClick={onImport} className="w-full">
-        导入简历
-      </Button>
+      {batchMode ? (
+        <div className="flex items-center gap-2">
+          <Button variant="tonal" className="flex-1 h-10" disabled={batchDeleting}
+            onClick={() => (selected.size === filtered.length && filtered.length > 0 ? clearAll() : selectAll())}>
+            {selected.size === filtered.length && filtered.length > 0 ? "取消全选" : "全选"}
+          </Button>
+          <Button
+            variant="filled"
+            icon={batchDeleting ? undefined : "delete"}
+            disabled={selected.size === 0 || batchDeleting}
+            onClick={batchDelete}
+            className="flex-1 h-10 bg-error text-on-error"
+          >
+            {batchDeleting ? "处理中…" : `移除${selected.size > 0 ? `(${selected.size})` : "选中"}`}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Button variant="tonal" icon="upload" onClick={onImport} className="flex-1">
+            导入简历
+          </Button>
+          {candidates.length > 0 && (
+            <Button variant="text" icon="checklist" onClick={() => setBatchMode(true)} className="shrink-0">
+              批量操作
+            </Button>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
