@@ -23,7 +23,7 @@ const STEPS: TourStep[] = [
     selector: '[data-tour="nav-chat"]',
     route: "/",
     title: "人才问答",
-    desc: "输入姓名即可让 AI Agent 自动检索人才库、查论文、查舆情，生成调查报告。支持多轮工具调用，最多 24 轮。",
+    desc: "输入姓名即可让 AI Agent 自动检索人才库、查论文、查舆情，生成调查报告。上下文取决于调用的模型（当前是 DeepSeek-V4-Flash[1M]）。",
     placement: "right",
   },
   {
