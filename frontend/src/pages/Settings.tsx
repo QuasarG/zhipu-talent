@@ -6,6 +6,7 @@ import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { api } from "@/lib/api";
+import { resetOnboarding } from "@/components/OnboardingTour";
 import type { HealthReport } from "@/lib/types";
 
 const statusMeta: Record<string, { icon: string; cls: string }> = {
@@ -251,6 +252,20 @@ export default function Settings() {
                   </Card>
                 );
               })}
+            </div>
+          </section>
+
+          {/* 其他 */}
+          <section>
+            <h2 className="text-title-lg mb-3">其他</h2>
+            <div className="flex gap-3">
+              <Button
+                variant="outlined"
+                icon="school"
+                onClick={() => { resetOnboarding(); window.location.href = "/"; }}
+              >
+                重新查看新手引导
+              </Button>
             </div>
           </section>
         </div>

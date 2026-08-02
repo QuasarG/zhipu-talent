@@ -139,7 +139,7 @@ export default function ChatSidebar({ conversations, currentId, onSelect, onCrea
           })
         )}
       </div>
-      <Button variant="outlined" icon="help" className="w-full shrink-0" onClick={() => setShowHelp(true)}>
+      <Button data-tour="help-btn" variant="outlined" icon="help" className="w-full shrink-0" onClick={() => setShowHelp(true)}>
         使用说明
       </Button>
       {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}

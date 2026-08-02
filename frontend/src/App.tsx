@@ -9,6 +9,7 @@ import ResumeEvaluate from "./pages/ResumeEvaluate";
 import TalentPool from "./pages/TalentPool";
 import TalentProfile from "./pages/TalentProfile";
 import Settings from "./pages/Settings";
+import OnboardingTour from "./components/OnboardingTour";
 
 function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -45,6 +46,7 @@ function App() {
           </Routes>
         </main>
       </div>
+      <OnboardingTour />
     </BrowserRouter>
   );
 }

@@ -14,17 +14,20 @@ const navItems = [
 /** MD3 Navigation Rail：80px 全高，active = pill 指示器 */
 export default function NavRail() {
   return (
-    <nav className="sticky top-0 h-screen w-24 shrink-0 flex flex-col items-center py-5 bg-surface z-40">
+    <nav data-tour="nav" className="sticky top-0 h-screen w-24 shrink-0 flex flex-col items-center py-5 bg-surface z-40">
       {/* Logo */}
       <img src={logoUrl} alt="智谱" className="h-5 mb-9 select-none" draggable={false} />
 
       {/* 导航项 */}
       <ul className="flex flex-col gap-3 flex-1 w-full items-center">
-        {navItems.map(({ to, icon, label }) => (
+        {navItems.map(({ to, icon, label }) => {
+          const tourKey = to === "/" ? "nav-chat" : to === "/resume-evaluate" ? "nav-resume" : to === "/talent-pool" ? "nav-pool" : "nav-settings";
+          return (
           <li key={to} className="w-full flex justify-center">
             <NavLink
               to={to}
               end={to === "/"}
+              data-tour={tourKey}
               className="flex flex-col items-center gap-1.5 w-20 no-underline group"
             >
               {({ isActive }) => (
@@ -51,7 +54,8 @@ export default function NavRail() {
               )}
             </NavLink>
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       {/* 用户 + 登出 */}
