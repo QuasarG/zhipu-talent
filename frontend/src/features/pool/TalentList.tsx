@@ -43,7 +43,8 @@ const ROW_GRID = "grid-cols-[minmax(0,1fr)_minmax(72px,auto)_minmax(40px,auto)_m
 
 function fmtTime(iso: string | null): string {
   if (!iso) return "—";
-  const d = new Date(iso);
+  // 后端 SQLite 存 UTC naive 时间，补 Z 后缀按 UTC 解析避免时区偏差
+  const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
   if (Number.isNaN(d.getTime())) return "—";
   const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   if (d.toDateString() === new Date().toDateString()) return hm;

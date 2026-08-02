@@ -13,9 +13,13 @@ interface Props {
   onDelete: (id: string) => void;
 }
 
-/** 相对时间：分钟内显示"刚刚"，其后逐级退化到日期 */
+/** 相对时间：分钟内显示"刚刚"，其后逐级退化到日期。
+ * 后端 SQLite 存的是 UTC 时间（YYYY-MM-DD HH:MM:SS 无时区后缀），
+ * 补 Z 后缀让 JS 按 UTC 解析，避免 8 小时偏差。 */
 function relativeTime(iso: string): string {
-  const time = new Date(iso.replace(" ", "T")).getTime();
+  if (!iso) return "";
+  const normalized = iso.includes("T") ? iso : iso.replace(" ", "T");
+  const time = new Date(normalized.endsWith("Z") ? normalized : normalized + "Z").getTime();
   if (Number.isNaN(time)) return "";
   const diff = Date.now() - time;
   const minutes = Math.floor(diff / 60000);
