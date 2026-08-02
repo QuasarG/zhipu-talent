@@ -16,17 +16,19 @@ interface Props {
   onSelect: (id: string) => void;
   onDelete: (id: string, evaluated: boolean) => void | Promise<void>;
   onImport: () => void;
+  onEvaluateBatch?: (ids: string[]) => void | Promise<void>;
 }
 
 type Filter = "pending" | "completed" | "all";
 
 function classifyCandidate(c: CandidateBrief): Filter {
   if (c.engagement_status && c.engagement_status !== "newly_admitted") return "completed";
+  if (c.evaluation_status === "completed" || c.evaluation_status === "failed") return "completed";
   if (c.group === "pending") return "pending";
   return "completed";
 }
 
-export default function CandidateQueue({ candidates, selectedId, onSelect, onDelete, onImport }: Props) {
+export default function CandidateQueue({ candidates, selectedId, onSelect, onDelete, onImport, onEvaluateBatch }: Props) {
   const [filter, setFilter] = useSessionState<Filter>("resume-evaluate.queue-filter", "all");
   const [search, setSearch] = useSessionState("resume-evaluate.queue-search", "");
   // 删除二次确认：记录正在确认删除的候选人 id，null = 未进入确认态
@@ -36,6 +38,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
   const [batchMode, setBatchMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [batchEvaluating, setBatchEvaluating] = useState(false);
 
   const filtered = candidates.filter((c) => {
     if (filter !== "all" && classifyCandidate(c) !== filter) return false;
@@ -71,17 +74,38 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
 
   const batchDelete = async () => {
     if (selected.size === 0 || batchDeleting) return;
+    const ids = Array.from(selected);
     setBatchDeleting(true);
+    exitBatch(); // 立即退出批量态，删除在后台跑
     try {
-      for (const id of selected) {
+      for (const id of ids) {
         const c = candidates.find((it) => it.id === id);
         if (c) await onDelete(c.id, !!c.evaluated);
       }
     } finally {
       setBatchDeleting(false);
-      exitBatch();
     }
   };
+
+  const batchEvaluate = async () => {
+    if (selected.size === 0 || batchEvaluating || !onEvaluateBatch) return;
+    const ids = Array.from(selected);
+    setBatchEvaluating(true);
+    exitBatch(); // 立即退出批量态，评估在后台并发跑
+    try {
+      await onEvaluateBatch(ids);
+    } finally {
+      setBatchEvaluating(false);
+    }
+  };
+
+  // 批量当前所选中的「可评估」数量，用于按钮文案与 disable
+  const evaluableCount = onEvaluateBatch
+    ? Array.from(selected).filter((id) => {
+        const c = candidates.find((it) => it.id === id);
+        return !!c?.evaluable;
+      }).length
+    : 0;
 
   return (
     <Card variant="filled" className="flex flex-col gap-3 p-3 min-h-0">
@@ -160,8 +184,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center justify-between gap-2">
                     <span className="text-title truncate">{c.name || "未命名"}</span>
-                    {/* 批量态隐藏状态标签 */}
-                    {batchMode ? null : c.evaluation_status === "running" ? (
+                    {c.evaluation_status === "running" ? (
                       <span className="inline-flex items-center gap-1 text-label text-primary shrink-0">
                         <LoadingIndicator size={14} color="text-primary" />
                         评估中
@@ -239,19 +262,30 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
       </div>
 
       {batchMode ? (
-        <div className="flex items-center gap-2">
-          <Button variant="tonal" className="flex-1 h-10" disabled={batchDeleting}
+        <div className="flex items-center gap-1.5">
+          <Button variant="text" icon="close" className="shrink-0 h-10 w-10 px-0" disabled={batchDeleting || batchEvaluating}
+            onClick={exitBatch} title="退出批量" />
+          <Button variant="tonal" className="flex-1 h-10 min-w-0 whitespace-nowrap text-body-sm" disabled={batchDeleting || batchEvaluating}
             onClick={() => (selected.size === filtered.length && filtered.length > 0 ? clearAll() : selectAll())}>
             {selected.size === filtered.length && filtered.length > 0 ? "取消全选" : "全选"}
           </Button>
+          {onEvaluateBatch && (
+            <Button
+              variant="filled"
+              disabled={evaluableCount === 0 || batchDeleting || batchEvaluating}
+              onClick={batchEvaluate}
+              className="flex-1 h-10 min-w-0 whitespace-nowrap text-body-sm"
+            >
+              {batchEvaluating ? "评估中…" : `评估(${evaluableCount || 0})`}
+            </Button>
+          )}
           <Button
             variant="filled"
-            icon={batchDeleting ? undefined : "delete"}
-            disabled={selected.size === 0 || batchDeleting}
+            disabled={selected.size === 0 || batchDeleting || batchEvaluating}
             onClick={batchDelete}
-            className="flex-1 h-10 bg-error text-on-error"
+            className="flex-1 h-10 min-w-0 whitespace-nowrap text-body-sm bg-error text-on-error"
           >
-            {batchDeleting ? "处理中…" : `移除${selected.size > 0 ? `(${selected.size})` : "选中"}`}
+            {batchDeleting ? "处理中…" : `移除(${selected.size || 0})`}
           </Button>
         </div>
       ) : (

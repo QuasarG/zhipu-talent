@@ -1223,10 +1223,10 @@ def _evaluation_academic_report(row) -> dict[str, Any]:
         human_note = str(alignment.get("human_note", "")).strip()
         if effective_verdict == "mismatch":
             discrepancies = list(alignment.get("discrepancies", []))
-            discrepancies.append("人工核验驳回该论文自述")
+            discrepancies.append("人工核验认为 AI 判定有误")
             alignment["discrepancies"] = list(dict.fromkeys(discrepancies))
         # 人工裁决与备注显式并入 note，后续评估 agent 可见
-        label = "人工核验确认该论文属实" if effective_verdict == "verified" else "人工核验驳回该论文自述"
+        label = "人工核验认同 AI 判定" if effective_verdict == "verified" else "人工核验认为 AI 判定有误"
         stamped = label + (f"：{human_note}" if human_note else "")
         alignment["note"] = " ".join(x for x in [str(alignment.get("note", "")).strip(), stamped] if x).strip()
     return report

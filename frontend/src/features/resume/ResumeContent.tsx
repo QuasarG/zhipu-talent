@@ -483,7 +483,12 @@ function PublicationList({ detail, academicReport, importing, onReviewed }: { de
                   </div>
                   <MetaField label="载体 / 年份" value={[external?.venue, external?.year].filter(Boolean).join(" · ")} />
                   <MetaField label="发表状态" value={external?.publication_status || alignment.verified_status} />
-                  <MetaField label="作者列表" value={external?.authors?.join("、")} wide />
+                  <div className="min-w-0">
+                    <span className="block text-label font-medium text-on-surface-variant">作者列表</span>
+                    <p className="mt-0.5 text-body font-medium text-on-surface break-words">
+                      <AuthorList authors={external?.authors || []} alignment={alignment} />
+                    </p>
+                  </div>
                   <MetaField label="引用次数" value={external?.cited_by_count ?? alignment.cited_by_count ?? 0} />
                   <MetaField label="撤稿标记" value={external?.is_retracted || alignment.is_retracted ? "是" : "否"} />
                 </div>
@@ -656,6 +661,31 @@ function CheckBadge({ label, status }: { label: string; status?: VerificationChe
       <Icon name={config.icon} size={16} className={config.className} />
       <span className={`text-label font-bold ${config.className}`}>{config.text}</span>
     </div>
+  );
+}
+
+/** 作者列表：候选人高亮加粗。优先用 position 精确加粗，
+ *  无 position 时用 candidate_author_name 模糊匹配兜底（含缩写）。 */
+function AuthorList({ authors, alignment }: { authors: string[]; alignment?: ClaimAlignment }) {
+  if (!authors.length) return <span className="text-on-surface-variant">未提供</span>;
+  const pos = alignment?.candidate_author_position || 0;
+  const matchName = (alignment?.candidate_author_name || "").toLowerCase().replace(/[\s.\-_,]/g, "");
+  return (
+    <>
+      {authors.map((author, i) => {
+        const isCandidate = pos > 0
+          ? i === pos - 1  // position 精确匹配（1-based）
+          : matchName && author.toLowerCase().replace(/[\s.\-_,]/g, "").includes(matchName);
+        return (
+          <span key={i}>
+            {i > 0 && "、"}
+            <span className={isCandidate ? "font-bold text-primary underline decoration-primary/40 underline-offset-2" : ""}>
+              {author}
+            </span>
+          </span>
+        );
+      })}
+    </>
   );
 }
 

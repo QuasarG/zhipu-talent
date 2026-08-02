@@ -352,7 +352,7 @@ def _names_consistent(a: str, b: str) -> bool:
 
 
 def _normalize_role(claimed_role: str) -> str:
-    """把简历里五花八门的角色措辞归一成标准四类：一作/共同一作/通讯/其他。"""
+    """把简历里五花八门的角色措辞归一成标准类：一作/共同一作/通讯/第N作者/其他。"""
     text = str(claimed_role or "").strip().lower()
     if not text or text == "不明":
         return "其他"
@@ -362,7 +362,25 @@ def _normalize_role(claimed_role: str) -> str:
         return "一作"
     if "通讯" in text or "corresponding" in text:
         return "通讯"
+    # 明确声称第N作者（如"第三作者"），保留原文供精确位次匹配
+    import re as _re
+    if _re.search(r"第\s*[一二三四五六七八九十\d]+\s*作", text) or _re.search(r"\d(?:st|nd|rd|th)\s+author", text):
+        return text  # 保留原文，_position_check 用正则提取数字
     return "其他"
+
+
+def _extract_claimed_position(role: str) -> int:
+    """从"第N作者"/"Nth author"提取声称的位次，提取失败返回 0。"""
+    import re as _re
+    cn = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+    m = _re.search(r"第\s*([一二三四五六七八九十\d]+)\s*作", str(role))
+    if m:
+        s = m.group(1)
+        return int(s) if s.isdigit() else cn.get(s, 0)
+    m = _re.search(r"(\d)(?:st|nd|rd|th)\s+author", str(role), _re.IGNORECASE)
+    if m:
+        return int(m.group(1))
+    return 0
 
 
 _VERDICTS = {"verified", "mismatch", "unverifiable"}
@@ -399,14 +417,20 @@ def _position_check(role: str, position: int, is_co_first: bool = False) -> str:
     """作者顺序维度判定：仅一作/共同一作约束位次，通讯/其他不约束。
 
     候选人不在列表（position=0）时，身份维度已标 mismatch，此处同样 mismatch。
-    is_co_first（论文标注 †/equal contribution）：一作/共一位次放宽到 ≤3。
+    is_co_first（论文标注 †/equal contribution）：一作/共一位次放宽到≤3。
+    明确声称"第N作者"时，实际位次与声称差≤1 算 match（作者顺序微调），
+    差≥2 判 mismatch。
     """
     if position <= 0:
         return "mismatch"
+    # 明确位次声称（"第三作者"等）：精确匹配，容差±1
+    claimed_pos = _extract_claimed_position(role)
+    if claimed_pos > 0:
+        return "match" if abs(position - claimed_pos) <= 1 else "mismatch"
     max_allowed = 3 if is_co_first else (2 if role == "共同一作" else 1)
     if role in {"一作", "共同一作"}:
         return "match" if position <= max_allowed else "mismatch"
-    return "match"  # 通讯 / 其他：不约束位次
+    return "match"  # 通讯 / 其他 / 不明：不约束位次
 
 
 def _derive_verdict(
@@ -426,12 +450,14 @@ def _derive_verdict(
         return "unverifiable"
     if verified_pos == 0:
         return "mismatch"  # 作者列表无此人 = 硬事实冲突
-    if _position_check(role, verified_pos, is_co_first) == "mismatch" and role in {"一作", "共同一作"}:
-        # 位次落在 2-3 位且无共一标注时，可能是共一（API 不返共一标注）。
-        # 不判造假，改待人工核实，让 HR 确认是否共一后放行。
-        if not is_co_first and 2 <= verified_pos <= 3:
+    if _position_check(role, verified_pos, is_co_first) == "mismatch":
+        # 明确位次声称（"第三作者"等）差≥2 → mismatch（硬冲突）
+        if _extract_claimed_position(role) > 0:
+            return "mismatch"
+        # 一作/共一 2-3 位无共一标注：可能是共一，不判造假改待人工
+        if role in {"一作", "共同一作"} and not is_co_first and 2 <= verified_pos <= 3:
             return "unverifiable"
-        return "mismatch"  # 位次严重靠后（≥4）或共一仍不匹配 → 硬伤
+        return "mismatch"  # 位次严重靠后
     return "verified"
 
 

@@ -66,7 +66,6 @@ export default function ResumeEvaluate() {
   const [evaluating, setEvaluating] = useState(false);
   const [liveNodeRuns, setLiveNodeRuns] = useState<EvaluationNodeRun[]>([]);
   const [showImport, setShowImport] = useState(false);
-  /** 导入解析中的临时预览详情：中栏实时"长出"字段，落库后被正式 selected 取代 */
   const [importPreview, setImportPreview] = useState<CandidateDetail | null>(null);
 
   const loadCandidates = useCallback(async () => {
@@ -77,6 +76,20 @@ export default function ResumeEvaluate() {
       console.error("加载候选人失败", err);
     }
   }, []);
+
+  /** 静默刷新当前详情（不触发 loading，保持滚动位置）——人工裁决后用 */
+  const refreshSelectedSilently = useCallback(async () => {
+    if (!selectedId) return;
+    try {
+      const detail = await api.candidates.get(selectedId);
+      setSelected(detail);
+      setLiveNodeRuns(detail.evaluation_run?.node_runs || []);
+      setEvaluating(detail.evaluation_run?.status === "running");
+      await loadCandidates();
+    } catch (err) {
+      console.error("刷新详情失败", err);
+    }
+  }, [selectedId, loadCandidates]);
 
   useEffect(() => {
     loadCandidates();
@@ -220,6 +233,42 @@ export default function ResumeEvaluate() {
     }
   };
 
+  // 批量评估：最多 5 个并发跑（后端每个候选人各自一条 evaluation_run 线程，
+  // 互不冲突），多的排队等槽位释放。不展开单条进度，整体跑完刷新列表。
+  const handleEvaluateBatch = useCallback(async (ids: string[]) => {
+    if (!ids.length) return;
+    setEvaluating(true);
+    const CONCURRENCY = 5;
+    const queue = [...ids];
+    const runOne = async (id: string) => {
+      try {
+        const resp = await api.candidates.evaluateSSE(id);
+        if (!resp.ok) return; // 单条跳过（409 已在跑 / 门禁未通过）
+        for await (const _event of parseSSE(resp)) { /* 跑完即可 */ }
+      } catch (err) {
+        console.error("批量评估单条失败", id, err);
+      }
+      // 每条完成就刷列表，让左栏状态实时更新
+      await loadCandidates();
+    };
+    // 并发池：每当一个槽位空出，从 queue 取下一条
+    const workers: Promise<void>[] = [];
+    for (let i = 0; i < Math.min(CONCURRENCY, queue.length); i++) {
+      workers.push((async () => {
+        while (queue.length > 0) {
+          const id = queue.shift();
+          if (id) await runOne(id);
+        }
+      })());
+    }
+    try {
+      await Promise.all(workers);
+      if (selectedId) await selectCandidate(selectedId);
+    } finally {
+      setEvaluating(false);
+    }
+  }, [loadCandidates, selectCandidate, selectedId]);
+
   // 移出候选人：
   // - 已评估 → dismiss（软移出，数据保留在人才库）
   // - 未评估 → delete（物理删除）
@@ -293,6 +342,7 @@ export default function ResumeEvaluate() {
           onSelect={selectCandidate}
           onDelete={handleDelete}
           onImport={() => setShowImport(true)}
+          onEvaluateBatch={handleEvaluateBatch}
         />
 
         {/* 中栏：简历内容（容器不滚，内部模块卡各自滚动） */}
@@ -304,7 +354,7 @@ export default function ResumeEvaluate() {
           ) : importPreview ? (
             <ResumeContent key={importPreview.id} detail={importPreview} />
           ) : selected ? (
-            <ResumeContent key={selected.id} detail={selected} onReviewed={() => selectCandidate(selected.id)} />
+            <ResumeContent key={selected.id} detail={selected} onReviewed={refreshSelectedSilently} />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center gap-2">
               <Icon name="description" size={40} className="text-on-surface-variant" />

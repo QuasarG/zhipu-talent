@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ThinkingOrb } from "thinking-orbs";
 import type { ChatCitation, ChatMessage, ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
 import ToolCallCard from "./ToolCallCard";
@@ -111,7 +112,10 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
       <div className="flex-1 min-w-0">
         {message.content.segments.map(renderSegment)}
         {busy && message.status !== "awaiting_action" && (
-          <div className="md3-running-bar mt-2 rounded-full" />
+          <div className="mt-3 flex items-center gap-2">
+            <ThinkingOrb state="shaping" size={20} aria-label="正在思考" />
+            <span className="text-body-sm text-on-surface-variant">正在思考…</span>
+          </div>
         )}
         {error && (
           <div className="mt-2">

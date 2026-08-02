@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ChatSegment } from "@/lib/types";
 import Icon from "@/components/ui/Icon";
+import { ThinkingOrb } from "thinking-orbs";
 import { cn } from "@/lib/cn";
 
 type ToolSegment = Extract<ChatSegment, { type: "tool" }>;
@@ -14,7 +15,7 @@ function prettyDetail(detail: string): string {
   }
 }
 
-/** 工具调用卡片：运行中 = 旋转图标 + running-bar；完成后折叠成一行摘要 */
+/** 工具调用卡片：运行中 = shaping orb 轨迹形变动效；完成后折叠成一行摘要 */
 export default function ToolCallCard({ segment }: { segment: ToolSegment }) {
   const [expanded, setExpanded] = useState(false);
   const running = !segment.status;
@@ -36,7 +37,7 @@ export default function ToolCallCard({ segment }: { segment: ToolSegment }) {
         )}
       >
         {running ? (
-          <Icon name="progress_activity" size={18} className="md3-node-running text-primary shrink-0" />
+          <ThinkingOrb state="shaping" size={20} className="shrink-0" aria-label="正在调用工具" />
         ) : failed ? (
           <Icon name="error" size={18} fill className="text-error shrink-0" />
         ) : (
@@ -54,7 +55,6 @@ export default function ToolCallCard({ segment }: { segment: ToolSegment }) {
           />
         )}
       </button>
-      {running && <div className="md3-running-bar" />}
       {expanded && segment.detail && (
         <pre className="px-3 pb-2.5 max-h-64 overflow-auto font-mono text-xs text-on-surface-variant whitespace-pre-wrap break-all">
           {prettyDetail(segment.detail)}
