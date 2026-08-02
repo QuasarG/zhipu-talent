@@ -38,8 +38,8 @@ const HR_TONE: Record<string, "success" | "warning" | "info" | "primary" | "neut
 
 const PAGE_SIZE = 10;
 
-// 行网格：状态 chip 与更新时间按内容取宽（带下限），其余全给人才列，避免窄栏截字
-const ROW_GRID = "grid-cols-[minmax(0,1fr)_minmax(88px,auto)_minmax(36px,auto)]";
+// 行网格：人才 | 状态 | 评分 | 时间
+const ROW_GRID = "grid-cols-[minmax(0,1fr)_minmax(72px,auto)_minmax(40px,auto)_minmax(36px,auto)]";
 
 function fmtTime(iso: string | null): string {
   if (!iso) return "—";
@@ -125,6 +125,14 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete }: 
                 <StatusChip tone={HR_TONE[status] || "neutral"} className="min-w-0 justify-center whitespace-nowrap overflow-hidden text-ellipsis">
                   {STATUS_LABELS[status] || status}
                 </StatusChip>
+                {/* 评分列：仅简历评估类型显示 */}
+                <span className="min-w-0 text-center">
+                  {p.person_type !== "guest" && p.overall_score ? (
+                    <span className="text-body-sm font-bold text-primary">{p.overall_score}</span>
+                  ) : (
+                    <span className="text-label text-on-surface-variant">—</span>
+                  )}
+                </span>
                 <span className="min-w-0 text-label text-on-surface-variant truncate text-right">{fmtTime(p.updated_at)}</span>
 
                 {/* hover 显示的删除按钮 */}

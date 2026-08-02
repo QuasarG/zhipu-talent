@@ -794,6 +794,41 @@ def find_candidate_by_person(session, person_id: str) -> CandidateORM | None:
     return session.query(CandidateORM).filter_by(person_id=person_id).first()
 
 
+def list_person_resume_versions(session, person_id: str) -> list[dict[str, Any]]:
+    """查某人物的所有简历版本（按导入时间倒序），供前端对比。
+
+    双查口径：person_id 有值时按 person_id 查；
+    同时也查该 person 关联的 candidate 的所有 submissions（含 person_id=None 的早期导入）。
+    确保同一人的多次导入都能聚合到一起，即使身份归并时序差异。
+    """
+    from agi_talent_radar.core.db.orm import ResumeSubmissionORM
+
+    query = session.query(ResumeSubmissionORM)
+    # 先按 person_id 查
+    conds = [ResumeSubmissionORM.person_id == person_id]
+    # 再补充：该 person 关联的 candidate 的 submissions
+    candidate = find_candidate_by_person(session, person_id)
+    if candidate:
+        conds.append(ResumeSubmissionORM.candidate_id == candidate.id)
+    # union：满足任一条件
+    from sqlalchemy import or_
+    rows = (
+        query.filter(or_(*conds))
+        .order_by(ResumeSubmissionORM.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "submission_id": r.id,
+            "filename": r.filename or "",
+            "source_format": r.source_format or "",
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+            "structured": r.structured or {},
+        }
+        for r in rows
+    ]
+
+
 def find_or_create_candidate_for_person(
     session,
     person_id: str,

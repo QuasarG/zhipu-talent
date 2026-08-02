@@ -9,6 +9,7 @@ import Progress from "@/components/ui/Progress";
 import Icon from "@/components/ui/Icon";
 import { getSchoolLogo } from "@/lib/schoolLogos";
 import EngagementStatusControl from "./EngagementStatusControl";
+import ResumeVersionModal from "./ResumeVersionCompare";
 
 interface Props {
   person: PersonDetail | null;
@@ -34,6 +35,7 @@ function fmtTime(iso: string | null): string {
 export default function TalentDetail({ person, personId, onUpdated }: Props) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [showVersionDiff, setShowVersionDiff] = useState(false);
   const navigate = useNavigate();
 
   if (!person) {
@@ -226,6 +228,18 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
           </div>
         </section>
       </div>
+
+      {person.person_type !== "guest" && personId && (
+        <div className="px-4 py-2 border-t border-outline-variant shrink-0">
+          <Button variant="text" icon="compare" className="w-full" onClick={() => setShowVersionDiff(true)}>
+            简历版本对比
+          </Button>
+        </div>
+      )}
+
+      {showVersionDiff && personId && (
+        <ResumeVersionModal personId={personId} onClose={() => setShowVersionDiff(false)} />
+      )}
 
       <div className="px-4 py-2 border-t border-outline-variant shrink-0">
         <Button

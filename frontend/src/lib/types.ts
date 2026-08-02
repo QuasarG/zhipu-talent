@@ -334,6 +334,14 @@ export interface PersonDetail extends PersonBrief {
   reputation_reports: ReputationReport[];
 }
 
+export interface ResumeVersionEntry {
+  submission_id: string;
+  filename: string;
+  source_format: string;
+  created_at: string;
+  structured: Record<string, unknown>;
+}
+
 export interface ReputationReport {
   id: number;
   person_id: string;

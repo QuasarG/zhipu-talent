@@ -8,6 +8,7 @@ import type {
   PersonBrief,
   PersonDetail,
   ReputationReport,
+  ResumeVersionEntry,
 } from "./types";
 
 const BASE = "";
@@ -99,6 +100,8 @@ export const api = {
       }),
     reputation: (id: string) =>
       fetchJSON<ReputationReport[]>(`/api/persons/${id}/reputation`),
+    resumeVersions: (id: string) =>
+      fetchJSON<ResumeVersionEntry[]>(`/api/persons/${id}/resume-versions`),
     delete: (id: string) =>
       fetchJSON<{ id: string; deleted: boolean }>(`/api/persons/${id}`, { method: "DELETE" }),
   },

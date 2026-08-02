@@ -612,6 +612,18 @@ def create_app() -> Flask:
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
+    @app.get("/api/persons/<person_id>/resume-versions")
+    def list_resume_versions_view(person_id: str):
+        """返回某人物的所有简历版本（每次导入一条），供前端对比。"""
+        try:
+            from agi_talent_radar.core.database import get_session
+            from agi_talent_radar.core.db.repository import list_person_resume_versions
+
+            with get_session() as session:
+                return jsonify(list_person_resume_versions(session, person_id))
+        except Exception as exc:
+            return jsonify({"detail": str(exc)}), 500
+
     @app.get("/api/persons/<person_id>/reputation")
     def list_person_reputation(person_id: str):
         try:
