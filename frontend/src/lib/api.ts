@@ -156,14 +156,17 @@ export const api = {
     test: () => fetchJSON<{ llm: { ok: boolean; reason?: string } }>("/api/config/test"),
   },
   auth: {
-    login: (password: string) =>
+    login: (username: string, password: string) =>
       fetchJSON("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       }),
     logout: () => fetchJSON("/api/auth/logout", { method: "POST" }),
-    status: () => fetchJSON<{ authenticated: boolean }>("/api/auth/status"),
+    status: () =>
+      fetchJSON<{ authenticated: boolean; user: { id: string; username: string; display_name: string } | null }>(
+        "/api/auth/status"
+      ),
   },
   health: () => fetchJSON<HealthReport>("/health"),
 };

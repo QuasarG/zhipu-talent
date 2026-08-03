@@ -12,13 +12,13 @@ import Settings from "./pages/Settings";
 import OnboardingTour from "./components/OnboardingTour";
 
 function App() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; username: string; display_name: string } | null | undefined>(undefined);
 
   useEffect(() => {
-    api.auth.status().then((d) => setAuthed(d.authenticated));
+    api.auth.status().then((d) => setCurrentUser(d.user));
   }, []);
 
-  if (authed === null) {
+  if (currentUser === undefined) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <LoadingIndicator size={32} label="加载中…" />
@@ -26,14 +26,14 @@ function App() {
     );
   }
 
-  if (!authed) {
-    return <Login onLogin={() => setAuthed(true)} />;
+  if (currentUser === null) {
+    return <Login onLogin={() => api.auth.status().then((d) => setCurrentUser(d.user))} />;
   }
 
   return (
     <BrowserRouter>
       <div className="flex min-h-screen">
-        <NavRail />
+        <NavRail username={currentUser.display_name || currentUser.username} />
         <main className="flex-1 min-w-0 px-6 pb-6">
           <Routes>
             <Route path="/" element={<TalentChat />} />

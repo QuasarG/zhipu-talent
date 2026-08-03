@@ -12,7 +12,7 @@ const navItems = [
 ];
 
 /** MD3 Navigation Rail：80px 全高，active = pill 指示器 */
-export default function NavRail() {
+export default function NavRail({ username }: { username?: string }) {
   return (
     <nav data-tour="nav" className="sticky top-0 h-screen w-24 shrink-0 flex flex-col items-center py-5 bg-surface z-40">
       {/* Logo */}
@@ -67,8 +67,8 @@ export default function NavRail() {
         >
           <Icon name="logout" size={20} />
         </button>
-        <div className="w-9 h-9 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-xs font-semibold relative">
-          HR
+        <div className="w-9 h-9 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-xs font-semibold relative" title={username}>
+          {(username || "?").slice(0, 1)}
           <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-success border-2 border-surface" />
         </div>
       </div>
