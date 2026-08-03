@@ -584,12 +584,13 @@ def create_app() -> Flask:
         person_type = request.args.get("person_type", "")
         name = request.args.get("name", "")
         level = request.args.get("level", "")
+        group_id = request.args.get("group_id", "")
         try:
             from agi_talent_radar.core.database import get_session, list_persons
             from agi_talent_radar.core.db.repository import find_candidate_by_person
 
             with get_session() as session:
-                rows = list_persons(session, person_type=person_type, name=name, level=level)
+                rows = list_persons(session, person_type=person_type, name=name, level=level, group_id=group_id)
                 return jsonify([
                     _person_to_brief(row, find_candidate_by_person(session, row.id))
                     for row in rows
@@ -659,7 +660,103 @@ def create_app() -> Flask:
         except Exception as exc:
             return jsonify({"detail": str(exc)}), 500
 
-    @app.post("/api/reputation/<int:report_id>/review")
+    # ---- 人才库分组（手工分类，一对多，全局共享）----
+
+    @app.get("/api/talent-groups")
+    def list_talent_groups():
+        from agi_talent_radar.core.persons import count_persons_by_group, list_talent_groups as _list
+        from agi_talent_radar.core.db.runtime import get_session
+
+        with get_session() as session:
+            groups = _list(session)
+            return jsonify([
+                {
+                    "id": g.id,
+                    "name": g.name,
+                    "sort_order": g.sort_order,
+                    "count": count_persons_by_group(session, g.id),
+                }
+                for g in groups
+            ])
+
+    @app.post("/api/talent-groups")
+    def create_talent_group():
+        from agi_talent_radar.core.db.orm import TalentGroupORM
+        from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.core.persons import list_talent_groups
+
+        body = request.get_json(silent=True) or {}
+        name = str(body.get("name", "")).strip()
+        if not name:
+            return jsonify({"detail": "name 不能为空"}), 400
+        with get_session() as session:
+            max_order = max((g.sort_order for g in list_talent_groups(session)), default=-1)
+            group = TalentGroupORM(name=name[:64], sort_order=max_order + 1)
+            session.add(group)
+            session.commit()
+            return jsonify({"id": group.id, "name": group.name, "sort_order": group.sort_order, "count": 0}), 201
+
+    @app.patch("/api/talent-groups/<group_id>")
+    def rename_talent_group(group_id: str):
+        from agi_talent_radar.core.db.orm import TalentGroupORM
+        from agi_talent_radar.core.db.runtime import get_session
+
+        body = request.get_json(silent=True) or {}
+        name = str(body.get("name", "")).strip()
+        if not name:
+            return jsonify({"detail": "name 不能为空"}), 400
+        with get_session() as session:
+            group = session.get(TalentGroupORM, group_id)
+            if group is None:
+                return jsonify({"detail": "分组不存在"}), 404
+            group.name = name[:64]
+            session.commit()
+            return jsonify({"id": group.id, "name": group.name, "sort_order": group.sort_order})
+
+    @app.delete("/api/talent-groups/<group_id>")
+    def delete_talent_group(group_id: str):
+        from agi_talent_radar.core.db.orm import PersonORM, TalentGroupORM
+        from agi_talent_radar.core.db.runtime import get_session
+
+        with get_session() as session:
+            group = session.get(TalentGroupORM, group_id)
+            if group is None:
+                return jsonify({"detail": "分组不存在"}), 404
+            # 删除前把该分组的人退回未分组（FK ondelete SET NULL 也兜底）
+            session.query(PersonORM).filter_by(group_id=group_id).update(
+                {PersonORM.group_id: None}, synchronize_session=False
+            )
+            session.delete(group)
+            session.commit()
+            return jsonify({"id": group_id, "deleted": True})
+
+    @app.post("/api/persons/<person_id>/move")
+    def move_person(person_id: str):
+        from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.core.persons import move_person_to_group
+
+        body = request.get_json(silent=True) or {}
+        group_id = body.get("group_id")  # None = 移到未分组
+        with get_session() as session:
+            ok = move_person_to_group(session, person_id, group_id)
+            if not ok:
+                return jsonify({"detail": "人员不存在"}), 404
+            return jsonify({"id": person_id, "group_id": group_id})
+
+    @app.post("/api/persons/batch-move")
+    def batch_move_persons_view():
+        from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.core.persons import batch_move_persons
+
+        body = request.get_json(silent=True) or {}
+        person_ids = body.get("person_ids") or []
+        group_id = body.get("group_id")  # None = 移到未分组
+        if not isinstance(person_ids, list) or not person_ids:
+            return jsonify({"detail": "person_ids 不能为空"}), 400
+        with get_session() as session:
+            n = batch_move_persons(session, person_ids, group_id)
+            return jsonify({"moved": n, "group_id": group_id})
+
     def review_reputation(report_id: int):
         body = request.get_json(silent=True) or {}
         action = body.get("action")
@@ -1322,6 +1419,7 @@ def _person_to_brief(person, candidate=None) -> dict[str, Any]:
         "org": person.org or "",
         "direction": person.direction or "",
         "person_type": person.person_type,
+        "group_id": person.group_id,
         "schools": getattr(person, "schools", None) or [],
         "top_schools": top_school_names(getattr(person, "schools", None) or []),
         "overall_score": latest_eval.overall_score if latest_eval else None,

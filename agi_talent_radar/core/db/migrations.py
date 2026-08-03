@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 14
+LATEST_SCHEMA_VERSION = 15
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -128,6 +128,13 @@ def ensure_schema(engine) -> None:
             14,
             "phase 14: add users table + conversations.owner_id; seed 8 accounts; "
             "clear legacy conversations (chat isolation)",
+        )
+    if current_version < 15:
+        _migrate_talent_groups(engine)
+        _record_version(
+            engine,
+            15,
+            "phase 15: add talent_groups table + persons.group_id (manual grouping)",
         )
     _ensure_indexes(engine)
 
@@ -421,6 +428,16 @@ _SEED_USERS = {
     "panyufei": "潘俞非",
 }
 _SEED_PASSWORD = "talent2026"
+
+
+def _migrate_talent_groups(engine) -> None:
+    """阶段 15：talent_groups 表由 create_all 自动建；persons 加 group_id 列。"""
+    inspector = inspect(engine)
+    if "persons" not in inspector.get_table_names():
+        return
+    persons_columns = {c["name"] for c in inspector.get_columns("persons")}
+    if "group_id" not in persons_columns:
+        _add_columns(engine, "persons", ["group_id VARCHAR(36)"])
 
 
 def _migrate_users_and_conversation_owner(engine) -> None:

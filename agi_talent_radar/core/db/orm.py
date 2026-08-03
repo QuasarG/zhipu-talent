@@ -337,6 +337,8 @@ class PersonORM(Base):
     schools = Column(JSON, default=list)
     # 阶段 2：是否处于身份冲突（pending merge review）状态。
     identity_conflict = Column(Boolean, default=False, nullable=False)
+    # 人才库分组（一对多：一人只在一个分组，NULL=未分组；全局共享）
+    group_id = Column(String(36), ForeignKey("talent_groups.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -647,6 +649,17 @@ class PublicationVerificationORM(Base):
 
 def _new_uuid() -> str:
     return uuid.uuid4().hex
+
+
+class TalentGroupORM(Base):
+    """人才库分组：纯手工分类，全局共享，一对多挂 persons.group_id。"""
+
+    __tablename__ = "talent_groups"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    name = Column(String(64), nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 
 class ConversationORM(Base):

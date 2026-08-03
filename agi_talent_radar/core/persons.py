@@ -5,7 +5,7 @@ import hashlib
 import re
 import uuid
 
-from agi_talent_radar.core.db.orm import PersonORM, ReputationReportORM
+from agi_talent_radar.core.db.orm import PersonORM, ReputationReportORM, TalentGroupORM
 
 PERSON_TYPES = {"student", "social", "guest"}
 
@@ -62,10 +62,14 @@ def list_persons(
     person_type: str = "",
     name: str = "",
     level: str = "",
+    group_id: str = "",
     limit: int = 50,
     offset: int = 0,
 ) -> list[PersonORM]:
-    """人才库列表：按类型/姓名/舆情等级筛选，分页返回。只读不 commit。"""
+    """人才库列表：按类型/姓名/舆情等级/分组筛选，分页返回。只读不 commit。
+
+    group_id 语义："ungrouped" → 过滤 NULL；具体 id → 该分组；空 → 全部。
+    """
     query = session.query(PersonORM)
     if person_type:
         query = query.filter(PersonORM.person_type == person_type)
@@ -76,9 +80,45 @@ def list_persons(
         query = query.join(
             ReputationReportORM, PersonORM.id == ReputationReportORM.person_id, isouter=True,
         ).filter(ReputationReportORM.level == level)
+    if group_id == "ungrouped":
+        query = query.filter(PersonORM.group_id.is_(None))
+    elif group_id:
+        query = query.filter(PersonORM.group_id == group_id)
     return query.order_by(PersonORM.updated_at.desc()).limit(limit).offset(offset).all()
 
 
 def get_person_detail(session, person_id: str) -> PersonORM | None:
     """人才详情：主档 + 评估历史 + 舆情报告，通过 relationship 一次性带出。只读不 commit。"""
     return session.query(PersonORM).filter_by(id=person_id).first()
+
+
+def list_talent_groups(session) -> list[TalentGroupORM]:
+    """列出所有分组（按 sort_order），只读不 commit。"""
+    return session.query(TalentGroupORM).order_by(TalentGroupORM.sort_order.asc()).all()
+
+
+def count_persons_by_group(session, group_id: str) -> int:
+    return session.query(PersonORM).filter_by(group_id=group_id).count()
+
+
+def move_person_to_group(session, person_id: str, group_id: str | None) -> bool:
+    """一人移入分组（一对多，旧分组自动移出）。返回是否找到人。"""
+    person = session.get(PersonORM, person_id)
+    if person is None:
+        return False
+    person.group_id = group_id  # None = 移到未分组
+    session.commit()
+    return True
+
+
+def batch_move_persons(session, person_ids: list[str], group_id: str | None) -> int:
+    """批量移动到同一分组，返回实际更新数。"""
+    if not person_ids:
+        return 0
+    updated = (
+        session.query(PersonORM)
+        .filter(PersonORM.id.in_(person_ids))
+        .update({PersonORM.group_id: group_id}, synchronize_session=False)
+    )
+    session.commit()
+    return updated
