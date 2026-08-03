@@ -9,6 +9,7 @@ import type {
   PersonDetail,
   ReputationReport,
   ResumeVersionEntry,
+  TalentGroup,
 } from "./types";
 
 const BASE = "";
@@ -78,11 +79,12 @@ export const api = {
       fetchJSON<unknown[]>(`/api/candidates/${id}/engagement-history`),
   },
   persons: {
-    list: (params?: { person_type?: string; name?: string; level?: string }) => {
+    list: (params?: { person_type?: string; name?: string; level?: string; group_id?: string }) => {
       const qs = new URLSearchParams();
       if (params?.person_type) qs.set("person_type", params.person_type);
       if (params?.name) qs.set("name", params.name);
       if (params?.level) qs.set("level", params.level);
+      if (params?.group_id) qs.set("group_id", params.group_id);
       return fetchJSON<PersonBrief[]>(`/api/persons?${qs}`);
     },
     get: (id: string) => fetchJSON<PersonDetail>(`/api/persons/${id}`),
@@ -104,6 +106,35 @@ export const api = {
       fetchJSON<ResumeVersionEntry[]>(`/api/persons/${id}/resume-versions`),
     delete: (id: string) =>
       fetchJSON<{ id: string; deleted: boolean }>(`/api/persons/${id}`, { method: "DELETE" }),
+    move: (id: string, groupId: string | null) =>
+      fetchJSON<{ id: string; group_id: string | null }>(`/api/persons/${id}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: groupId }),
+      }),
+    batchMove: (personIds: string[], groupId: string | null) =>
+      fetchJSON<{ moved: number; group_id: string | null }>(`/api/persons/batch-move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ person_ids: personIds, group_id: groupId }),
+      }),
+  },
+  talentGroups: {
+    list: () => fetchJSON<TalentGroup[]>("/api/talent-groups"),
+    create: (name: string) =>
+      fetchJSON<TalentGroup>("/api/talent-groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      }),
+    rename: (id: string, name: string) =>
+      fetchJSON<TalentGroup>(`/api/talent-groups/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      }),
+    delete: (id: string) =>
+      fetchJSON<{ id: string; deleted: boolean }>(`/api/talent-groups/${id}`, { method: "DELETE" }),
   },
   reputation: {
     review: (reportId: number, action: "confirmed" | "dismissed", reviewer: string, note: string) =>

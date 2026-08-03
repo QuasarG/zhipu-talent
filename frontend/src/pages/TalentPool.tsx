@@ -1,17 +1,17 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
-import type { PersonBrief, PersonDetail } from "@/lib/types";
+import type { PersonBrief, PersonDetail, TalentGroup } from "@/lib/types";
 import PageToolbar from "@/components/layout/PageToolbar";
 import SearchField from "@/components/ui/SearchField";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import Chip from "@/components/ui/Chip";
 import Card from "@/components/ui/Card";
 import { IconButton } from "@/components/ui/Button";
-import Button from "@/components/ui/Button";
 import TalentList, { classifyTrack, STATUS_LABELS, TRACKS } from "@/features/pool/TalentList";
 import TalentDetail from "@/features/pool/TalentDetail";
 import RelationGraph from "@/features/pool/RelationGraph";
 import AddPersonDialog from "@/features/pool/AddPersonDialog";
+import GroupDrawer from "@/features/pool/GroupDrawer";
 import { useSessionState } from "@/lib/sessionState";
 
 export default function TalentPool() {
@@ -25,11 +25,17 @@ export default function TalentPool() {
   const [hrFilter, setHrFilter] = useSessionState("talent-pool.hr-filter", "");
   const [view, setView] = useSessionState<"list" | "graph">("talent-pool.view", "graph");
   const [showAddPerson, setShowAddPerson] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
+  const [groups, setGroups] = useState<TalentGroup[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const list = await api.persons.list(search ? { name: search } : undefined);
+      const [list, gs] = await Promise.all([
+        api.persons.list(search ? { name: search } : undefined),
+        api.talentGroups.list(),
+      ]);
       setPersons(list);
+      setGroups(gs);
     } catch (err) {
       console.error(err);
     }
@@ -112,9 +118,6 @@ export default function TalentPool() {
         }
         right={
           <>
-            <Button variant="tonal" icon="person_add" onClick={() => setShowAddPerson(true)}>
-              手动加入
-            </Button>
             <SegmentedButtons
               options={[
                 { value: "list", label: "列表详情", icon: "list" },
@@ -178,7 +181,7 @@ export default function TalentPool() {
       </div>
 
       <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
-        <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} />
+        <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} />
         {view === "graph" ? (
           <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
         ) : (
@@ -214,6 +217,9 @@ export default function TalentPool() {
 
       {showAddPerson && (
         <AddPersonDialog onClose={() => setShowAddPerson(false)} onAdded={load} />
+      )}
+      {showGroups && (
+        <GroupDrawer groups={groups} onChanged={load} onClose={() => setShowGroups(false)} />
       )}
     </div>
   );

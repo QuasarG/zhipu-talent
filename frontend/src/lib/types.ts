@@ -314,6 +314,7 @@ export interface PersonBrief {
   org: string;
   direction: string;
   person_type: string;
+  group_id: string | null;
   schools?: PersonEducation[];
   top_schools?: string[];
   overall_score: number | null;
@@ -332,6 +333,13 @@ export interface PersonDetail extends PersonBrief {
   created_at: string;
   evaluations: Evaluation[];
   reputation_reports: ReputationReport[];
+}
+
+export interface TalentGroup {
+  id: string;
+  name: string;
+  sort_order: number;
+  count: number;
 }
 
 export interface ResumeVersionEntry {
