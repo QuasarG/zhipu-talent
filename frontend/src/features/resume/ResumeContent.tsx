@@ -592,7 +592,7 @@ function ReviewActions({ candidateId, alignment, alignmentIndex, onReviewed }: {
 
   // 按钮文案随 verdict 变化（语义：判 AI 结论对不对）
   const presets: Record<string, { ok: { label: string; icon: string }; no: { label: string; icon: string } }> = {
-    verified: { ok: { label: "AI判定正确", icon: "check" }, no: { label: "AI判定有误", icon: "report_problem" } },
+    verified: { ok: { label: "AI判定正确", icon: "check" }, no: { label: "AI判定有误", icon: "warning" } },
     mismatch: { ok: { label: "AI判定正确", icon: "check" }, no: { label: "AI判定有误", icon: "undo" } },
     unverifiable: { ok: { label: "确认属实", icon: "person_check" }, no: { label: "驳回", icon: "person_cancel" } },
   };

@@ -42,6 +42,15 @@ const FIELDS: { key: string; label: string; icon: string }[] = [
   { key: "skills", label: "技能", icon: "bolt" },
 ];
 
+/** 后端 SQLite 存 UTC（isoformat 无时区后缀），补 Z 后缀按 UTC 解析，避免 8h 偏差 */
+function fmtDate(iso: string): string {
+  if (!iso) return "";
+  const normalized = iso.includes("T") ? iso : iso.replace(" ", "T");
+  const d = new Date(normalized.endsWith("Z") ? normalized : normalized + "Z");
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return d.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 export default function ResumeVersionModal({ personId, onClose }: Props) {
   const [versions, setVersions] = useState<ResumeVersionEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +115,7 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
                   >
                     {versions.map((v, i) => (
                       <option key={v.submission_id} value={i}>
-                        {v.filename || "未命名"} · {v.created_at.slice(0, 10)}
+                        {v.filename || "未命名"} · {fmtDate(v.created_at)}
                       </option>
                     ))}
                   </select>
@@ -120,7 +129,7 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
                   >
                     {versions.map((v, i) => (
                       <option key={v.submission_id} value={i}>
-                        {v.filename || "未命名"} · {v.created_at.slice(0, 10)}
+                        {v.filename || "未命名"} · {fmtDate(v.created_at)}
                       </option>
                     ))}
                   </select>
@@ -162,7 +171,7 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
                           ))}
                           {diff.removed.map((item, i) => (
                             <div key={`rm-${i}`} className="flex items-start gap-2 text-body-sm">
-                              <Icon name="remove_circle" size={14} className="text-error mt-0.5 shrink-0" />
+                              <Icon name="remove" size={14} className="text-error mt-0.5 shrink-0" />
                               <span className="text-error line-through">{item}</span>
                             </div>
                           ))}
