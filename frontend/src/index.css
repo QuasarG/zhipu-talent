@@ -1,13 +1,5 @@
 @import "tailwindcss";
 
-/* 自托管字体：Material Symbols 走 Google CDN 在国内必挂，一律本地 */
-@font-face {
-  font-family: "Material Symbols Outlined";
-  font-style: normal;
-  font-weight: 100 700;
-  font-display: block;
-  src: url("./assets/fonts/material-symbols-outlined.woff2") format("woff2");
-}
 @font-face {
   font-family: "Roboto Flex";
   font-style: normal;
@@ -176,17 +168,6 @@ body {
 .state-layer:active::after { opacity: 0.12; }
 
 /* ---- Material Symbols 图标基类 ---- */
-.md-icon {
-  font-family: "Material Symbols Outlined";
-  font-weight: normal; font-style: normal;
-  font-size: 20px; line-height: 1;
-  display: inline-block; white-space: nowrap;
-  direction: ltr; -webkit-font-smoothing: antialiased;
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
-  user-select: none;
-}
-.md-icon-fill { font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24; }
-
 /* ---- A11y ---- */
 :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 [data-search-field] > input:focus-visible { outline: none; outline-offset: 0; }
