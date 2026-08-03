@@ -11,7 +11,6 @@
 """
 from __future__ import annotations
 
-import hmac
 import os
 import time
 from functools import wraps
@@ -30,11 +29,8 @@ from flask import (  # type: ignore[import-not-found]
 AUTH_BP_NAME = "auth"
 SESSION_KEY_AUTHED = "authed_at"
 SESSION_KEY_EXPIRES = "auth_expires_at"
+SESSION_KEY_USER_ID = "user_id"
 DEFAULT_SESSION_TTL_SECONDS = 8 * 3600  # 8 小时
-
-
-def _read_auth_password() -> str:
-    return os.getenv("APP_AUTH_PASSWORD", "").strip()
 
 
 def _read_session_secret() -> str:
@@ -49,10 +45,6 @@ def _read_session_ttl() -> int:
         return DEFAULT_SESSION_TTL_SECONDS
 
 
-def _constant_time_compare(a: str, b: str) -> bool:
-    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
-
-
 def is_authenticated() -> bool:
     """检查当前会话是否已鉴权且未过期。"""
     authed_at = session.get(SESSION_KEY_AUTHED)
@@ -64,18 +56,54 @@ def is_authenticated() -> bool:
     return True
 
 
-def login(password: str) -> bool:
-    """尝试登录。成功写入会话；失败返回 False。"""
-    expected = _read_auth_password()
-    if not expected:
-        # 未配置密码时禁止任何登录（生产环境应 fail-closed）。
+def current_user():
+    """返回当前登录用户 ORM，未登录返回 None。
+
+    从 session 取 user_id 后查 DB；结果缓存到 flask.g.current_user。
+    """
+    from flask import g
+
+    cached = getattr(g, "current_user", None)
+    if cached is not None:
+        return cached
+
+    user_id = session.get(SESSION_KEY_USER_ID)
+    if not user_id:
+        return None
+
+    from agi_talent_radar.core.database import get_session
+    from agi_talent_radar.core.db.orm import UserORM
+
+    with get_session() as db_session:
+        user = db_session.get(UserORM, user_id)
+        if user and user.is_active:
+            g.current_user = user
+            return user
+    return None
+
+
+def login(username: str, password: str) -> bool:
+    """用户名+密码登录。成功写入会话；失败返回 False。"""
+    if not username or not password:
         return False
-    if not _constant_time_compare(password or "", expected):
-        return False
+
+    from werkzeug.security import check_password_hash
+
+    from agi_talent_radar.core.database import get_session
+    from agi_talent_radar.core.db.orm import UserORM
+
+    with get_session() as db_session:
+        user = db_session.query(UserORM).filter_by(username=username.strip()).first()
+        if not user or not user.is_active:
+            return False
+        if not check_password_hash(user.password_hash, password):
+            return False
+
     ttl = _read_session_ttl()
     now = time.time()
     session[SESSION_KEY_AUTHED] = now
     session[SESSION_KEY_EXPIRES] = now + ttl
+    session[SESSION_KEY_USER_ID] = user.id
     session.permanent = True
     return True
 
@@ -84,6 +112,7 @@ def logout() -> None:
     """主动退出：清除会话。"""
     session.pop(SESSION_KEY_AUTHED, None)
     session.pop(SESSION_KEY_EXPIRES, None)
+    session.pop(SESSION_KEY_USER_ID, None)
     session.clear()
 
 
@@ -148,10 +177,17 @@ def build_auth_blueprint() -> Blueprint:
     @bp.post("/api/auth/login")
     def auth_login():
         body = request.get_json(silent=True) or {}
+        username = str(body.get("username", ""))
         password = str(body.get("password", ""))
-        if login(password):
-            return jsonify({"authenticated": True})
-        return jsonify({"detail": "密码错误或未配置访问密码。"}), 401
+        if login(username, password):
+            user = current_user()
+            return jsonify({
+                "authenticated": True,
+                "user": {"id": user.id, "username": user.username, "display_name": user.display_name}
+                if user
+                else None,
+            })
+        return jsonify({"detail": "用户名或密码错误。"}), 401
 
     @bp.post("/api/auth/logout")
     def auth_logout():
@@ -160,7 +196,14 @@ def build_auth_blueprint() -> Blueprint:
 
     @bp.get("/api/auth/status")
     def auth_status():
-        return jsonify({"authenticated": is_authenticated()})
+        authed = is_authenticated()
+        user = current_user() if authed else None
+        return jsonify({
+            "authenticated": authed,
+            "user": {"id": user.id, "username": user.username, "display_name": user.display_name}
+            if user
+            else None,
+        })
 
     @bp.get("/login")
     def login_page():
@@ -217,6 +260,7 @@ __all__ = [
     "AUTH_BP_NAME",
     "PUBLIC_PATHS",
     "is_authenticated",
+    "current_user",
     "login",
     "logout",
     "require_auth",

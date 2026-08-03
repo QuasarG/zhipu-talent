@@ -23,6 +23,7 @@ from agi_talent_radar.core.database import get_session
 from agi_talent_radar.core.db.orm import ChatMessageORM, ConversationORM
 from agi_talent_radar.knowledge_agent.service import action_events, ask_events
 from agi_talent_radar.services import talent_service
+from agi_talent_radar.web.auth import current_user
 
 KNOWLEDGE_BP_NAME = "knowledge"
 
@@ -83,9 +84,11 @@ def build_knowledge_blueprint():
         conversation_id = str(body.get("conversation_id") or "").strip()
         if not prompt:
             return jsonify({"detail": "prompt 不能为空。"}), 400
+        user = current_user()
         with get_session() as session:
-            if session.get(ConversationORM, conversation_id) is None:
-                return jsonify({"detail": "会话不存在，请先创建会话。"}), 404
+            conv = session.get(ConversationORM, conversation_id)
+            if conv is None or conv.owner_id != user.id:
+                return jsonify({"detail": "会话不存在。"}), 404
         return _sse_response(ask_events(conversation_id, prompt))
 
     @bp.post("/api/knowledge/action")
@@ -98,16 +101,20 @@ def build_knowledge_blueprint():
             return jsonify({"detail": "conversation_id 与 action_id 必填。"}), 400
         if not isinstance(decision, dict):
             return jsonify({"detail": "decision 必须是对象。"}), 400
+        user = current_user()
         with get_session() as session:
-            if session.get(ConversationORM, conversation_id) is None:
+            conv = session.get(ConversationORM, conversation_id)
+            if conv is None or conv.owner_id != user.id:
                 return jsonify({"detail": "会话不存在。"}), 404
         return _sse_response(action_events(conversation_id, action_id, decision))
 
     @bp.get("/api/conversations")
     def list_conversations():
+        user = current_user()
         with get_session() as session:
             convs = (
                 session.query(ConversationORM)
+                .filter(ConversationORM.owner_id == user.id)
                 .order_by(ConversationORM.updated_at.desc())
                 .limit(100)
                 .all()
@@ -116,17 +123,19 @@ def build_knowledge_blueprint():
 
     @bp.post("/api/conversations")
     def create_conversation():
+        user = current_user()
         with get_session() as session:
-            conv = ConversationORM()
+            conv = ConversationORM(owner_id=user.id)
             session.add(conv)
             session.commit()
             return jsonify(_conversation_to_dict(conv)), 201
 
     @bp.get("/api/conversations/<conversation_id>/messages")
     def list_messages(conversation_id: str):
+        user = current_user()
         with get_session() as session:
             conv = session.get(ConversationORM, conversation_id)
-            if conv is None:
+            if conv is None or conv.owner_id != user.id:
                 return jsonify({"detail": "会话不存在。"}), 404
             return jsonify([_message_to_dict(message) for message in conv.messages])
 
@@ -136,9 +145,10 @@ def build_knowledge_blueprint():
         title = str(body.get("title") or "").strip()
         if not title:
             return jsonify({"detail": "title 不能为空。"}), 400
+        user = current_user()
         with get_session() as session:
             conv = session.get(ConversationORM, conversation_id)
-            if conv is None:
+            if conv is None or conv.owner_id != user.id:
                 return jsonify({"detail": "会话不存在。"}), 404
             conv.title = title[:200]
             session.commit()
@@ -146,9 +156,10 @@ def build_knowledge_blueprint():
 
     @bp.delete("/api/conversations/<conversation_id>")
     def delete_conversation(conversation_id: str):
+        user = current_user()
         with get_session() as session:
             conv = session.get(ConversationORM, conversation_id)
-            if conv is None:
+            if conv is None or conv.owner_id != user.id:
                 return jsonify({"detail": "会话不存在。"}), 404
             session.delete(conv)
             session.commit()

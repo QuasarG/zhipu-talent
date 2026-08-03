@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 12
+LATEST_SCHEMA_VERSION = 14
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -120,6 +120,14 @@ def ensure_schema(engine) -> None:
             engine,
             13,
             "phase 13: candidates.supplementary_info for HR-provided extra info injected into evaluation",
+        )
+    if current_version < 14:
+        _migrate_users_and_conversation_owner(engine)
+        _record_version(
+            engine,
+            14,
+            "phase 14: add users table + conversations.owner_id; seed 8 accounts; "
+            "clear legacy conversations (chat isolation)",
         )
     _ensure_indexes(engine)
 
@@ -398,3 +406,59 @@ def _json_list(value: Any) -> list:
         except json.JSONDecodeError:
             return []
     return []
+
+
+# 种子账号：username → display_name；密码统一 talent2026（迁移时注入）
+_SEED_USERS = {
+    "heyun": "何芸",
+    "gaomin": "高敏",
+    "huangmeiling": "黄美玲",
+    "pushiyao": "蒲诗瑶",
+    "zhangyimei": "张意梅",
+    "pengguanqiao": "彭冠乔",
+    "sunzhibo": "孙智博",
+    "guozexin": "郭泽新",
+    "panyufei": "潘俞非",
+}
+_SEED_PASSWORD = "talent2026"
+
+
+def _migrate_users_and_conversation_owner(engine) -> None:
+    """阶段 14：建 users 表（create_all 自动）+ 清空老会话 + conversations 加 owner_id + 插种子用户。
+
+    owner_id NOT NULL：清空老会话后加列，避免 NULL 归属歧义。
+    种子用户幂等：已存在的 username 跳过。
+    """
+    from agi_talent_radar.core.db.orm import UserORM
+    from werkzeug.security import generate_password_hash
+
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+
+    # conversations 表存在时：清空老会话（级联删 messages），再加 owner_id 列
+    if "conversations" in tables:
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM conversations"))
+        conv_cols = {c["name"] for c in inspector.get_columns("conversations")}
+        if "owner_id" not in conv_cols:
+            _add_columns(engine, "conversations", ["owner_id VARCHAR(36) NOT NULL DEFAULT ''"])
+            # SQLite ALTER 加 NOT NULL 需要默认值；加完后清空默认（MySQL/SQLite 兼容写法）
+            with engine.begin() as connection:
+                connection.execute(text("UPDATE conversations SET owner_id = '' WHERE owner_id IS NULL"))
+
+    # 种子用户：幂等插入
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        for username, display_name in _SEED_USERS.items():
+            exists = session.query(UserORM.id).filter_by(username=username).first()
+            if exists:
+                continue
+            session.add(
+                UserORM(
+                    username=username,
+                    display_name=display_name,
+                    password_hash=generate_password_hash(_SEED_PASSWORD),
+                    is_active=True,
+                )
+            )
+        session.commit()

@@ -650,11 +650,12 @@ def _new_uuid() -> str:
 
 
 class ConversationORM(Base):
-    """一段人才问答会话。"""
+    """一段人才问答会话（按 owner 隔离，只有聊天记录分用户）。"""
 
     __tablename__ = "conversations"
 
     id = Column(String(36), primary_key=True, default=_new_uuid)
+    owner_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(200), default="新对话")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -694,3 +695,16 @@ class ChatMessageORM(Base):
     )
 
     conversation = relationship("ConversationORM", back_populates="messages")
+
+
+class UserORM(Base):
+    """平台账号：仅用于会话隔离，不开放注册。"""
+
+    __tablename__ = "users"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    username = Column(String(64), nullable=False, unique=True, index=True)
+    password_hash = Column(String(256), nullable=False)
+    display_name = Column(String(64), default="")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
