@@ -15,8 +15,8 @@ export default defineConfig(({ command }) => ({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://127.0.0.1:8502",
-      "/health": "http://127.0.0.1:8502",
+      "/api": "http://127.0.0.1:8503",
+      "/health": "http://127.0.0.1:8503",
     },
   },
   build: {
