@@ -425,6 +425,65 @@ export type ChatEvent =
   | { type: "error"; payload: { message: string } }
   | { type: "done"; payload: { status: "completed" | "awaiting_action" } };
 
+// ---- 奖学金初筛 ----
+
+export interface ScholarshipReputationItem {
+  id: number;
+  subject: string;
+  subject_role: string;
+  sentiment: string;
+  title: string;
+  url: string;
+  snippet: string;
+  concern: string;
+  review_status: string;
+  adjustment: number;
+  reviewer: string;
+}
+
+export interface ScholarshipEvaluation {
+  id: number;
+  config_version: string;
+  status: string;
+  blind_score: number;
+  dimensions: { key: string; label: string; score: number; max_points: number; reason: string }[];
+  highlights: string[];
+  risks: string[];
+  error_message: string;
+  created_at: string | null;
+}
+
+export interface ScholarshipMaterial {
+  id: number;
+  kind: string;
+  filename: string;
+  advisor_name: string;
+  raw_text: string;
+}
+
+export interface ScholarshipApplication {
+  id: string;
+  name: string;
+  degree_type: string;
+  expected_graduation: string;
+  direction: string;
+  school: string;
+  advisors: string[];
+  status: string;
+  screening_detail: { missing?: string[]; reasons?: string[] };
+  brand_bonus: number;
+  brand_note: string;
+  materials_count: number;
+  blind_score: number | null;
+  reputation_adjustment: number;
+  total_score: number | null;
+  pending_reputation: number;
+  // detail 才有
+  materials?: ScholarshipMaterial[];
+  evaluations?: ScholarshipEvaluation[];
+  reputation_items?: ScholarshipReputationItem[];
+}
+
 // 健康检查
 export interface HealthReport {
   overall: "ok" | "degraded" | "down";

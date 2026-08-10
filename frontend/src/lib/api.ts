@@ -9,6 +9,9 @@ import type {
   PersonDetail,
   ReputationReport,
   ResumeVersionEntry,
+  ScholarshipApplication,
+  ScholarshipEvaluation,
+  ScholarshipReputationItem,
   TalentGroup,
 } from "./types";
 
@@ -142,6 +145,59 @@ export const api = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reviewer, note }),
+      }),
+  },
+  // ---- 奖学金初筛 ----
+  scholarship: {
+    list: () => fetchJSON<ScholarshipApplication[]>("/api/scholarship/applications"),
+    create: (data: {
+      name: string;
+      degree_type: string;
+      expected_graduation?: string;
+      direction?: string;
+      school?: string;
+      advisors?: string[];
+    }) =>
+      fetchJSON<ScholarshipApplication>("/api/scholarship/applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    get: (id: string) => fetchJSON<ScholarshipApplication>(`/api/scholarship/applications/${id}`),
+    remove: (id: string) =>
+      fetchJSON<{ deleted: boolean }>(`/api/scholarship/applications/${id}`, { method: "DELETE" }),
+    // multipart 上传，zip 由后端自动解包
+    uploadMaterials: (id: string, files: File[]) => {
+      const form = new FormData();
+      files.forEach((f) => form.append("files", f));
+      return fetchJSON<{ added: number; max_letters: number }>(
+        `/api/scholarship/applications/${id}/materials`,
+        { method: "POST", body: form },
+      );
+    },
+    screen: (id: string) =>
+      fetchJSON<{ status: string; missing: string[]; reasons: string[] }>(
+        `/api/scholarship/applications/${id}/screen`,
+        { method: "POST" },
+      ),
+    evaluate: (id: string) =>
+      fetchJSON<ScholarshipEvaluation>(`/api/scholarship/applications/${id}/evaluate`, { method: "POST" }),
+    reputationScan: (id: string) =>
+      fetchJSON<{ created: number; items: ScholarshipReputationItem[] }>(
+        `/api/scholarship/applications/${id}/reputation-scan`,
+        { method: "POST" },
+      ),
+    reviewReputation: (itemId: number, action: "confirmed" | "dismissed") =>
+      fetchJSON<ScholarshipReputationItem>(`/api/scholarship/reputation-items/${itemId}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reviewer: "hr" }),
+      }),
+    setBrand: (id: string, bonus: number, note: string) =>
+      fetchJSON<ScholarshipApplication>(`/api/scholarship/applications/${id}/brand`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bonus, note }),
       }),
   },
   import: (formData: FormData) =>

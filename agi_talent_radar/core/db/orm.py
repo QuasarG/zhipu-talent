@@ -721,3 +721,113 @@ class UserORM(Base):
     display_name = Column(String(64), default="")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Z.AI Scholarship 2026 奖学金初筛（独立于书院简历评估）
+# ---------------------------------------------------------------------------
+
+
+class ScholarshipApplicationORM(Base):
+    """奖学金申请人主档。status 状态机：
+    imported → eligible / material_incomplete / ineligible → scored → finalized。
+    """
+
+    __tablename__ = "scholarship_applications"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    name = Column(String(128), nullable=False)
+    degree_type = Column(String(16), default="")           # master / phd
+    expected_graduation = Column(String(16), default="")   # YYYY-MM
+    direction = Column(String(256), default="")
+    school = Column(String(256), default="")
+    advisors = Column(JSON, default=list)                  # 推荐导师姓名列表
+    status = Column(String(24), default="imported", index=True)
+    screening_detail = Column(JSON, default=dict)          # 缺项/资格原因
+    brand_bonus = Column(Float, default=0.0)               # 手动品牌加分（不进 LLM 评分）
+    brand_note = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    materials = relationship(
+        "ScholarshipMaterialORM", back_populates="application",
+        cascade="all, delete-orphan", order_by="ScholarshipMaterialORM.id",
+    )
+    evaluations = relationship(
+        "ScholarshipEvaluationORM", back_populates="application",
+        cascade="all, delete-orphan", order_by="ScholarshipEvaluationORM.id",
+    )
+    reputation_items = relationship(
+        "ScholarshipReputationItemORM", back_populates="application",
+        cascade="all, delete-orphan", order_by="ScholarshipReputationItemORM.id",
+    )
+
+
+class ScholarshipMaterialORM(Base):
+    """申请人的一份材料：form / resume / supplementary / achievement / letter。"""
+
+    __tablename__ = "scholarship_materials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    application_id = Column(
+        String(36), ForeignKey("scholarship_applications.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    kind = Column(String(24), nullable=False)
+    filename = Column(String(256), default="")
+    raw_text = Column(Text, default="")
+    structured = Column(JSON, default=dict)                # 简历结构化等
+    advisor_name = Column(String(128), default="")         # kind=letter 时的推荐导师
+    anonymized_text = Column(Text, default="")             # 脱敏后的文本（评分只用它）
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    application = relationship("ScholarshipApplicationORM", back_populates="materials")
+
+
+class ScholarshipEvaluationORM(Base):
+    """一次脱敏评分结果。"""
+
+    __tablename__ = "scholarship_evaluations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    application_id = Column(
+        String(36), ForeignKey("scholarship_applications.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    config_version = Column(String(64), default="")
+    status = Column(String(24), default="running", nullable=False)  # running/completed/failed
+    blind_score = Column(Float, default=0.0)
+    dimensions = Column(JSON, default=list)   # [{key,label,score,max_points,reason}]
+    highlights = Column(JSON, default=list)
+    risks = Column(JSON, default=list)
+    error_message = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime)
+
+    application = relationship("ScholarshipApplicationORM", back_populates="evaluations")
+
+
+class ScholarshipReputationItemORM(Base):
+    """舆情条目：申请人或推荐导师的正/负面舆情，人工确认后才计分。"""
+
+    __tablename__ = "scholarship_reputation_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    application_id = Column(
+        String(36), ForeignKey("scholarship_applications.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    subject = Column(String(128), default="")      # 舆情对象（申请人/导师姓名）
+    subject_role = Column(String(16), default="applicant")  # applicant / advisor
+    sentiment = Column(String(16), default="negative")      # positive / negative
+    title = Column(Text, default="")
+    url = Column(Text, default="")
+    snippet = Column(Text, default="")
+    concern = Column(Text, default="")             # 为什么需要人工判断
+    review_status = Column(String(24), default="pending", index=True)  # pending/confirmed/dismissed
+    adjustment = Column(Float, default=0.0)        # 确认后写入（负分/正分）
+    reviewer = Column(String(128), default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    reviewed_at = Column(DateTime)
+
+    application = relationship("ScholarshipApplicationORM", back_populates="reputation_items")

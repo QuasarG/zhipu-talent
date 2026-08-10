@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 15
+LATEST_SCHEMA_VERSION = 16
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -135,6 +135,14 @@ def ensure_schema(engine) -> None:
             engine,
             15,
             "phase 15: add talent_groups table + persons.group_id (manual grouping)",
+        )
+    if current_version < 16:
+        # 奖学金初筛四张新表由 Base.metadata.create_all 自动创建，无需 ALTER。
+        _record_version(
+            engine,
+            16,
+            "phase 16: Z.AI Scholarship screening tables (applications / materials / "
+            "evaluations / reputation_items)",
         )
     _ensure_indexes(engine)
 
