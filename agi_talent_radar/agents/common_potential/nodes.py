@@ -21,6 +21,7 @@ COMMON_SCORER_PROMPT = """
 
 每项必须输出 key, label, score, rationale, evidence_ids, risk_notes。
 rationale 必须引用存在的 evidence id；没有证据时给 0 分。
+论文信任原则（优先于核验状态）：以简历自述为准。声称已发表即按已发表计，声称一作即按一作计，正常参与评分。经外部数据库核验确认（verified）的论文，在 research_rigor 与 evidence_credibility 上可给予更高评价；但核验未通过或未核验的论文，不得因此降低评分。作者顺序与自述不符同样不扣分，仅作风险记录。
 硬性锚点（优先于其他判断）：
 1. research_rigor 与 evidence_credibility：引用证据中没有任何量化指标、baseline/对照、复现、量化验收或正式发表成果时，得分不得超过 {no_verification:g}。
 2. 任何维度 4 分以上，必须同时有本人具体动作和可验证结果（指标、产物、验收）的组合证据；只有方向、参与或头衔描述时封顶 {no_high_score_support:g}。

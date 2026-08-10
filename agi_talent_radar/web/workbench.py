@@ -283,9 +283,6 @@ def create_app() -> Flask:
                             }), 409
                         fail_evaluation_run(session, latest_run.id, "服务重启后原评估任务已中断。")
 
-                    vresult = _verification_result(candidate_orm)
-                    if vresult not in ("verified", "rejected"):
-                        return jsonify({"detail": "论文尚未核验完成或有待核验论文，无法进入评估流程"}), 400
                     resume = _orm_to_resume(candidate_orm)
                     academic_report = _evaluation_academic_report(candidate_orm)
                     evaluation_run = start_evaluation_run(session, candidate_id)
@@ -824,10 +821,6 @@ def create_app() -> Flask:
                 candidate = find_candidate_by_person(session, pid)
                 if not candidate:
                     results.append({"person_id": pid, "status": "no_candidate"})
-                    continue
-                vresult = _verification_result(candidate)
-                if vresult not in ("verified", "rejected"):
-                    results.append({"person_id": pid, "status": "not_verified", "detail": vresult})
                     continue
                 # 复用单条评估逻辑（启动后台线程）
                 try:
@@ -1452,8 +1445,11 @@ def _evaluation_academic_report(row) -> dict[str, Any]:
 
 
 def _is_evaluable(row) -> bool:
-    """核验通过或有 mismatch 可评估；needs_review 需人工确认后才可。"""
-    return _verification_result(row) in ("verified", "rejected")
+    """论文核验不再阻断评估:任何核验状态均可进入评估流程。
+
+    核验结果只作风险提示(经 global_critic 进入 potential_risks),不影响能否评估。
+    """
+    return True
 
 
 def _iso(value) -> str | None:

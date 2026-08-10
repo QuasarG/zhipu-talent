@@ -75,6 +75,8 @@ class TestRunHealthCheck(unittest.TestCase):
             patch("agi_talent_radar.core.health.check_embedding", return_value="unconfigured"),
             patch("agi_talent_radar.core.health.check_aminer", return_value="unconfigured"),
             patch("agi_talent_radar.core.health.check_openalex", return_value="reachable"),
+            patch("agi_talent_radar.core.health.check_crossref", return_value="reachable"),
+            patch("agi_talent_radar.core.health.check_arxiv", return_value="reachable"),
             patch("agi_talent_radar.core.health.check_web_search", return_value="unconfigured"),
         ):
             report = run_health_check()
@@ -93,6 +95,8 @@ class TestRunHealthCheck(unittest.TestCase):
             patch("agi_talent_radar.core.health.check_embedding", return_value="configured"),
             patch("agi_talent_radar.core.health.check_aminer", return_value="configured"),
             patch("agi_talent_radar.core.health.check_openalex", return_value="reachable"),
+            patch("agi_talent_radar.core.health.check_crossref", return_value="reachable"),
+            patch("agi_talent_radar.core.health.check_arxiv", return_value="reachable"),
             patch("agi_talent_radar.core.health.check_web_search", return_value="configured"),
         ):
             report = run_health_check()

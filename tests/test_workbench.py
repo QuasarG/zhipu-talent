@@ -885,12 +885,12 @@ class VerificationGateTest(unittest.TestCase):
         )
 
     def test_empty_report_with_pubs_is_needs_review(self) -> None:
-        """bug 根因：done+空报告+有论文 → 必须 needs_review（旧逻辑误判 verified）"""
+        """核验状态仍按 needs_review 标记,但不再阻断评估。"""
         from agi_talent_radar.web.workbench import _verification_result, _is_evaluable
 
         row = self._row(status="done", report={}, publications=["Paper A", "Paper B"])
         self.assertEqual(_verification_result(row), "needs_review")
-        self.assertFalse(_is_evaluable(row))
+        self.assertTrue(_is_evaluable(row))
 
     def test_empty_report_no_pubs_is_verified(self) -> None:
         """真无论文 → verified 可评估"""
@@ -901,7 +901,7 @@ class VerificationGateTest(unittest.TestCase):
         self.assertTrue(_is_evaluable(row))
 
     def test_unverifiable_unreviewed_blocks_evaluation(self) -> None:
-        """未裁决的 unverifiable → needs_review 阻断"""
+        """未裁决的 unverifiable 仍标记 needs_review,但不再阻断评估"""
         from agi_talent_radar.web.workbench import _verification_result, _is_evaluable
 
         row = self._row(
@@ -909,7 +909,7 @@ class VerificationGateTest(unittest.TestCase):
             publications=["Paper A"],
         )
         self.assertEqual(_verification_result(row), "needs_review")
-        self.assertFalse(_is_evaluable(row))
+        self.assertTrue(_is_evaluable(row))
 
     def test_unverifiable_confirmed_releases_gate(self) -> None:
         """已裁决（confirmed）的 unverifiable → verified 放行"""
@@ -934,10 +934,11 @@ class VerificationGateTest(unittest.TestCase):
         self.assertTrue(_is_evaluable(row))
 
     def test_mixed_mismatch_and_unverifiable_blocks_on_unverifiable(self) -> None:
-        """mismatch + 未裁决 unverifiable 共存时，unverifiable 优先阻断。
+        """mismatch + 未裁决 unverifiable 共存时,核验状态取 needs_review,但不再阻断评估。
 
-        门禁优先级：unverifiable 未裁决必须先裁决，比 mismatch 强。
+        核验状态优先级:unverifiable 未裁决仍标记 needs_review,比 mismatch 强。
         顺序不能反——否则 mismatch 短路让 unverifiable 不被检查。
+        评估门禁已解除:needs_review 也可评估,核验冲突只进风险提示。
         """
         from agi_talent_radar.web.workbench import _verification_result, _is_evaluable
 
@@ -950,7 +951,7 @@ class VerificationGateTest(unittest.TestCase):
             publications=["Paper A", "Paper B", "Paper C"],
         )
         self.assertEqual(_verification_result(row), "needs_review")
-        self.assertFalse(_is_evaluable(row))
+        self.assertTrue(_is_evaluable(row))
 
 
 if __name__ == "__main__":

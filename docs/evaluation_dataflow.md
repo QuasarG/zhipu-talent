@@ -62,3 +62,24 @@
 + quote 可追溯校验
 - 没有：每档的行为锚点实例（用你们自己的真实简历标定"4 分长这样"）。
   所以"锚定好了"只对了一半：方向锚定了，刻度没锚定。
+
+## 论文核验与评分解耦（2026-08-10 决策）
+
+**信任模型反转：从"默认质疑、核验不过即压分"→"默认信任自述、核验只作风险提示"。**
+
+背景：真实数据诊断发现，论文最多的候选人反而被评低——因为核验结果全空(None)或
+mismatch 时，scorer 节点的 LLM 自行把 research_rigor/evidence_credibility 压分
+（同一份简历 4 次评估抖成 60/56/70/33）。确定性封顶逻辑本身不读 academic_report，
+压分纯是 LLM 软行为，故改 prompt 措辞即可纠正。
+
+三处改动：
+1. **评估门禁解除**：`_is_evaluable` 始终返回 True；evaluate_candidate /
+   batch_evaluate 不再因 needs_review 返回 400。`_verification_result` 保留（前端展示用）。
+2. **scorer prompt 信任原则**（evidence_extractor / common_scorer / track_scorer）：
+   payload 保留 academic_report，但措辞改为"默认信任简历自述，声称已发表/一作即按自述计；
+   verified 可给更高评价，unverifiable/mismatch 不降低评分，作者顺序不符不扣分"。
+3. **核验风险进 global_critic**：mismatch/unverifiable 经 `_academic_verification_flags`
+   转成字符串 flag → potential_risks。**只提示，绝不改分。**
+
+不动：确定性封顶（no_verification/no_high_score_support，看 EvidenceItem 不看核验）、
+academic_check 图节点（核验仍异步跑）、人工裁决功能、document_score（有意废弃）。
