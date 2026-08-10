@@ -118,46 +118,18 @@ def extract_claims(publications: list[str], raw_text: str = "") -> list[PaperCla
 
 
 def search_papers(title: str, count: int = 5) -> list[Fact]:
-    """统一论文搜索：优先 AMiner REST（内部、便宜），失败兜底 OpenAlex。
+    """统一论文搜索：AMiner → CrossRef → arXiv → OpenAlex 四级降级。
 
-    AMiner 失败（缺 key / key 无效 / 网络）时不抛异常，静默降级到 OpenAlex，
-    保证核验流程不被连接器问题阻断。
+    每源 try/except，命中即返回，保证核验流程不被单源故障阻断。
     """
-    try:
-        facts = search_aminer_papers_by_title(title, size=count)
-        if facts:
-            return facts
-    except ConnectorUnavailableError:
-        pass  # 静默降级
-    # 兜底：OpenAlex
-    return search_works(title, count=count)
+    from agi_talent_radar.core.connectors.paper_search import search_papers_federated
+    return search_papers_federated(title, count)
 
 
 def _expand_search_queries(title: str) -> list[str]:
-    """从论文标题生成多个检索查询，提升召回。
-
-    AMiner/OpenAlex 对整个标题做整体匹配，OCR 错字/连字符丢失/省略副标题
-    都会导致召回 0。这里纯规则拆分出稳定查询变体：
-    1. 原标题（覆盖精确匹配）
-    2. 冒号/破折号前的主标题（去掉副标题，如 "HingeMem: ..." → "HingeMem"）
-    3. 去掉特殊符号的纯净版（Long-Term → Long Term，救连字符/OCR 差异）
-    """
-    title = (title or "").strip()
-    if not title:
-        return []
-    queries = [title]
-    # 冒号/破折号切主标题（论文标题通常是 "Acronym: Full Name"）
-    head = re.split(r"[:：—\-–]", title, maxsplit=1)[0].strip()
-    if head and len(head) >= 4 and head.lower() != title.lower():
-        queries.append(head)
-    # 去特殊符号纯净版（救连字符/空格/OCR 差异），保留字母数字和空格
-    cleaned = re.sub(r"[^0-9A-Za-z\s]", " ", title)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    cleaned = re.sub(r"\b(and|the|a|an|of|for|with|to|in|on|via|using)\b", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    if cleaned and cleaned.lower() not in {q.lower() for q in queries} and len(cleaned) >= 6:
-        queries.append(cleaned)
-    return queries
+    """查询变体（委托给 paper_search 共享实现）。"""
+    from agi_talent_radar.core.connectors.paper_search import expand_search_queries
+    return expand_search_queries(title)
 
 
 def lookup_claim(
