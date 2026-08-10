@@ -28,7 +28,7 @@ class TestUpdateEnv(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.mkdtemp()
         self.env_path = Path(self.tmp) / ".env"
-        self.env_path.write_text('OPENAI_MODEL="old-model"\nDEEPSEEK_API_KEY="sk-old"\n', encoding="utf-8")
+        self.env_path.write_text('Z_AI_API_KEY="zai-old"\nDEEPSEEK_API_KEY="sk-old"\n', encoding="utf-8")
 
     def tearDown(self) -> None:
         import shutil
@@ -37,28 +37,28 @@ class TestUpdateEnv(unittest.TestCase):
 
     def test_applies_known_keys_atomically(self) -> None:
         result = update_env(self.env_path, {
-            "OPENAI_MODEL": "new-model",
+            "Z_AI_API_KEY": "zai-new-secret",
             "DEEPSEEK_API_KEY": "sk-new-secret",
         })
-        self.assertEqual(set(result.applied), {"OPENAI_MODEL", "DEEPSEEK_API_KEY"})
+        self.assertEqual(set(result.applied), {"Z_AI_API_KEY", "DEEPSEEK_API_KEY"})
         self.assertEqual(result.rejected, {})
         # 文件已更新
         content = self.env_path.read_text(encoding="utf-8")
-        self.assertIn("OPENAI_MODEL=new-model", content)
+        self.assertIn("Z_AI_API_KEY=zai-new-secret", content)
         self.assertIn("DEEPSEEK_API_KEY=sk-new-secret", content)
         # 旧值被覆盖
-        self.assertNotIn("old-model", content)
+        self.assertNotIn("zai-old", content)
 
     def test_rejects_unknown_keys(self) -> None:
         result = update_env(self.env_path, {
-            "OPENAI_MODEL": "v2",
+            "Z_AI_API_KEY": "zai-v2",
             "UNKNOWN_KEY": "value",
         })
-        self.assertIn("OPENAI_MODEL", result.applied)
+        self.assertIn("Z_AI_API_KEY", result.applied)
         self.assertIn("UNKNOWN_KEY", result.rejected)
 
     def test_preserves_unmentioned_keys(self) -> None:
-        update_env(self.env_path, {"OPENAI_MODEL": "v2"})
+        update_env(self.env_path, {"Z_AI_API_KEY": "zai-v2"})
         content = self.env_path.read_text(encoding="utf-8")
         # DEEPSEEK_API_KEY 仍在
         self.assertIn("DEEPSEEK_API_KEY=sk-old", content)
@@ -74,11 +74,11 @@ class TestUpdateEnv(unittest.TestCase):
             os.chmod(readonly_dir, 0o500)  # r-x for owner
             bad_env = readonly_dir / ".env"
             # 先写一个旧值
-            bad_env.write_text("OPENAI_MODEL=old\n", encoding="utf-8")
-            result = update_env(bad_env, {"OPENAI_MODEL": "new"})
+            bad_env.write_text("Z_AI_API_KEY=old\n", encoding="utf-8")
+            result = update_env(bad_env, {"Z_AI_API_KEY": "new"})
             # Windows 上 chmod 可能不生效；至少保证：如果 rejected 则旧文件保留
             if result.rejected:
-                self.assertIn("OPENAI_MODEL=old", bad_env.read_text(encoding="utf-8"))
+                self.assertIn("Z_AI_API_KEY=old", bad_env.read_text(encoding="utf-8"))
         finally:
             os.chmod(readonly_dir, 0o700)
 
@@ -127,12 +127,12 @@ class TestConfigBlueprint(unittest.TestCase):
         self.assertTrue(data["DEEPSEEK_API_KEY"]["configured"])
         # 响应中不含完整 Key
         self.assertNotIn("sk-test-secret-123456", rv.data.decode("utf-8"))
-        # 非敏感字段返回原值
-        self.assertEqual(data["OPENAI_MODEL"], "v1")
+        # 非外部服务 Key 不对外暴露
+        self.assertNotIn("OPENAI_MODEL", data)
 
     def test_put_applies_and_returns_masked(self) -> None:
         rv = self.client.put("/api/config", json={
-            "OPENAI_MODEL": "v2",
+            "Z_AI_API_KEY": "zai-v2",
             "DEEPSEEK_API_KEY": "sk-brand-new-secret",
         })
         self.assertIn(rv.status_code, {200, 207})

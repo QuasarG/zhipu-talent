@@ -12,12 +12,12 @@
 
 - Personality: 冷静、可信、研究导向，像人才研究操作台，不像招聘营销页面。
 - Trust signals: 原始证据、来源、时间、核验状态、Agent 实际调用链和不确定性始终可见。
-- Avoid: 自动录取暗示、把分数当通过/不通过、把 Track 推荐当研究组匹配、无来源推断、整页高透明导致文本难读、纯蓝紫单色科技感。
+- Avoid: 自动录取暗示、把分数当通过/不通过、无来源推断、整页高透明导致文本难读、纯蓝紫单色科技感。
 
 ## Product goals
 
 - Goals: 让内部评审者完成简历能力评估、人才档案查询、已知人物调查和证据复核，并能快速在三种核心工作方式间切换。
-- Non-goals: 自动录取、批量发现未知人才、代码仓库核验、多角色权限、未配置研究组要求时生成匹配分。
+- Non-goals: 自动录取、批量发现未知人才、代码仓库核验、多角色权限。
 - Success signals: 用户能明确区分能力评分、Track 推荐、论文核验、外部事实状态和 HR 跟进状态；任一结论可以回到证据。
 
 ## Personas and jobs
@@ -39,7 +39,7 @@
 ## Design principles
 
 - Evidence first: 分数、Track 推荐、论文核验和知识回答都必须能定位来源。
-- Separate dimensions: 能力评分、Track 推荐、研究组匹配、论文核验和 HR 状态使用不同组件与文案，不共享一个“等级”视觉。
+- Separate dimensions: 能力评分、Track 推荐、论文核验和 HR 状态使用不同组件与文案，不共享一个“等级”视觉。
 - Glass for chrome, clarity for content: Liquid Glass 用于导航、工具条、浮动控制和上下文切换；长文本、表格和证据正文使用更高不透明度表面。
 - Dense but calm: 保持专业工具的信息密度，不制造营销式 Hero、大标题或装饰卡片墙。
 - Honest state: pending、confirmed、conflict、partial、failed 和 retrying 必须明确显示，不用模糊动画掩盖失败。
@@ -63,7 +63,7 @@
   - Context Switcher：当前候选人/人物切换胶囊。
   - Evidence Citation：来源、时间、核验状态和点击定位。
   - Verification Badge：confirmed / pending / conflict，不能只靠颜色。
-  - Track Recommendation：宽泛方向、理由和置信度；研究组匹配另显示 `尚未配置`。
+  - Track Recommendation：宽泛方向、理由和置信度。
   - Agent Trace：展示实际节点和工具调用，支持部分失败。
   - Talent Source Filter：全部、简历评估、人物调查；双来源去重。
   - Relationship Graph Legend：颜色表示学校，形状表示主要推荐方向，线型表示关系核验状态。
@@ -78,7 +78,6 @@
 - Header: 当前候选人、评估版本、任务状态、重新评估和更多菜单。
 - Main result: 总分只作为能力概览；下方分开呈现通用潜力、Track 评分、推荐 Track、论文自述/外部核验和培养建议。
 - Paper review: 每篇论文同时显示自述状态、外部核验状态、作者顺序、原文证据和重试按钮。
-- Research group matching: 固定独立行显示“研究组匹配尚未配置”，不得与 Track 推荐合并。
 
 #### Structured resume record layout
 
@@ -139,13 +138,13 @@
 - Empty: 每屏只强调一个主操作，例如“导入简历”“开始提问”“添加首位人才”。
 - Error: 区分核心失败与外部服务部分失败，并提供局部重试。
 - Success: 保留结果、耗时、来源和版本；不以大面积绿色庆祝。
-- Disabled: 显示禁用原因；研究组匹配明确写“尚未配置研究组要求”。
+- Disabled: 显示禁用原因。
 - Offline/slow network: 已完成内容保留，外部调查和向量同步显示延迟/待重试。
 
 ## Content voice
 
 - Tone: 专业、克制、可核验，不替 HR 做最终决定。
-- Terminology: 统一使用“简历评估”“Track 推荐”“研究组匹配”“论文自述状态”“论文核验状态”“人才知识 Agent”“待核验外部事实”。
+- Terminology: 统一使用“简历评估”“Track 推荐”“论文自述状态”“论文核验状态”“人才知识 Agent”“待核验外部事实”。
 - Microcopy rules: 状态文案必须说明对象和下一步；禁止使用“通过”“淘汰”“S/A/B/C 人才”等自动分类文案。
 
 ## Implementation constraints
@@ -160,6 +159,5 @@
 ## Open questions
 
 - [ ] 次要 Track 在关系图节点中的视觉表达，在图谱开发阶段确认。
-- [ ] 研究组需求取得后，单独设计需求录入和匹配结果界面；当前只显示未配置状态。
 - [ ] Figma 组件命名和变量 collection 在创建目标文件后冻结。
 - [ ] 当前会话未提供 Windows/Figma 控制入口，三张 Frame 尚未实际绘制到 Figma。

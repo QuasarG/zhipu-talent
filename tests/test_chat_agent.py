@@ -47,7 +47,7 @@ class ChatAgentTestBase(unittest.TestCase):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
         self.session = sessionmaker(bind=engine, expire_on_commit=False)()
-        self.conv = ConversationORM()
+        self.conv = ConversationORM(owner_id="u-test")
         self.session.add(self.conv)
         self.session.commit()
         self.events: list[tuple[str, dict]] = []

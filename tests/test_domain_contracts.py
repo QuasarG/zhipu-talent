@@ -40,7 +40,6 @@ from agi_talent_radar.core.domain_models import (
     ExternalFactVerification,
     IdentityDecision,
     PublicationVerificationStatus,
-    ResearchGroupMatchingStatus,
 )
 from agi_talent_radar.core.reputation_service import run_guest_check
 from agi_talent_radar.services import talent_service
@@ -156,12 +155,6 @@ class TestDomainEnums(unittest.TestCase):
         self.assertEqual(
             ExternalFactVerification.all(),
             ("confirmed", "pending", "conflict", "disproved", "superseded"),
-        )
-
-    def test_research_group_matching_members(self) -> None:
-        self.assertEqual(
-            ResearchGroupMatchingStatus.all(),
-            ("not_configured", "configured", "disabled"),
         )
 
 

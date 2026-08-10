@@ -3,7 +3,7 @@
 覆盖（与决策记录 §2.7 对齐）：
 
 1. 敏感 Key 返回脱敏状态（configured + masked），不返回原文。
-2. 非敏感 Key 返回原值。
+2. 设置页只暴露外部服务 Key，其它配置不对外（不进入 public dict / snapshot）。
 3. mask_key 保留首尾 2 字符。
 4. 未配置的敏感 Key 返回 configured=False。
 5. refresh 原子刷新。
@@ -46,8 +46,8 @@ class TestSettingsPublicDict(unittest.TestCase):
         self.assertIn("*", deepseek["masked"])
         self.assertNotIn("very-secret", deepseek["masked"])
         self.assertNotIn("very-secret", str(public))
-        # 非敏感字段返回原值
-        self.assertEqual(public["OPENAI_MODEL"], "deepseek-v4-flash")
+        # 非外部服务 Key 不对外暴露
+        self.assertNotIn("OPENAI_MODEL", public)
 
     def test_unconfigured_sensitive_key(self) -> None:
         settings = Settings(values={})
@@ -68,7 +68,8 @@ class TestSettingsProvider(unittest.TestCase):
         })
         snap = provider.snapshot()
         self.assertEqual(snap.get("DEEPSEEK_API_KEY"), "sk-test")
-        self.assertEqual(snap.get("OPENAI_MODEL"), "deepseek-v4-flash")
+        # 只有外部服务 Key 进入快照，其它配置不加载
+        self.assertNotIn("OPENAI_MODEL", snap.values)
         self.assertNotIn("UNRELATED_VAR", snap.values)
 
     def test_refresh_replaces_snapshot(self) -> None:
@@ -79,11 +80,11 @@ class TestSettingsProvider(unittest.TestCase):
 
     def test_snapshot_is_independent_copy(self) -> None:
         provider = SettingsProvider()
-        provider.load_from_env({"OPENAI_MODEL": "v1"})
+        provider.load_from_env({"DEEPSEEK_API_KEY": "sk-v1"})
         snap = provider.snapshot()
-        snap.values["OPENAI_MODEL"] = "tampered"
+        snap.values["DEEPSEEK_API_KEY"] = "tampered"
         # 原 provider 不受影响
-        self.assertEqual(provider.snapshot().get("OPENAI_MODEL"), "v1")
+        self.assertEqual(provider.snapshot().get("DEEPSEEK_API_KEY"), "sk-v1")
 
     def test_is_configured(self) -> None:
         settings = Settings(values={"DEEPSEEK_API_KEY": "sk-x", "Z_AI_API_KEY": ""})

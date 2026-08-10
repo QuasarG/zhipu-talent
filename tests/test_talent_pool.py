@@ -178,6 +178,50 @@ class TalentPoolRouteTest(unittest.TestCase):
             json={"action": "maybe"},
         )
         self.assertEqual(resp.status_code, 400)
+    def test_batch_evaluate_route_starts_linked_candidate(self) -> None:
+        """回归：批量评估路由曾因 PersonORM 未 import 直接 500。"""
+        from agi_talent_radar.core.db.orm import CandidateORM
+
+        with self.Session() as session:
+            session.add(_make_person("ps", "学生甲", "某大学", "Agent", "student"))
+            session.add(
+                CandidateORM(
+                    id="c-ps",
+                    person_id="ps",
+                    name="学生甲",
+                    group="dismissed",
+                    academic_check_status="done",
+                    academic_report="{}",
+                    publications="[]",
+                )
+            )
+            session.add(_make_person("pg", "嘉宾乙", "某公司", person_type="guest"))
+            session.commit()
+
+        from agi_talent_radar.web import workbench
+
+        # mock 掉线程启动，让 _start_background_evaluation 的真实逻辑跑完
+        with patch.object(workbench, "Thread") as mock_thread:
+            client = workbench.create_app().test_client()
+            resp = client.post(
+                "/api/persons/batch-evaluate",
+                json={"person_ids": ["ps", "pg", "ghost"]},
+            )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["started"], 1)
+        by_id = {r["person_id"]: r for r in data["results"]}
+        self.assertEqual(by_id["ps"]["status"], "started")
+        self.assertEqual(by_id["ps"]["candidate_id"], "c-ps")
+        self.assertEqual(by_id["pg"]["status"], "skipped")
+        self.assertEqual(by_id["ghost"]["status"], "not_found")
+        mock_thread.return_value.start.assert_called_once()
+        # dismissed 候选人被重新评估时应回到队列（group 复位 pending）
+        with self.Session() as session:
+            from agi_talent_radar.core.db.orm import CandidateORM as C
+
+            self.assertEqual(session.get(C, "c-ps").group, "pending")
+
     def test_create_person_route_adds_guest(self) -> None:
         from agi_talent_radar.web.workbench import create_app
 

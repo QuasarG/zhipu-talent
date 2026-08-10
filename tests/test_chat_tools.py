@@ -16,6 +16,7 @@ from agi_talent_radar.core.db.orm import (
     EvaluationORM,
     ExternalFactORM,
     PersonORM,
+    ReputationReportORM,
     ResumeSubmissionORM,
 )
 from agi_talent_radar.core.embedding import FakeEmbeddingClient
@@ -25,7 +26,9 @@ from agi_talent_radar.knowledge_agent.tools import (
     execute_gated_action,
     tool_aggregate_persons,
     tool_ask_clarification,
+    tool_get_person_evaluation,
     tool_get_person_profile,
+    tool_get_resume_versions,
     tool_propose_add_person,
     tool_resolve_fact_conflict,
     tool_search_knowledge,
@@ -338,6 +341,84 @@ class TestExecuteGatedAction(ChatToolsTestBase):
         self.assertEqual(text, "用户回答：张三")
         by_choice = execute_gated_action(self.session, "clarify", {}, {"choice": "选项A"})
         self.assertEqual(by_choice, "用户回答：选项A")
+
+    def test_review_reputation_mixed_verdicts(self) -> None:
+        person = _add_person(self.session, "李四", org="清华大学")
+        payload = {
+            "person_id": person.id,
+            "name": "李四",
+            "items": [
+                {"title": "李四被质疑数据造假", "url": "http://x/1", "sentiment": "negative", "concern": "只有自媒体来源"},
+                {"title": "李四获优秀学生奖", "url": "http://x/2", "sentiment": "positive", "concern": ""},
+            ],
+        }
+        decision = {"verdicts": [{"index": 0, "action": "confirmed"}, {"index": 1, "action": "dismissed"}]}
+        text = execute_gated_action(self.session, "review_reputation", payload, decision)
+        # 确认的进总结，驳回的明确禁止
+        self.assertIn("已确认", text)
+        self.assertIn("数据造假", text)
+        self.assertIn("严禁", text)
+        self.assertIn("优秀学生奖", text)
+        report = self.session.query(ReputationReportORM).filter_by(person_id=person.id).one()
+        self.assertEqual(report.level, "red")  # 确认的负面 → red
+        self.assertEqual(report.review_status, "confirmed")
+        self.assertEqual(report.events[0]["review_status"], "confirmed")
+        self.assertEqual(report.events[1]["review_status"], "dismissed")
+
+    def test_review_reputation_all_dismissed_is_green(self) -> None:
+        payload = {
+            "name": "库外人",
+            "org": "某实验室",
+            "items": [{"title": "库外人涉争议", "url": "http://x/3", "sentiment": "negative"}],
+        }
+        decision = {"verdicts": [{"index": 0, "action": "dismissed"}]}
+        text = execute_gated_action(self.session, "review_reputation", payload, decision)
+        self.assertIn("已驳回", text)
+        person = self.session.query(PersonORM).filter_by(name="库外人").one()
+        self.assertEqual(person.person_type, "guest")  # 库外人物自动建档
+        report = self.session.query(ReputationReportORM).filter_by(person_id=person.id).one()
+        self.assertEqual(report.level, "green")
+
+    def test_review_reputation_requires_name(self) -> None:
+        text = execute_gated_action(
+            self.session, "review_reputation", {"items": [{"title": "x"}]}, {"verdicts": []}
+        )
+        self.assertIn("缺少人物姓名", text)
+
+
+class TestSearchPersonsCitationMeta(ChatToolsTestBase):
+    def test_citation_meta_carries_person_detail(self) -> None:
+        person = _add_person(self.session, "李四", org="清华大学", direction="NLP")
+        _add_evaluation(self.session, person.id, "c-李四", 90)
+        result = tool_search_persons(self.ctx, {"name": "李四"})
+        citation_id = result["persons"][0]["citation_id"]
+        source = next(s for s in self.ctx.sources if s["id"] == citation_id)
+        meta = source["meta"]
+        self.assertEqual(meta["person_id"], person.id)
+        self.assertEqual(meta["org"], "清华大学")
+        self.assertEqual(meta["direction"], "NLP")
+        self.assertEqual(meta["overall_score"], 90)
+
+    def test_citation_meta_without_evaluation(self) -> None:
+        _add_person(self.session, "张三")
+        result = tool_search_persons(self.ctx, {"name": "张三"})
+        source = self.ctx.sources[0]
+        self.assertEqual(source["meta"]["person_id"], "p-张三")
+        self.assertNotIn("overall_score", source["meta"])
+
+    def test_profile_evaluation_versions_citations_carry_meta(self) -> None:
+        # 三个人物工具的引用都必须带 person meta，前端才能渲染跳转卡片
+        person = _add_person(self.session, "李四", org="清华大学")
+        _add_evaluation(self.session, person.id, "c-李四", 88)
+        result = tool_get_person_profile(self.ctx, {"person_id": person.id})
+        meta = self.ctx.sources[-1]["meta"]
+        self.assertEqual(meta["person_id"], person.id)
+        self.assertEqual(meta["overall_score"], 88)
+        self.assertEqual(result["citation_id"], self.ctx.sources[-1]["id"])
+        tool_get_person_evaluation(self.ctx, {"person_id": person.id})
+        self.assertEqual(self.ctx.sources[-1]["meta"]["person_id"], person.id)
+        tool_get_resume_versions(self.ctx, {"person_id": person.id})
+        self.assertEqual(self.ctx.sources[-1]["meta"]["person_id"], person.id)
 
 
 if __name__ == "__main__":

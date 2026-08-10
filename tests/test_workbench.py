@@ -768,6 +768,7 @@ class WorkbenchTest(unittest.TestCase):
             org="某大学",
             direction="移动端侧智能体安全",
             person_type="student",
+            group_id=None,
             created_at=None,
             updated_at=None,
             evaluations=[evaluation],

@@ -17,9 +17,6 @@
    - 空字符串 raise ``ValueError``；
    - 历史表新增一行；Candidate.engagement_status 变更；
    - 多次变更按时间顺序追加。
-
-5. get_research_group_matching 永远 NOT_CONFIGURED：
-   - 返回 Pydantic 模型 status='not_configured'，无 matches。
 """
 from __future__ import annotations
 
@@ -38,10 +35,7 @@ from agi_talent_radar.core.db.orm import (
 )
 from agi_talent_radar.core.db import repository
 from agi_talent_radar.core.db.repository import evaluation_to_dict
-from agi_talent_radar.core.domain_models import (
-    EngagementStatus,
-    ResearchGroupMatchingStatus,
-)
+from agi_talent_radar.core.domain_models import EngagementStatus
 from agi_talent_radar.services import talent_service
 
 
@@ -384,15 +378,6 @@ class TestEvaluateResume(_TalentServiceTestBase):
         mock_retry.assert_called()
 
 
-class TestResearchGroupMatching(_TalentServiceTestBase):
-    def test_always_not_configured(self) -> None:
-        # 无 candidate 也返回；service 不依赖任何 DB 行。
-        result = talent_service.get_research_group_matching(candidate_id="any-id")
-        self.assertEqual(result.status, ResearchGroupMatchingStatus.NOT_CONFIGURED)
-        self.assertEqual(result.requirement_version, None)
-        self.assertEqual(result.matches, [])
-
-
 class TestTrackRecommendation(_TalentServiceTestBase):
     def test_record_track_recommendation_reads_from_evaluation(self) -> None:
         candidate_id = "candidate-track"
@@ -414,17 +399,6 @@ class TestTrackRecommendation(_TalentServiceTestBase):
     def test_record_track_recommendation_unknown_evaluation_raises(self) -> None:
         with self.assertRaises(ValueError):
             talent_service.record_track_recommendation(99999)
-
-    def test_evaluation_to_dict_carries_research_group_matching_status(self) -> None:
-        """评估输出必须显式带 research_group_matching_status=not_configured，
-        避免前端或 Agent 误以为存在匹配分。"""
-        self._seed_person(person_id="p-status-field")
-        self._seed_evaluation(71, "candidate-status-field", "p-status-field")
-        with self.Session() as session:
-            evaluation = session.get(EvaluationORM, 71)
-            data = evaluation_to_dict(evaluation)
-        self.assertIn("research_group_matching_status", data)
-        self.assertEqual(data["research_group_matching_status"], "not_configured")
 
 
 if __name__ == "__main__":

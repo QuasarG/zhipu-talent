@@ -265,8 +265,9 @@ class MultiTrackTest(unittest.TestCase):
             }
         )
 
-        self.assertIn("学校: 南方科技大学", resume.education[0])
-        self.assertIn("导师: 导师 A", resume.education[0])
+        # education 保留结构化 dict（供前端分字段渲染），其他列表压成字符串
+        self.assertEqual(resume.education[0]["school"], "南方科技大学")
+        self.assertEqual(resume.education[0]["advisor"], "导师 A")
         self.assertEqual(resume.experiences[0].organization, "某 AI 公司")
         self.assertEqual(resume.experiences[0].role, "Agent 研发实习生")
         self.assertEqual(resume.experiences[0].details, ["构建自动验证闭环"])
