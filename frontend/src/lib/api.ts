@@ -82,10 +82,11 @@ export const api = {
       fetchJSON<unknown[]>(`/api/candidates/${id}/engagement-history`),
   },
   persons: {
-    list: (params?: { person_type?: string; name?: string; level?: string; group_id?: string }) => {
+    list: (params?: { person_type?: string; name?: string; q?: string; level?: string; group_id?: string }) => {
       const qs = new URLSearchParams();
       if (params?.person_type) qs.set("person_type", params.person_type);
       if (params?.name) qs.set("name", params.name);
+      if (params?.q) qs.set("q", params.q);
       if (params?.level) qs.set("level", params.level);
       if (params?.group_id) qs.set("group_id", params.group_id);
       return fetchJSON<PersonBrief[]>(`/api/persons?${qs}`);
@@ -120,6 +121,12 @@ export const api = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ person_ids: personIds, group_id: groupId }),
+      }),
+    batchEvaluate: (personIds: string[]) =>
+      fetchJSON<{ started: number; total: number; results: { person_id: string; status: string; candidate_id?: string }[] }>(`/api/persons/batch-evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ person_ids: personIds }),
       }),
   },
   talentGroups: {

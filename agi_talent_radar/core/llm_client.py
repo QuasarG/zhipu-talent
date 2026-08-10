@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import time
 from typing import Any, Callable
 
@@ -185,10 +186,20 @@ def _call_llm_tools_once(
     }
 
 
+_CLIENT: "OpenAI | None" = None
+_CLIENT_LOCK = threading.Lock()
+
+
 def _client() -> OpenAI:
-    api_key = _required_env("DEEPSEEK_API_KEY")
-    base_url = _required_env("OPENAI_BASE_URL")
-    return OpenAI(api_key=api_key, base_url=base_url)
+    """模块级单例：OpenAI 客户端线程安全，每次新建只会白做 TCP 握手。"""
+    global _CLIENT
+    if _CLIENT is None:
+        with _CLIENT_LOCK:
+            if _CLIENT is None:
+                api_key = _required_env("DEEPSEEK_API_KEY")
+                base_url = _required_env("OPENAI_BASE_URL")
+                _CLIENT = OpenAI(api_key=api_key, base_url=base_url)
+    return _CLIENT
 
 
 def _thinking_kwargs(enable_thinking: bool) -> dict[str, Any]:

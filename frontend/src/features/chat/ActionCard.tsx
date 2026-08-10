@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ChatSegment } from "@/lib/types";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import Chip from "@/components/ui/Chip";
+import Chip, { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
 
@@ -22,11 +22,20 @@ interface PersonCandidate {
   direction?: string;
 }
 
+interface ReputationItem {
+  title?: string;
+  url?: string;
+  snippet?: string;
+  sentiment?: string;
+  concern?: string;
+}
+
 const KIND_META: Record<string, { icon: string; title: string }> = {
   select_person: { icon: "person_search", title: "选择目标人物" },
   propose_add_person: { icon: "person_add", title: "新人物入库确认" },
   resolve_fact_conflict: { icon: "difference", title: "事实冲突裁定" },
   clarify: { icon: "help", title: "需要澄清" },
+  review_reputation: { icon: "gpp_maybe", title: "舆情人工核验" },
 };
 
 const inputClass =
@@ -47,6 +56,11 @@ function decidedText(segment: ActionSegment): string {
       return d.approved ? "已采信此条事实" : "已保持现状";
     case "clarify":
       return `已回答：${d.answer || "—"}`;
+    case "review_reputation": {
+      const verdicts = (d.verdicts as { action?: string }[]) || [];
+      const ok = verdicts.filter((v) => v.action === "confirmed").length;
+      return `已核验：确认 ${ok} 条 / 驳回 ${verdicts.length - ok} 条`;
+    }
     default:
       return "已处理";
   }
@@ -58,6 +72,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
   const [choice, setChoice] = useState("");
   const [note, setNote] = useState("");
   const [answer, setAnswer] = useState("");
+  const [verdicts, setVerdicts] = useState<Record<number, string>>({});
   const decided = segment.decision != null;
   const payload = segment.payload;
   const submit = (decision: Decision) => onDecide(segment.action_id, decision);
@@ -200,6 +215,103 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                   </Button>
                 </div>
               </>
+            )}
+          </>
+        );
+      }
+      case "review_reputation": {
+        const items = (payload.items as ReputationItem[]) || [];
+        const allDecided = items.length > 0 && items.every((_, i) => verdicts[i]);
+        return (
+          <>
+            <p className="text-body-sm text-on-surface-variant">
+              以下舆情 Agent 无法确证{payload.name ? `（${String(payload.name)}）` : ""}，请逐条核验；
+              被驳回的条目不会进入最终总结：
+            </p>
+            <div className="flex flex-col gap-2 mt-2">
+              {items.map((item, i) => {
+                const verdict = decided
+                  ? ((segment.decision?.verdicts as { index: number; action: string }[]) || []).find(
+                      (v) => v.index === i
+                    )?.action
+                  : verdicts[i];
+                return (
+                  <div
+                    key={i}
+                    className="px-3 py-2 rounded-md border border-outline-variant bg-surface-lowest"
+                  >
+                    <div className="flex items-center gap-2">
+                      <StatusChip tone={item.sentiment === "positive" ? "success" : "error"}>
+                        {item.sentiment === "positive" ? "正面" : "负面"}
+                      </StatusChip>
+                      <p className="text-body-sm font-medium text-on-surface flex-1 break-words">
+                        {item.title || "（无标题）"}
+                      </p>
+                      {verdict && (
+                        <StatusChip tone={verdict === "confirmed" ? "success" : "neutral"}>
+                          {verdict === "confirmed" ? "已确认" : "已驳回"}
+                        </StatusChip>
+                      )}
+                    </div>
+                    {Boolean(item.snippet) && (
+                      <p className="text-body-sm text-on-surface-variant mt-1 break-words">{item.snippet}</p>
+                    )}
+                    {Boolean(item.concern) && (
+                      <p className="text-label text-on-surface-variant mt-1">疑点：{item.concern}</p>
+                    )}
+                    <div className="flex items-center justify-between gap-2 mt-1.5">
+                      {item.url ? (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-label text-primary hover:underline break-all"
+                        >
+                          <Icon name="open_in_new" size={14} />
+                          查看原文
+                        </a>
+                      ) : (
+                        <span />
+                      )}
+                      {!decided && (
+                        <div className="flex gap-1.5 shrink-0">
+                          <Button
+                            variant={verdicts[i] === "dismissed" ? "filled" : "outlined"}
+                            className="h-7 px-3 text-xs"
+                            onClick={() => setVerdicts((v) => ({ ...v, [i]: "dismissed" }))}
+                          >
+                            驳回
+                          </Button>
+                          <Button
+                            variant={verdicts[i] === "confirmed" ? "filled" : "outlined"}
+                            className="h-7 px-3 text-xs"
+                            icon="check"
+                            onClick={() => setVerdicts((v) => ({ ...v, [i]: "confirmed" }))}
+                          >
+                            确认
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {!decided && (
+              <div className="flex justify-end mt-3">
+                <Button
+                  variant="filled"
+                  icon="fact_check"
+                  disabled={!allDecided || busy}
+                  onClick={() =>
+                    submit({
+                      verdicts: items.map((_, i) => ({ index: i, action: verdicts[i] })),
+                    })
+                  }
+                >
+                  提交核验结果
+                </Button>
+              </div>
             )}
           </>
         );

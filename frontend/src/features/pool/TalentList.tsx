@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   DndContext,
   PointerSensor,
@@ -26,6 +27,7 @@ interface Props {
   onChanged?: () => void;
   onAddPerson?: () => void;
   onManageGroups?: () => void;
+  showBatchEvaluate?: boolean;
 }
 
 export function classifyTrack(p: { direction?: string; dominant_track?: string; person_type?: string }): string {
@@ -88,6 +90,7 @@ function PersonRow({
   };
   return (
     <div
+      id={`person-item-${p.id}`}
       ref={setNodeRef}
       {...attributes}
       {...listeners}
@@ -224,7 +227,8 @@ function GroupSection({
   );
 }
 
-export default function TalentList({ persons, selectedId, onSelect, onDelete, groups = [], onChanged, onAddPerson, onManageGroups }: Props) {
+export default function TalentList({ persons, selectedId, onSelect, onDelete, groups = [], onChanged, onAddPerson, onManageGroups, showBatchEvaluate }: Props) {
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(loadCollapsed);
   const [batchMode, setBatchMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -232,11 +236,12 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
   const [busy, setBusy] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
+  const [batchNote, setBatchNote] = useState("");
 
   useEffect(() => {
     try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed)); } catch { /* ignore */ }
   }, [collapsed]);
-  useEffect(() => { setSelected(new Set()); }, [batchMode, persons]);
+  useEffect(() => { setSelected(new Set()); setBatchNote(""); }, [batchMode, persons]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -286,6 +291,50 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
     if (!overId) return;
     if (overId === "drop-ungrouped") doMove([personId], null);
     else if (overId.startsWith("drop-group-")) doMove([personId], overId.slice("drop-group-".length));
+  };
+
+  // 选中项是否包含 guest（人物调查，不可评估）
+  const selectedHasGuest = useMemo(
+    () => persons.some((p) => selected.has(p.id) && p.person_type === "guest"),
+    [persons, selected],
+  );
+
+  const doBatchEvaluate = async () => {
+    if (selected.size === 0 || busy || selectedHasGuest) return;
+    setBusy(true);
+    setBatchNote("");
+    try {
+      const resp = await api.persons.batchEvaluate([...selected]);
+      onChanged?.();
+      // 评估在后端跑起来了：跳简历评估页并聚焦第一个，页面有 running 轮询
+      const started = resp.results.filter((r) => r.status === "started" && r.candidate_id);
+      if (started.length > 0) {
+        navigate(`/resume-evaluate?focus=${started[0].candidate_id}`);
+      } else {
+        // 全部跳过时的原因汇总，不再静默
+        const labels: Record<string, string> = {
+          not_found: "人物不存在",
+          skipped: "人物调查类型不可评估",
+          no_candidate: "无关联简历档案",
+          not_verified: "论文核验未通过",
+          failed: "启动失败",
+        };
+        const counts = new Map<string, number>();
+        for (const r of resp.results) {
+          const key = labels[r.status] || r.status;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+        setBatchNote(
+          "未能启动评估：" + [...counts.entries()].map(([k, n]) => `${n} 人${k}`).join("，")
+        );
+      }
+    } catch (err) {
+      console.error("批量评估失败", err);
+      setBatchNote("批量评估请求失败，请稍后重试");
+    } finally {
+      setBusy(false);
+      setSelected(new Set());
+    }
   };
 
   const startRename = (g: TalentGroup) => { setRenameId(g.id); setRenameVal(g.name); };
@@ -380,7 +429,11 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
 
         {/* 批量操作底栏：悬浮「移动到」按钮 + hover 弹出分组菜单 */}
         {batchMode && (
-          <div className="flex items-center gap-1.5 shrink-0 border-t border-outline-variant pt-2">
+          <div className="shrink-0 border-t border-outline-variant pt-2">
+            {batchNote && (
+              <p className="mb-1.5 px-1 text-body-sm text-error">{batchNote}</p>
+            )}
+            <div className="flex items-center gap-1.5">
             <Button variant="text" icon="close" className="shrink-0 h-10 w-10 px-0" disabled={busy}
               onClick={() => setBatchMode(false)} title="退出批量" />
             <Button variant="tonal" className="flex-1 h-10 text-body-sm" disabled={busy}
@@ -393,6 +446,18 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
               groups={groups}
               count={selected.size}
             />
+            {showBatchEvaluate && (
+              <Button
+                variant="filled"
+                disabled={selected.size === 0 || busy || selectedHasGuest}
+                onClick={() => doBatchEvaluate()}
+                className="shrink-0 h-10 px-3 text-body-sm text-on-primary"
+                title={selectedHasGuest ? "选中包含人物调查类型，无法评估" : "批量重新评估"}
+              >
+                {busy ? "处理中…" : `评估(${selected.size})`}
+              </Button>
+            )}
+            </div>
           </div>
         )}
 
@@ -430,12 +495,12 @@ function MoveMenu({ disabled, onPick, groups, count }: { disabled: boolean; onPi
       onMouseEnter={() => !disabled && setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      <Button variant="filled" disabled={disabled} className="w-full h-10 text-body-sm"
+      <Button variant="filled" disabled={disabled} className="w-full h-10 text-body-sm text-on-primary"
         onClick={() => !disabled && setOpen((v) => !v)}>
         移动到({count})
       </Button>
       {open && (
-        <div className="absolute left-0 right-0 bottom-full mb-1 bg-surface rounded-md shadow-lg border border-outline-variant z-10 max-h-60 overflow-y-auto">
+        <div className="absolute left-0 right-0 bottom-full bg-surface rounded-t-md shadow-lg border border-outline-variant border-b-0 z-10 max-h-60 overflow-y-auto pb-1">
           {groups.length === 0 ? (
             <div className="px-3 py-2 text-body-sm text-on-surface-variant">暂无分组</div>
           ) : (

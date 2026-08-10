@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { parseSSE } from "@/lib/api";
 import type { CandidateBrief, CandidateDetail, EvaluationNodeRun } from "@/lib/types";
@@ -67,6 +68,10 @@ export default function ResumeEvaluate() {
   const [liveNodeRuns, setLiveNodeRuns] = useState<EvaluationNodeRun[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [importPreview, setImportPreview] = useState<CandidateDetail | null>(null);
+  // 跟踪当前选中候选人：SSE 闭包用它判断"用户是否已切走"，避免残留状态污染
+  const currentIdRef = useRef<string | null>(null);
+  // 当前正在跑评估的候选人 abort 控制器
+  const evalAbortRef = useRef<AbortController | null>(null);
 
   const loadCandidates = useCallback(async () => {
     try {
@@ -120,17 +125,25 @@ export default function ResumeEvaluate() {
   }, [candidates, loadCandidates]);
 
   const selectCandidate = useCallback(async (id: string) => {
+    // 切走时 abort 旧评估 SSE 流，防止残留闭包回写
+    if (currentIdRef.current && currentIdRef.current !== id) {
+      evalAbortRef.current?.abort();
+      evalAbortRef.current = null;
+    }
+    currentIdRef.current = id;
     setSelectedId(id);
     setLoading(true);
     try {
       const detail = await api.candidates.get(id);
+      // 异步回来后再确认用户没又切走
+      if (currentIdRef.current !== id) return;
       setSelected(detail);
       setLiveNodeRuns(detail.evaluation_run?.node_runs || []);
       setEvaluating(detail.evaluation_run?.status === "running");
     } catch (err) {
       console.error("加载详情失败", err);
     } finally {
-      setLoading(false);
+      if (currentIdRef.current === id) setLoading(false);
     }
   }, [setSelectedId]);
 
@@ -138,6 +151,15 @@ export default function ResumeEvaluate() {
     if (!selectedId || selected || !candidates.some((candidate) => candidate.id === selectedId)) return;
     selectCandidate(selectedId);
   }, [candidates, selected, selectedId, selectCandidate]);
+
+  // 人才库批量评估跳转：?focus=<candidate_id> → 刷新队列并选中该候选人
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const focus = searchParams.get("focus");
+    if (!focus) return;
+    setSearchParams({}, { replace: true });
+    loadCandidates().then(() => selectCandidate(focus));
+  }, [searchParams, setSearchParams, selectCandidate, loadCandidates]);
 
   useEffect(() => {
     if (!selectedId || !selected?.evaluation_run || selected.evaluation_run.status !== "running") return;
@@ -187,11 +209,16 @@ export default function ResumeEvaluate() {
 
   const handleEvaluate = async () => {
     if (!selectedId) return;
+    const startedId = selectedId;
+    const controller = new AbortController();
+    evalAbortRef.current?.abort();
+    evalAbortRef.current = controller;
     setEvaluating(true);
     // 重新评估必须清空上一轮运行记录，否则运行过程会一直显示旧 run 的完成态
     setLiveNodeRuns([]);
+    const isStale = () => currentIdRef.current !== startedId;
     try {
-      const resp = await api.candidates.evaluateSSE(selectedId);
+      const resp = await api.candidates.evaluateSSE(selectedId, controller.signal);
       if (!resp.ok) {
         if (resp.status === 409) {
           await selectCandidate(selectedId);
@@ -202,9 +229,11 @@ export default function ResumeEvaluate() {
       }
       // 后端已创建新的 evaluation_run：立即刷新详情，让 persistedRuns 指向新 run
       const fresh = await api.candidates.get(selectedId).catch(() => null);
-      if (fresh) setSelected(fresh);
+      if (fresh && !isStale()) setSelected(fresh);
+      if (isStale()) return;
       setEvaluating(true);
-      for await (const event of parseSSE(resp)) {
+      for await (const event of parseSSE(resp, controller.signal)) {
+        if (isStale()) break; // 用户切走，停止处理 SSE
         const e = event as { type: string; result?: unknown } & Partial<EvaluationNodeRun>;
         if (e.type === "node" && e.node && e.phase && e.status) {
           const nodeRun: EvaluationNodeRun = {
@@ -217,15 +246,16 @@ export default function ResumeEvaluate() {
           setLiveNodeRuns((runs) => [...runs.filter((run) => run.node !== nodeRun.node), nodeRun]);
         }
         if (e.type === "result") {
-          // 重新加载详情
           await selectCandidate(selectedId);
         }
       }
     } catch (err) {
+      if (controller.signal.aborted) return; // 主动取消不算错误
       console.error("评估失败", err);
     } finally {
+      if (isStale()) return; // 用户已切走，不回写
       const detail = await api.candidates.get(selectedId).catch(() => null);
-      if (detail) {
+      if (detail && !isStale()) {
         setSelected(detail);
         setLiveNodeRuns(detail.evaluation_run?.node_runs || []);
         setEvaluating(detail.evaluation_run?.status === "running");

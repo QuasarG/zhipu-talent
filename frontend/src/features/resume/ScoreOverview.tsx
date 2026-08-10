@@ -113,20 +113,6 @@ export default function ScoreOverview({ evaluation, academicReport }: Props) {
         </ResultSection>
       )}
 
-      <ResultSection title="研究组匹配" icon="groups">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3">
-          <div>
-            <p className="text-body font-bold text-on-surface">当前匹配状态</p>
-            <p className="mt-1 text-body-sm text-on-surface-variant">Track 推荐与具体研究组匹配是两个独立判断。</p>
-          </div>
-          <StatusChip tone="neutral">
-            {evaluation.research_group_matching_status === "not_configured"
-              ? "尚未配置研究组要求"
-              : evaluation.research_group_matching_status}
-          </StatusChip>
-        </div>
-      </ResultSection>
-
       {!!alignments.length && (
         <ResultSection title="论文核验摘要" icon="fact_check" count={alignments.length}>
           <div className="divide-y divide-outline-variant">

@@ -8,6 +8,8 @@ import TalentChat from "./pages/TalentChat";
 import ResumeEvaluate from "./pages/ResumeEvaluate";
 import TalentPool from "./pages/TalentPool";
 import TalentProfile from "./pages/TalentProfile";
+import Scholarship from "./pages/Scholarship";
+import ScholarshipDetail from "./pages/ScholarshipDetail";
 import Settings from "./pages/Settings";
 import OnboardingTour from "./components/OnboardingTour";
 
@@ -41,6 +43,8 @@ function App() {
             <Route path="/knowledge" element={<Navigate to="/" replace />} />
             <Route path="/talent-pool" element={<TalentPool />} />
             <Route path="/talent-pool/:personId" element={<TalentProfile />} />
+            <Route path="/scholarship" element={<Scholarship />} />
+            <Route path="/scholarship/:id" element={<ScholarshipDetail />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

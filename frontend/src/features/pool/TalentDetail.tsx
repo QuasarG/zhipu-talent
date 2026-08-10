@@ -160,14 +160,6 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
           </section>
         )}
 
-        {/* 研究组匹配：占位信息压成一行 */}
-        <section className="flex items-center gap-2">
-          <h3 className="text-title shrink-0">研究组匹配</h3>
-          <StatusChip tone="neutral" className="min-w-0 truncate" title="Track 推荐不等于具体研究组匹配">
-            尚未配置研究组要求
-          </StatusChip>
-        </section>
-
         {/* 关系证据 */}
         <section>
           <h3 className="text-title mb-1.5">关系证据</h3>

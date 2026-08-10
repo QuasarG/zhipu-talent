@@ -6,6 +6,7 @@ import re
 import uuid
 
 from agi_talent_radar.core.db.orm import PersonORM, ReputationReportORM, TalentGroupORM
+from sqlalchemy import Text, or_ as _sql_or
 
 PERSON_TYPES = {"student", "social", "guest"}
 
@@ -61,22 +62,36 @@ def list_persons(
     session,
     person_type: str = "",
     name: str = "",
+    q: str = "",
     level: str = "",
     group_id: str = "",
     limit: int = 50,
     offset: int = 0,
 ) -> list[PersonORM]:
-    """人才库列表：按类型/姓名/舆情等级/分组筛选，分页返回。只读不 commit。
+    """人才库列表：按类型/全文搜索/舆情等级/分组筛选，分页返回。只读不 commit。
 
+    q 语义：对 name/org/direction/schools 做全文 OR 模糊匹配（学校/机构/track/方向都能搜到）。
+    name 参数保留兼容（精确 name LIKE）；q 和 name 同时给时各自独立过滤。
     group_id 语义："ungrouped" → 过滤 NULL；具体 id → 该分组；空 → 全部。
     """
+    from sqlalchemy import or_
+
     query = session.query(PersonORM)
     if person_type:
         query = query.filter(PersonORM.person_type == person_type)
     if name:
         query = query.filter(PersonORM.name.like(f"%{name}%"))
+    if q:
+        kw = f"%{q}%"
+        query = query.filter(
+            or_(
+                PersonORM.name.like(kw),
+                PersonORM.org.like(kw),
+                PersonORM.direction.like(kw),
+                PersonORM.schools.cast(Text).like(kw),
+            )
+        )
     if level:
-        # 舆情等级筛选：取每个 person 最新一条 reputation_report 的 level
         query = query.join(
             ReputationReportORM, PersonORM.id == ReputationReportORM.person_id, isouter=True,
         ).filter(ReputationReportORM.level == level)

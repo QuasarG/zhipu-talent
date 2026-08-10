@@ -16,6 +16,7 @@ export interface CandidateBrief {
   evaluable?: boolean;
   evaluation_status?: "idle" | "running" | "completed" | "failed";
   evaluation_run_id?: number | null;
+  search_text?: string;
 }
 
 export interface CandidateDetail extends CandidateBrief {
@@ -282,7 +283,6 @@ export interface Evaluation {
   error_message?: string;
   created_at?: string | null;
   completed_at?: string | null;
-  research_group_matching_status: string;
   academic_report?: AcademicReport;
   evaluation_graph: EvaluationGraph;
   node_runs: EvaluationNodeRun[];
@@ -379,9 +379,22 @@ export interface ChatCitation {
   title: string;
   url: string;
   status: string;
+  // 人才库引用的完整人物信息（tool_search_persons 注册时写入）
+  meta?: {
+    person_id: string;
+    name?: string;
+    org?: string;
+    direction?: string;
+    schools?: unknown[];
+    person_type?: string;
+    group?: string | null;
+    overall_score?: number;
+    level?: string;
+    tier?: string;
+  };
 }
 
-export type ChatActionKind = "select_person" | "propose_add_person" | "resolve_fact_conflict" | "clarify";
+export type ChatActionKind = "select_person" | "propose_add_person" | "resolve_fact_conflict" | "clarify" | "review_reputation";
 
 export type ChatSegment =
   | { type: "text"; text: string }

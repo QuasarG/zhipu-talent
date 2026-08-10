@@ -8,6 +8,7 @@ const navItems = [
   { to: "/", icon: "forum", label: "人才问答" },
   { to: "/talent-pool", icon: "groups", label: "人才库" },
   { to: "/resume-evaluate", icon: "description", label: "简历评估" },
+  { to: "/scholarship", icon: "workspace_premium", label: "奖学金" },
   { to: "/settings", icon: "settings", label: "设置" },
 ];
 
@@ -21,7 +22,7 @@ export default function NavRail({ username }: { username?: string }) {
       {/* 导航项 */}
       <ul className="flex flex-col gap-3 flex-1 w-full items-center">
         {navItems.map(({ to, icon, label }) => {
-          const tourKey = to === "/" ? "nav-chat" : to === "/resume-evaluate" ? "nav-resume" : to === "/talent-pool" ? "nav-pool" : "nav-settings";
+          const tourKey = to === "/" ? "nav-chat" : to === "/resume-evaluate" ? "nav-resume" : to === "/talent-pool" ? "nav-pool" : to === "/scholarship" ? "nav-scholarship" : "nav-settings";
           return (
           <li key={to} className="w-full flex justify-center">
             <NavLink

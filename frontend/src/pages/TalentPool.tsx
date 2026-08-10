@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { PersonBrief, PersonDetail, TalentGroup } from "@/lib/types";
 import PageToolbar from "@/components/layout/PageToolbar";
@@ -31,7 +32,7 @@ export default function TalentPool() {
   const load = useCallback(async () => {
     try {
       const [list, gs] = await Promise.all([
-        api.persons.list(search ? { name: search } : undefined),
+        api.persons.list(search ? { q: search } : undefined),
         api.talentGroups.list(),
       ]);
       setPersons(list);
@@ -60,6 +61,26 @@ export default function TalentPool() {
     if (!selectedId || selected || !persons.some((person) => person.id === selectedId)) return;
     selectPerson(selectedId);
   }, [persons, selected, selectedId, selectPerson]);
+
+  // 问答页"人才库定位"跳转：?focus=<person_id> → 清空筛选 → 选中并滚动定位
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const focus = searchParams.get("focus");
+    if (!focus) return;
+    setSearchParams({}, { replace: true });
+    setTypeFilter("all");
+    setTrackFilter("");
+    setSchoolFilter("");
+    setHrFilter("");
+    setSearch("");
+    selectPerson(focus);
+    const timer = setTimeout(() => {
+      document
+        .getElementById(`person-item-${focus}`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [searchParams, setSearchParams, selectPerson, setTypeFilter, setTrackFilter, setSchoolFilter, setHrFilter, setSearch]);
 
   // 删除人才档案：调 API → 刷新列表 → 清空选中详情
   const handleDeletePerson = useCallback(async (id: string) => {
@@ -181,7 +202,7 @@ export default function TalentPool() {
       </div>
 
       <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
-        <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} />
+        <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} showBatchEvaluate />
         {view === "graph" ? (
           <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
         ) : (

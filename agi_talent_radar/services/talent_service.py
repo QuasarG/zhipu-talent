@@ -1,20 +1,15 @@
 """候选人才库事务高层接口。
 
-本轮（阶段 1）实装：
+已实装：
 
+- ``evaluate_resume``                   驱动一次简历评估并落库。
 - ``admit_candidate_after_evaluation``  评估成功后关联 / 创建 Candidate，写
   ``resume_evaluation`` 来源；评估失败或未完成时不入库。
 - ``manual_admit_person_to_pool``       HR 显式把已知人物主档加入人才库；写
   ``person_investigation`` 来源。
 - ``update_engagement_status``          写 HR 跟进状态 + 不可变审计；强制
   ``changed_by``，拒绝自动入参。
-- ``get_research_group_matching``       未配置研究组要求时永远返回
-  ``not_configured``。
-
-仍 raise ``NotImplementedError`` 等后续阶段实装：
-
-- ``evaluate_resume`` / ``retry_publication_verification``（阶段 3/4）
-- ``record_track_recommendation``（阶段 4）
+- ``record_track_recommendation``       读取评估的 Track 推荐，无回写。
 """
 from __future__ import annotations
 
@@ -36,8 +31,6 @@ from agi_talent_radar.core.domain_models import (
     EngagementStatusChange,
     ExternalFactVerification,
     PublicationVerificationStatus,
-    ResearchGroupMatching,
-    ResearchGroupMatchingStatus,
     TrackRecommendation,
 )
 
@@ -364,11 +357,7 @@ def update_engagement_status(
 
 
 def record_track_recommendation(evaluation_id: int) -> TrackRecommendation:
-    """记录一次评估的 Track 推荐，不回写评分与论文核验。
-
-    阶段 4 实装：直接从 EvaluationORM.recommended_tracks 读取，
-    与 ``get_research_group_matching`` 字段独立，无回写。
-    """
+    """记录一次评估的 Track 推荐：从 EvaluationORM.recommended_tracks 读取，无回写。"""
     from agi_talent_radar.core.database import get_session
 
     with get_session() as session:
@@ -382,20 +371,6 @@ def record_track_recommendation(evaluation_id: int) -> TrackRecommendation:
         )
 
 
-def get_research_group_matching(candidate_id: str) -> ResearchGroupMatching:
-    """查询研究组匹配。
-
-    在 HR 与研究组确认并版本化要求之前，永远返回
-    ``ResearchGroupMatchingStatus.NOT_CONFIGURED``，不得伪造匹配分。
-    """
-    return ResearchGroupMatching(
-        candidate_id=candidate_id,
-        status=ResearchGroupMatchingStatus.NOT_CONFIGURED,
-        requirement_version=None,
-        matches=[],
-    )
-
-
 __all__ = [
     "evaluate_resume",
     "retry_publication_verification",
@@ -403,5 +378,4 @@ __all__ = [
     "manual_admit_person_to_pool",
     "update_engagement_status",
     "record_track_recommendation",
-    "get_research_group_matching",
 ]  # noqa: E501

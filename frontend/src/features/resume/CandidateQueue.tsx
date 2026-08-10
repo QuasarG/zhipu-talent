@@ -43,7 +43,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
   const filtered = candidates.filter((c) => {
     if (filter !== "all" && classifyCandidate(c) !== filter) return false;
     if (search) {
-      const hay = `${c.name} ${c.role} ${c.stage}`.toLowerCase();
+      const hay = (c.search_text || `${c.name} ${c.role} ${c.stage}`).toLowerCase();
       if (!hay.includes(search.toLowerCase())) return false;
     }
     return true;

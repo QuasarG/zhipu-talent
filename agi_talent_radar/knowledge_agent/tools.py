@@ -28,11 +28,19 @@ class ToolContext:
         self.session = session
         self.sources: list[dict[str, Any]] = list(existing_sources or [])
 
-    def register_source(self, type: str, title: str, url: str = "", status: str = "") -> str:
+    def register_source(
+        self,
+        type: str,
+        title: str,
+        url: str = "",
+        status: str = "",
+        meta: dict[str, Any] | None = None,
+    ) -> str:
         citation_id = f"c{len(self.sources) + 1}"
-        self.sources.append(
-            {"id": citation_id, "type": type, "title": title, "url": url, "status": status}
-        )
+        source: dict[str, Any] = {"id": citation_id, "type": type, "title": title, "url": url, "status": status}
+        if meta:
+            source["meta"] = meta
+        self.sources.append(source)
         return citation_id
 
 
@@ -41,7 +49,13 @@ class ToolContext:
 # ---------------------------------------------------------------------------
 
 
-def _person_brief(person: PersonORM) -> dict[str, Any]:
+def _person_brief(person: PersonORM, session=None) -> dict[str, Any]:
+    group_name = ""
+    if session and person.group_id:
+        from agi_talent_radar.core.db.orm import TalentGroupORM
+        g = session.get(TalentGroupORM, person.group_id)
+        if g:
+            group_name = g.name
     return {
         "person_id": person.id,
         "name": person.name,
@@ -49,6 +63,7 @@ def _person_brief(person: PersonORM) -> dict[str, Any]:
         "direction": person.direction,
         "schools": person.schools or [],
         "person_type": person.person_type,
+        "group": group_name or None,
     }
 
 
@@ -70,12 +85,24 @@ def _latest_evaluation(session, person_id: str) -> EvaluationORM | None:
     )
 
 
+def _person_citation_meta(session, person: PersonORM) -> dict[str, Any]:
+    """人物引用的 meta：brief + 最新评估。前端凭 meta.person_id 渲染详细档案卡。"""
+    meta = _person_brief(person, session)
+    evaluation = _latest_evaluation(session, person.id)
+    if evaluation is not None:
+        meta["overall_score"] = evaluation.overall_score
+        meta["level"] = evaluation.level
+        meta["tier"] = evaluation.tier
+    return meta
+
+
 def _filter_persons(session, args: dict[str, Any]) -> list[PersonORM]:
-    """姓名/方向走 SQL，学校/学历在 Python 侧过滤（池子小）。"""
+    """姓名/方向走 SQL，学校/学历/分组在 Python 侧过滤（池子小）。"""
     name = str(args.get("name") or "").strip()
     school = str(args.get("school") or "").strip()
     direction = str(args.get("direction") or "").strip()
     degree = str(args.get("degree") or "").strip()
+    group = str(args.get("group") or "").strip()
     query = session.query(PersonORM)
     if name:
         query = query.filter(PersonORM.name.like(f"%{name}%"))
@@ -90,6 +117,16 @@ def _filter_persons(session, args: dict[str, Any]) -> list[PersonORM]:
         ]
     if degree:
         persons = [p for p in persons if _person_has_degree(session, p, degree)]
+    if group:
+        # 按分组名模糊匹配或 "ungrouped" 查未分组
+        from agi_talent_radar.core.db.orm import TalentGroupORM
+        if group.lower() == "ungrouped" or group == "未分组":
+            persons = [p for p in persons if not p.group_id]
+        else:
+            group_ids = {
+                g.id for g in session.query(TalentGroupORM).filter(TalentGroupORM.name.like(f"%{group}%")).all()
+            }
+            persons = [p for p in persons if p.group_id in group_ids]
     return persons
 
 
@@ -126,10 +163,12 @@ def tool_search_knowledge(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
     for hit in hits:
         payload = hit.payload or {}
         text = str(payload.get("text") or "")
+        # 引用展示层：pending/空默认视为已确认（人工核验只走舆情卡片），冲突等异常态保留
+        raw_status = str(payload.get("fact_status") or "")
         citation_id = ctx.register_source(
             str(payload.get("record_type") or "knowledge"),
             text[:40],
-            status=str(payload.get("fact_status") or ""),
+            status="confirmed" if raw_status in ("", "pending") else raw_status,
         )
         items.append(
             {
@@ -145,13 +184,33 @@ def tool_search_knowledge(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
     return {"hits": items, "summary": f"命中 {len(items)} 条事实"}
 
 
+def tool_list_talent_groups(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """列出人才库全部分组（含人数），帮用户了解手工分类情况。"""
+    from agi_talent_radar.core.persons import count_persons_by_group, list_talent_groups
+
+    groups = list_talent_groups(ctx.session)
+    rows = [
+        {"id": g.id, "name": g.name, "count": count_persons_by_group(ctx.session, g.id)}
+        for g in groups
+    ]
+    ungrouped = ctx.session.query(PersonORM).filter(PersonORM.group_id.is_(None)).count()
+    summary = f"共 {len(groups)} 个分组" + (f"（未分组 {ungrouped} 人）" if ungrouped else "")
+    citation_id = ctx.register_source("talent_pool", "人才库分组概况", status="confirmed")
+    return {"citation_id": citation_id, "groups": rows, "ungrouped_count": ungrouped, "summary": summary}
+
+
 def tool_search_persons(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     persons = _filter_persons(ctx.session, args)
     results = []
     for p in persons[:20]:
         # 每个人都注册引用，给模型可引用的 citation_id，防止它编造角标
-        citation_id = ctx.register_source("talent_pool", f"人才库：{p.name}", status="confirmed")
-        results.append({"citation_id": citation_id, **_person_brief(p)})
+        # meta 带完整人物信息（含最新评估），前端引用卡片直接渲染详细档案
+        brief = _person_brief(p, ctx.session)
+        citation_id = ctx.register_source(
+            "talent_pool", f"人才库：{p.name}", status="confirmed",
+            meta=_person_citation_meta(ctx.session, p),
+        )
+        results.append({"citation_id": citation_id, **brief})
     return {"persons": results, "summary": f"命中 {len(results)} 人"}
 
 
@@ -161,11 +220,14 @@ def tool_get_person_profile(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
         return {"found": False, "summary": "人物不存在"}
     submission = _latest_submission(ctx.session, person.id)
     structured = (submission.structured or {}) if submission else {}
-    citation_id = ctx.register_source("resume", f"{person.name} 的简历画像", status="confirmed")
+    citation_id = ctx.register_source(
+        "resume", f"{person.name} 的简历画像", status="confirmed",
+        meta=_person_citation_meta(ctx.session, person),
+    )
     return {
         "found": True,
         "citation_id": citation_id,
-        "person": _person_brief(person),
+        "person": _person_brief(person, ctx.session),
         "has_resume": submission is not None,
         "education": structured.get("education") or [],
         "experiences": structured.get("experiences") or [],
@@ -183,7 +245,10 @@ def tool_get_person_evaluation(ctx: ToolContext, args: dict[str, Any]) -> dict[s
     evaluation = _latest_evaluation(ctx.session, person.id)
     if evaluation is None:
         return {"found": True, "has_evaluation": False, "summary": f"{person.name} 暂无评估记录"}
-    citation_id = ctx.register_source("evaluation", f"{person.name} 的评估报告", status="confirmed")
+    citation_id = ctx.register_source(
+        "evaluation", f"{person.name} 的评估报告", status="confirmed",
+        meta=_person_citation_meta(ctx.session, person),
+    )
     academic = evaluation.academic_report or {}
     return {
         "found": True,
@@ -210,7 +275,10 @@ def tool_get_resume_versions(ctx: ToolContext, args: dict[str, Any]) -> dict[str
     person = ctx.session.get(PersonORM, str(args.get("person_id") or ""))
     if person is None:
         return {"found": False, "summary": "人物不存在"}
-    citation_id = ctx.register_source("resume", f"{person.name} 的简历版本历史", status="confirmed")
+    citation_id = ctx.register_source(
+        "resume", f"{person.name} 的简历版本历史", status="confirmed",
+        meta=_person_citation_meta(ctx.session, person),
+    )
     submissions = (
         ctx.session.query(ResumeSubmissionORM)
         .filter_by(person_id=person.id)
@@ -237,7 +305,7 @@ def tool_get_resume_versions(ctx: ToolContext, args: dict[str, Any]) -> dict[str
     return {
         "found": True,
         "citation_id": citation_id,
-        "person": _person_brief(person),
+        "person": _person_brief(person, ctx.session),
         "versions": versions,
         "summary": f"{person.name} 共 {len(versions)} 个简历版本",
     }
@@ -249,7 +317,7 @@ def tool_aggregate_persons(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
     top_n = max(1, min(50, int(args.get("top_n") or 10)))
     rows = []
     for person in persons:
-        row = _person_brief(person)
+        row = _person_brief(person, ctx.session)
         if metric == "avg_score":
             evaluation = _latest_evaluation(ctx.session, person.id)
             row["score"] = evaluation.overall_score if evaluation else None
@@ -290,7 +358,7 @@ def tool_search_scholar_aminer(ctx: ToolContext, args: dict[str, Any]) -> dict[s
     scholars = []
     for fact in facts:
         citation_id = ctx.register_source(
-            "aminer", f"AMiner 学者：{fact.payload.get('name', '')}", fact.source_url, "pending"
+            "aminer", f"AMiner 学者：{fact.payload.get('name', '')}", fact.source_url, "confirmed"
         )
         scholars.append({"citation_id": citation_id, **fact.payload})
     tried = sorted({str(f.payload.get("query_name") or "") for f in facts if f.payload.get("query_name")})
@@ -298,38 +366,22 @@ def tool_search_scholar_aminer(ctx: ToolContext, args: dict[str, Any]) -> dict[s
     return {"scholars": scholars, "summary": f"AMiner 命中 {len(scholars)} 位学者{suffix}"}
 
 
-def tool_search_papers_aminer(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    from agi_talent_radar.core.connectors.aminer_rest import search_aminer_papers_by_title
+def tool_search_papers(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """统一论文检索：AMiner → CrossRef → arXiv → OpenAlex 四级降级。"""
+    from agi_talent_radar.core.connectors.paper_search import search_papers_federated
 
-    facts = search_aminer_papers_by_title(str(args.get("title") or ""))
+    title = str(args.get("title") or "").strip()
+    facts = search_papers_federated(title, count=int(args.get("count") or 5))
     papers = []
+    sources_used: set[str] = set()
     for fact in facts:
+        sources_used.add(fact.source)
         citation_id = ctx.register_source(
-            "aminer", str(fact.payload.get("title") or ""), fact.source_url, "pending"
+            fact.source, str(fact.payload.get("title") or ""), fact.source_url, "confirmed"
         )
         papers.append({"citation_id": citation_id, **fact.payload})
-    return {"papers": papers, "summary": f"AMiner 命中 {len(papers)} 篇论文"}
-
-
-def tool_search_papers_openalex(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    from agi_talent_radar.core.connectors.openalex import search_author_works, search_works
-
-    query = str(args.get("query") or "").strip()
-    author = str(args.get("author") or "").strip()
-    since_year = args.get("since_year")
-    if author:
-        facts = search_author_works(author, since_year=int(since_year) if since_year else None)
-    elif query:
-        facts = search_works(query)
-    else:
-        return {"papers": [], "summary": "query 与 author 至少提供一个"}
-    papers = []
-    for fact in facts:
-        citation_id = ctx.register_source(
-            "openalex", str(fact.payload.get("title") or ""), fact.source_url, "pending"
-        )
-        papers.append({"citation_id": citation_id, **fact.payload})
-    return {"papers": papers, "summary": f"OpenAlex 命中 {len(papers)} 篇论文"}
+    src_label = "/".join(sorted(sources_used)) if sources_used else "无命中"
+    return {"papers": papers, "summary": f"命中 {len(papers)} 篇（来源：{src_label}）"}
 
 
 def tool_search_dblp(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -339,7 +391,7 @@ def tool_search_dblp(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     papers = []
     for fact in facts:
         citation_id = ctx.register_source(
-            "dblp", str(fact.payload.get("title") or ""), fact.source_url, "pending"
+            "dblp", str(fact.payload.get("title") or ""), fact.source_url, "confirmed"
         )
         papers.append({"citation_id": citation_id, **fact.payload})
     return {"papers": papers, "summary": f"DBLP 命中 {len(papers)} 篇论文"}
@@ -352,7 +404,7 @@ def tool_search_web(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     items = []
     for fact in facts:
         citation_id = ctx.register_source(
-            "web_search", str(fact.payload.get("title") or ""), fact.source_url, "pending"
+            "web_search", str(fact.payload.get("title") or ""), fact.source_url, "confirmed"
         )
         items.append({"citation_id": citation_id, **fact.payload, "url": fact.source_url})
     return {"results": items, "summary": f"网络检索命中 {len(items)} 条"}
@@ -381,7 +433,7 @@ def tool_check_reputation(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
         items = []
         for fact in facts:
             citation_id = ctx.register_source(
-                "web_search", str(fact.payload.get("title") or ""), fact.source_url, "pending"
+                "web_search", str(fact.payload.get("title") or ""), fact.source_url, "confirmed"
             )
             items.append(
                 {
@@ -420,7 +472,7 @@ def tool_get_github_repo(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
 
     fact = get_repo_stats(str(args.get("repo") or ""))
     citation_id = ctx.register_source(
-        "github", f"GitHub 仓库：{fact.payload.get('repo', '')}", fact.source_url, "pending"
+        "github", f"GitHub 仓库：{fact.payload.get('repo', '')}", fact.source_url, "confirmed"
     )
     return {"citation_id": citation_id, **fact.payload, "summary": f"已获取 {fact.payload.get('repo', '')} 的仓库信息"}
 
@@ -471,6 +523,31 @@ def tool_ask_clarification(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
     )
 
 
+def tool_request_reputation_review(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    items = []
+    for raw in args.get("items") or []:
+        if not isinstance(raw, dict):
+            continue
+        items.append(
+            {
+                "title": str(raw.get("title") or ""),
+                "url": str(raw.get("url") or ""),
+                "snippet": str(raw.get("snippet") or ""),
+                "sentiment": str(raw.get("sentiment") or "negative"),
+                "concern": str(raw.get("concern") or ""),
+            }
+        )
+    return _gated(
+        "review_reputation",
+        {
+            "person_id": str(args.get("person_id") or ""),
+            "name": str(args.get("name") or ""),
+            "org": str(args.get("org") or ""),
+            "items": items,
+        },
+    )
+
+
 def execute_gated_action(session, kind: str, payload: dict[str, Any], decision: dict[str, Any]) -> str:
     """用户决策后执行门控动作（真正写库只发生在这里），返回喂回 LLM 的文本。"""
     decision = decision or {}
@@ -478,7 +555,7 @@ def execute_gated_action(session, kind: str, payload: dict[str, Any], decision: 
         person = session.get(PersonORM, str(decision.get("choice") or ""))
         if person is None:
             return "用户选择的人物不存在。"
-        return f"用户已选定人物：{json.dumps(_person_brief(person), ensure_ascii=False)}"
+        return f"用户已选定人物：{json.dumps(_person_brief(person, session), ensure_ascii=False)}"
 
     if kind == "propose_add_person":
         if not decision.get("approved"):
@@ -530,6 +607,56 @@ def execute_gated_action(session, kind: str, payload: dict[str, Any], decision: 
         answer = str(decision.get("answer") or decision.get("choice") or "")
         return f"用户回答：{answer}"
 
+    if kind == "review_reputation":
+        from agi_talent_radar.core.db.orm import ReputationReportORM
+        from agi_talent_radar.core.persons import get_or_create_person
+
+        items = [it for it in (payload.get("items") or []) if isinstance(it, dict)]
+        verdicts: dict[int, str] = {}
+        for v in decision.get("verdicts") or []:
+            # index 可能是 0，不能用 or 判空；isdigit 校验后再 int
+            if isinstance(v, dict) and str(v.get("index", "")).isdigit():
+                verdicts[int(v["index"])] = str(v.get("action") or "")
+        confirmed, dismissed = [], []
+        for index, item in enumerate(items):
+            action = verdicts.get(index, "dismissed")
+            (confirmed if action == "confirmed" else dismissed).append(item)
+        person = None
+        if payload.get("person_id"):
+            person = session.get(PersonORM, str(payload["person_id"]))
+        if person is None:
+            name = str(payload.get("name") or "").strip()
+            if not name:
+                return "舆情核验失败：缺少人物姓名。"
+            person = get_or_create_person(
+                session, name=name, org=str(payload.get("org") or ""), person_type="guest"
+            )
+        events = []
+        for index, item in enumerate(items):
+            action = verdicts.get(index, "dismissed")
+            events.append({**item, "review_status": "confirmed" if action == "confirmed" else "dismissed"})
+        has_negative = any(e.get("sentiment") == "negative" for e in events if e["review_status"] == "confirmed")
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        record = ReputationReportORM(
+            person_id=person.id,
+            level="red" if has_negative else "green",
+            events=events,
+            review_status="confirmed",
+            reviewer="chat_user",
+            review_note="问答页逐条人工核验",
+            reviewed_at=now,
+        )
+        session.add(record)
+        session.commit()
+        lines = [f"舆情核验完成（报告 #{record.id}，人物 {person.name}，等级 {record.level}）。"]
+        if confirmed:
+            lines.append("用户【已确认】的条目（可写入总结，须标注“已经人工核验”）：")
+            lines.extend(f"- {it.get('title')}（{it.get('url') or '无链接'}）" for it in confirmed)
+        if dismissed:
+            lines.append("用户【已驳回】的条目（严禁再出现在总结或后续回答中，视为不成立）：")
+            lines.extend(f"- {it.get('title')}" for it in dismissed)
+        return "\n".join(lines)
+
     return f"未知的门控动作类型：{kind}"
 
 
@@ -559,15 +686,24 @@ TOOLS: list[dict[str, Any]] = [
         "gated": False,
     },
     {
+        "name": "list_talent_groups",
+        "label": "查看人才分组",
+        "description": "列出人才库的全部分组（手工分类）及每组人数，帮助了解人才分类概况。",
+        "parameters": _obj({}),
+        "handler": tool_list_talent_groups,
+        "gated": False,
+    },
+    {
         "name": "search_persons",
         "label": "筛选库内人物",
-        "description": "按姓名/学校/方向/学历筛选人才库人物，返回候选人卡片（含 person_id）。",
+        "description": "按姓名/学校/方向/学历/分组筛选人才库人物，返回候选人卡片（含 person_id 和分组名）。",
         "parameters": _obj(
             {
                 "name": _str("姓名（可空）"),
                 "school": _str("学校关键词（可空）"),
                 "direction": _str("研究方向关键词（可空）"),
                 "degree": _str("学历关键词，如 博士/硕士（可空）"),
+                "group": _str("分组名关键词（可空），如 AI Infra；填 未分组/ungrouped 查未分组的人"),
             }
         ),
         "handler": tool_search_persons,
@@ -600,12 +736,13 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "aggregate_persons",
         "label": "库内统计排名",
-        "description": "库内统计排名：按 degree/school/direction 过滤 + count/avg_score/pub_count 聚合。",
+        "description": "库内统计排名：按 degree/school/direction/group 过滤 + count/avg_score/pub_count 聚合。",
         "parameters": _obj(
             {
                 "degree": _str("学历过滤（可空）"),
                 "school": _str("学校过滤（可空）"),
                 "direction": _str("方向过滤（可空）"),
+                "group": _str("分组过滤（可空），填分组名或 未分组"),
                 "metric": _str("count | avg_score | pub_count"),
                 "top_n": {"type": "integer", "description": "返回前 N 名，默认 10"},
             }
@@ -629,25 +766,11 @@ TOOLS: list[dict[str, Any]] = [
         "gated": False,
     },
     {
-        "name": "search_papers_aminer",
-        "label": "AMiner 论文检索",
-        "description": "按标题检索 AMiner 论文（免费，引用数为分桶值），论文检索的首选；查不到再换 OpenAlex 兜底。",
-        "parameters": _obj({"title": _str("论文标题或关键词")}, ["title"]),
-        "handler": tool_search_papers_aminer,
-        "gated": False,
-    },
-    {
-        "name": "search_papers_openalex",
-        "label": "OpenAlex 论文检索",
-        "description": "兜底工具：仅当 AMiner 无结果、或必须拿精确被引数/撤稿标记时使用（限流频繁，能不用就不用）。",
-        "parameters": _obj(
-            {
-                "query": _str("论文标题关键词（可空）"),
-                "author": _str("作者姓名（可空）"),
-                "since_year": {"type": "integer", "description": "起始年份（可空）"},
-            }
-        ),
-        "handler": tool_search_papers_openalex,
+        "name": "search_papers",
+        "label": "论文检索",
+        "description": "按标题检索论文，自动多源降级（AMiner→CrossRef→arXiv→OpenAlex），返回标题/作者/年份/venue/被引/DOI。",
+        "parameters": _obj({"title": _str("论文标题或关键词"), "count": {"type": "integer", "description": "返回数量（默认5）"}}, ["title"]),
+        "handler": tool_search_papers,
         "gated": False,
     },
     {
@@ -745,6 +868,39 @@ TOOLS: list[dict[str, Any]] = [
             ["question"],
         ),
         "handler": tool_ask_clarification,
+        "gated": True,
+    },
+    {
+        "name": "request_reputation_review",
+        "label": "提请舆情人工核验",
+        "description": (
+            "舆情监测中发现无法确证的正面/负面评价类舆情（做了好事/被坏事波及）时调用，"
+            "把这类条目逐条提交用户人工核验；用户驳回的条目严禁写入总结。"
+            "事实类客观信息（任职/获奖/发文等）不要走这里，直接引用即可。"
+        ),
+        "parameters": _obj(
+            {
+                "person_id": _str("库内人物 ID（可空，库外人物留空）"),
+                "name": _str("人物姓名"),
+                "org": _str("机构（可空）"),
+                "items": {
+                    "type": "array",
+                    "description": "待核验舆情条目",
+                    "items": _obj(
+                        {
+                            "title": _str("舆情标题"),
+                            "url": _str("原文链接"),
+                            "snippet": _str("摘要片段"),
+                            "sentiment": _str("positive | negative"),
+                            "concern": _str("为什么无法确证、需要人工判断"),
+                        },
+                        ["title", "sentiment"],
+                    ),
+                },
+            },
+            ["name", "items"],
+        ),
+        "handler": tool_request_reputation_review,
         "gated": True,
     },
 ]

@@ -343,9 +343,6 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
         "error_message": evaluation.error_message or "",
         "created_at": _iso_datetime(evaluation.created_at),
         "completed_at": _iso_datetime(evaluation.completed_at),
-        # 阶段 4：研究组匹配与研究组匹配状态独立；
-        # 未配置时永远返回 not_configured，避免伪造匹配分。
-        "research_group_matching_status": "not_configured",
         "evaluation_graph": evaluation_graph_catalog(),
         "node_runs": [
             {
@@ -427,8 +424,11 @@ def list_candidates_for_queue(session):
     )
     result = []
     for candidate, latest_completed, evaluated in rows:
-        # 已评估但完成时间超过保留期 → 跳过（UTC vs naive 兼容比较）
-        if evaluated and latest_completed is not None:
+        latest_run = get_latest_evaluation_run(session, candidate.id)
+        run_active = bool(latest_run and latest_run.status == "running")
+        # 已评估但完成时间超过保留期 → 跳过（UTC vs naive 兼容比较）；
+        # 但人才库批量重新评估正在进行时（run 活跃）必须保留在队列里
+        if evaluated and latest_completed is not None and not run_active:
             comp = latest_completed
             if comp.tzinfo is None:
                 comp = comp.replace(tzinfo=timezone.utc)
@@ -436,7 +436,6 @@ def list_candidates_for_queue(session):
                 continue
         # 用 setattr 挂载临时字段，避免改动 ORM 模型
         candidate.evaluated = bool(evaluated)  # type: ignore[attr-defined]
-        latest_run = get_latest_evaluation_run(session, candidate.id)
         candidate.evaluation_status = latest_run.status if latest_run else "idle"  # type: ignore[attr-defined]
         candidate.evaluation_run_id = latest_run.id if latest_run else None  # type: ignore[attr-defined]
         result.append(candidate)

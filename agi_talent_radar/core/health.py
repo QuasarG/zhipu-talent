@@ -151,6 +151,28 @@ def check_openalex() -> str:
     return "reachable"
 
 
+def check_crossref() -> str:
+    """CrossRef 探测：无需 key，检查网络可达。"""
+    import httpx
+
+    rv = httpx.get("https://api.crossref.org/works?rows=1", timeout=DEFAULT_TIMEOUT_SECONDS)
+    rv.raise_for_status()
+    return "reachable"
+
+
+def check_arxiv() -> str:
+    """arXiv 探测：无需 key，检查网络可达。"""
+    import httpx
+
+    rv = httpx.get(
+        "https://export.arxiv.org/api/query",
+        params={"search_query": "all:test", "max_results": 1},
+        timeout=DEFAULT_TIMEOUT_SECONDS,
+    )
+    rv.raise_for_status()
+    return "reachable"
+
+
 def check_web_search() -> str:
     """智谱 Web Search 探测：检查 Z_AI_API_KEY 是否配置。"""
     from agi_talent_radar.core.settings import get_settings
@@ -175,6 +197,8 @@ def run_health_check(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> HealthReport:
         ("llm", False, check_llm),
         ("embedding", False, check_embedding),
         ("aminer", False, check_aminer),
+        ("crossref", False, check_crossref),
+        ("arxiv", False, check_arxiv),
         ("openalex", False, check_openalex),
         ("web_search", False, check_web_search),
     ]

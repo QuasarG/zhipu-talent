@@ -5,7 +5,7 @@ import re
 from threading import Lock
 
 from dotenv import load_dotenv
-from sqlalchemy import URL, create_engine, text
+from sqlalchemy import URL, create_engine, event, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -18,13 +18,26 @@ _ENGINES: dict[str, Engine] = {}
 _ENGINE_LOCK = Lock()
 
 
+def _make_engine(url) -> Engine:
+    """sqlite 开 WAL + busy_timeout：读不阻塞写，并发写排队而非 database is locked。"""
+    engine = create_engine(url, pool_pre_ping=True)
+    if engine.url.drivername.startswith("sqlite"):
+        @event.listens_for(engine, "connect")
+        def _sqlite_pragmas(dbapi_conn, _record) -> None:
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.close()
+    return engine
+
+
 def get_engine() -> Engine:
     url = _database_url()
     cache_key = url.render_as_string(hide_password=False) if isinstance(url, URL) else url
     with _ENGINE_LOCK:
         engine = _ENGINES.get(cache_key)
         if engine is None:
-            engine = create_engine(url, pool_pre_ping=True)
+            engine = _make_engine(url)
             ensure_schema(engine)
             _ENGINES[cache_key] = engine
     return engine

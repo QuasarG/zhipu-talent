@@ -298,48 +298,17 @@ class ExternalFact(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Track 推荐与研究组匹配
+# Track 推荐
 # ---------------------------------------------------------------------------
 
 
 class TrackRecommendation(BaseModel):
-    """基于简历能力证据的宽泛 Track 推荐。
-
-    这是评估输出的一部分，与未来 ``ResearchGroupMatching`` 完全独立。
-    """
+    """基于简历能力证据的宽泛 Track 推荐（评估输出的一部分）。"""
 
     model_config = ConfigDict(extra="forbid")
 
     evaluation_id: int
     tracks: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class ResearchGroupMatchingStatus(str, Enum):
-    """研究组匹配模块状态。
-
-    - ``NOT_CONFIGURED``: 未取得 HR 与研究组确认的要求，匹配未启用。
-    - ``CONFIGURED``: 已配置研究组要求，可以匹配。
-    - ``DISABLED``: 显式禁用研究组匹配。
-    """
-
-    NOT_CONFIGURED = "not_configured"
-    CONFIGURED = "configured"
-    DISABLED = "disabled"
-
-    @classmethod
-    def all(cls) -> tuple[str, ...]:
-        return tuple(member.value for member in cls)
-
-
-class ResearchGroupMatching(BaseModel):
-    """研究组匹配输出。在未配置时永远为 ``NOT_CONFIGURED``。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    candidate_id: str
-    status: ResearchGroupMatchingStatus = ResearchGroupMatchingStatus.NOT_CONFIGURED
-    requirement_version: str | None = None
-    matches: list[dict[str, Any]] = Field(default_factory=list)
 
 
 __all__ = [
@@ -360,6 +329,4 @@ __all__ = [
     "ExternalFactVerification",
     "ExternalFact",
     "TrackRecommendation",
-    "ResearchGroupMatchingStatus",
-    "ResearchGroupMatching",
 ]
