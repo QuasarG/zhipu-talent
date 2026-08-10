@@ -60,6 +60,45 @@ def _is_evaluation_active(evaluation_id: int) -> bool:
         return evaluation_id in _ACTIVE_EVALUATIONS
 
 
+def _start_background_evaluation(session, candidate_orm) -> None:
+    """启动后台评估线程（不走 SSE，供批量评估调用）。
+
+    复用 evaluate_candidate 的核心逻辑：校验门禁 → start_evaluation_run → daemon Thread。
+    调用方负责传入已 attach 到 session 的 candidate_orm。
+    """
+    from agi_talent_radar.core.database import (
+        get_latest_evaluation_run,
+        start_evaluation_run,
+        fail_evaluation_run,
+    )
+
+    latest_run = get_latest_evaluation_run(session, candidate_orm.id)
+    if latest_run and latest_run.status == "running":
+        if _is_evaluation_active(latest_run.id):
+            raise RuntimeError("该候选人的评估正在运行")
+        fail_evaluation_run(session, latest_run.id, "服务重启后原评估任务已中断。")
+
+    # 已软移出（dismissed）的候选人被重新评估时回到队列
+    if getattr(candidate_orm, "group", "") == "dismissed":
+        candidate_orm.group = "pending"
+        session.commit()
+
+    resume = _orm_to_resume(candidate_orm)
+    academic_report = _evaluation_academic_report(candidate_orm)
+    evaluation_run = start_evaluation_run(session, candidate_orm.id)
+    evaluation_run_id = evaluation_run.id
+
+    event_queue: Queue = Queue()
+    _set_evaluation_active(evaluation_run_id, True)
+    worker = Thread(
+        target=_run_evaluation_job,
+        args=(candidate_orm.id, evaluation_run_id, resume, academic_report, event_queue),
+        name=f"evaluation-{evaluation_run_id}",
+        daemon=True,
+    )
+    worker.start()
+
+
 def _run_evaluation_job(
     candidate_id: str,
     evaluation_run_id: int,
@@ -132,11 +171,13 @@ def create_app() -> Flask:
     )
     from agi_talent_radar.web.config_api import build_config_blueprint
     from agi_talent_radar.web.knowledge_api import build_knowledge_blueprint
+    from agi_talent_radar.scholarship.api import build_scholarship_blueprint
 
     configure_app_session(app)
     app.register_blueprint(build_auth_blueprint())
     app.register_blueprint(build_config_blueprint())
     app.register_blueprint(build_knowledge_blueprint())
+    app.register_blueprint(build_scholarship_blueprint())
     install_auth_middleware(app)
 
     # SPA 页面路由：所有前端页面统一返回 React SPA shell。
@@ -583,6 +624,7 @@ def create_app() -> Flask:
     def list_persons_view():
         person_type = request.args.get("person_type", "")
         name = request.args.get("name", "")
+        q = request.args.get("q", "")
         level = request.args.get("level", "")
         group_id = request.args.get("group_id", "")
         try:
@@ -590,7 +632,7 @@ def create_app() -> Flask:
             from agi_talent_radar.core.db.repository import find_candidate_by_person
 
             with get_session() as session:
-                rows = list_persons(session, person_type=person_type, name=name, level=level, group_id=group_id)
+                rows = list_persons(session, person_type=person_type, name=name, q=q, level=level, group_id=group_id)
                 return jsonify([
                     _person_to_brief(row, find_candidate_by_person(session, row.id))
                     for row in rows
@@ -757,6 +799,46 @@ def create_app() -> Flask:
             n = batch_move_persons(session, person_ids, group_id)
             return jsonify({"moved": n, "group_id": group_id})
 
+    @app.post("/api/persons/batch-evaluate")
+    def batch_evaluate_persons():
+        """按 person_id 批量启动后台评估（非 SSE，后台跑）。"""
+        from agi_talent_radar.core.db.orm import PersonORM
+        from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.core.db.repository import find_candidate_by_person
+
+        body = request.get_json(silent=True) or {}
+        person_ids = body.get("person_ids") or []
+        if not isinstance(person_ids, list) or not person_ids:
+            return jsonify({"detail": "person_ids 不能为空"}), 400
+
+        results: list[dict] = []
+        for pid in person_ids:
+            with get_session() as session:
+                person = session.get(PersonORM, pid)
+                if not person:
+                    results.append({"person_id": pid, "status": "not_found"})
+                    continue
+                if person.person_type == "guest":
+                    results.append({"person_id": pid, "status": "skipped", "reason": "guest"})
+                    continue
+                candidate = find_candidate_by_person(session, pid)
+                if not candidate:
+                    results.append({"person_id": pid, "status": "no_candidate"})
+                    continue
+                vresult = _verification_result(candidate)
+                if vresult not in ("verified", "rejected"):
+                    results.append({"person_id": pid, "status": "not_verified", "detail": vresult})
+                    continue
+                # 复用单条评估逻辑（启动后台线程）
+                try:
+                    _start_background_evaluation(session, candidate)
+                    results.append({"person_id": pid, "status": "started", "candidate_id": candidate.id})
+                except Exception as exc:
+                    results.append({"person_id": pid, "status": "failed", "detail": str(exc)})
+        started = sum(1 for r in results if r["status"] == "started")
+        return jsonify({"started": started, "total": len(person_ids), "results": results})
+
+    @app.post("/api/reputation/<int:report_id>/review")
     def review_reputation(report_id: int):
         body = request.get_json(silent=True) or {}
         action = body.get("action")
@@ -1260,6 +1342,28 @@ def _imported_candidate_payload(classification, resume: CandidateResume, academi
     }
 
 
+def _candidate_search_text(row) -> str:
+    """拼接候选人可搜字段（学校/机构/方向/论文），供前端全文搜索。"""
+    parts = [row.name or "", row.target_role or "", row.stage or ""]
+    # education: list[dict|str]，提取学校名
+    edu = getattr(row, "education", None) or []
+    if isinstance(edu, list):
+        for item in edu:
+            if isinstance(item, dict):
+                parts.append(str(item.get("school") or ""))
+            else:
+                parts.append(str(item))
+    # directions: list[str]
+    dirs = getattr(row, "directions", None) or []
+    if isinstance(dirs, list):
+        parts.extend(str(d) for d in dirs)
+    # publications: list[str]
+    pubs = getattr(row, "publications", None) or []
+    if isinstance(pubs, list):
+        parts.extend(str(p) for p in pubs)
+    return " ".join(p for p in parts if p)
+
+
 def _orm_to_brief(row) -> dict[str, Any]:
     return {
         "id": row.id,
@@ -1282,6 +1386,8 @@ def _orm_to_brief(row) -> dict[str, Any]:
         "evaluable": _is_evaluable(row),
         "evaluation_status": getattr(row, "evaluation_status", "idle"),
         "evaluation_run_id": getattr(row, "evaluation_run_id", None),
+        # 搜索用文本（学校/机构/方向/论文，客户端全文搜索）
+        "search_text": _candidate_search_text(row),
     }
 
 
@@ -1301,7 +1407,11 @@ def _verification_result(row) -> str:
         # 区分"真无论文"（publications 空 → verified）和"有论文但报告缺失"（→ needs_review）
         pubs = _load_json(getattr(row, "publications", "")) or []
         return "verified" if not pubs else "needs_review"
-    verdicts = [_effective_alignment_verdict(a) for a in aligns]
+    # 草稿/未发表的论文不参与门禁（查不到记录是正常的，不该阻断）
+    actionable = [a for a in aligns if str(a.get("claim", {}).get("claimed_status", "")).strip() not in ("草稿", "draft", "未发表", "under review", "在投", "投稿中")]
+    if not actionable:
+        return "verified"
+    verdicts = [_effective_alignment_verdict(a) for a in actionable]
     # 门禁优先级：未裁决的 unverifiable 最优先阻断（必须人工全部裁决）；
     # 再看 mismatch（冲突可不平反也能评估，进评估 prompt 作风险）。
     if any(v == "unverifiable" for v in verdicts):
