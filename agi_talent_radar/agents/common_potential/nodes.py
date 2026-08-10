@@ -15,9 +15,10 @@ COMMON_SCORER_PROMPT = """
 只输出 JSON 对象，顶层字段必须是 dimension_scores。
 
 这部分只评价跨 Track 都成立的元能力，不评价具体方向熟练度，也不因 Agent 热度、学校或名企背景加分。论文标题和会议名气不能单独代替能力证据，但多项已正式发表的同行评议成果是「研究严谨性」与「证据可信度」的有效外部验证。
-每个维度 score 为 0-5：0 无证据；1 只有关键词；2 参与但贡献不清；3 有方法、动作和基本验证；
-4 有独立问题定义与完整验证；4.5 有多项独立高质量成果与清晰 ownership 交叉验证；
-5 形成可迁移方法论并产生持续学术或工程影响。
+每个维度 score 为 0-5，评分严格参照 rubric 中每个维度提供的 anchors：
+- 0-3 为统一能力阶梯（所有维度通用）：0 无证据；1 只有关键词/方向；2 参与但说不清自己做了什么；3 能说清方法+本人动作+基本结果。
+- 4 / 4.5 / 5 为维度特异行为锚，每个维度定义不同，必须逐条对照充分条件和降档触发判定。每个维度的 anchors 已在 rubric 中给出。
+- 5 分为博士阶段罕见但可达，多数人不应达到，空着正常。
 
 每项必须输出 key, label, score, rationale, evidence_ids, risk_notes。
 rationale 必须引用存在的 evidence id；没有证据时给 0 分。
@@ -49,6 +50,7 @@ def run_common_scorer(state: dict[str, Any]) -> dict[str, Any]:
                     "label": item.label,
                     "max_points": item.max_points,
                     "evidence_rule": item.evidence_rule,
+                    "anchors": item.anchors or {},
                 }
                 for item in COMMON_RUBRIC
             ],

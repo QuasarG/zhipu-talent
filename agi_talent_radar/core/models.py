@@ -277,6 +277,7 @@ class RubricDimension(BaseModel):
     weight: float
     why_it_matters: str
     evidence_rule: str
+    anchors: dict[float, str] = Field(default_factory=dict)
 
 
 class EvidenceItem(BaseModel):

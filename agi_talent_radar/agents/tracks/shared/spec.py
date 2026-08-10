@@ -11,13 +11,15 @@ class TrackDimensionSpec:
     label: str
     max_points: float
     evidence_rule: str
+    anchors: dict[float, str] | None = None
 
-    def as_prompt_dict(self) -> dict[str, str | float]:
+    def as_prompt_dict(self) -> dict[str, str | float | dict]:
         return {
             "key": self.key,
             "label": self.label,
             "max_points": self.max_points,
             "evidence_rule": self.evidence_rule,
+            "anchors": self.anchors or {},
         }
 
 

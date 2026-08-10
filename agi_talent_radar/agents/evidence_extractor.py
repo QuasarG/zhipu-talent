@@ -28,6 +28,8 @@ EVIDENCE_PROMPT = """
 11. 经历证据的 source 只能写「实习/工作经历：脱敏机构档位 + 岗位」，quote 不得恢复、猜测或输出具体机构名称。
 12. 论文信任原则：以简历自述为准。简历声称已发表的论文按已发表处理，声称的作者顺序（一作/共一）按自述处理，据此正常评估证据强度。academic_report 的核验状态仅供参考——verified 表示外部数据库确认，可作为更高置信度的佐证；但 unverifiable/mismatch 不降低该论文的证据强度，不影响作者归属判定。核验冲突仅记录，不据此质疑真实性。
 13. 人工裁决优先于机器结论：「人工核验认同 AI 判定」的论文按 AI 原结论对待，「人工核验认为 AI 判定有误」则推翻 AI 结论；note 中的人工备注是 HR 的一手信息，应纳入证据评估。
+14. has_metric = true 当且仅当 quote 含可量化的数字结果（提升X%、延迟Xms、mAP X、前X%、覆盖X篇、star X+）。只有"提升""优化""改善"等程度词而无具体数字时为 false。
+15. has_specific_tool = true 当且仅当 quote 含具体框架/工具/系统/语言名（PyTorch、Triton、Angr、AFL、Docker、ROS、vLLM）。只有"使用深度学习"这类笼统描述时为 false。
 
 可用通用维度：
 problem_definition, research_rigor, learning_transfer, ownership,

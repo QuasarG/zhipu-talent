@@ -3,18 +3,148 @@ from agi_talent_radar.agents.tracks.shared.spec import TrackSpec
 from agi_talent_radar.agents.tracks.multimodal.weights import WEIGHTS
 
 
+ANCHORS = {
+    "cross_modal_alignment": {
+        4.0: (
+            "4分 充分条件(全满足)：① 独立设计对齐机制(编码器/投影/融合/对齐目标其一，非调用现成投影)；"
+            "② 有消融证明有效性；③ ≥1发表或外部验证。\n"
+            "降档：只用现成视觉语言模型无对齐设计→3.5；有设计无消融→3.5。\n"
+            "4分样态：设计新的跨模态融合机制，有消融+量化+顶会一作。"
+        ),
+        4.5: (
+            "4.5分 充分条件：① 4分全部；② 机制在多模态对/多任务验证有效；③ 能讲清失效边界。\n"
+            "降档：仅单一模态对→留4。\n"
+            "4.5样态：对齐机制跨多模态组合有效，失效边界清晰。"
+        ),
+        5.0: (
+            "5分(博士罕见)：① 4.5全部；② 对齐方法被多团队采用/写进主流框架。\n"
+            "降档：自称被采用但无证据→留4.5。\n"
+            "5分样态：对齐机制被主流多模态框架集成。"
+        ),
+    },
+    "perception_reasoning": {
+        4.0: (
+            "4分 充分条件(全满足)：① 有跨模态推理/生成方法创新(非基础分类检测)；"
+            "② 有完整验证闭环；③ ≥1发表或外部验证。\n"
+            "降档：只做基础分类/检测→3.5；有推理无验证→3.5。\n"
+            "4分样态：跨模态推理方法+对照+量化+顶会一作。"
+        ),
+        4.5: (
+            "4.5分 充分条件：① 4分全部；② 方法在多任务/多复杂度验证有效。\n"
+            "降档：仅单一任务→留4。\n"
+            "4.5样态：推理方法跨多任务复杂度有效。"
+        ),
+        5.0: (
+            "5分(博士罕见)：① 4.5全部；② 方法被领域跟进/采用。\n"
+            "降档：自称采用但无证据→留4.5。\n"
+            "5分样态：感知/推理方法被后续工作延续。"
+        ),
+    },
+    "multimodal_data": {
+        4.0: (
+            "4分 充分条件(全满足)：① 独立设计数据构建方法(合成/标注/质控其一)；"
+            "② 有消融证明收益；③ ≥1发表或外部验证。\n"
+            "降档：只用现成数据集→3.5；有处理无构建设计→3.5。\n"
+            "4分样态：设计合成管线+消融+量化+顶会一作。"
+        ),
+        4.5: (
+            "4.5分 充分条件：① 4分全部；② 数据方法在多任务/多模态验证有效；③ 泄漏/偏差控制清晰。\n"
+            "降档：仅单一任务→留4。\n"
+            "4.5样态：数据方法跨多模态有效，质控严谨。"
+        ),
+        5.0: (
+            "5分(博士罕见)：① 4.5全部；② 数据/基准被领域广泛采用。\n"
+            "降档：自称被采用但无证据→留4.5。\n"
+            "5分样态：数据集/基准成为方向标准。"
+        ),
+    },
+    "multimodal_robustness": {
+        4.0: (
+            "4分 充分条件(全满足)：① 系统鲁棒性分析(扰动+长尾+跨域其二)；"
+            "② 有完整对照；③ ≥1发表或外部验证。\n"
+            "降档：只在标准集评测→3.5；有评测无对照→3.5。\n"
+            "4分样态：扰动+OOD+长尾分析+对照+顶会一作。"
+        ),
+        4.5: (
+            "4.5分 充分条件：① 4分全部；② 鲁棒结论可复现；③ 失效模式分类清晰。\n"
+            "降档：不可复现→留4。\n"
+            "4.5样态：鲁棒结论被独立验证，失效模式完整。"
+        ),
+        5.0: (
+            "5分(博士罕见)：① 4.5全部；② 鲁棒评测方法/基准被广泛采用。\n"
+            "降档：自称被采用但无证据→留4.5。\n"
+            "5分样态：鲁棒性基准成为方向标准。"
+        ),
+    },
+    "spatiotemporal_grounding": {
+        4.0: (
+            "4分 充分条件(全满足)：① 独立的时空/3D grounding方法(非调用现成)；"
+            "② 有完整验证；③ ≥1发表或外部验证。\n"
+            "降档：只做图像级任务→3.5；提及时序/3D但无具体方法→3.5。\n"
+            "4分样态：3D grounding方法+对照+量化+顶会一作。"
+        ),
+        4.5: (
+            "4.5分 充分条件：① 4分全部；② 方法在多场景/多模态验证有效。\n"
+            "降档：仅单一场景→留4。\n"
+            "4.5样态：grounding方法跨多场景有效。"
+        ),
+        5.0: (
+            "5分(博士罕见)：① 4.5全部；② grounding方法被采用/形成新基准。\n"
+            "降档：自称被采用但无证据→留4.5。\n"
+            "5分样态：grounding基准被领域采用。"
+        ),
+    },
+    "multimodal_system": {
+        4.0: (
+            "4分 充分条件(全满足)：① 形成可运行多模态系统；② 有效率/工程证据；"
+            "③ ≥1发表或外部验证。\n"
+            "降档：只调用现成API→3.5；有集成无效率证据→3.5。\n"
+            "4分样态：训练/推理管线+效率量化+顶会或开源。"
+        ),
+        4.5: (
+            "4.5分 充分条件：① 4分全部；② 系统在多场景验证，可复现。\n"
+            "降档：仅单一场景→留4。\n"
+            "4.5样态：系统跨多场景有效，可复现。"
+        ),
+        5.0: (
+            "5分(博士罕见)：① 4.5全部；② 系统/管线被外部采用。\n"
+            "降档：自称被采用但无证据→留4.5。\n"
+            "5分样态：系统被外部团队部署使用。"
+        ),
+    },
+    "multimodal_originality": {
+        4.0: (
+            "4分 充分条件(全满足)：① 提出原创跨模态问题/方法(非增量)；② 有完整验证闭环；"
+            "③ ≥1发表或外部验证。\n"
+            "降档：增量改进→3.5；有原创无验证→3.5。\n"
+            "4分样态：新的对齐/推理/数据范式+完整验证+顶会一作。"
+        ),
+        4.5: (
+            "4.5分 充分条件：① 4分全部；② 该原创被多项独立工作延续。\n"
+            "降档：原创但无人跟进→留4。\n"
+            "4.5样态：跨模态范式被多个后续工作验证/扩展。"
+        ),
+        5.0: (
+            "5分(博士罕见)：① 4.5全部；② 开创的方法形成新研究方向。\n"
+            "降档：自称新方向但无外部跟进→留4.5。\n"
+            "5分样态：开创的跨模态方向被标为新的研究标签。"
+        ),
+    },
+}
+
+
 SPEC = TrackSpec(
     key="multimodal",
     label="Multimodal 多模态",
     evidence_focus="跨模态表征、对齐、感知推理、数据构建、鲁棒性、时空与 3D Grounding 证据。",
     high_score_rule="必须解释模态如何表示和融合、数据如何构建以及跨域后是否有效，调用视觉 API 不能高分。",
     dimensions=(
-        D("cross_modal_alignment", "跨模态表征与对齐", WEIGHTS["cross_modal_alignment"], "看编码器、投影、Token 对齐、融合和训练目标。"),
-        D("perception_reasoning", "感知、推理与生成深度", WEIGHTS["perception_reasoning"], "看视觉理解、跨模态推理、生成和任务复杂度。"),
-        D("multimodal_data", "多模态数据构建与合成", WEIGHTS["multimodal_data"], "看采集、标注、合成、负样本与质量控制。"),
-        D("multimodal_robustness", "评测、鲁棒性与 OOD", WEIGHTS["multimodal_robustness"], "看扰动、长尾、幻觉、跨域和模态缺失。"),
-        D("spatiotemporal_grounding", "空间、时序与 3D Grounding", WEIGHTS["spatiotemporal_grounding"], "看视频时序、空间关系、3D 几何和具身 Grounding。"),
-        D("multimodal_system", "模型与系统集成", WEIGHTS["multimodal_system"], "看训练、推理、部署、数据流水线和效率。"),
-        D("multimodal_originality", "跨模态原创性", WEIGHTS["multimodal_originality"], "看新的对齐、推理、数据或任务范式。"),
+        D("cross_modal_alignment", "跨模态表征与对齐", WEIGHTS["cross_modal_alignment"], "看编码器、投影、Token 对齐、融合和训练目标。", ANCHORS["cross_modal_alignment"]),
+        D("perception_reasoning", "感知、推理与生成深度", WEIGHTS["perception_reasoning"], "看视觉理解、跨模态推理、生成和任务复杂度。", ANCHORS["perception_reasoning"]),
+        D("multimodal_data", "多模态数据构建与合成", WEIGHTS["multimodal_data"], "看采集、标注、合成、负样本与质量控制。", ANCHORS["multimodal_data"]),
+        D("multimodal_robustness", "评测、鲁棒性与 OOD", WEIGHTS["multimodal_robustness"], "看扰动、长尾、幻觉、跨域和模态缺失。", ANCHORS["multimodal_robustness"]),
+        D("spatiotemporal_grounding", "空间、时序与 3D Grounding", WEIGHTS["spatiotemporal_grounding"], "看视频时序、空间关系、3D 几何和具身 Grounding。", ANCHORS["spatiotemporal_grounding"]),
+        D("multimodal_system", "模型与系统集成", WEIGHTS["multimodal_system"], "看训练、推理、部署、数据流水线和效率。", ANCHORS["multimodal_system"]),
+        D("multimodal_originality", "跨模态原创性", WEIGHTS["multimodal_originality"], "看新的对齐、推理、数据或任务范式。", ANCHORS["multimodal_originality"]),
     ),
 )
