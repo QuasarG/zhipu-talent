@@ -22,6 +22,8 @@ _TIER_A = frozenset({
     # 软工 / 系统
     "icse", "international conference on software engineering",
     "fse", "foundations of software engineering", "european software engineering conference",
+    "proceedings of the acm on software engineering",  # FSE 的正式出版物名
+    "acm on software engineering",
     "ase", "automated software engineering",
     "issta", "international symposium on software testing and analysis",
     "sigmod", "vldb", "kdd",
