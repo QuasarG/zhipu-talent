@@ -337,6 +337,8 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
         "screening_tags": evaluation.screening_tags or [],
         "common_score": evaluation.common_score or 0,
         "document_score": evaluation.document_score or 0,
+        "publication_score": evaluation.publication_score or 0,
+        "safety_net_score": evaluation.safety_net_score or 0,
         "track_assignments": assignments,
         "track_evaluations": track_evaluations,
         "routing_confidence": evaluation.routing_confidence or 0,

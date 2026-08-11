@@ -246,6 +246,15 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const grouped = useMemo(() => {
+    // 排序:有评分的优先,从高到低;无评分的排后面
+    const sortByScore = (a: PersonBrief, b: PersonBrief) => {
+      const sa = a.overall_score ?? null;
+      const sb = b.overall_score ?? null;
+      if (sa != null && sb != null) return sb - sa;
+      if (sa != null) return -1;
+      if (sb != null) return 1;
+      return 0;
+    };
     const byGroup: Record<string, PersonBrief[]> = {};
     const ungrouped: PersonBrief[] = [];
     for (const p of persons) {
@@ -255,6 +264,8 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
         ungrouped.push(p);
       }
     }
+    for (const gid of Object.keys(byGroup)) byGroup[gid].sort(sortByScore);
+    ungrouped.sort(sortByScore);
     return { byGroup, ungrouped };
   }, [persons, groups]);
 

@@ -275,6 +275,8 @@ export interface Evaluation {
   screening_tags: string[];
   common_score: number;
   document_score: number;
+  publication_score?: number;
+  safety_net_score?: number;
   track_assignments: TrackAssignment[];
   track_evaluations: TrackEvaluation[];
   routing_confidence: number;

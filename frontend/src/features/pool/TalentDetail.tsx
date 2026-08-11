@@ -121,6 +121,14 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
               <span className="text-headline text-on-surface">{latest.overall_score ?? "—"}</span>
               <span className="text-body-sm text-on-surface-variant">/100 综合</span>
             </div>
+            {(latest.publication_score || latest.safety_net_score) ? (
+              <p className="text-label text-on-surface-variant mt-0.5 tabular-nums">
+                {Math.round(latest.common_score ?? 0)} 通用
+                {" "}+ {Math.round((latest.overall_score ?? 0) - (latest.common_score ?? 0) - (latest.publication_score ?? 0) - (latest.safety_net_score ?? 0))} 专业
+                {(latest.publication_score ?? 0) > 0 && ` + ${Math.round(latest.publication_score ?? 0)} 论文`}
+                {(latest.safety_net_score ?? 0) > 0 && ` + ${Math.round(latest.safety_net_score ?? 0)} 加分`}
+              </p>
+            ) : null}
             {latest.dimension_scores?.length > 0 && (
               <div className="grid grid-cols-3 gap-x-3 gap-y-2.5 mt-2">
                 {latest.dimension_scores.map((d) => (
