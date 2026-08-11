@@ -13,8 +13,8 @@ from typing import Any
 from agi_talent_radar.core.venue_tiers import classify_venue
 
 
-# 基础分(CCF 档次)——顶会高基础分,拉大论文强弱的差距
-_BASE_SCORE = {"A": 5.0, "B": 3.0, "C": 1.5}
+# 基础分(CCF 档次)——顶会高基础分,让S档能到90+
+_BASE_SCORE = {"A": 8.0, "B": 4.0, "C": 2.0}
 
 # 发表状态系数
 _STATUS_COEF = {
@@ -55,7 +55,7 @@ _ROLE_COEF = {
     "corresponding": 0.8,
 }
 
-PUBLICATION_MAX = 25.0
+PUBLICATION_MAX = 35.0
 
 
 def _normalize_status(raw: str) -> str:
