@@ -133,7 +133,7 @@ def evaluation_graph_catalog() -> dict:
                     {
                         "key": "aggregation_chain",
                         "label": "汇总链",
-                        "nodes": nodes("portfolio_aggregator", "global_critic", "formatter"),
+                        "nodes": nodes("portfolio_aggregator", "global_critic", "publication_scorer", "safety_net", "formatter"),
                     }
                 ],
             },
