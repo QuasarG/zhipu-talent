@@ -29,14 +29,28 @@ def call_llm_json(
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
     thinking_kwargs = _thinking_kwargs(enable_thinking)
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        response_format={"type": "json_object"},
-        timeout=timeout_seconds,
-        **thinking_kwargs,
-    )
+
+    # 限流/超时重试(指数退避),避免并发时降级响应压低评分
+    import time as _time
+    max_http_retries = 3
+    response = None
+    for http_attempt in range(max_http_retries):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                response_format={"type": "json_object"},
+                timeout=timeout_seconds,
+                **thinking_kwargs,
+            )
+            break
+        except Exception as http_err:
+            if http_attempt + 1 < max_http_retries:
+                _time.sleep(min(8.0, 2.0 ** http_attempt))
+                continue
+            raise
+
     content = response.choices[0].message.content or ""
     try:
         return _loads_json(content)
