@@ -195,9 +195,15 @@ def _supports_high_score(items: list[EvidenceItem]) -> bool:
     return len(distinct_sources) >= 2
 
 
+def _has_published_signal(item: EvidenceItem) -> bool:
+    """已发表/已接收的论文本身即验证证据(无量化指标时也成立)。"""
+    text = " ".join(item.signals)
+    return "发表状态:已发表" in text or "发表状态:已接收" in text
+
+
 def _has_verification(refs: list[EvidenceItem]) -> bool:
     for item in refs:
-        if item.has_metric or item.has_specific_tool:
+        if item.has_metric or item.has_specific_tool or _has_published_signal(item):
             return True
         text = " ".join([item.source, item.quote, *item.signals]).lower()
         if any(token in text for token in ("已发表", "已接收", "ccf-a", "journal", "验收", "上线")):

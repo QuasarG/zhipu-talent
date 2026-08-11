@@ -8,7 +8,9 @@ from agi_talent_radar.agents.common_potential import run_common_critic, run_comm
 from agi_talent_radar.agents.evidence_extractor import run_evidence_extractor
 from agi_talent_radar.agents.formatter import run_formatter
 from agi_talent_radar.agents.normalizer import run_normalizer
+from agi_talent_radar.agents.publication_scorer import run_publication_scorer
 from agi_talent_radar.agents.routing import run_route_auditor, run_track_router
+from agi_talent_radar.agents.safety_net import run_safety_net
 from agi_talent_radar.agents.tracks.registry import TRACK_RUNNERS
 from agi_talent_radar.core.models import TalentState
 
@@ -29,6 +31,8 @@ NODE_LABELS = {
     "ai4science_track": "AI4Science Track 专业评估",
     "portfolio_aggregator": "跨 Track 加权汇总",
     "global_critic": "全局一致性复核",
+    "publication_scorer": "论文质量加分",
+    "safety_net": "特殊优势兜底",
     "formatter": "结构化组装",
 }
 
@@ -48,6 +52,8 @@ NODE_DESCRIPTIONS = {
     "ai4science_track": "评估 AI 与自然科学交叉研究能力。",
     "portfolio_aggregator": "合并通用评分与各 Track 结果，计算组合评分。",
     "global_critic": "执行最终一致性复核，检查结论、风险和证据链。",
+    "publication_scorer": "按 CCF 分级与核验状态，为已发表成果额外加分。",
+    "safety_net": "识别分项评分未覆盖的稀缺外部成就（状元/竞赛最高奖等），少量加分。",
     "formatter": "组装结构化结果、面试问题与培养建议。",
 }
 
@@ -148,6 +154,8 @@ def build_graph():
         workflow.add_node(f"{track_key}_track", runner)
     workflow.add_node("portfolio_aggregator", run_portfolio_aggregator)
     workflow.add_node("global_critic", run_global_critic)
+    workflow.add_node("publication_scorer", run_publication_scorer)
+    workflow.add_node("safety_net", run_safety_net)
     workflow.add_node("formatter", run_formatter)
 
     workflow.set_entry_point("normalizer")
@@ -164,6 +172,8 @@ def build_graph():
         track_nodes.append(node_key)
     workflow.add_edge(["common_critic", *track_nodes], "portfolio_aggregator")
     workflow.add_edge("portfolio_aggregator", "global_critic")
-    workflow.add_edge("global_critic", "formatter")
+    workflow.add_edge("global_critic", "publication_scorer")
+    workflow.add_edge("publication_scorer", "safety_net")
+    workflow.add_edge("safety_net", "formatter")
     workflow.add_edge("formatter", END)
     return workflow.compile()

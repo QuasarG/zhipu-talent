@@ -373,6 +373,9 @@ class CandidateEvaluation(BaseModel):
     academic_report: dict[str, Any] = Field(default_factory=dict)
     routing_confidence: float = Field(default=0, ge=0, le=1)
     evaluation_mode: str = "multi_track_v1"
+    publication_score: float = Field(default=0, ge=0)
+    safety_net_score: float = Field(default=0, ge=0, le=5)
+    safety_net_bonuses: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ImportClassification(BaseModel):
@@ -424,4 +427,8 @@ class TalentState(TypedDict, total=False):
     track_results: Annotated[list[dict[str, Any]], operator.add]
     portfolio_assessment: dict[str, Any]
     global_critic_flags: list[str]
+    publication_score: float
+    publication_details: list[dict[str, Any]]
+    safety_net_bonuses: list[dict[str, Any]]
+    safety_net_score: float
     final_output: dict[str, Any]
