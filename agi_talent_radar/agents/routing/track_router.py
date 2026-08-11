@@ -130,6 +130,10 @@ def _is_track_eligible(
         "agent": (
             "agent", "智能体", "multi-agent", "planner", "tool", "memory", "harness",
             "workflow", "swe-bench", "fuzzing harness",
+            "软件工程", "code", "代码", "repository", "program repair", "程序修复",
+            "bug", "defect", "缺陷", "issue resolving", "debug", "调试",
+            "empirical study", "测试", "testing", "fse", "icse", "issta", "ase",
+            "performance bug", "性能缺陷", "localization", "定位",
         ),
         "safety": (
             "安全", "攻击", "防御", "漏洞", "fuzz", "符号执行", "angr", "afl",
@@ -161,7 +165,9 @@ def _fallback_assignments(normalized: NormalizedResume, evidence: list[EvidenceI
     ).lower()
     keywords: dict[TrackKey, tuple[str, ...]] = {
         "base": ("预训练", "后训练", "微调", "rlhf", "attention", "transformer", "moe"),
-        "agent": ("agent", "智能体", "工具调用", "workflow", "memory", "swe-bench"),
+        "agent": ("agent", "智能体", "工具调用", "workflow", "memory", "swe-bench",
+                  "软件工程", "代码", "repository", "bug", "缺陷", "修复", "debug",
+                  "testing", "测试", "fse", "icse", "issta", "performance bug"),
         "safety": ("安全", "攻击", "防御", "漏洞", "越狱", "隐私", "投毒"),
         "multimodal": ("多模态", "视觉", "vlm", "图像", "视频", "3d", "ocr"),
         "ai_infra": ("推理", "训练系统", "triton", "cuda", "显存", "吞吐", "编译器", "量化"),

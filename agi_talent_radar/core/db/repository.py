@@ -161,6 +161,8 @@ def save_evaluation(
     ev.document_score = evaluation.document_score
     ev.routing_confidence = evaluation.routing_confidence
     ev.evaluation_mode = evaluation.evaluation_mode
+    ev.publication_score = evaluation.publication_score
+    ev.safety_net_score = evaluation.safety_net_score
     ev.config_version = current_scoring_version()
     ev.person_id = _link_person(session, evaluation).id
     ev.status = "completed"

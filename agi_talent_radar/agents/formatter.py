@@ -114,6 +114,17 @@ def run_formatter(state: dict) -> dict:
     if stage_profile.evidence_expectation not in cultivation_direction:
         cultivation_direction.append(stage_profile.evidence_expectation)
     overall_score = int(assessment["overall_score"])
+    publication_score = float(state.get("publication_score", 0))
+    safety_net_bonuses = list(state.get("safety_net_bonuses") or [])
+    safety_net_score = float(state.get("safety_net_score", 0))
+    bonus_total = publication_score + safety_net_score
+    if bonus_total > 0:
+        overall_score = min(100, int(round(overall_score + bonus_total)))
+    # safety_net 加分项融入核心优势,透明可追溯
+    safety_strengths = [
+        f"{b.get('description', '').strip()}（系统加分 +{b.get('bonus', 0)}）"
+        for b in safety_net_bonuses
+    ]
     recommendations = _recommend_tracks(track_evaluations, assignments)
     evaluation = CandidateEvaluation(
         id=normalized.id,
@@ -122,7 +133,7 @@ def run_formatter(state: dict) -> dict:
         stage=normalized.stage,
         overall_score=overall_score,
         one_liner=formatted.one_liner,
-        core_strengths=formatted.core_strengths,
+        core_strengths=[*formatted.core_strengths, *safety_strengths],
         potential_risks=formatted.potential_risks,
         interview_questions=formatted.interview_questions,
         cultivation_direction=cultivation_direction,
@@ -139,6 +150,9 @@ def run_formatter(state: dict) -> dict:
         stage_profile=stage_profile.label,
         academic_report=state.get("academic_report", {}),
         routing_confidence=float(state.get("routing_confidence", 0)),
+        publication_score=publication_score,
+        safety_net_score=safety_net_score,
+        safety_net_bonuses=safety_net_bonuses,
     )
     return {**state, "final_output": evaluation.model_dump()}
 

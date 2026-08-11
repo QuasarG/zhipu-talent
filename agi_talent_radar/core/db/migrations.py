@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 16
+LATEST_SCHEMA_VERSION = 17
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -144,6 +144,22 @@ def ensure_schema(engine) -> None:
             "phase 16: Z.AI Scholarship screening tables (applications / materials / "
             "evaluations / reputation_items)",
         )
+    if current_version < 17:
+        # evaluations 加 publication_score / safety_net_score 两列
+        # create_all 可能已建列,先检查再 ALTER
+        existing = {c["name"] for c in inspect(engine).get_columns("evaluations")}
+        new_cols = []
+        if "publication_score" not in existing:
+            new_cols.append("publication_score FLOAT DEFAULT 0.0")
+        if "safety_net_score" not in existing:
+            new_cols.append("safety_net_score FLOAT DEFAULT 0.0")
+        if new_cols:
+            _add_columns(engine, "evaluations", new_cols)
+        _record_version(
+            engine,
+            17,
+            "phase 17: evaluation publication_score + safety_net_score (bonus columns)",
+        )
     _ensure_indexes(engine)
 
 
@@ -179,6 +195,8 @@ def _ensure_legacy_parent_columns(engine) -> None:
             ("recommended_tracks", "JSON"),
             ("stage_profile", "VARCHAR(64)"),
             ("academic_report", "JSON"),
+            ("publication_score", "FLOAT DEFAULT 0.0"),
+            ("safety_net_score", "FLOAT DEFAULT 0.0"),
         ):
             if name not in evaluation_columns:
                 additions.append(f"{name} {column_type}")

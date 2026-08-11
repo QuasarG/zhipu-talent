@@ -98,6 +98,16 @@ def _node_summary(node_key: str, update: dict) -> str:
         if flags:
             return f"全局复核发现 {len(flags)} 个风险点：{_shorten(flags[0], 42)}"
         return "全局复核通过：路由、证据与评分未发现硬性冲突。"
+    if node_key == "publication_scorer":
+        score = float(update.get("publication_score", 0))
+        details = update.get("publication_details", [])
+        return f"论文质量加分 {score:.1f} 分（{len(details)} 篇可计分成果）。"
+    if node_key == "safety_net":
+        bonuses = update.get("safety_net_bonuses", [])
+        score = float(update.get("safety_net_score", 0))
+        if bonuses:
+            return f"识别 {len(bonuses)} 项特殊优势，兜底加分 {score:.1f}。"
+        return "未发现需要兜底加分的特殊优势。"
     if node_key == "formatter":
         final = update.get("final_output", {})
         strengths = final.get("core_strengths", [])

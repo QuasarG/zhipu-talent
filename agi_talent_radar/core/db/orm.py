@@ -151,6 +151,8 @@ class EvaluationORM(Base):
     document_score = Column(Float, default=0.0)
     routing_confidence = Column(Float, default=0.0)
     evaluation_mode = Column(String(64), default="multi_track_v1")
+    publication_score = Column(Float, default=0.0)
+    safety_net_score = Column(Float, default=0.0)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     completed_at = Column(DateTime)
 
