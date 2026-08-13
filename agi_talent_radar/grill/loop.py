@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from agi_talent_radar.core.llm_client import call_llm_tools
@@ -30,6 +31,17 @@ DETAIL_MAX_CHARS = 20000  # 工具 detail 截断上限（search_jobs 带完整 J
 
 Emit = Callable[[str, dict[str, Any]], None]
 
+_CST = timezone(timedelta(hours=8))
+
+
+def _date_hint() -> str:
+    """注入当前北京时间，让 LLM 据此判断届别等相对时间。"""
+    now = datetime.now(_CST)
+    return (
+        f"# 当前时间\n今天是 {now.year} 年 {now.month} 月 {now.day} 日。"
+        "判断校招届别等相对时间（今年/明年/后年毕业）时以此为准。"
+    )
+
 
 def run_agent(session_id: str, user_text: str, emit: Emit) -> None:
     sess = state.get_session_by_id(session_id)
@@ -42,7 +54,7 @@ def run_agent(session_id: str, user_text: str, emit: Emit) -> None:
     history.append({"role": "user", "text": user_text, "tools": []})
     state.save_session(session_id, messages=history)
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT + blueprint_section(sess) + "\n\n" + state_snapshot(sess)}]
+    messages = [{"role": "system", "content": _date_hint() + "\n\n" + SYSTEM_PROMPT + blueprint_section(sess) + "\n\n" + state_snapshot(sess)}]
     for m in history[-HISTORY_LIMIT:]:
         if m["text"].strip():
             messages.append({"role": m["role"], "content": m["text"]})
