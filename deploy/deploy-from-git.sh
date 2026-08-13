@@ -40,6 +40,15 @@ fi
 "${VENV_DIR}/bin/pip" install -r "${release_dir}/requirements.txt"
 chown -R root:root "${release_dir}"
 
+# 前端 dist 在 .gitignore（不入 git），从上个 release 继承，避免每次部署丢前端导致白屏
+DIST_DIR="${release_dir}/agi_talent_radar/web/static/dist"
+if [[ ! -d "${DIST_DIR}/assets" && -n "${previous_release}" && -d "${previous_release}/agi_talent_radar/web/static/dist/assets" ]]; then
+    mkdir -p "${DIST_DIR}"
+    cp -r "${previous_release}/agi_talent_radar/web/static/dist/." "${DIST_DIR}/"
+    chown -R root:root "${DIST_DIR}"
+    echo "Inherited frontend dist from previous release."
+fi
+
 ln -sfn "${release_dir}" "${CURRENT_LINK}"
 systemctl restart talent-radar
 
