@@ -108,7 +108,7 @@ def main() -> None:
     if count != len(jobs):
         print("警告：向量数与岗位数不一致", flush=True)
 
-    for q in ["抖音电商后端开发", "推荐算法工程师", "产品经理"]:
+    for q in ["后端开发工程师", "推荐算法工程师", "产品经理"]:
         hits = jobs_store.search_jobs(q, top_k=3)
         print(f"抽样检索「{q}」: " + "; ".join(f"{h['title']}({h['score']})" for h in hits), flush=True)
 

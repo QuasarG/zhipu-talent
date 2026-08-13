@@ -387,7 +387,7 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
                   Agent 会像资深 HR 一样追问，右侧大纲与画像卡实时填充
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {["我们想招个后端，抖音电商方向的。", "招一个 AI 产品经理实习生，base 北京。"].map((t) => (
+                  {["我们想招个后端开发工程师。", "招一个 AI 产品经理实习生，base 北京。"].map((t) => (
                     <button
                       key={t}
                       type="button"
