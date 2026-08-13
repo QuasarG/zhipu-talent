@@ -107,11 +107,33 @@ interface Props {
   onOpenDeliverables: () => void;
 }
 
+// 空白态（未开始对话）兜底画像卡：展示完整字段框架，全「待澄清」
+const EMPTY_FIELD = (label: string): ProfileField => ({ label, value: null, confidence: 0, evidence: "", status: "empty" });
+const EMPTY_PROFILE: ProfileCard = {
+  required_fields: {
+    position_name: EMPTY_FIELD("岗位名称"),
+    job_category: EMPTY_FIELD("岗位类别"),
+    degree_min: EMPTY_FIELD("学历门槛"),
+    graduation_window: EMPTY_FIELD("届别/毕业时间"),
+    base_city: EMPTY_FIELD("Base 地"),
+    hard_skills: EMPTY_FIELD("核心技术要求"),
+    must_have_experience: EMPTY_FIELD("必备经历"),
+  },
+  optional_fields: {
+    bonus_items: EMPTY_FIELD("加分项"),
+    soft_traits: EMPTY_FIELD("软素质偏好"),
+    target_schools: EMPTY_FIELD("目标院校倾向"),
+    team_fit: EMPTY_FIELD("团队匹配/培养预期"),
+  },
+  conflicts: [],
+  converged: false,
+};
+
 /** 画像卡：简历纸形态——卡头岗位名大标题 + 分区小框 + 条目式字段 */
-export default function ProfileCardPanel({ profile, hasDeliverables, busy, onConfirm, onOpenDeliverables }: Props) {
+export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables, busy, onConfirm, onOpenDeliverables }: Props) {
   const [showSubmit, setShowSubmit] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  if (!profile) return null;
+  const profile = rawProfile ?? EMPTY_PROFILE;
   const openConflicts = profile.conflicts.filter((c) => c.status === "open");
   const conflictedFields = new Set(openConflicts.flatMap((c) => c.fields));
   const allFields: Record<string, ProfileField> = {
