@@ -129,12 +129,15 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
     messagesRef.current = messages;
   }, [messages]);
 
-  const loadSessions = useCallback(async () => {
+  const loadSessions = useCallback(async (): Promise<GrillSessionSummary[]> => {
     try {
       const data = await api.grill.listSessions();
-      setSessions(data.sessions || []);
+      const list = data.sessions || [];
+      setSessions(list);
+      return list;
     } catch {
       setSessions([]);
+      return [];
     }
   }, []);
 
@@ -198,19 +201,34 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
     [stopFollow, startFollow]
   );
 
-  // 挂载：恢复上次会话，没有则新建
+  /** 新建空白态：不向后端建会话，首发消息时才创建（对齐人才问答的懒创建） */
+  const resetToEmpty = useCallback(() => {
+    stopFollow();
+    setBusy(false);
+    setShowDeliverables(false);
+    sessionIdRef.current = "";
+    setSessionId("");
+    setMessages([]);
+    setProfile(null);
+    setOutline([]);
+    setDeliverables(null);
+    localStorage.removeItem("grill.session-id");
+    setReady(true);
+  }, [stopFollow]);
+
+  // 挂载：恢复上次会话，没有则进入空白态（懒创建，不发空会话）
   useEffect(() => {
     (async () => {
       loadSessions();
       const cached = localStorage.getItem("grill.session-id");
-      const cachedState = cached ? await api.grill.getState(cached).catch(() => null) : null;
-      if (cached && cachedState) {
-        await openSession(cached, cachedState);
-      } else {
-        const { session_id } = await api.grill.createSession();
-        await openSession(session_id);
-        loadSessions();
+      if (cached) {
+        const cachedState = await api.grill.getState(cached).catch(() => null);
+        if (cachedState) {
+          await openSession(cached, cachedState);
+          return;
+        }
       }
+      resetToEmpty();
     })();
     return stopFollow;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -226,7 +244,19 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
   };
 
   const send = async (text: string) => {
-    if (busy || !sessionId) return;
+    if (busy) return;
+    // 懒创建：空白态首发时才向后端建会话（避免空会话污染侧栏）
+    let sid = sessionId;
+    if (!sid) {
+      try {
+        sid = (await api.grill.createSession()).session_id;
+      } catch {
+        return;
+      }
+      sessionIdRef.current = sid;
+      setSessionId(sid);
+      localStorage.setItem("grill.session-id", sid);
+    }
     setBusy(true);
     const tempId = `streaming-${Date.now()}`;
     activeIdRef.current = tempId;
@@ -236,7 +266,7 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
       { id: tempId, role: "assistant", segments: [] },
     ]);
     try {
-      const resp = await api.grill.chatSSE(sessionId, text);
+      const resp = await api.grill.chatSSE(sid, text);
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error((err as { detail?: string }).detail || `HTTP ${resp.status}`);
@@ -270,25 +300,20 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
     openSession(sid);
   };
 
-  const newChat = async () => {
+  const newChat = () => {
     if (busy) return;
-    const { session_id } = await api.grill.createSession();
-    await openSession(session_id);
-    loadSessions();
+    resetToEmpty();
   };
 
   const handleDelete = async (ids: string[]) => {
     if (busy) return;
     await api.grill.deleteSessions(ids).catch(() => {});
-    await loadSessions();
+    const list = await loadSessions();
     if (!ids.includes(sessionIdRef.current)) return;
-    const list = sessions;
     if (list.length) {
       await openSession(list[0].session_id);
     } else {
-      const { session_id } = await api.grill.createSession();
-      await openSession(session_id);
-      loadSessions();
+      resetToEmpty();
     }
   };
 
