@@ -59,13 +59,16 @@ class VectorPoint:
         vector: list[float],
         payload: dict[str, Any],
         point_id: str | None = None,
+        required_keys: tuple[str, ...] = PAYLOAD_REQUIRED_KEYS,
     ) -> None:
         self.vector = vector
         self.payload = payload
         self.point_id = point_id or uuid.uuid4().hex
+        # 不同 collection 可有不同 payload 契约（如 grill 岗位库）
+        self.required_keys = required_keys
 
     def validate_payload(self) -> None:
-        missing = [key for key in PAYLOAD_REQUIRED_KEYS if key not in self.payload]
+        missing = [key for key in self.required_keys if key not in self.payload]
         if missing:
             raise ValueError(f"payload 缺少必需字段：{missing}")
 

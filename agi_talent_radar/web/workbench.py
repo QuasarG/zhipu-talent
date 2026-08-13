@@ -172,12 +172,14 @@ def create_app() -> Flask:
     from agi_talent_radar.web.config_api import build_config_blueprint
     from agi_talent_radar.web.knowledge_api import build_knowledge_blueprint
     from agi_talent_radar.scholarship.api import build_scholarship_blueprint
+    from agi_talent_radar.grill.api import build_grill_blueprint
 
     configure_app_session(app)
     app.register_blueprint(build_auth_blueprint())
     app.register_blueprint(build_config_blueprint())
     app.register_blueprint(build_knowledge_blueprint())
     app.register_blueprint(build_scholarship_blueprint())
+    app.register_blueprint(build_grill_blueprint())
     install_auth_middleware(app)
 
     # SPA 页面路由：所有前端页面统一返回 React SPA shell。

@@ -8,6 +8,8 @@ import ChatSidebar from "@/features/chat/ChatSidebar";
 import ChatInput from "@/features/chat/ChatInput";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import { useSessionState } from "@/lib/sessionState";
+import SegmentedButtons from "@/components/ui/SegmentedButtons";
+import GrillWorkbench, { type ChatMode } from "@/features/grill/GrillWorkbench";
 
 type LocalMessage = ChatMessage & { error?: string };
 
@@ -68,6 +70,7 @@ function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
 }
 
 export default function TalentChat() {
+  const [mode, setMode] = useSessionState<ChatMode>("talent-chat.mode", "qa");
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [currentId, setCurrentId] = useSessionState<string | null>("talent-chat.conversation-id", null);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
@@ -172,6 +175,11 @@ export default function TalentChat() {
   useEffect(() => {
     convRef.current?.scrollTo(0, convRef.current.scrollHeight);
   }, [messages]);
+
+  // 画像澄清模式：渲染独立工作台，两套会话/Agent 完全隔离
+  if (mode === "clarify") {
+    return <GrillWorkbench onSwitchMode={setMode} />;
+  }
 
   const updateActive = (e: ChatEvent) => {
     const id = activeIdRef.current;
@@ -300,7 +308,20 @@ export default function TalentChat() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-24px)]">
-      <PageToolbar title="人才问答" subtitle="库内优先 · 必要时联网调查" />
+      <PageToolbar
+        title="人才问答"
+        subtitle="库内优先 · 必要时联网调查"
+        right={
+          <SegmentedButtons
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "qa", label: "人才问答", icon: "forum" },
+              { value: "clarify", label: "画像澄清", icon: "psychology_alt" },
+            ]}
+          />
+        }
+      />
 
       <div className="flex gap-6 flex-1 min-h-0">
         <ChatSidebar

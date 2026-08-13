@@ -3,6 +3,9 @@ import type {
   CandidateDetail,
   ChatConversation,
   ChatMessage,
+  GrillDeliverables,
+  GrillSessionState,
+  GrillSessionSummary,
   HealthReport,
   PendingPublication,
   PersonBrief,
@@ -261,6 +264,30 @@ export const api = {
       fetchJSON<{ authenticated: boolean; user: { id: string; username: string; display_name: string } | null }>(
         "/api/auth/status"
       ),
+  },
+  grill: {
+    listSessions: () => fetchJSON<{ sessions: GrillSessionSummary[] }>("/api/grill/sessions"),
+    createSession: () =>
+      fetchJSON<{ session_id: string }>("/api/grill/sessions", { method: "POST" }),
+    deleteSession: (sid: string) =>
+      fetchJSON<{ deleted: number }>(`/api/grill/sessions/${sid}`, { method: "DELETE" }),
+    deleteSessions: (sids: string[]) =>
+      fetchJSON<{ deleted: number }>("/api/grill/sessions/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_ids: sids }),
+      }),
+    getState: (sid: string) => fetchJSON<GrillSessionState>(`/api/grill/sessions/${sid}/state`),
+    regenerateDeliverables: (sid: string) =>
+      fetchJSON<GrillDeliverables>(`/api/grill/sessions/${sid}/deliverables/regenerate`, {
+        method: "POST",
+      }),
+    chatSSE: (sid: string, message: string) =>
+      fetch(BASE + "/api/grill/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sid, message }),
+      }),
   },
   health: () => fetchJSON<HealthReport>("/health"),
 };

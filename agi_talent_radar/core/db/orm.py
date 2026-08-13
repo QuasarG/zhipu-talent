@@ -833,3 +833,32 @@ class ScholarshipReputationItemORM(Base):
     reviewed_at = Column(DateTime)
 
     application = relationship("ScholarshipApplicationORM", back_populates="reputation_items")
+
+
+# ---------------------------------------------------------------------------
+# 画像澄清 Agent (grill)：用人需求澄清会话（按 owner 隔离）
+# 单表承载一次澄清全过程：画像卡 / 提问大纲 / 对话历史 / 交付物。
+# ---------------------------------------------------------------------------
+
+
+class GrillSessionORM(Base):
+    """一段画像澄清会话。
+
+    ``profile`` 画像卡（required_fields/optional_fields/conflicts/converged），
+    ``outline`` 提问大纲节点列表，``messages`` 对话历史 [{role, text, tools}]，
+    ``deliverables`` finalize 后的画像+JD草稿+筛选标准。
+    """
+
+    __tablename__ = "grill_sessions"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    owner_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(200), default="未命名会话")
+    profile = Column(JSON, default=dict)
+    outline = Column(JSON, default=list)
+    messages = Column(JSON, default=list)
+    deliverables = Column(JSON, default=None)
+    converged = Column(Boolean, default=False)
+    running = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

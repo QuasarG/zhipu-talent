@@ -440,6 +440,98 @@ export type ChatEvent =
   | { type: "error"; payload: { message: string } }
   | { type: "done"; payload: { status: "completed" | "awaiting_action" } };
 
+// ---- grill 画像澄清 ----
+
+export interface GrillTextSegment {
+  type: "text";
+  text: string;
+}
+
+export interface GrillToolSegment {
+  type: "tool";
+  call_id: string;
+  tool: string;
+  label: string;
+  args_summary?: string;
+  status?: "ok" | "error";
+  summary?: string;
+  detail?: string;
+}
+
+export type GrillChatSegment = GrillTextSegment | GrillToolSegment;
+
+export interface GrillChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  segments: GrillChatSegment[];
+  error?: string;
+}
+
+export interface GrillProfileField {
+  label: string;
+  value: string | string[] | null;
+  confidence: number;
+  evidence: string;
+  status: "empty" | "probing" | "confirmed";
+}
+
+export interface GrillConflict {
+  fields: string[];
+  description: string;
+  status: "open" | "resolved";
+  resolution: string | null;
+}
+
+export interface GrillProfileCard {
+  required_fields: Record<string, GrillProfileField>;
+  optional_fields: Record<string, GrillProfileField>;
+  conflicts: GrillConflict[];
+  converged: boolean;
+}
+
+export interface GrillOutlineNode {
+  id: string;
+  parent_id: string | null;
+  order: number;
+  topic: string;
+  question_hint: string;
+  linked_fields: string[];
+  status: "pending" | "active" | "covered" | "obsolete";
+  source: "initial" | "dynamic";
+  answer_summary: string | null;
+}
+
+export interface GrillDeliverables {
+  persona_profile?: string;
+  jd_draft: string;
+  screening_criteria: { hard_requirements?: string[]; bonus_items?: string[] };
+  reference_jobs?: { job_id: string; title: string; score: number }[];
+}
+
+export interface GrillStoredMessage {
+  role: "user" | "assistant";
+  text: string;
+  tools: { tool: string; label: string; status: string; summary: string; detail?: string }[];
+}
+
+export interface GrillSessionState {
+  session_id: string;
+  profile: GrillProfileCard;
+  outline: GrillOutlineNode[];
+  messages: GrillStoredMessage[];
+  deliverables: GrillDeliverables | null;
+  converged: boolean;
+  running: boolean;
+}
+
+export interface GrillSessionSummary {
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  status: string;
+}
+
 // ---- 奖学金初筛 ----
 
 export interface ScholarshipReputationItem {
