@@ -2,6 +2,8 @@ export default {
   "设置": "Settings",
   "外观": "Appearance",
   "检测中…": "Checking…",
+  "重新检测": "Re-check",
+  "检测于 {time}": "Checked at {time}",
   "界面主题": "Theme",
   "跟随系统时按操作系统外观自动切换": "Follows your OS appearance automatically in System mode",
   "浅色": "Light",

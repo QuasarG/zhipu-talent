@@ -71,8 +71,18 @@ export default function Settings() {
 
   const load = useCallback(async () => {
     // 两个请求独立失败互不拖累；页面骨架先行，结果逐项填充
+    // /health 已是后端缓存优先（秒回上次结果 + 后台刷新），切页不再重复探测
     api.health().then(setHealth).catch(() => setHealth(null));
     api.config.get().then((c) => setConfig(c as Record<string, ConfigValue>)).catch(() => setConfig({}));
+  }, []);
+
+  const recheck = useCallback(async () => {
+    setHealth(null);
+    try {
+      setHealth(await api.health());
+    } catch {
+      setHealth(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -149,7 +159,19 @@ export default function Settings() {
 
           {/* 服务状态 */}
           <section>
-            <h2 className="text-title-lg mb-3">{t("服务状态")}</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-title-lg">{t("服务状态")}</h2>
+              <div className="flex items-center gap-2">
+                {health?.checked_at && (
+                  <span className="text-label text-on-surface-variant">
+                    {t("检测于 {time}", { time: new Date(health.checked_at + "Z").toLocaleTimeString() })}
+                  </span>
+                )}
+                <Button variant="text" icon="refresh" className="h-7 px-2 text-xs" onClick={recheck}>
+                  {t("重新检测")}
+                </Button>
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-3">
               {(health?.services ?? HEALTH_SKELETON).map((s) => {
                 const meta = statusMeta[s.status] ?? statusMeta.down;

@@ -226,9 +226,9 @@ def build_auth_blueprint() -> Blueprint:
     def health():
         # 阶段 11：分开报告每个外部服务可用性。
         # MySQL 失败 = 应用宕机；可选服务失败 = degraded。
-        from agi_talent_radar.core.health import run_health_check
+        from agi_talent_radar.core.health import get_cached_health
 
-        report = run_health_check()
+        report = get_cached_health()
         status_code = 200 if report.overall != "down" else 503
         return jsonify(report.to_dict()), status_code
 

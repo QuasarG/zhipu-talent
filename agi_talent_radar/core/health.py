@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -183,6 +185,46 @@ def check_web_search() -> str:
     return "configured"
 
 
+# 进程级缓存：探测完立即返回上次结果，后台线程刷新（设置页切页不再重复探测）
+_CACHE_TTL_SECONDS = 300.0
+_CACHE_MIN_INTERVAL = 30.0
+_cache_lock = threading.Lock()
+_cached_report: HealthReport | None = None
+_cached_at: float = 0.0
+_refreshing = False
+
+
+def get_cached_health(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> HealthReport:
+    """读缓存：无缓存/过期时同步探测一次；新鲜缓存直接返回并顺带触发后台刷新。"""
+    global _cached_report, _cached_at, _refreshing
+    now = time.monotonic()
+    with _cache_lock:
+        report = _cached_report
+        age = now - _cached_at
+    if report is None or age > _CACHE_TTL_SECONDS:
+        fresh = run_health_check(timeout=timeout)
+        with _cache_lock:
+            _cached_report = fresh
+            _cached_at = time.monotonic()
+        return fresh
+    if age > _CACHE_MIN_INTERVAL and not _refreshing:
+        _refreshing = True
+
+        def _bg() -> None:
+            global _refreshing
+            try:
+                fresh = run_health_check(timeout=timeout)
+                with _cache_lock:
+                    global _cached_report, _cached_at
+                    _cached_report = fresh
+                    _cached_at = time.monotonic()
+            finally:
+                _refreshing = False
+
+        threading.Thread(target=_bg, daemon=True).start()
+    return report
+
+
 def run_health_check(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> HealthReport:
     """执行全部探测，返回 HealthReport。
 
@@ -220,6 +262,7 @@ def run_health_check(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> HealthReport:
 __all__ = [
     "ServiceHealth",
     "HealthReport",
+    "get_cached_health",
     "check_mysql",
     "check_qdrant",
     "check_llm",
