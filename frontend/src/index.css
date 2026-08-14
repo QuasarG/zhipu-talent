@@ -43,7 +43,7 @@
   font-display: swap;
   src: url("./assets/fonts/MiSans-Bold.woff2") format("woff2");
 }
-/* Bebas Neue：英文模式全站字体（单字重、无小写，中文自动回退 MiSans） */
+/* Bebas Neue：英文模式标题字体（单字重、无小写） */
 @font-face {
   font-family: "Bebas Neue";
   font-style: normal;
@@ -51,10 +51,32 @@
   font-display: swap;
   src: url("./assets/fonts/BebasNeue-Regular.ttf") format("truetype");
 }
-/* i18n Provider 切语言时同步 <html lang>，英文模式整站换 Bebas Neue */
-html[lang="en"] body {
-  font-family: "Bebas Neue", "MiSans", "Roboto", system-ui, sans-serif;
+/* Montserrat：英文模式正文字体（可变字重 wght 100-900） */
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/Montserrat-VariableFont_wght.ttf") format("truetype");
 }
+/* i18n Provider 切语言时同步 <html lang>，英文模式：正文 Montserrat，标题 Bebas Neue */
+html[lang="en"] body {
+  font-family: "Montserrat", "MiSans", "Roboto", system-ui, sans-serif;
+}
+html[lang="en"] .text-display,
+html[lang="en"] .text-headline,
+html[lang="en"] .text-title-lg,
+html[lang="en"] .text-title,
+html[lang="en"] .chat-markdown h1,
+html[lang="en"] .chat-markdown h2,
+html[lang="en"] .chat-markdown h3,
+html[lang="en"] .chat-markdown h4 {
+  font-family: "Bebas Neue", "MiSans", sans-serif;
+  font-weight: 400; /* Bebas 单字重，禁伪粗 */
+  letter-spacing: 0.04em;
+}
+/* 导航标签：英文单词长（Resume Screening），nowrap 缩一号保持单行居中 */
+html[lang="en"] .nav-rail-label { font-size: 11px; white-space: nowrap; }
 
 /* Material Design 3 设计令牌 · m3.material.io 同款紫罗兰 light scheme · 单一标准角色命名 */
 

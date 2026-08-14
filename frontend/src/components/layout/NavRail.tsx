@@ -48,7 +48,7 @@ export default function NavRail({ username }: { username?: string }) {
                   </span>
                   <span
                     className={cn(
-                      "text-label",
+                      "text-label nav-rail-label",
                       isActive ? "text-on-surface font-semibold" : "text-on-surface-variant"
                     )}
                   >
