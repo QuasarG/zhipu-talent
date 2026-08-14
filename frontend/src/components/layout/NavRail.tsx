@@ -2,11 +2,14 @@ import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useTheme } from "@/lib/theme";
 import Icon from "@/components/ui/Icon";
 import LangToggle from "@/components/LangToggle";
 import ThemeToggle from "@/components/ThemeToggle";
 import logoUrl from "@/assets/zhipu-logo.svg";
+import logoWhiteUrl from "@/assets/zhipu-logo-white.svg";
 import logoEnUrl from "@/assets/zai-logo-en.svg";
+import logoEnWhiteUrl from "@/assets/zai-logo-en-white.svg";
 
 const navItems = [
   { to: "/", icon: "forum", label: "人才问答" },
@@ -19,11 +22,20 @@ const navItems = [
 /** MD3 Navigation Rail：80px 全高，active = pill 指示器 */
 export default function NavRail({ username }: { username?: string }) {
   const { t, lang } = useI18n();
+  const { resolved } = useTheme();
+  const logoSrc =
+    lang === "en"
+      ? resolved === "dark"
+        ? logoEnWhiteUrl
+        : logoEnUrl
+      : resolved === "dark"
+        ? logoWhiteUrl
+        : logoUrl;
   return (
     <nav data-tour="nav" className="sticky top-0 h-screen w-24 shrink-0 flex flex-col items-center py-5 bg-surface z-40">
-      {/* Logo：英文界面用 ZAI 英文版 */}
+      {/* Logo：按语言（中/英）× 主题（浅/深）四象限选择 */}
       <img
-        src={lang === "en" ? logoEnUrl : logoUrl}
+        src={logoSrc}
         alt={t("智谱")}
         className="h-5 mb-9 select-none"
         draggable={false}
