@@ -21,7 +21,7 @@ from typing import Any
 # 敏感字段：GET 时只返回脱敏状态，不返回原文。
 # 设置页只暴露外部服务的认证 Key，其它配置不对外。
 SENSITIVE_KEYS = frozenset({
-    "DEEPSEEK_API_KEY",
+    "LLM_API_KEY",
     "Z_AI_API_KEY",
     "AMINER_API_TOKEN",
 })

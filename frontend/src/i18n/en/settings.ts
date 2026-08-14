@@ -15,6 +15,8 @@ export default {
   "外部服务 Key": "External Service Keys",
   "{key} 已更新": "{key} updated",
   "{key} 更新失败": "Failed to update {key}",
+  "智谱 GLM-5.2": "Zhipu GLM-5.2",
+  "简历评估、初筛分类、结构化解析、论文对齐等全部 LLM 工作节点（OpenAI 兼容端点）": "All LLM workflow nodes: resume evaluation, screening classification, structured parsing, and paper alignment (OpenAI-compatible endpoint)",
   "智谱 Z.AI": "Zhipu Z.AI",
   "AMiner 学术平台": "AMiner Academic Platform",
   "简历评估、初筛分类、结构化解析、论文对齐等 Agent 工作节点": "Agent workflow nodes such as resume evaluation, screening classification, structured parsing, and paper alignment",

@@ -28,9 +28,9 @@ type ConfigValue = string | SensitiveValue;
 
 /** 每个 Key 对应的服务描述（名称 + 用途 + 图标） */
 const KEY_META: Record<string, { label: string; desc: string; icon: string }> = {
-  DEEPSEEK_API_KEY: {
-    label: "DeepSeek LLM",
-    desc: "简历评估、初筛分类、结构化解析、论文对齐等 Agent 工作节点",
+  LLM_API_KEY: {
+    label: "智谱 GLM-5.2",
+    desc: "简历评估、初筛分类、结构化解析、论文对齐等全部 LLM 工作节点（OpenAI 兼容端点）",
     icon: "neurology",
   },
   Z_AI_API_KEY: {
@@ -192,7 +192,7 @@ export default function Settings() {
                 const meta = KEY_META[key];
                 // 从服务状态找对应的健康检查结果
                 const svcHealth = health?.services.find((s) => {
-                  if (key === "DEEPSEEK_API_KEY") return s.name === "llm";
+                  if (key === "LLM_API_KEY") return s.name === "llm";
                   if (key === "Z_AI_API_KEY") return s.name === "web_search" || s.name === "embedding";
                   if (key === "AMINER_API_TOKEN") return s.name === "aminer";
                   return false;

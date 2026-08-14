@@ -28,7 +28,7 @@ class TestUpdateEnv(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.mkdtemp()
         self.env_path = Path(self.tmp) / ".env"
-        self.env_path.write_text('Z_AI_API_KEY="zai-old"\nDEEPSEEK_API_KEY="sk-old"\n', encoding="utf-8")
+        self.env_path.write_text('Z_AI_API_KEY="zai-old"\nLLM_API_KEY="sk-old"\n', encoding="utf-8")
 
     def tearDown(self) -> None:
         import shutil
@@ -38,14 +38,14 @@ class TestUpdateEnv(unittest.TestCase):
     def test_applies_known_keys_atomically(self) -> None:
         result = update_env(self.env_path, {
             "Z_AI_API_KEY": "zai-new-secret",
-            "DEEPSEEK_API_KEY": "sk-new-secret",
+            "LLM_API_KEY": "sk-new-secret",
         })
-        self.assertEqual(set(result.applied), {"Z_AI_API_KEY", "DEEPSEEK_API_KEY"})
+        self.assertEqual(set(result.applied), {"Z_AI_API_KEY", "LLM_API_KEY"})
         self.assertEqual(result.rejected, {})
         # 文件已更新
         content = self.env_path.read_text(encoding="utf-8")
         self.assertIn("Z_AI_API_KEY=zai-new-secret", content)
-        self.assertIn("DEEPSEEK_API_KEY=sk-new-secret", content)
+        self.assertIn("LLM_API_KEY=sk-new-secret", content)
         # 旧值被覆盖
         self.assertNotIn("zai-old", content)
 
@@ -60,8 +60,8 @@ class TestUpdateEnv(unittest.TestCase):
     def test_preserves_unmentioned_keys(self) -> None:
         update_env(self.env_path, {"Z_AI_API_KEY": "zai-v2"})
         content = self.env_path.read_text(encoding="utf-8")
-        # DEEPSEEK_API_KEY 仍在
-        self.assertIn("DEEPSEEK_API_KEY=sk-old", content)
+        # LLM_API_KEY 仍在
+        self.assertIn("LLM_API_KEY=sk-old", content)
 
     def test_write_failure_keeps_old_file(self) -> None:
         # 指向一个不存在的目录（父目录不可创建时失败）
@@ -104,7 +104,7 @@ class TestConfigBlueprint(unittest.TestCase):
             "agi_talent_radar.web.config_api.get_settings",
             return_value=Settings(values={
                 "OPENAI_MODEL": "v1",
-                "DEEPSEEK_API_KEY": "sk-test-secret-123456",
+                "LLM_API_KEY": "sk-test-secret-123456",
             }),
         )
         self._provider_patch.start()
@@ -123,8 +123,8 @@ class TestConfigBlueprint(unittest.TestCase):
         rv = self.client.get("/api/config")
         self.assertEqual(rv.status_code, 200)
         data = rv.get_json()
-        self.assertIn("DEEPSEEK_API_KEY", data)
-        self.assertTrue(data["DEEPSEEK_API_KEY"]["configured"])
+        self.assertIn("LLM_API_KEY", data)
+        self.assertTrue(data["LLM_API_KEY"]["configured"])
         # 响应中不含完整 Key
         self.assertNotIn("sk-test-secret-123456", rv.data.decode("utf-8"))
         # 非外部服务 Key 不对外暴露
@@ -133,15 +133,15 @@ class TestConfigBlueprint(unittest.TestCase):
     def test_put_applies_and_returns_masked(self) -> None:
         rv = self.client.put("/api/config", json={
             "Z_AI_API_KEY": "zai-v2",
-            "DEEPSEEK_API_KEY": "sk-brand-new-secret",
+            "LLM_API_KEY": "sk-brand-new-secret",
         })
         self.assertIn(rv.status_code, {200, 207})
         data = rv.get_json()
         # applied 中敏感 Key 脱敏
         applied = data["applied"]
-        self.assertIn("DEEPSEEK_API_KEY", applied)
+        self.assertIn("LLM_API_KEY", applied)
         self.assertNotIn("sk-brand-new-secret", rv.data.decode("utf-8"))
-        self.assertIn("*", applied["DEEPSEEK_API_KEY"]["masked"])
+        self.assertIn("*", applied["LLM_API_KEY"]["masked"])
 
     def test_put_rejects_unknown_keys(self) -> None:
         rv = self.client.put("/api/config", json={"HACKED_KEY": "x"})

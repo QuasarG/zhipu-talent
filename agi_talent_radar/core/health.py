@@ -114,7 +114,7 @@ def check_llm() -> str:
     from agi_talent_radar.core.settings import get_settings
 
     settings = get_settings()
-    if not settings.is_configured("DEEPSEEK_API_KEY"):
+    if not (settings.is_configured("LLM_API_KEY") or settings.is_configured("DEEPSEEK_API_KEY")):
         return "unconfigured"
     return "configured"
 

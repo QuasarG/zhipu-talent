@@ -135,12 +135,12 @@ def update_env(
 
 
 def test_llm_connection() -> dict[str, Any]:
-    """可选连接测试：检查 DEEPSEEK_API_KEY 是否配置并能调用。
+    """可选连接测试：检查 LLM_API_KEY 是否配置并能调用。
 
     本函数不输出完整 Key；只返回 ok / unconfigured / error。
     """
     settings = get_settings()
-    if not settings.is_configured("DEEPSEEK_API_KEY"):
+    if not (settings.is_configured("LLM_API_KEY") or settings.is_configured("DEEPSEEK_API_KEY")):
         return {"ok": False, "reason": "unconfigured"}
     try:
         from agi_talent_radar.core import llm_client

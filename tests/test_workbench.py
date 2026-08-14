@@ -115,7 +115,7 @@ class WorkbenchTest(unittest.TestCase):
         mock_eval.critic_flags = []
         mock_eval.normalized_education = ["学校层级=强研究型；具体学校/GPA/排名已折叠。"]
         mock_eval.screening_tags = ["强工程闭环"]
-        mock_eval.evaluation_mode = "deepseek_ai_only"
+        mock_eval.evaluation_mode = "glm_ai_only"
         mock_get.return_value = (mock_row, mock_eval)
 
         response = self.app.get("/api/candidates/candidate_01")

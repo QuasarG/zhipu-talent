@@ -36,15 +36,15 @@ class TestMaskKey(unittest.TestCase):
 class TestSettingsPublicDict(unittest.TestCase):
     def test_sensitive_keys_are_masked(self) -> None:
         settings = Settings(values={
-            "DEEPSEEK_API_KEY": "sk-very-secret-key-123456",
-            "OPENAI_MODEL": "deepseek-v4-flash",
+            "LLM_API_KEY": "sk-very-secret-key-123456",
+            "OPENAI_MODEL": "glm-5.2",
         })
         public = settings.to_public_dict()
         # 敏感字段
-        deepseek = public["DEEPSEEK_API_KEY"]
-        self.assertTrue(deepseek["configured"])
-        self.assertIn("*", deepseek["masked"])
-        self.assertNotIn("very-secret", deepseek["masked"])
+        llm_key = public["LLM_API_KEY"]
+        self.assertTrue(llm_key["configured"])
+        self.assertIn("*", llm_key["masked"])
+        self.assertNotIn("very-secret", llm_key["masked"])
         self.assertNotIn("very-secret", str(public))
         # 非外部服务 Key 不对外暴露
         self.assertNotIn("OPENAI_MODEL", public)
@@ -62,33 +62,33 @@ class TestSettingsProvider(unittest.TestCase):
     def test_load_from_env_extracts_relevant_keys(self) -> None:
         provider = SettingsProvider()
         provider.load_from_env({
-            "DEEPSEEK_API_KEY": "sk-test",
-            "OPENAI_MODEL": "deepseek-v4-flash",
+            "LLM_API_KEY": "sk-test",
+            "OPENAI_MODEL": "glm-5.2",
             "UNRELATED_VAR": "ignore-me",
         })
         snap = provider.snapshot()
-        self.assertEqual(snap.get("DEEPSEEK_API_KEY"), "sk-test")
+        self.assertEqual(snap.get("LLM_API_KEY"), "sk-test")
         # 只有外部服务 Key 进入快照，其它配置不加载
         self.assertNotIn("OPENAI_MODEL", snap.values)
         self.assertNotIn("UNRELATED_VAR", snap.values)
 
     def test_refresh_replaces_snapshot(self) -> None:
         provider = SettingsProvider()
-        provider.load_from_env({"DEEPSEEK_API_KEY": "sk-old"})
-        provider.refresh({"DEEPSEEK_API_KEY": "sk-new"})
-        self.assertEqual(provider.snapshot().get("DEEPSEEK_API_KEY"), "sk-new")
+        provider.load_from_env({"LLM_API_KEY": "sk-old"})
+        provider.refresh({"LLM_API_KEY": "sk-new"})
+        self.assertEqual(provider.snapshot().get("LLM_API_KEY"), "sk-new")
 
     def test_snapshot_is_independent_copy(self) -> None:
         provider = SettingsProvider()
-        provider.load_from_env({"DEEPSEEK_API_KEY": "sk-v1"})
+        provider.load_from_env({"LLM_API_KEY": "sk-v1"})
         snap = provider.snapshot()
-        snap.values["DEEPSEEK_API_KEY"] = "tampered"
+        snap.values["LLM_API_KEY"] = "tampered"
         # 原 provider 不受影响
-        self.assertEqual(provider.snapshot().get("DEEPSEEK_API_KEY"), "sk-v1")
+        self.assertEqual(provider.snapshot().get("LLM_API_KEY"), "sk-v1")
 
     def test_is_configured(self) -> None:
-        settings = Settings(values={"DEEPSEEK_API_KEY": "sk-x", "Z_AI_API_KEY": ""})
-        self.assertTrue(settings.is_configured("DEEPSEEK_API_KEY"))
+        settings = Settings(values={"LLM_API_KEY": "sk-x", "Z_AI_API_KEY": ""})
+        self.assertTrue(settings.is_configured("LLM_API_KEY"))
         self.assertFalse(settings.is_configured("Z_AI_API_KEY"))
         self.assertFalse(settings.is_configured("NONEXISTENT"))
 

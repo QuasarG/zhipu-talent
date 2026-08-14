@@ -197,7 +197,7 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
         import_classifications=import_classifications,
         notes=[
             "批量导入使用单一轻量 Agent，只提取基本信息和分类，不筛除候选人。",
-            "逐人深评使用 DeepSeek/OpenAI-compatible JSON 模式；没有配置 DEEPSEEK_API_KEY 会直接失败。",
+            "逐人深评使用智谱 GLM（OpenAI 兼容）JSON 模式；没有配置 LLM_API_KEY 会直接失败。",
             "通用潜力占 40%，Track 专业能力占 60%。",
             "候选人可进入 1-3 个 Track，专业分按 Track 工作分布权重聚合。",
             "分数用于能力摘要与方向推荐，不用于自动筛选、录用或候选人分组。",

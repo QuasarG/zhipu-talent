@@ -398,7 +398,7 @@ class BatchResult(BaseModel):
     rubric: list[RubricDimension]
     import_classifications: list[ImportClassification] = Field(default_factory=list)
     import_agent_trace: list[str] = Field(default_factory=list)
-    evaluation_mode: str = "deepseek_ai_only"
+    evaluation_mode: str = "glm_ai_only"
     notes: list[str] = Field(default_factory=list)
 
 

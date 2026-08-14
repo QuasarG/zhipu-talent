@@ -210,7 +210,7 @@ def _client() -> OpenAI:
     if _CLIENT is None:
         with _CLIENT_LOCK:
             if _CLIENT is None:
-                api_key = _required_env("DEEPSEEK_API_KEY")
+                api_key = _required_env("LLM_API_KEY", "DEEPSEEK_API_KEY")
                 base_url = _required_env("OPENAI_BASE_URL")
                 _CLIENT = OpenAI(api_key=api_key, base_url=base_url)
     return _CLIENT
@@ -227,11 +227,14 @@ def _thinking_kwargs(enable_thinking: bool) -> dict[str, Any]:
     return {"extra_body": {"thinking": {"type": "disabled"}}}
 
 
-def _required_env(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"缺少环境变量 {name}，当前项目只保留 DeepSeek AI 模式。")
-    return value
+def _required_env(*names: str) -> str:
+    """按顺序取第一个非空环境变量；全部缺失时报错。"""
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    missing = "/".join(names)
+    raise RuntimeError(f"缺少环境变量 {missing}，当前项目使用智谱 GLM（OpenAI 兼容端点）。")
 
 
 def _loads_json(content: str) -> dict[str, Any]:

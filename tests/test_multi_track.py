@@ -12,7 +12,7 @@ from agi_talent_radar.agents.tracks.shared.engine import _supports_high_score
 from agi_talent_radar.core.models import CandidateResume, DimensionScore, EvidenceItem, NormalizedResume
 from agi_talent_radar.core.resume_ingestion import extract_pdf_text
 from agi_talent_radar.core.runner import run_candidate
-from tests.llm_fixtures import mock_deepseek_json
+from tests.llm_fixtures import mock_llm_json
 from tests.resume_fixtures import make_resume_fixtures
 
 
@@ -394,7 +394,7 @@ class MultiTrackTest(unittest.TestCase):
 
     def test_candidate_uses_normalized_multi_track_portfolio(self) -> None:
         resume = make_resume_fixtures()[0]
-        with mock_deepseek_json():
+        with mock_llm_json():
             result = run_candidate(resume)
 
         self.assertGreaterEqual(len(result.track_assignments), 1)

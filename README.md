@@ -18,7 +18,7 @@
 |---|---|
 | 后端 | Flask、SQLAlchemy、LangGraph |
 | 前端 | React 19、TypeScript、Tailwind CSS 4、Vite |
-| LLM | DeepSeek（评估/问答）、智谱 ZAI（OCR/Embedding） |
+| LLM | 智谱 GLM-5.2（评估/问答，OpenAI 兼容端点）、智谱 ZAI（OCR/Embedding/Web Search） |
 | 向量库 | Qdrant（人才知识检索） |
 | 数据库 | SQLite（生产）/ MySQL（可选） |
 

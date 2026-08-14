@@ -9,7 +9,7 @@ from agi_talent_radar.core.rubric import RUBRIC
 
 
 @contextmanager
-def mock_deepseek_json():
+def mock_llm_json():
     with (
         patch("agi_talent_radar.core.llm_client.call_llm_json", side_effect=_fake_llm_json),
         patch("agi_talent_radar.core.llm_client.call_llm_stream", side_effect=_fake_llm_stream),

@@ -11,7 +11,7 @@ from agi_talent_radar.agents.evidence_integrity import is_quote_traceable
 from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.models import CandidateResume, ResumeExperience, ResumeProject
 from agi_talent_radar.core.runner import run_batch, run_candidate
-from tests.llm_fixtures import mock_deepseek_json
+from tests.llm_fixtures import mock_llm_json
 from tests.resume_fixtures import make_resume_fixtures
 
 
@@ -31,7 +31,7 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_single_candidate_returns_structured_result(self) -> None:
         resume = make_resume_fixtures()[0]
-        with mock_deepseek_json():
+        with mock_llm_json():
             result = run_candidate(resume)
         self.assertEqual(result.id, resume.id)
         self.assertGreaterEqual(result.overall_score, 55)
@@ -49,7 +49,7 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_normalizer_folds_academic_background_into_tiers(self) -> None:
         resume = make_resume_fixtures()[0]
-        with mock_deepseek_json():
+        with mock_llm_json():
             state = run_normalizer({"resume": resume.model_dump(), "loop_count": 0})
         normalized = state["normalized"]
         folded = "\n".join(normalized["education_blind"])
@@ -111,7 +111,7 @@ class BatchAgentTest(unittest.TestCase):
     def test_batch_result_is_sorted_and_tiered(self) -> None:
         resumes = make_resume_fixtures()
         with (
-            mock_deepseek_json(),
+            mock_llm_json(),
             patch("agi_talent_radar.core.import_agent._persist_single_import"),
             patch("agi_talent_radar.core.runner._persist_evaluations"),
         ):
@@ -126,7 +126,7 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_evidence_quotes_are_from_resume_text(self) -> None:
         resume = make_resume_fixtures()[0]
-        with mock_deepseek_json():
+        with mock_llm_json():
             result = run_candidate(resume)
         raw_text = "\n".join(
             [
@@ -144,7 +144,7 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_critic_does_not_flag_joined_skill_evidence_as_hallucination(self) -> None:
         resume = make_resume_fixtures()[2]
-        with mock_deepseek_json():
+        with mock_llm_json():
             result = run_candidate(resume)
         joined_flags = "\n".join(result.critic_flags)
         self.assertNotIn("疑似幻觉证据", joined_flags)
@@ -156,7 +156,7 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_critic_rewrites_untraceable_evidence_before_exposing_flag(self) -> None:
         resume = make_resume_fixtures()[1]
-        with mock_deepseek_json():
+        with mock_llm_json():
             normalized = run_normalizer({"resume": resume.model_dump(), "loop_count": 0})["normalized"]
         state = {
             "normalized": normalized,
@@ -189,7 +189,7 @@ class BatchAgentTest(unittest.TestCase):
             "evidence_loop_count": 0,
             "score_loop_count": 0,
         }
-        with mock_deepseek_json():
+        with mock_llm_json():
             updated = run_critic(state)
 
         self.assertTrue(updated["critic_needs_evidence_rewrite"])

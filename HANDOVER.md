@@ -29,7 +29,7 @@
   ```
   **教训**：release 目录名必须取自 tar 命令自己的输出，严禁在服务器上 `ls | sort` 现猜
   （tar 保留旧 mtime，会选错目录切错版本，犯过两次）。
-- 服务密钥在 `/etc/zhipu-talent.env`（DEEPSEEK_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL 等）。
+- 服务密钥在 `/etc/zhipu-talent.env`（LLM_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL 等，LLM 走智谱 GLM glm-5.2）。
   注意：`pip install -r requirements.txt` 里的 `zai>=0.2` 在服务器镜像源找不到，但 venv 已装过，
   报错可忽略。
 - 改 gunicorn 参数要同步改服务器上的 unit 文件 + `systemctl daemon-reload`。
