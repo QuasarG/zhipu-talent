@@ -1,13 +1,6 @@
 @import "tailwindcss";
 
 @font-face {
-  font-family: "Roboto Flex";
-  font-style: normal;
-  font-weight: 100 1000;
-  font-display: swap;
-  src: url("./assets/fonts/roboto-flex-latin.woff2") format("woff2");
-}
-@font-face {
   font-family: "Roboto Mono";
   font-style: normal;
   font-weight: 100 700;
@@ -59,10 +52,7 @@
   font-display: swap;
   src: url("./assets/fonts/Montserrat-VariableFont_wght.ttf") format("truetype");
 }
-/* i18n Provider 切语言时同步 <html lang>，英文模式：正文 Montserrat，标题 Bebas Neue */
-html[lang="en"] body {
-  font-family: "Montserrat", "MiSans", "Roboto", system-ui, sans-serif;
-}
+/* i18n Provider 切语言时同步 <html lang>，英文模式标题用 Bebas Neue（正文西文全局 Montserrat，不随语言切换） */
 html[lang="en"] .text-display,
 html[lang="en"] .text-headline,
 html[lang="en"] .text-title-lg,
@@ -135,8 +125,8 @@ html[lang="en"] .nav-rail-label {
   --color-track-multimodal: #979CA6;
   --color-track-base: #C7CBD0;
 
-  /* Typography（拉丁 Roboto Flex，中文 MiSans） */
-  --font-sans: "Roboto Flex", "MiSans", "Roboto", -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  /* Typography：西文统一 Montserrat（不随语言切换），中文回退 MiSans */
+  --font-sans: "Montserrat", "MiSans", -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: "Roboto Mono", "SF Mono", Consolas, monospace;
 
   /* Shape：DSh 圆角阶（8/12/16 为主） */
