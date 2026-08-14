@@ -28,7 +28,7 @@ class TestUpdateEnv(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.mkdtemp()
         self.env_path = Path(self.tmp) / ".env"
-        self.env_path.write_text('Z_AI_API_KEY="zai-old"\nLLM_API_KEY="sk-old"\n', encoding="utf-8")
+        self.env_path.write_text('AMINER_API_TOKEN="aminer-old"\nLLM_API_KEY="sk-old"\n', encoding="utf-8")
 
     def tearDown(self) -> None:
         import shutil
@@ -37,31 +37,29 @@ class TestUpdateEnv(unittest.TestCase):
 
     def test_applies_known_keys_atomically(self) -> None:
         result = update_env(self.env_path, {
-            "Z_AI_API_KEY": "zai-new-secret",
             "LLM_API_KEY": "sk-new-secret",
+            "AMINER_API_TOKEN": "aminer-new",
         })
-        self.assertEqual(set(result.applied), {"Z_AI_API_KEY", "LLM_API_KEY"})
+        self.assertEqual(set(result.applied), {"LLM_API_KEY", "AMINER_API_TOKEN"})
         self.assertEqual(result.rejected, {})
-        # 文件已更新
         content = self.env_path.read_text(encoding="utf-8")
-        self.assertIn("Z_AI_API_KEY=zai-new-secret", content)
         self.assertIn("LLM_API_KEY=sk-new-secret", content)
-        # 旧值被覆盖
-        self.assertNotIn("zai-old", content)
+        self.assertIn("AMINER_API_TOKEN=aminer-new", content)
+        self.assertNotIn("sk-old", content)
 
     def test_rejects_unknown_keys(self) -> None:
         result = update_env(self.env_path, {
-            "Z_AI_API_KEY": "zai-v2",
+            "LLM_API_KEY": "sk-v2",
             "UNKNOWN_KEY": "value",
         })
-        self.assertIn("Z_AI_API_KEY", result.applied)
+        self.assertIn("LLM_API_KEY", result.applied)
         self.assertIn("UNKNOWN_KEY", result.rejected)
 
     def test_preserves_unmentioned_keys(self) -> None:
-        update_env(self.env_path, {"Z_AI_API_KEY": "zai-v2"})
+        update_env(self.env_path, {"LLM_API_KEY": "sk-v2"})
         content = self.env_path.read_text(encoding="utf-8")
-        # LLM_API_KEY 仍在
-        self.assertIn("LLM_API_KEY=sk-old", content)
+        # 未提及的键仍在
+        self.assertIn("AMINER_API_TOKEN=aminer-old", content)
 
     def test_write_failure_keeps_old_file(self) -> None:
         # 指向一个不存在的目录（父目录不可创建时失败）

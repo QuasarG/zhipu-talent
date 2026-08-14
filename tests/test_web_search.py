@@ -16,7 +16,7 @@ HITS = [
 class WebSearchMcpTest(unittest.TestCase):
     def test_maps_mcp_hits_to_facts(self) -> None:
         with (
-            patch.dict("os.environ", {"Z_AI_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"LLM_API_KEY": "test-key", "Z_AI_API_KEY": ""}),
             patch("agi_talent_radar.core.connectors.web_search._fetch", return_value=HITS),
         ):
             facts = search_web("张向宇 南开大学")
@@ -27,13 +27,13 @@ class WebSearchMcpTest(unittest.TestCase):
         self.assertEqual(facts[0].source_url, "https://cc.nankai.edu.cn/x")
 
     def test_missing_api_key_raises_unavailable(self) -> None:
-        with patch.dict("os.environ", {"Z_AI_API_KEY": ""}):
+        with patch.dict("os.environ", {"LLM_API_KEY": "", "Z_AI_API_KEY": ""}):
             with self.assertRaises(ConnectorUnavailableError):
                 search_web("query")
 
     def test_fetch_failure_wrapped_as_unavailable(self) -> None:
         with (
-            patch.dict("os.environ", {"Z_AI_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"LLM_API_KEY": "test-key", "Z_AI_API_KEY": ""}),
             patch("agi_talent_radar.core.connectors.web_search._fetch", side_effect=RuntimeError("boom")),
         ):
             with self.assertRaises(ConnectorUnavailableError):

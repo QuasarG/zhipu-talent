@@ -100,11 +100,11 @@ class TestZhipuClientConfig(unittest.TestCase):
         import os
         from unittest.mock import patch
 
-        with patch.dict(os.environ, {"Z_AI_API_KEY": ""}, clear=False):
+        with patch.dict(os.environ, {"LLM_API_KEY": "", "Z_AI_API_KEY": ""}, clear=False):
             client = ZhipuEmbeddingClient(api_key="")
             with self.assertRaises(RuntimeError) as ctx:
                 client.embed(["x"])
-            self.assertIn("Z_AI_API_KEY", str(ctx.exception))
+            self.assertIn("LLM_API_KEY", str(ctx.exception))
 
     def test_request_body_pins_dimensions(self) -> None:
         """请求体必须显式带 dimensions=EMBEDDING_DIM（embedding-3 默认返回 2048 维）。"""
