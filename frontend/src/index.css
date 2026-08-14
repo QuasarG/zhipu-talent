@@ -74,131 +74,129 @@ html[lang="en"] .nav-rail-label {
   white-space: nowrap;
 }
 
-/* 设计令牌 · Taste Bank ai-slop-dashboard v1.3.0（Indigo SaaS Dashboard）
-   颜色/字体/间距/圆角/阴影/动效全部取自风格包 tokens。
-   变更：按要求剔除全部 emoji 图标位，图标继续用项目 Material Symbols。 */
+/* 设计令牌 · 智谱黑白灰高级感（取自 DeepSeek webui 设计基因：bluish 灰阶 + 1px 描边 + 极淡阴影） */
 @theme {
-  /* Color roles：单一靛蓝紫 accent（包 color.*） */
-  --color-primary: #6366F1;
+  /* Color roles：近黑主色 + bluish 中性阶 */
+  --color-primary: #0F1115;
   --color-on-primary: #FFFFFF;
-  --color-primary-container: #EEF0FE;
-  --color-on-primary-container: #4F46E5;
-  --color-secondary: #64748B;
+  --color-primary-container: #E9EDF2;
+  --color-on-primary-container: #0F1115;
+  --color-secondary: #61666B;
   --color-on-secondary: #FFFFFF;
-  --color-secondary-container: #ECEDF2;
-  --color-on-secondary-container: #0F172A;
-  --color-tertiary: #94A3B8;
-  --color-on-tertiary: #0F172A;
-  --color-tertiary-container: #ECEDF2;
-  --color-on-tertiary-container: #0F172A;
-  --color-error: #EF4444;
+  --color-secondary-container: #E7E9EE;
+  --color-on-secondary-container: #1F2126;
+  --color-tertiary: #818588;
+  --color-on-tertiary: #FFFFFF;
+  --color-tertiary-container: #D8DBE0;
+  --color-on-tertiary-container: #1F2126;
+  --color-error: #C03434;
   --color-on-error: #FFFFFF;
-  --color-error-container: #FDECEC;
-  --color-on-error-container: #0F172A;
+  --color-error-container: #FBE9E9;
+  --color-on-error-container: #5C1212;
 
-  /* Surface：浅灰底 #F4F5F9 + 纯白卡（Do：白卡叠浅灰底） */
-  --color-surface: #F4F5F9;
-  --color-surface-dim: #ECEDF2;
+  /* Surface：bluish 灰阶（0=纯白底 → highest=浅灰模块） */
+  --color-surface: #F9FAFB;
+  --color-surface-dim: #CFD3D6;
   --color-surface-lowest: #FFFFFF;
-  --color-surface-low: #F4F5F9;
-  --color-surface-mid: #ECEDF2;
-  --color-surface-high: #E4E6EE;
-  --color-surface-highest: #D9DCE6;
-  --color-on-surface: #0F172A;
-  --color-on-surface-variant: #64748B;
-  --color-inverse-surface: #0F172A;
-  --color-inverse-on-surface: #FFFFFF;
+  --color-surface-low: #F0F2F5;
+  --color-surface-mid: #E9EDF2;
+  --color-surface-high: #E1E5EB;
+  --color-surface-highest: #D6DAE0;
+  --color-on-surface: #0F1115;
+  --color-on-surface-variant: #5B6167;
+  --color-inverse-surface: #1F2126;
+  --color-inverse-on-surface: #E9EDF2;
 
-  /* Outline：包 line #ECEDF2 作浅分隔线（Don't：不用硬黑边框） */
-  --color-outline: #94A3B8;
-  --color-outline-variant: #ECEDF2;
+  /* Outline：黑 10% 描边（DSh 风格） */
+  --color-outline: #979CA6;
+  --color-outline-variant: rgba(0, 0, 0, 0.1);
 
-  /* Status：包 success/danger/warning + Soft 底（彩色 pill 传达状态） */
-  --color-success: #10B981;
-  --color-success-container: #E7F8F1;
-  --color-warning: #F59E0B;
-  --color-warning-container: #FEF3E2;
+  /* Status accents（灰阶世界里的低饱和点缀） */
+  --color-success: #2E7D43;
+  --color-success-container: #E2F1E6;
+  --color-warning: #9A6B00;
+  --color-warning-container: #FBF0D9;
 
-  /* Track 语义色：全部走单一 accent 紫阶（Don't：不堆叠多重强调色） */
-  --color-track-agent: #6366F1;
-  --color-track-safety: #4F46E5;
-  --color-track-ai_infra: #64748B;
-  --color-track-ai4science: #94A3B8;
-  --color-track-multimodal: #A5B4FC;
-  --color-track-base: #C7CAD1;
+  /* Track 语义色（黑白灰体系：同阶灰 + 深浅区分） */
+  --color-track-agent: #0F1115;
+  --color-track-safety: #61666B;
+  --color-track-ai_infra: #818588;
+  --color-track-ai4science: #454A50;
+  --color-track-multimodal: #979CA6;
+  --color-track-base: #C7CBD0;
 
-  /* Typography：西文 Inter（包 font.*），中文回退 MiSans */
-  --font-sans: "Inter", "MiSans", -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  /* Typography：西文统一 Montserrat（不随语言切换），中文回退 MiSans */
+  --font-sans: "Montserrat", "MiSans", -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: "Roboto Mono", "SF Mono", Consolas, monospace;
 
-  /* Shape：包 radius.*（大圆角：10/14/22） */
-  --radius-xs: 10px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 22px;
-  --radius-xl: 22px;
+  /* Shape：DSh 圆角阶（8/12/16 为主） */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
-  /* Motion：包 motion.* */
+  /* Motion（DSh：0.1-0.3s ease-in-out） */
   --ease-emphasized: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
   --ease-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Elevation：包 shadow.card（靛蓝柔阴影是签名，三层共用） */
-  --shadow-1: 0 10px 40px -12px rgba(79, 70, 229, 0.12);
-  --shadow-2: 0 10px 40px -12px rgba(79, 70, 229, 0.12);
-  --shadow-3: 0 10px 40px -12px rgba(79, 70, 229, 0.12);
+  /* Elevation（DSh 极淡阴影：黑 2%-8%，无 umbra 多层） */
+  --shadow-1: 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+  --shadow-2: 0 4px 12px 0 rgba(0, 0, 0, 0.02), 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+  --shadow-3: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
 }
 
-/* ---- 深色主题：包未定义深色，做最低限度暗化保底（accent 维持包内紫色系） ---- */
+/* ---- 深色主题（DSh 暗色调：近黑底 + 白字 + 反白主按钮），令牌覆盖即全站生效 ---- */
 html[data-theme="dark"] {
-  --color-primary: #818CF8;
-  --color-on-primary: #0F172A;
-  --color-primary-container: #3730A3;
-  --color-on-primary-container: #EEF0FE;
-  --color-secondary: #94A3B8;
-  --color-on-secondary: #0F172A;
-  --color-secondary-container: #1E293B;
-  --color-on-secondary-container: #E2E8F0;
-  --color-tertiary: #64748B;
-  --color-on-tertiary: #E2E8F0;
-  --color-tertiary-container: #1E293B;
-  --color-on-tertiary-container: #E2E8F0;
-  --color-error: #F87171;
-  --color-on-error: #0F172A;
-  --color-error-container: #450A0A;
-  --color-on-error-container: #FEE2E2;
+  --color-primary: #F0F1F3;
+  --color-on-primary: #0F1115;
+  --color-primary-container: #3A3B40;
+  --color-on-primary-container: #E9EDF2;
+  --color-secondary: #A7ABB2;
+  --color-on-secondary: #0F1115;
+  --color-secondary-container: #3A3B40;
+  --color-on-secondary-container: #E9EDF2;
+  --color-tertiary: #7E838A;
+  --color-on-tertiary: #0F1115;
+  --color-tertiary-container: #2E3033;
+  --color-on-tertiary-container: #DEE1E6;
+  --color-error: #E5484D;
+  --color-on-error: #FFFFFF;
+  --color-error-container: #3D1A1C;
+  --color-on-error-container: #F9D8D9;
 
-  --color-surface: #0F172A;
-  --color-surface-dim: #0B1120;
-  --color-surface-lowest: #1E293B;
-  --color-surface-low: #162032;
-  --color-surface-mid: #1E293B;
-  --color-surface-high: #273449;
-  --color-surface-highest: #334155;
-  --color-on-surface: #F1F5F9;
-  --color-on-surface-variant: #94A3B8;
-  --color-inverse-surface: #F1F5F9;
-  --color-inverse-on-surface: #0F172A;
+  --color-surface: #151517;
+  --color-surface-dim: #0F1115;
+  --color-surface-lowest: #232427;
+  --color-surface-low: #1D1F22;
+  --color-surface-mid: #232528;
+  --color-surface-high: #2B2D30;
+  --color-surface-highest: #343639;
+  --color-on-surface: #F0F1F3;
+  --color-on-surface-variant: #A2A7AE;
+  --color-inverse-surface: #E9EDF2;
+  --color-inverse-on-surface: #1F2126;
 
-  --color-outline: #475569;
-  --color-outline-variant: #1E293B;
+  --color-outline: #6A6F76;
+  --color-outline-variant: rgba(255, 255, 255, 0.12);
 
-  --color-success: #34D399;
-  --color-success-container: #064E3B;
-  --color-warning: #FBBF24;
-  --color-warning-container: #451A03;
+  --color-success: #58B36F;
+  --color-success-container: #1C3226;
+  --color-warning: #D9A94A;
+  --color-warning-container: #3A3018;
 
-  --color-track-agent: #818CF8;
-  --color-track-safety: #A5B4FC;
-  --color-track-ai_infra: #94A3B8;
-  --color-track-ai4science: #C7CBD1;
-  --color-track-multimodal: #6366F1;
-  --color-track-base: #475569;
+  --color-track-agent: #F0F1F3;
+  --color-track-safety: #A2A7AE;
+  --color-track-ai_infra: #7E838A;
+  --color-track-ai4science: #C7CBD0;
+  --color-track-multimodal: #8A8F96;
+  --color-track-base: #565B61;
 
-  --shadow-1: 0 10px 40px -12px rgba(0, 0, 0, 0.5);
-  --shadow-2: 0 10px 40px -12px rgba(0, 0, 0, 0.5);
-  --shadow-3: 0 10px 40px -12px rgba(0, 0, 0, 0.6);
+  --shadow-1: 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 4px 12px 0 rgba(0, 0, 0, 0.25), 0 2px 8px 0 rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 0 1px 0 rgba(0, 0, 0, 0.5), 0 12px 32px 0 rgba(0, 0, 0, 0.5);
 }
 html[data-theme="dark"] .md3-card,
 html[data-theme="dark"] .md3-card-outlined,
@@ -227,19 +225,20 @@ body {
 .text-body-sm  { font-size: 13px; line-height: 18px; font-weight: 400; letter-spacing: 0; }
 .text-label    { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0; }
 
-/* ---- Cards（包规则：白卡 + 大圆角 22px + 柔紫阴影，不用硬边框分层） ---- */
+/* ---- Cards（DSh 风格：描边白卡 + 极淡阴影） ---- */
 .md3-card {
   background-color: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-1);
 }
 .md3-card-outlined {
   background-color: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-1);
 }
 .md3-card-elevated {
   background-color: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-2);
 }
