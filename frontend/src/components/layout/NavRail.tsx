@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n";
 import Icon from "@/components/ui/Icon";
 import LangToggle from "@/components/LangToggle";
 import logoUrl from "@/assets/zhipu-logo.svg";
+import logoEnUrl from "@/assets/zai-logo-en.svg";
 
 const navItems = [
   { to: "/", icon: "forum", label: "人才问答" },
@@ -16,11 +17,16 @@ const navItems = [
 
 /** MD3 Navigation Rail：80px 全高，active = pill 指示器 */
 export default function NavRail({ username }: { username?: string }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <nav data-tour="nav" className="sticky top-0 h-screen w-24 shrink-0 flex flex-col items-center py-5 bg-surface z-40">
-      {/* Logo */}
-      <img src={logoUrl} alt={t("智谱")} className="h-5 mb-9 select-none" draggable={false} />
+      {/* Logo：英文界面用 ZAI 英文版 */}
+      <img
+        src={lang === "en" ? logoEnUrl : logoUrl}
+        alt={t("智谱")}
+        className="h-5 mb-9 select-none"
+        draggable={false}
+      />
 
       {/* 导航项 */}
       <ul className="flex flex-col gap-3 flex-1 w-full items-center">

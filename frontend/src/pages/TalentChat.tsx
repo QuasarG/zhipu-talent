@@ -84,7 +84,7 @@ export default function TalentChat() {
   // 状态跟随：running 消息的轮询句柄 + currentId 镜像（轮询回调里读不到最新 state）
   const pollRef = useRef<number | null>(null);
   const currentIdRef = useRef<string | null>(null);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
 
   const stopFollow = useCallback(() => {
     if (pollRef.current !== null) {
@@ -236,7 +236,7 @@ export default function TalentChat() {
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
-      await consume(await api.chat.askSSE(convId, text));
+      await consume(await api.chat.askSSE(convId, text, lang));
     } catch (err) {
       updateActive({ type: "error", payload: { message: err instanceof Error ? err.message : t("请求失败") } });
       // SSE 中断兜底：后端可能还在跑，转轮询跟随
@@ -265,7 +265,7 @@ export default function TalentChat() {
       }))
     );
     try {
-      await consume(await api.chat.actionSSE(currentId, actionId, decision));
+      await consume(await api.chat.actionSSE(currentId, actionId, decision, lang));
     } catch (err) {
       updateActive({ type: "error", payload: { message: err instanceof Error ? err.message : t("请求失败") } });
       // SSE 中断兜底：后端可能还在跑，转轮询跟随

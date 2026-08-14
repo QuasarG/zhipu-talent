@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 from agi_talent_radar.core.db.orm import ChatMessageORM, ConversationORM
 from agi_talent_radar.core.llm_client import call_llm_json, call_llm_tools
-from agi_talent_radar.knowledge_agent.prompts import SYSTEM_PROMPT
+from agi_talent_radar.knowledge_agent.prompts import SYSTEM_PROMPT, SYSTEM_PROMPT_EN
 from agi_talent_radar.knowledge_agent.tools import (
     TOOL_RESULT_MAX_CHARS,
     TOOLS_BY_NAME,
@@ -32,12 +32,44 @@ HISTORY_MESSAGE_LIMIT = 60  # 约 30 轮对话，超出头部截断
 
 Emit = Callable[[str, dict[str, Any]], None]
 
+# 系统侧用户可见文案（错误提示 / 门控等待 / 预算耗尽），按界面语言输出
+SYSTEM_TEXT = {
+    "zh": {
+        "conv_missing": "会话不存在",
+        "agent_busy": "上一个回答还在进行中，请稍候",
+        "no_pending": "该会话没有待处理的动作",
+        "action_mismatch": "action_id 不匹配",
+        "gated_waiting": "等待用户确认",
+        "budget_exhausted": "工具预算已用完，请基于已收集的信息立即总结作答，不要再调用任何工具。",
+        "skipped_tool": "该工具调用因等待用户确认被跳过。",
+        "done_fallback": "执行完成",
+        "tool_failed": "执行失败",
+        "title_prompt": '你是会话标题生成器。根据用户首条问题生成不超过 15 字的中文标题，只输出 JSON：{"title": "..."}',
+    },
+    "en": {
+        "conv_missing": "Conversation not found",
+        "agent_busy": "The previous answer is still running, please wait",
+        "no_pending": "No pending action in this conversation",
+        "action_mismatch": "action_id mismatch",
+        "gated_waiting": "Waiting for user confirmation",
+        "budget_exhausted": "The tool budget is exhausted. Summarize and answer now based on the information collected; do not call any more tools.",
+        "skipped_tool": "This tool call was skipped while awaiting user confirmation.",
+        "done_fallback": "Done",
+        "tool_failed": "Tool failed",
+        "title_prompt": 'You are a conversation title generator. Generate an English title of at most 40 characters from the user first question. Output JSON only: {"title": "..."}',
+    },
+}
 
-def run_agent(session, conversation_id: str, user_text: str, emit: Emit) -> None:
+
+def _sys_text(lang: str, key: str) -> str:
+    return SYSTEM_TEXT.get(lang, SYSTEM_TEXT["zh"]).get(key, SYSTEM_TEXT["zh"][key])
+
+
+def run_agent(session, conversation_id: str, user_text: str, emit: Emit, lang: str = "zh") -> None:
     """一轮问答：落库 user 消息 → ReAct 循环 → assistant 消息落库。"""
     conv = session.get(ConversationORM, conversation_id)
     if conv is None:
-        emit("error", {"message": "会话不存在"})
+        emit("error", {"message": _sys_text(lang, "conv_missing")})
         emit("done", {"status": "completed"})
         return
     running = (
@@ -46,11 +78,11 @@ def run_agent(session, conversation_id: str, user_text: str, emit: Emit) -> None
         .first()
     )
     if running is not None:
-        emit("error", {"message": "上一个回答还在进行中，请稍候"})
+        emit("error", {"message": _sys_text(lang, "agent_busy")})
         emit("done", {"status": "completed"})
         return
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT_EN if lang == "en" else SYSTEM_PROMPT}]
     messages.extend(_history_messages(conv))
     session.add(
         ChatMessageORM(
@@ -59,7 +91,7 @@ def run_agent(session, conversation_id: str, user_text: str, emit: Emit) -> None
             content={"segments": [{"type": "text", "text": user_text}]},
         )
     )
-    _maybe_generate_title(conv, user_text)
+    _maybe_generate_title(conv, user_text, lang)
     # running 状态：前端刷新/切换后靠它识别"还在跑"并轮询跟随
     message_rec = ChatMessageORM(
         conversation_id=conv.id, role="assistant", content={"segments": []}, status="running"
@@ -69,14 +101,14 @@ def run_agent(session, conversation_id: str, user_text: str, emit: Emit) -> None
 
     messages.append({"role": "user", "content": user_text})
     emit("meta", {"conversation_id": conv.id, "message_id": message_rec.id})
-    _agent_loop(session, messages, emit, message_rec)
+    _agent_loop(session, messages, emit, message_rec, lang)
 
 
-def resume_agent(session, conversation_id: str, action_id: str, decision: dict, emit: Emit) -> None:
+def resume_agent(session, conversation_id: str, action_id: str, decision: dict, emit: Emit, lang: str = "zh") -> None:
     """HITL 决策后续跑：恢复快照 → 执行门控写入 → 回填 tool 响应 → 继续循环。"""
     conv = session.get(ConversationORM, conversation_id)
     if conv is None:
-        emit("error", {"message": "会话不存在"})
+        emit("error", {"message": _sys_text(lang, "conv_missing")})
         emit("done", {"status": "completed"})
         return
     message_rec = (
@@ -87,11 +119,11 @@ def resume_agent(session, conversation_id: str, action_id: str, decision: dict, 
     )
     pending = dict(message_rec.pending_action or {}) if message_rec else {}
     if not pending:
-        emit("error", {"message": "该会话没有待处理的动作"})
+        emit("error", {"message": _sys_text(lang, "no_pending")})
         emit("done", {"status": "completed"})
         return
     if pending.get("action_id") != action_id:
-        emit("error", {"message": "action_id 不匹配"})
+        emit("error", {"message": _sys_text(lang, "action_mismatch")})
         emit("done", {"status": "completed"})
         return
 
@@ -114,13 +146,13 @@ def resume_agent(session, conversation_id: str, action_id: str, decision: dict, 
     messages.append(
         {"role": "tool", "tool_call_id": pending.get("tool_call_id"), "content": result_text}
     )
-    _fill_missing_tool_responses(messages)
+    _fill_missing_tool_responses(messages, lang)
 
     emit("meta", {"conversation_id": conv.id, "message_id": message_rec.id})
-    _agent_loop(session, messages, emit, message_rec)
+    _agent_loop(session, messages, emit, message_rec, lang)
 
 
-def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMessageORM) -> None:
+def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMessageORM, lang: str = "zh") -> None:
     """ReAct 主循环：LLM 流式 → 工具执行 → 回填，直到无 tool_calls 或触发门控。"""
     ctx = ToolContext(session, existing_sources=message_rec.citations or [])
     segments = list((message_rec.content or {}).get("segments") or [])
@@ -178,7 +210,8 @@ def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMess
                     {
                         "call_id": tc["id"],
                         "tool": tc["name"],
-                        "label": tool["label"],
+                        "label": _tool_label(tool, lang),
+                        "label_zh": tool["label"],
                         "args_summary": _args_summary(args),
                     },
                 )
@@ -190,7 +223,7 @@ def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMess
                             "call_id": tc["id"],
                             "tool": tc["name"],
                             "status": "ok",
-                            "summary": "等待用户确认",
+                            "summary": _sys_text(lang, "gated_waiting"),
                             "detail": "",
                         },
                     )
@@ -219,12 +252,12 @@ def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMess
                     )
                     emit("done", {"status": "awaiting_action"})
                     return
-                _execute_readonly_tool(tool, tc, args, ctx, segments, messages, emit)
+                _execute_readonly_tool(tool, tc, args, ctx, segments, messages, emit, lang)
                 save_segments()
         if exhausted:
             # 预算耗尽：强制无工具收尾，基于已收集信息总结，别戛然而止
             messages.append(
-                {"role": "user", "content": "工具预算已用完，请基于已收集的信息立即总结作答，不要再调用任何工具。"}
+                {"role": "user", "content": _sys_text(lang, "budget_exhausted")}
             )
             call_llm_tools(messages, [], on_delta=on_delta)
         message_rec.status = "completed"
@@ -243,15 +276,15 @@ def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMess
         emit("done", {"status": "completed"})
 
 
-def _execute_readonly_tool(tool, tc, args, ctx, segments, messages, emit) -> None:
+def _execute_readonly_tool(tool, tc, args, ctx, segments, messages, emit, lang: str = "zh") -> None:
     """执行只读工具：结果回填 messages，tool segment 落库，发 tool_end。"""
     try:
         output = tool["handler"](ctx, args)
-        summary = str(output.get("summary") or "执行完成")
+        summary = str(output.get("summary") or _sys_text(lang, "done_fallback"))
         detail = json.dumps(output, ensure_ascii=False, default=str)
         status = "ok"
     except Exception as exc:  # noqa: BLE001
-        summary = f"执行失败：{exc}"
+        summary = f'{_sys_text(lang, "tool_failed")}: {exc}'
         detail = ""
         status = "error"
     segments.append(
@@ -259,7 +292,8 @@ def _execute_readonly_tool(tool, tc, args, ctx, segments, messages, emit) -> Non
             "type": "tool",
             "call_id": tc["id"],
             "tool": tc["name"],
-            "label": tool["label"],
+            "label": _tool_label(tool, lang),
+            "label_zh": tool["label"],
             "status": status,
             "summary": summary,
             "detail": detail,
@@ -289,7 +323,7 @@ def _history_messages(conv: ConversationORM, limit: int = HISTORY_MESSAGE_LIMIT)
     return messages
 
 
-def _fill_missing_tool_responses(messages: list[dict]) -> None:
+def _fill_missing_tool_responses(messages: list[dict], lang: str = "zh") -> None:
     """assistant 的每个 tool_call 都必须有 tool 响应；被门控中断跳过的补占位。"""
     responded = {m.get("tool_call_id") for m in messages if m.get("role") == "tool"}
     for message in messages:
@@ -301,26 +335,33 @@ def _fill_missing_tool_responses(messages: list[dict]) -> None:
                     {
                         "role": "tool",
                         "tool_call_id": tc["id"],
-                        "content": "该工具调用因等待用户确认被跳过。",
+                        "content": _sys_text(lang, "skipped_tool"),
                     }
                 )
                 responded.add(tc["id"])
 
 
-def _maybe_generate_title(conv: ConversationORM, user_text: str) -> None:
+def _maybe_generate_title(conv: ConversationORM, user_text: str, lang: str = "zh") -> None:
     """首问后自动生成 ≤15 字标题；失败静默，fallback 截断 prompt。"""
     if conv.title != "新对话":
         return
     title = ""
     try:
         data = call_llm_json(
-            '你是会话标题生成器。根据用户首条问题生成不超过 15 字的中文标题，只输出 JSON：{"title": "..."}',
+            _sys_text(lang, "title_prompt"),
             {"question": user_text},
         )
         title = str(data.get("title") or "").strip()
     except Exception:  # noqa: BLE001
         title = ""
     conv.title = (title or user_text.strip())[:15] or "新对话"
+
+
+def _tool_label(tool: dict, lang: str) -> str:
+    """工具名双语：英文界面取 label_en，缺省回退中文 label。"""
+    if lang == "en":
+        return str(tool.get("label_en") or tool["label"])
+    return tool["label"]
 
 
 def _parse_args(raw: str) -> dict[str, Any]:

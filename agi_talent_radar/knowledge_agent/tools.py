@@ -677,6 +677,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_knowledge",
         "label": "检索人才知识库",
+        "label_en": "Search talent knowledge base",
         "description": "在人才知识向量库语义检索（简历画像/原文/评估/外部事实），返回带 citation_id 的事实。",
         "parameters": _obj(
             {"query": _str("检索问题或关键词"), "top_k": {"type": "integer", "description": "返回条数，默认 8"}},
@@ -688,6 +689,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "list_talent_groups",
         "label": "查看人才分组",
+        "label_en": "List talent groups",
         "description": "列出人才库的全部分组（手工分类）及每组人数，帮助了解人才分类概况。",
         "parameters": _obj({}),
         "handler": tool_list_talent_groups,
@@ -696,6 +698,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_persons",
         "label": "筛选库内人物",
+        "label_en": "Filter in-pool persons",
         "description": "按姓名/学校/方向/学历/分组筛选人才库人物，返回候选人卡片（含 person_id 和分组名）。",
         "parameters": _obj(
             {
@@ -712,6 +715,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "get_person_profile",
         "label": "读取人物简历画像",
+        "label_en": "Read person resume profile",
         "description": "读取人物最新简历的结构化画像（教育/实习/技能/论文自述）。",
         "parameters": _obj({"person_id": _str("人物 ID")}, ["person_id"]),
         "handler": tool_get_person_profile,
@@ -720,6 +724,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "get_person_evaluation",
         "label": "读取人物评估结果",
+        "label_en": "Read person evaluation",
         "description": "读取人物最新评估：总分/层级/优势/风险/论文核验结论/推荐 Track。",
         "parameters": _obj({"person_id": _str("人物 ID")}, ["person_id"]),
         "handler": tool_get_person_evaluation,
@@ -728,6 +733,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "get_resume_versions",
         "label": "读取简历版本时间线",
+        "label_en": "Read resume version timeline",
         "description": "读取人物全部简历版本（按时间升序的技能/论文/实习列表），用于成长对比。",
         "parameters": _obj({"person_id": _str("人物 ID")}, ["person_id"]),
         "handler": tool_get_resume_versions,
@@ -736,6 +742,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "aggregate_persons",
         "label": "库内统计排名",
+        "label_en": "Pool statistics & ranking",
         "description": "库内统计排名：按 degree/school/direction/group 过滤 + count/avg_score/pub_count 聚合。",
         "parameters": _obj(
             {
@@ -753,6 +760,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_scholar_aminer",
         "label": "AMiner 学者检索",
+        "label_en": "AMiner scholar search",
         "description": "按姓名检索 AMiner 学者画像（引用数/单位/研究兴趣），用于库外人物调查。中文名自动带拼音变体；拼写不确定时用 name_variants 多给几个变体。org 仅作排序提示。",
         "parameters": _obj(
             {
@@ -768,6 +776,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_papers",
         "label": "论文检索",
+        "label_en": "Paper search",
         "description": "按标题检索论文，自动多源降级（AMiner→CrossRef→arXiv→OpenAlex），返回标题/作者/年份/venue/被引/DOI。",
         "parameters": _obj({"title": _str("论文标题或关键词"), "count": {"type": "integer", "description": "返回数量（默认5）"}}, ["title"]),
         "handler": tool_search_papers,
@@ -776,6 +785,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_dblp",
         "label": "DBLP 发文检索",
+        "label_en": "DBLP publication search",
         "description": "按作者名检索 DBLP 论文（题名/venue/年份），用于发文核验。",
         "parameters": _obj({"name": _str("作者姓名")}, ["name"]),
         "handler": tool_search_dblp,
@@ -784,6 +794,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_web",
         "label": "联网检索舆情",
+        "label_en": "Web reputation search",
         "description": "联网检索公开信息/舆情，返回标题/摘要/发布时间/链接。",
         "parameters": _obj({"query": _str("检索词")}, ["query"]),
         "handler": tool_search_web,
@@ -792,6 +803,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "check_reputation",
         "label": "舆情双面监测",
+        "label_en": "Two-sided reputation check",
         "description": "人物舆情背调的首选：综合查询+负面信号查询双轨返回。需要看正/负两面舆情时必须用它，而不是只跑一次 search_web。",
         "parameters": _obj({"name": _str("人物姓名"), "org": _str("机构（可空）")}, ["name"]),
         "handler": tool_check_reputation,
@@ -800,6 +812,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "get_github_repo",
         "label": "GitHub 仓库核查",
+        "label_en": "GitHub repo check",
         "description": "核查 GitHub 仓库 stars/近 90 天提交活跃度/描述，接受 owner/repo 或完整 URL。",
         "parameters": _obj({"repo": _str("owner/repo 或 GitHub URL")}, ["repo"]),
         "handler": tool_get_github_repo,
@@ -808,6 +821,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "select_person",
         "label": "请用户选定人物",
+        "label_en": "Ask user to pick a person",
         "description": "search_persons 命中多个不同人时调用，请用户从候选中选定一位。",
         "parameters": _obj(
             {
@@ -828,6 +842,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "propose_add_person",
         "label": "提议加入人才库",
+        "label_en": "Propose adding to talent pool",
         "description": "库外人物调查完成后，提议将其加入人才库（需用户确认）。",
         "parameters": _obj(
             {
@@ -844,6 +859,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "resolve_fact_conflict",
         "label": "提请事实冲突裁定",
+        "label_en": "Request fact-conflict ruling",
         "description": "外部事实冲突时提请用户裁定：确认 chosen_payload 并将冲突版本标记 superseded。",
         "parameters": _obj(
             {
@@ -859,6 +875,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "ask_clarification",
         "label": "向用户追问澄清",
+        "label_en": "Ask user for clarification",
         "description": "问题缺主语或意图不明时，向用户追问澄清（可给选项）。",
         "parameters": _obj(
             {
@@ -873,6 +890,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "request_reputation_review",
         "label": "提请舆情人工核验",
+        "label_en": "Request reputation review",
         "description": (
             "舆情监测中发现无法确证的正面/负面评价类舆情（做了好事/被坏事波及）时调用，"
             "把这类条目逐条提交用户人工核验；用户驳回的条目严禁写入总结。"

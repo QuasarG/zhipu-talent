@@ -229,17 +229,22 @@ export const api = {
       }),
     deleteConversation: (id: string) =>
       fetchJSON<{ id: string; deleted: boolean }>(`/api/conversations/${id}`, { method: "DELETE" }),
-    askSSE: (conversationId: string, prompt: string) =>
+    askSSE: (conversationId: string, prompt: string, lang: "zh" | "en" = "zh") =>
       fetch(BASE + "/api/knowledge/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId, prompt }),
+        body: JSON.stringify({ conversation_id: conversationId, prompt, lang }),
       }),
-    actionSSE: (conversationId: string, actionId: string, decision: Record<string, unknown>) =>
+    actionSSE: (
+      conversationId: string,
+      actionId: string,
+      decision: Record<string, unknown>,
+      lang: "zh" | "en" = "zh"
+    ) =>
       fetch(BASE + "/api/knowledge/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId, action_id: actionId, decision }),
+        body: JSON.stringify({ conversation_id: conversationId, action_id: actionId, decision, lang }),
       }),
   },
   config: {

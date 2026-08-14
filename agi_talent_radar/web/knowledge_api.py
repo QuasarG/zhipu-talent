@@ -82,6 +82,7 @@ def build_knowledge_blueprint():
         body = request.get_json(silent=True) or {}
         prompt = str(body.get("prompt", "")).strip()
         conversation_id = str(body.get("conversation_id") or "").strip()
+        lang = str(body.get("lang") or "zh").strip() or "zh"
         if not prompt:
             return jsonify({"detail": "prompt 不能为空。"}), 400
         user = current_user()
@@ -89,7 +90,7 @@ def build_knowledge_blueprint():
             conv = session.get(ConversationORM, conversation_id)
             if conv is None or conv.owner_id != user.id:
                 return jsonify({"detail": "会话不存在。"}), 404
-        return _sse_response(ask_events(conversation_id, prompt))
+        return _sse_response(ask_events(conversation_id, prompt, lang))
 
     @bp.post("/api/knowledge/action")
     def knowledge_action():
@@ -97,6 +98,7 @@ def build_knowledge_blueprint():
         conversation_id = str(body.get("conversation_id") or "").strip()
         action_id = str(body.get("action_id") or "").strip()
         decision = body.get("decision") or {}
+        lang = str(body.get("lang") or "zh").strip() or "zh"
         if not conversation_id or not action_id:
             return jsonify({"detail": "conversation_id 与 action_id 必填。"}), 400
         if not isinstance(decision, dict):
@@ -106,7 +108,7 @@ def build_knowledge_blueprint():
             conv = session.get(ConversationORM, conversation_id)
             if conv is None or conv.owner_id != user.id:
                 return jsonify({"detail": "会话不存在。"}), 404
-        return _sse_response(action_events(conversation_id, action_id, decision))
+        return _sse_response(action_events(conversation_id, action_id, decision, lang))
 
     @bp.get("/api/conversations")
     def list_conversations():

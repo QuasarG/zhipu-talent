@@ -10,21 +10,21 @@ import threading
 from typing import Any, Callable, Iterator
 
 
-def ask_events(conversation_id: str, prompt: str) -> Iterator[dict[str, Any]]:
+def ask_events(conversation_id: str, prompt: str, lang: str = "zh") -> Iterator[dict[str, Any]]:
     """POST /api/knowledge/ask 的事件流。"""
     from agi_talent_radar.knowledge_agent.agent import run_agent
 
-    return _stream(lambda session, emit: run_agent(session, conversation_id, prompt, emit))
+    return _stream(lambda session, emit: run_agent(session, conversation_id, prompt, emit, lang))
 
 
 def action_events(
-    conversation_id: str, action_id: str, decision: dict[str, Any]
+    conversation_id: str, action_id: str, decision: dict[str, Any], lang: str = "zh"
 ) -> Iterator[dict[str, Any]]:
     """POST /api/knowledge/action 的事件流（HITL 决策后续跑）。"""
     from agi_talent_radar.knowledge_agent.agent import resume_agent
 
     return _stream(
-        lambda session, emit: resume_agent(session, conversation_id, action_id, decision, emit)
+        lambda session, emit: resume_agent(session, conversation_id, action_id, decision, emit, lang)
     )
 
 
