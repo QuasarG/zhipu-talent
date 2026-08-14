@@ -6,6 +6,7 @@ import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { resetOnboarding } from "@/components/OnboardingTour";
 import type { HealthReport } from "@/lib/types";
 
@@ -77,6 +78,8 @@ export default function Settings() {
     load();
   }, [load]);
 
+  const { t } = useI18n();
+
   const startEdit = (key: string) => {
     setEditingKey(key);
     // 编辑时清空输入框——不回显旧值（安全要求）
@@ -100,9 +103,9 @@ export default function Settings() {
       setConfig(c as Record<string, ConfigValue>);
       setEditingKey(null);
       setEditValue("");
-      setSaveMsg({ ok: true, text: `${key} 已更新` });
+      setSaveMsg({ ok: true, text: t("{key} 已更新", { key }) });
     } catch {
-      setSaveMsg({ ok: false, text: `${key} 更新失败` });
+      setSaveMsg({ ok: false, text: t("{key} 更新失败", { key }) });
     } finally {
       setSaving(false);
     }
@@ -112,16 +115,16 @@ export default function Settings() {
 
   return (
     <div>
-      <PageToolbar title="设置" subtitle="外部服务 Key、Base URL 与模型配置" />
+      <PageToolbar title={t("设置")} subtitle={t("外部服务 Key、Base URL 与模型配置")} />
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <LoadingIndicator size={32} label="加载中…" />
+          <LoadingIndicator size={32} label={t("加载中…")} />
         </div>
       ) : (
         <div className="flex flex-col gap-6">
           {/* 服务状态 */}
           <section>
-            <h2 className="text-title-lg mb-3">服务状态</h2>
+            <h2 className="text-title-lg mb-3">{t("服务状态")}</h2>
             <div className="grid grid-cols-3 gap-3">
               {health?.services.map((s) => {
                 const meta = statusMeta[s.status] ?? statusMeta.down;
@@ -130,7 +133,7 @@ export default function Settings() {
                     <div className="flex items-center gap-2 min-w-0">
                       <Icon name={meta.icon} size={18} className={meta.cls} />
                       <span className="text-title truncate">{s.name}</span>
-                      {s.required && <StatusChip tone="error">必需</StatusChip>}
+                      {s.required && <StatusChip tone="error">{t("必需")}</StatusChip>}
                     </div>
                     <div className="flex flex-col items-end gap-0.5 shrink-0">
                       <span className="font-mono text-body-sm text-on-surface-variant">{Math.round(s.latency_ms)}ms</span>
@@ -146,7 +149,7 @@ export default function Settings() {
 
           {/* 外部服务 Key */}
           <section>
-            <h2 className="text-title-lg mb-3">外部服务 Key</h2>
+            <h2 className="text-title-lg mb-3">{t("外部服务 Key")}</h2>
             {saveMsg && (
               <div className={`mb-3 px-3 py-2 rounded-md text-body-sm ${saveMsg.ok ? "bg-success-container text-success" : "bg-error-container text-error"}`}>
                 <Icon name={saveMsg.ok ? "check_circle" : "error"} size={16} className="inline mr-1" />
@@ -172,7 +175,7 @@ export default function Settings() {
                       <div className="flex items-center gap-2 min-w-0">
                         {meta && <Icon name={meta.icon} size={20} className="text-primary shrink-0" />}
                         <div className="min-w-0">
-                          <span className="text-title text-on-surface">{meta?.label || key}</span>
+                          <span className="text-title text-on-surface">{t(meta?.label || key)}</span>
                           <span className="text-label text-on-surface-variant ml-2 font-mono">{key}</span>
                         </div>
                       </div>
@@ -186,13 +189,13 @@ export default function Settings() {
                         )}
                         {sensitive && (
                           <StatusChip tone={value.configured ? "success" : "warning"}>
-                            {value.configured ? "已配置" : "未配置"}
+                            {value.configured ? t("已配置") : t("未配置")}
                           </StatusChip>
                         )}
                       </div>
                     </div>
                     {/* 服务用途描述 */}
-                    {meta && <p className="text-body-sm text-on-surface-variant">{meta.desc}</p>}
+                    {meta && <p className="text-body-sm text-on-surface-variant">{t(meta.desc)}</p>}
                     {/* 值显示区（敏感项只显示脱敏，非敏感显示原值） */}
                     {!isEditing && (
                       <div className="flex items-center justify-between gap-2">
@@ -200,7 +203,7 @@ export default function Settings() {
                           className={`text-body-sm text-on-surface-variant font-mono truncate min-w-0 ${sensitive ? "select-none" : ""}`}
                           title={sensitive ? value.masked || undefined : value || undefined}
                         >
-                          {sensitive ? value.masked || "（未配置）" : value || "—"}
+                          {sensitive ? value.masked || t("（未配置）") : value || "—"}
                         </span>
                         <Button
                           variant="text"
@@ -208,7 +211,7 @@ export default function Settings() {
                           className="h-7 px-2 text-xs shrink-0"
                           onClick={() => startEdit(key)}
                         >
-                          {sensitive ? "更新" : "编辑"}
+                          {sensitive ? t("更新") : t("编辑")}
                         </Button>
                       </div>
                     )}
@@ -220,7 +223,7 @@ export default function Settings() {
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           autoFocus
-                          placeholder={sensitive ? "输入新值（不显示旧值）" : "输入新值"}
+                          placeholder={sensitive ? t("输入新值（不显示旧值）") : t("输入新值")}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && editValue) saveEdit(key);
                             if (e.key === "Escape") cancelEdit();
@@ -235,7 +238,7 @@ export default function Settings() {
                             disabled={!editValue || saving}
                             onClick={() => saveEdit(key)}
                           >
-                            {saving ? <LoadingIndicator size={14} color="text-on-primary" /> : "保存"}
+                            {saving ? <LoadingIndicator size={14} color="text-on-primary" /> : t("保存")}
                           </Button>
                           <Button
                             variant="text"
@@ -244,7 +247,7 @@ export default function Settings() {
                             disabled={saving}
                             onClick={cancelEdit}
                           >
-                            取消
+                            {t("取消")}
                           </Button>
                         </div>
                       </div>
@@ -257,14 +260,14 @@ export default function Settings() {
 
           {/* 其他 */}
           <section>
-            <h2 className="text-title-lg mb-3">其他</h2>
+            <h2 className="text-title-lg mb-3">{t("其他")}</h2>
             <div className="flex gap-3">
               <Button
                 variant="outlined"
                 icon="school"
                 onClick={() => { resetOnboarding(); window.location.href = "/"; }}
               >
-                重新查看新手引导
+                {t("重新查看新手引导")}
               </Button>
             </div>
           </section>

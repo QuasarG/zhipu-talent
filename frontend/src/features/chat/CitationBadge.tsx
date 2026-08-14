@@ -4,15 +4,18 @@ import type { ChatCitation } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
 import Button from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import { useI18n } from "@/lib/i18n";
 
-const statusTone = (status: string): { tone: "success" | "warning" | "error" | "neutral"; label: string } =>
+type TFunc = (key: string, params?: Record<string, string | number>) => string;
+
+const statusTone = (status: string, t: TFunc): { tone: "success" | "warning" | "error" | "neutral"; label: string } =>
   status === "confirmed"
-    ? { tone: "success", label: "已确认" }
+    ? { tone: "success", label: t("已确认") }
     : status === "conflict"
-      ? { tone: "error", label: "冲突" }
+      ? { tone: "error", label: t("冲突") }
       : status === "pending"
-        ? { tone: "warning", label: "待核验" }
-        : { tone: "neutral", label: status || "未知" };
+        ? { tone: "warning", label: t("待核验") }
+        : { tone: "neutral", label: status || t("未知") };
 
 const POPUP_WIDTH = 320; // w-80
 const POPUP_MAX_H = 320;
@@ -31,6 +34,7 @@ function schoolText(s: unknown): string {
 /** 人才库引用的详细档案卡：人物信息 + 跳转按钮 */
 function PersonCard({ meta, close }: { meta: PersonMeta; close: () => void }) {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const schools = (meta.schools || []).map(schoolText).filter(Boolean);
   const go = (path: string) => {
     close();
@@ -39,37 +43,37 @@ function PersonCard({ meta, close }: { meta: PersonMeta; close: () => void }) {
   return (
     <div>
       <div className="flex items-center gap-2">
-        <p className="text-body font-bold text-on-surface break-words">{meta.name || "未命名"}</p>
+        <p className="text-body font-bold text-on-surface break-words">{meta.name || t("未命名")}</p>
         <StatusChip tone={meta.person_type === "guest" ? "warning" : "neutral"}>
-          {meta.person_type === "guest" ? "嘉宾调查" : "简历人才"}
+          {meta.person_type === "guest" ? t("嘉宾调查") : t("简历人才")}
         </StatusChip>
-        {meta.level && <StatusChip tone="success">{`评级 ${meta.level}`}</StatusChip>}
+        {meta.level && <StatusChip tone="success">{t("评级 {level}", { level: meta.level })}</StatusChip>}
       </div>
       <div className="mt-2 flex flex-col gap-1 text-body-sm">
         <p className="text-on-surface-variant">
-          <span className="text-on-surface">机构：</span>
+          <span className="text-on-surface">{t("机构：")}</span>
           {meta.org || "—"}
         </p>
         <p className="text-on-surface-variant">
-          <span className="text-on-surface">方向：</span>
+          <span className="text-on-surface">{t("方向：")}</span>
           {meta.direction || "—"}
         </p>
         {meta.group && (
           <p className="text-on-surface-variant">
-            <span className="text-on-surface">分组：</span>
+            <span className="text-on-surface">{t("分组：")}</span>
             {meta.group}
           </p>
         )}
         {schools.length > 0 && (
           <p className="text-on-surface-variant">
-            <span className="text-on-surface">教育：</span>
-            {schools.join("；")}
+            <span className="text-on-surface">{t("教育：")}</span>
+            {schools.join(t("；"))}
           </p>
         )}
         {meta.overall_score != null && (
           <p className="text-on-surface-variant">
-            <span className="text-on-surface">最新评估：</span>
-            {meta.overall_score} 分{meta.tier ? ` · ${meta.tier}` : ""}
+            <span className="text-on-surface">{t("最新评估：")}</span>
+            {t("{score} 分{tier}", { score: meta.overall_score, tier: meta.tier ? ` · ${meta.tier}` : "" })}
           </p>
         )}
       </div>
@@ -80,7 +84,7 @@ function PersonCard({ meta, close }: { meta: PersonMeta; close: () => void }) {
           className="h-8 px-3 text-xs"
           onClick={() => go(`/talent-pool?focus=${meta.person_id}`)}
         >
-          人才库定位
+          {t("人才库定位")}
         </Button>
         <Button
           variant="filled"
@@ -88,7 +92,7 @@ function PersonCard({ meta, close }: { meta: PersonMeta; close: () => void }) {
           className="h-8 px-3 text-xs"
           onClick={() => go(`/talent-pool/${meta.person_id}`)}
         >
-          完整档案
+          {t("完整档案")}
         </Button>
       </div>
     </div>
@@ -100,7 +104,8 @@ export default function CitationBadge({ citation }: { citation: ChatCitation }) 
   const [open, setOpen] = useState(false);
   const [style, setStyle] = useState<React.CSSProperties>({});
   const btnRef = useRef<HTMLButtonElement>(null);
-  const { tone, label } = statusTone(citation.status);
+  const { t } = useI18n();
+  const { tone, label } = statusTone(citation.status, t);
   const person = citation.meta?.person_id ? citation.meta : null;
 
   const toggle = () => {
@@ -141,7 +146,7 @@ export default function CitationBadge({ citation }: { citation: ChatCitation }) 
               <>
                 <p className="text-body-sm font-medium text-on-surface break-words">{citation.title || citation.id}</p>
                 <div className="flex items-center gap-2 mt-1.5">
-                  <span className="text-label text-on-surface-variant">{citation.type || "来源"}</span>
+                  <span className="text-label text-on-surface-variant">{citation.type || t("来源")}</span>
                   <StatusChip tone={tone}>{label}</StatusChip>
                 </div>
                 {citation.url && (

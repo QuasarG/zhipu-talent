@@ -15,6 +15,7 @@ import Icon from "@/components/ui/Icon";
 import Progress from "@/components/ui/Progress";
 import { StatusChip } from "@/components/ui/Chip";
 import { resolveTrackWeightPercent, tokenizeEvidenceReferences } from "./scoreOverviewModel";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   evaluation: Evaluation;
@@ -54,6 +55,7 @@ export default function ScoreOverview({ evaluation, academicReport }: Props) {
   );
   const [activeEvidence, setActiveEvidence] = useState<EvidenceSelection | null>(null);
   const openEvidence = (item: EvidenceItem, anchor: HTMLElement) => setActiveEvidence({ item, anchor });
+  const { t } = useI18n();
 
   return (
     <div>
@@ -61,26 +63,26 @@ export default function ScoreOverview({ evaluation, academicReport }: Props) {
         <div className="grid grid-cols-[118px_minmax(0,1fr)_auto] items-start gap-4">
           <div>
             <span className="block text-[42px] leading-[44px] font-bold tabular-nums text-primary">{evaluation.overall_score}</span>
-            <span className="text-label font-semibold text-on-surface-variant">综合能力分 / 100</span>
+            <span className="text-label font-semibold text-on-surface-variant">{t("综合能力分 / 100")}</span>
           </div>
           <div className="min-w-0">
-            <h2 className="text-title-lg font-bold text-on-surface">评估结论</h2>
+            <h2 className="text-title-lg font-bold text-on-surface">{t("评估结论")}</h2>
             <p className="mt-1 text-body font-medium leading-5 text-on-surface">
-              <EvidenceText text={evaluation.one_liner || "暂无结论摘要"} evidenceById={evidenceById} onOpen={openEvidence} />
+              <EvidenceText text={evaluation.one_liner || t("暂无结论摘要")} evidenceById={evidenceById} onOpen={openEvidence} />
             </p>
-            <p className="mt-1 text-label text-on-surface-variant">能力描述用于辅助复核，不代表录取结论</p>
+            <p className="mt-1 text-label text-on-surface-variant">{t("能力描述用于辅助复核，不代表录取结论")}</p>
           </div>
           <div className="flex flex-col items-end gap-2">
             <StatusChip tone="info" icon="route">
-              路由 {Math.round((evaluation.routing_confidence || 0) * 100)}%
+              {t("路由 {n}%", { n: Math.round((evaluation.routing_confidence || 0) * 100) })}
             </StatusChip>
-            <StatusChip tone="neutral" icon="description">证据 {evaluation.evidence?.length || 0} 条</StatusChip>
+            <StatusChip tone="neutral" icon="description">{t("证据 {n} 条", { n: evaluation.evidence?.length || 0 })}</StatusChip>
           </div>
         </div>
       </header>
 
       {!!evaluation.dimension_scores?.length && (
-        <ResultSection title="通用能力维度" icon="analytics" count={evaluation.dimension_scores.length}>
+        <ResultSection title={t("通用能力维度")} icon="analytics" count={evaluation.dimension_scores.length}>
           <div className="divide-y divide-outline-variant">
             {evaluation.dimension_scores.map((dimension, index) => (
               <DimensionResult
@@ -96,7 +98,7 @@ export default function ScoreOverview({ evaluation, academicReport }: Props) {
       )}
 
       {!!evaluation.recommended_tracks?.length && (
-        <ResultSection title="推荐 Track" icon="alt_route" count={evaluation.recommended_tracks.length}>
+        <ResultSection title={t("推荐 Track")} icon="alt_route" count={evaluation.recommended_tracks.length}>
           <div className="divide-y-2 divide-outline-variant">
             {evaluation.recommended_tracks.map((track, index) => (
               <TrackResult
@@ -114,7 +116,7 @@ export default function ScoreOverview({ evaluation, academicReport }: Props) {
       )}
 
       {!!alignments.length && (
-        <ResultSection title="论文核验摘要" icon="fact_check" count={alignments.length}>
+        <ResultSection title={t("论文核验摘要")} icon="fact_check" count={alignments.length}>
           <div className="divide-y divide-outline-variant">
             {alignments.map((alignment, index) => (
               <div key={index} className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-3 py-3">
@@ -122,9 +124,9 @@ export default function ScoreOverview({ evaluation, academicReport }: Props) {
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-body font-bold text-on-surface">{alignment.claim?.title || "未命名论文"}</p>
+                  <p className="text-body font-bold text-on-surface">{alignment.claim?.title || t("未命名论文")}</p>
                   <p className="mt-1 text-body-sm text-on-surface-variant">
-                    {alignment.discrepancies?.[0] || alignment.note || "外部记录与简历声明已完成对齐"}
+                    {alignment.discrepancies?.[0] || alignment.note || t("外部记录与简历声明已完成对齐")}
                   </p>
                 </div>
                 <VerdictBadge verdict={alignment.verdict} humanStatus={alignment.human_status} />
@@ -134,11 +136,11 @@ export default function ScoreOverview({ evaluation, academicReport }: Props) {
         </ResultSection>
       )}
 
-      <ResultSection title="复核与面谈" icon="forum">
-        <ExpandableList title="核心优势" icon="workspace_premium" items={evaluation.core_strengths} evidenceById={evidenceById} onEvidence={openEvidence} defaultOpen />
-        <ExpandableList title="潜在风险" icon="warning" items={evaluation.potential_risks} evidenceById={evidenceById} onEvidence={openEvidence} />
-        <ExpandableList title="建议面谈问题" icon="quiz" items={evaluation.interview_questions} evidenceById={evidenceById} onEvidence={openEvidence} />
-        <ExpandableList title="培养方向" icon="trending_up" items={evaluation.cultivation_direction} evidenceById={evidenceById} onEvidence={openEvidence} />
+      <ResultSection title={t("复核与面谈")} icon="forum">
+        <ExpandableList title={t("核心优势")} icon="workspace_premium" items={evaluation.core_strengths} evidenceById={evidenceById} onEvidence={openEvidence} defaultOpen />
+        <ExpandableList title={t("潜在风险")} icon="warning" items={evaluation.potential_risks} evidenceById={evidenceById} onEvidence={openEvidence} />
+        <ExpandableList title={t("建议面谈问题")} icon="quiz" items={evaluation.interview_questions} evidenceById={evidenceById} onEvidence={openEvidence} />
+        <ExpandableList title={t("培养方向")} icon="trending_up" items={evaluation.cultivation_direction} evidenceById={evidenceById} onEvidence={openEvidence} />
       </ResultSection>
 
       {activeEvidence && (
@@ -155,6 +157,7 @@ function DimensionResult({ dimension, color, evidenceById, onEvidence }: {
   onEvidence: (item: EvidenceItem, anchor: HTMLElement) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useI18n();
   // score 是 LLM 原始 0-5 分，展示必须用 weighted_score 对齐 max_points 量纲
   const percentage = dimension.max_points > 0
     ? Math.min(100, dimension.weighted_score / dimension.max_points * 100)
@@ -186,7 +189,7 @@ function DimensionResult({ dimension, color, evidenceById, onEvidence }: {
               onClick={() => setExpanded((value) => !value)}
               aria-expanded={expanded}
             >
-              {expanded ? "收起" : "展开全文"}
+              {expanded ? t("收起") : t("展开全文")}
             </button>
           )}
         </div>
@@ -199,12 +202,13 @@ function DimensionResult({ dimension, color, evidenceById, onEvidence }: {
 }
 
 function ResultSection({ title, icon, count, children }: { title: string; icon: string; count?: number; children: ReactNode }) {
+  const { t } = useI18n();
   return (
     <section className="py-5 border-b-2 last:border-b-0 border-outline-variant">
       <div className="flex items-center gap-2 mb-3">
         <Icon name={icon} size={19} className="text-primary" />
         <h3 className="text-title-lg font-bold text-on-surface">{title}</h3>
-        {count !== undefined && <span className="ml-auto text-label font-semibold text-on-surface-variant">{count} 项</span>}
+        {count !== undefined && <span className="ml-auto text-label font-semibold text-on-surface-variant">{t("{n} 项", { n: count })}</span>}
       </div>
       {children}
     </section>
@@ -220,13 +224,14 @@ function TrackResult({ recommendation, evaluation, assignment, evidenceById, onE
   index: number;
 }) {
   const [open, setOpen] = useState(index === 0);
-  const track = recommendation.track || recommendation.name || "未命名 Track";
+  const { t } = useI18n();
+  const track = recommendation.track || recommendation.name || t("未命名 Track");
   const weightPercent = resolveTrackWeightPercent(
     recommendation.weight,
     assignment?.weight || evaluation?.weight,
   );
   const color = trackColor(track);
-  const rationale = assignment?.rationale || recommendation.rationale || recommendation.reason || "无路由说明";
+  const rationale = assignment?.rationale || recommendation.rationale || recommendation.reason || t("无路由说明");
   const evidenceIds = uniqueIds([
     ...(recommendation.evidence_ids || []),
     ...(assignment?.evidence_ids || []),
@@ -252,7 +257,7 @@ function TrackResult({ recommendation, evaluation, assignment, evidenceById, onE
         </span>
         <span className="text-right">
           <span className="block text-title font-bold tabular-nums" style={{ color }}>{weightPercent}%</span>
-          <span className="block text-label text-on-surface-variant">组合权重</span>
+          <span className="block text-label text-on-surface-variant">{t("组合权重")}</span>
         </span>
         <Icon name="expand_more" size={20} className={cn("text-on-surface-variant transition-transform duration-300 ease-emphasized", open && "rotate-180")} />
       </button>
@@ -263,12 +268,12 @@ function TrackResult({ recommendation, evaluation, assignment, evidenceById, onE
             {evaluation ? (
               <div className="mt-3 border-l-2 border-outline-variant pl-4">
                 <div className="grid grid-cols-3 gap-3 pb-3">
-                  <Metric label="原始分" value={formatScore(evaluation.raw_score)} />
-                  <Metric label="校准分" value={formatScore(evaluation.calibrated_score)} strong />
-                  <Metric label="置信度" value={`${Math.round(evaluation.confidence * 100)}%`} />
+                  <Metric label={t("原始分")} value={formatScore(evaluation.raw_score)} />
+                  <Metric label={t("校准分")} value={formatScore(evaluation.calibrated_score)} strong />
+                  <Metric label={t("置信度")} value={`${Math.round(evaluation.confidence * 100)}%`} />
                 </div>
                 <div className="pb-3 border-t border-outline-variant pt-3">
-                  <p className="text-label font-bold text-on-surface-variant">路由理由</p>
+                  <p className="text-label font-bold text-on-surface-variant">{t("路由理由")}</p>
                   <p className="mt-1 text-body-sm leading-5 text-on-surface">
                     <EvidenceText text={rationale} evidenceById={evidenceById} onOpen={onEvidence} />
                   </p>
@@ -295,7 +300,7 @@ function TrackResult({ recommendation, evaluation, assignment, evidenceById, onE
                 )}
                 {!!evaluation.risk_notes.length && (
                   <div className="mt-3 border-l-2 border-warning pl-3">
-                    <p className="text-label font-bold text-warning">Track 风险</p>
+                    <p className="text-label font-bold text-warning">{t("Track 风险")}</p>
                     {evaluation.risk_notes.map((risk, riskIndex) => (
                       <p key={riskIndex} className="mt-1 text-body-sm text-on-surface-variant">
                         <EvidenceText text={risk} evidenceById={evidenceById} onOpen={onEvidence} />
@@ -305,7 +310,7 @@ function TrackResult({ recommendation, evaluation, assignment, evidenceById, onE
                 )}
               </div>
             ) : (
-              <p className="mt-2 text-body-sm text-on-surface-variant">该 Track 暂无独立评分明细。</p>
+              <p className="mt-2 text-body-sm text-on-surface-variant">{t("该 Track 暂无独立评分明细。")}</p>
             )}
           </div>
         </div>
@@ -349,6 +354,7 @@ function EvidenceText({ text, evidenceById, onOpen }: {
   evidenceById: Map<string, EvidenceItem>;
   onOpen: (item: EvidenceItem, anchor: HTMLElement) => void;
 }) {
+  const { t } = useI18n();
   const parts = tokenizeEvidenceReferences(text, new Set(evidenceById.keys()));
   return (
     <>
@@ -361,7 +367,7 @@ function EvidenceText({ text, evidenceById, onOpen }: {
             const item = evidenceById.get(part.evidenceId!);
             if (item) onOpen(item, event.currentTarget);
           }}
-          title={`查看 ${part.evidenceId} 证据`}
+          title={t("查看 {id} 证据", { id: part.evidenceId })}
         >
           {part.text}
         </button>
@@ -378,20 +384,21 @@ function EvidenceReferenceList({ ids, evidenceById, onOpen, className }: {
   onOpen: (item: EvidenceItem, anchor: HTMLElement) => void;
   className?: string;
 }) {
+  const { t } = useI18n();
   const items = uniqueIds(ids || [])
     .map((id) => evidenceById.get(id))
     .filter((item): item is EvidenceItem => !!item);
   if (!items.length) return null;
   return (
     <div className={cn("flex flex-wrap items-center gap-x-2 gap-y-1", className)}>
-      <span className="text-label font-bold text-on-surface-variant">证据</span>
+      <span className="text-label font-bold text-on-surface-variant">{t("证据")}</span>
       {items.map((item) => (
         <button
           key={item.id}
           type="button"
           className="border-0 border-b border-dashed border-primary bg-transparent px-0.5 text-label font-bold text-primary cursor-pointer hover:bg-primary-container focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
           onClick={(event) => onOpen(item, event.currentTarget)}
-          title={`查看 ${item.id} 证据`}
+          title={t("查看 {id} 证据", { id: item.id })}
         >
           {item.id}
         </button>
@@ -403,6 +410,7 @@ function EvidenceReferenceList({ ids, evidenceById, onOpen, className }: {
 function EvidencePopover({ selection, onClose }: { selection: EvidenceSelection; onClose: () => void }) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const { t } = useI18n();
 
   useLayoutEffect(() => {
     const anchor = selection.anchor;
@@ -448,7 +456,7 @@ function EvidencePopover({ selection, onClose }: { selection: EvidenceSelection;
     <div
       ref={popoverRef}
       role="dialog"
-      aria-label={`${selection.item.id} 证据详情`}
+      aria-label={t("{id} 证据详情", { id: selection.item.id })}
       className="fixed z-[100] w-[min(360px,calc(100vw-24px))] max-h-[min(520px,calc(100vh-24px))] overflow-y-auto rounded-md border border-primary bg-surface-lowest shadow-xl"
       style={{
         top: position?.top ?? 12,
@@ -459,31 +467,31 @@ function EvidencePopover({ selection, onClose }: { selection: EvidenceSelection;
       <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-outline-variant bg-primary-container">
         <div className="min-w-0">
           <p className="text-label font-bold uppercase tracking-[0.08em] text-primary">{selection.item.id}</p>
-          <h3 className="mt-0.5 text-title font-bold text-on-surface truncate">{selection.item.dimension || "证据详情"}</h3>
+          <h3 className="mt-0.5 text-title font-bold text-on-surface truncate">{selection.item.dimension || t("证据详情")}</h3>
         </div>
         <button
           type="button"
           autoFocus
           className="flex items-center justify-center w-8 h-8 rounded-full text-on-surface-variant hover:bg-surface-high focus-visible:outline-2 focus-visible:outline-primary"
           onClick={onClose}
-          aria-label="关闭证据详情"
+          aria-label={t("关闭证据详情")}
         >
           <Icon name="close" size={18} />
         </button>
       </div>
       <div className="space-y-3 px-4 py-4 text-body-sm text-on-surface">
         <div className="grid grid-cols-[52px_minmax(0,1fr)] gap-x-3 gap-y-2">
-          <span className="text-label font-bold text-on-surface-variant">来源</span>
-          <span className="break-words">{selection.item.source || "未标注"}</span>
+          <span className="text-label font-bold text-on-surface-variant">{t("来源")}</span>
+          <span className="break-words">{selection.item.source || t("未标注")}</span>
           {selection.item.page !== null && selection.item.page !== undefined && (
             <>
-              <span className="text-label font-bold text-on-surface-variant">页码</span>
+              <span className="text-label font-bold text-on-surface-variant">{t("页码")}</span>
               <span>P{selection.item.page}</span>
             </>
           )}
         </div>
         <blockquote className="m-0 border-l-2 border-primary bg-surface-low px-3 py-2.5 leading-6 break-words">
-          {selection.item.quote || "无原文摘录"}
+          {selection.item.quote || t("无原文摘录")}
         </blockquote>
         {!!selection.item.signals?.length && (
           <div className="flex flex-wrap gap-1.5">
@@ -491,10 +499,10 @@ function EvidencePopover({ selection, onClose }: { selection: EvidenceSelection;
           </div>
         )}
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-label text-on-surface-variant">
-          <span>证据强度 <strong className="text-on-surface">{selection.item.strength}/5</strong></span>
-          {selection.item.has_metric && <span>含量化指标</span>}
-          {selection.item.has_specific_tool && <span>含具体工具</span>}
-          {selection.item.has_ownership && <span>含负责边界</span>}
+          <span>{t("证据强度")} <strong className="text-on-surface">{selection.item.strength}/5</strong></span>
+          {selection.item.has_metric && <span>{t("含量化指标")}</span>}
+          {selection.item.has_specific_tool && <span>{t("含具体工具")}</span>}
+          {selection.item.has_ownership && <span>{t("含负责边界")}</span>}
         </div>
       </div>
     </div>,
@@ -511,6 +519,7 @@ function ExpandableList({ title, icon, items, evidenceById, onEvidence, defaultO
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const { t } = useI18n();
   if (!items?.length) return null;
   return (
     <div className="border-t first:border-t-0 border-outline-variant">
@@ -522,7 +531,7 @@ function ExpandableList({ title, icon, items, evidenceById, onEvidence, defaultO
       >
         <Icon name={icon} size={17} className="text-on-surface-variant" />
         <span className="text-body font-bold text-on-surface">{title}</span>
-        <span className="text-label text-on-surface-variant">{items.length} 项</span>
+        <span className="text-label text-on-surface-variant">{t("{n} 项", { n: items.length })}</span>
         <Icon name="expand_more" size={19} className={cn("ml-auto text-on-surface-variant transition-transform duration-300 ease-emphasized", open && "rotate-180")} />
       </button>
       <div className="process-collapse" data-open={open}>
@@ -545,9 +554,10 @@ function VerdictBadge({ verdict, humanStatus }: {
   verdict: "verified" | "mismatch" | "unverifiable";
   humanStatus?: "unreviewed" | "confirmed" | "dismissed";
 }) {
-  if (humanStatus === "confirmed") return <StatusChip tone="success" variant="filled" icon="person_check">人工通过</StatusChip>;
-  if (humanStatus === "dismissed") return <StatusChip tone="error" variant="filled" icon="person_cancel">人工驳回</StatusChip>;
-  if (verdict === "verified") return <StatusChip tone="success" variant="filled" icon="verified">通过</StatusChip>;
-  if (verdict === "mismatch") return <StatusChip tone="error" variant="filled" icon="error">冲突</StatusChip>;
-  return <StatusChip tone="warning" variant="filled" icon="help">待人工</StatusChip>;
+  const { t } = useI18n();
+  if (humanStatus === "confirmed") return <StatusChip tone="success" variant="filled" icon="person_check">{t("人工通过")}</StatusChip>;
+  if (humanStatus === "dismissed") return <StatusChip tone="error" variant="filled" icon="person_cancel">{t("人工驳回")}</StatusChip>;
+  if (verdict === "verified") return <StatusChip tone="success" variant="filled" icon="verified">{t("通过")}</StatusChip>;
+  if (verdict === "mismatch") return <StatusChip tone="error" variant="filled" icon="error">{t("冲突")}</StatusChip>;
+  return <StatusChip tone="warning" variant="filled" icon="help">{t("待人工")}</StatusChip>;
 }

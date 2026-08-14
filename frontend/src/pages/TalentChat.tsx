@@ -8,6 +8,7 @@ import ChatSidebar from "@/features/chat/ChatSidebar";
 import ChatInput from "@/features/chat/ChatInput";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import { useSessionState } from "@/lib/sessionState";
+import { useI18n } from "@/lib/i18n";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import GrillWorkbench, { type ChatMode } from "@/features/grill/GrillWorkbench";
 
@@ -83,6 +84,7 @@ export default function TalentChat() {
   // 状态跟随：running 消息的轮询句柄 + currentId 镜像（轮询回调里读不到最新 state）
   const pollRef = useRef<number | null>(null);
   const currentIdRef = useRef<string | null>(null);
+  const { t } = useI18n();
 
   const stopFollow = useCallback(() => {
     if (pollRef.current !== null) {
@@ -236,7 +238,7 @@ export default function TalentChat() {
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       await consume(await api.chat.askSSE(convId, text));
     } catch (err) {
-      updateActive({ type: "error", payload: { message: err instanceof Error ? err.message : "请求失败" } });
+      updateActive({ type: "error", payload: { message: err instanceof Error ? err.message : t("请求失败") } });
       // SSE 中断兜底：后端可能还在跑，转轮询跟随
       if (convId) startFollow(convId);
     } finally {
@@ -265,7 +267,7 @@ export default function TalentChat() {
     try {
       await consume(await api.chat.actionSSE(currentId, actionId, decision));
     } catch (err) {
-      updateActive({ type: "error", payload: { message: err instanceof Error ? err.message : "请求失败" } });
+      updateActive({ type: "error", payload: { message: err instanceof Error ? err.message : t("请求失败") } });
       // SSE 中断兜底：后端可能还在跑，转轮询跟随
       startFollow(currentId);
     } finally {
@@ -309,15 +311,15 @@ export default function TalentChat() {
   return (
     <div className="flex flex-col h-[calc(100vh-24px)]">
       <PageToolbar
-        title="人才问答"
-        subtitle="库内优先 · 必要时联网调查"
+        title={t("人才问答")}
+        subtitle={t("库内优先 · 必要时联网调查")}
         right={
           <SegmentedButtons
             value={mode}
             onChange={setMode}
             options={[
-              { value: "qa", label: "人才问答", icon: "forum" },
-              { value: "clarify", label: "画像澄清", icon: "psychology_alt" },
+              { value: "qa", label: t("人才问答"), icon: "forum" },
+              { value: "clarify", label: t("画像澄清"), icon: "psychology_alt" },
             ]}
           />
         }
@@ -337,14 +339,14 @@ export default function TalentChat() {
           <div ref={convRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-5 pr-1 pb-2">
             {loadingMsgs ? (
               <div className="flex-1 flex items-center justify-center">
-                <LoadingIndicator size={28} label="加载会话…" />
+                <LoadingIndicator size={28} label={t("加载会话…")} />
               </div>
             ) : messages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
                 <Icon name="psychology" size={40} className="text-on-surface-variant" />
-                <p className="text-title">询问人才、比较经历，或调查一个明确人物</p>
+                <p className="text-title">{t("询问人才、比较经历，或调查一个明确人物")}</p>
                 <p className="text-body-sm text-on-surface-variant">
-                  Agent 会自主调用库内检索与外部工具；遇到歧义会请你决策
+                  {t("Agent 会自主调用库内检索与外部工具；遇到歧义会请你决策")}
                 </p>
               </div>
             ) : (

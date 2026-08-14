@@ -3,6 +3,7 @@ import type { CandidateDetail } from "@/lib/types";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   /** 当前候选人；null 时胶囊禁用、不显示下拉箭头 */
@@ -44,7 +45,8 @@ export default function CandidateMetaDropdown({ candidate, busy }: Props) {
   }, [open]);
 
   const disabled = !candidate || busy;
-  const label = candidate ? `${candidate.name} · ${candidate.stage || "阶段未知"}` : "未选择候选人";
+  const { t } = useI18n();
+  const label = candidate ? `${candidate.name} · ${candidate.stage || t("阶段未知")}` : t("未选择候选人");
 
   return (
     <div ref={wrapRef} className="relative">
@@ -78,14 +80,14 @@ export default function CandidateMetaDropdown({ candidate, busy }: Props) {
           {/* 头部固定：姓名 + 关闭 */}
           <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-outline-variant">
             <div className="min-w-0">
-              <p className="text-title text-on-surface truncate">{candidate.name || "未命名候选人"}</p>
-              <p className="text-label text-on-surface-variant truncate">{candidate.stage || "阶段未知"}</p>
+              <p className="text-title text-on-surface truncate">{candidate.name || t("未命名候选人")}</p>
+              <p className="text-label text-on-surface-variant truncate">{candidate.stage || t("阶段未知")}</p>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
               className="state-layer inline-flex items-center justify-center w-8 h-8 rounded-full text-on-surface-variant hover:text-on-surface cursor-pointer shrink-0"
-              title="关闭"
+              title={t("关闭")}
             >
               <Icon name="close" size={18} />
             </button>
@@ -94,21 +96,21 @@ export default function CandidateMetaDropdown({ candidate, busy }: Props) {
           {/* 固定高度内容区，内部可滚 */}
           <div className="h-64 overflow-y-auto p-4">
             <dl className="grid grid-cols-[88px_minmax(0,1fr)] gap-x-3 gap-y-2.5">
-              <MetaRow label="阶段" value={candidate.stage || "—"} />
-              <MetaRow label="目标角色" value={candidate.role || "—"} />
-              <MetaRow label="来源格式" value={sourceFormatLabel(candidate.source_format)} />
-              <MetaRow label="导入分类" value={candidate.category || "—"} />
-              <MetaRow label="导入级别" value={candidate.level || "—"} />
-              <MetaRow label="HR 状态" value={hrStatusLabel(candidate.engagement_status)} />
-              <MetaRow label="评估状态" value={candidate.evaluated ? "已评估" : "未评估"} />
-              <MetaRow label="置信度" value={candidate.confidence != null ? `${(candidate.confidence * 100).toFixed(0)}%` : "—"} />
-              {candidate.person_id && <MetaRow label="人才库 ID" value={candidate.person_id} mono />}
-              {candidate.admitted_at && <MetaRow label="入库时间" value={candidate.admitted_at.slice(0, 16).replace("T", " ")} />}
+              <MetaRow label={t("阶段")} value={candidate.stage || "—"} />
+              <MetaRow label={t("目标角色")} value={candidate.role || "—"} />
+              <MetaRow label={t("来源格式")} value={t(sourceFormatLabel(candidate.source_format))} />
+              <MetaRow label={t("导入分类")} value={candidate.category || "—"} />
+              <MetaRow label={t("导入级别")} value={candidate.level || "—"} />
+              <MetaRow label={t("HR 状态")} value={t(hrStatusLabel(candidate.engagement_status))} />
+              <MetaRow label={t("评估状态")} value={candidate.evaluated ? t("已评估") : t("未评估")} />
+              <MetaRow label={t("置信度")} value={candidate.confidence != null ? `${(candidate.confidence * 100).toFixed(0)}%` : "—"} />
+              {candidate.person_id && <MetaRow label={t("人才库 ID")} value={candidate.person_id} mono />}
+              {candidate.admitted_at && <MetaRow label={t("入库时间")} value={candidate.admitted_at.slice(0, 16).replace("T", " ")} />}
             </dl>
 
             {candidate.directions?.length > 0 && (
               <div className="mt-4">
-                <p className="text-label text-on-surface-variant mb-1.5">研究方向</p>
+                <p className="text-label text-on-surface-variant mb-1.5">{t("研究方向")}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {candidate.directions.map((d) => (
                     <StatusChip key={d} tone="info">{d}</StatusChip>
@@ -119,7 +121,7 @@ export default function CandidateMetaDropdown({ candidate, busy }: Props) {
 
             {candidate.screening_tags?.length > 0 && (
               <div className="mt-4">
-                <p className="text-label text-on-surface-variant mb-1.5">初筛标签</p>
+                <p className="text-label text-on-surface-variant mb-1.5">{t("初筛标签")}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {candidate.screening_tags.map((t) => (
                     <StatusChip key={t} tone="neutral">{t}</StatusChip>

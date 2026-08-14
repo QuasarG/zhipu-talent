@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import Card from "@/components/ui/Card";
 import Button, { IconButton } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   onClose: () => void;
@@ -17,6 +18,7 @@ export default function AddPersonDialog({ onClose, onAdded }: Props) {
   const [form, setForm] = useState({ name: "", org: "", direction: "" });
   const [adding, setAdding] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const { t } = useI18n();
 
   const submit = async () => {
     const name = form.name.trim();
@@ -29,11 +31,11 @@ export default function AddPersonDialog({ onClose, onAdded }: Props) {
         org: form.org.trim(),
         direction: form.direction.trim(),
       });
-      setResult({ ok: true, text: `已加入人才库：${brief.name}，可在人才库「人物调查」中查看` });
+      setResult({ ok: true, text: t("已加入人才库：{name}，可在人才库「人物调查」中查看", { name: brief.name }) });
       setForm({ name: "", org: "", direction: "" });
       onAdded();
     } catch (err) {
-      setResult({ ok: false, text: err instanceof Error ? err.message : "加入失败" });
+      setResult({ ok: false, text: err instanceof Error ? err.message : t("加入失败") });
     } finally {
       setAdding(false);
     }
@@ -43,28 +45,28 @@ export default function AddPersonDialog({ onClose, onAdded }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/30" onClick={onClose}>
       <Card variant="elevated" className="w-[400px] p-5 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <p className="text-title-lg">手动加入人才库</p>
-          <IconButton icon="close" onClick={onClose} title="关闭" />
+          <p className="text-title-lg">{t("手动加入人才库")}</p>
+          <IconButton icon="close" onClick={onClose} title={t("关闭")} />
         </div>
         <input
           type="text"
           value={form.name}
           onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-          placeholder="姓名（必填）"
+          placeholder={t("姓名（必填）")}
           className={inputClass}
         />
         <input
           type="text"
           value={form.org}
           onChange={(e) => setForm((p) => ({ ...p, org: e.target.value }))}
-          placeholder="学校 / 机构"
+          placeholder={t("学校 / 机构")}
           className={inputClass}
         />
         <input
           type="text"
           value={form.direction}
           onChange={(e) => setForm((p) => ({ ...p, direction: e.target.value }))}
-          placeholder="研究方向"
+          placeholder={t("研究方向")}
           className={inputClass}
         />
         <Button
@@ -74,12 +76,12 @@ export default function AddPersonDialog({ onClose, onAdded }: Props) {
           disabled={!form.name.trim() || adding}
           onClick={submit}
         >
-          {adding ? "加入中…" : "加入人才库"}
+          {adding ? t("加入中…") : t("加入人才库")}
         </Button>
         {result && (
           <p className={cn("text-label", result.ok ? "text-success" : "text-error")}>{result.text}</p>
         )}
-        <p className="text-label text-on-surface-variant">以「人物调查」身份进入列表和图谱，不参与 Track 分类</p>
+        <p className="text-label text-on-surface-variant">{t("以「人物调查」身份进入列表和图谱，不参与 Track 分类")}</p>
       </Card>
     </div>
   );

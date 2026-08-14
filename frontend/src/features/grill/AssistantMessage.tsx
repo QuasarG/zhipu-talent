@@ -3,6 +3,7 @@ import remarkGfm from "remark-gfm";
 import { ThinkingOrb } from "thinking-orbs";
 import type { GrillChatMessage as ChatMessage, GrillChatSegment as ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
+import { useI18n } from "@/lib/i18n";
 import ToolCallCard from "./ToolCallCard";
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
 
 /** assistant 消息：按 segments 顺序渲染 文本(markdown) / 工具卡片 */
 export default function AssistantMessage({ message, busy, interactive = false, onSend, userReply }: Props) {
+  const { t } = useI18n();
   const renderSegment = (seg: ChatSegment, i: number) => {
     if (seg.type === "text") {
       if (!seg.text.trim()) return null;
@@ -40,8 +42,8 @@ export default function AssistantMessage({ message, busy, interactive = false, o
         {message.segments.map(renderSegment)}
         {busy && (
           <div className="mt-3 flex items-center gap-2">
-            <ThinkingOrb state="shaping" size={20} aria-label="正在思考" />
-            <span className="text-body-sm text-on-surface-variant">正在思考…</span>
+            <ThinkingOrb state="shaping" size={20} aria-label={t("正在思考")} />
+            <span className="text-body-sm text-on-surface-variant">{t("正在思考…")}</span>
           </div>
         )}
         {message.error && (

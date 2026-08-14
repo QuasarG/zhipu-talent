@@ -3,6 +3,7 @@ import type { ChatConversation } from "@/lib/types";
 import Button, { IconButton } from "@/components/ui/Button";
 import HelpDialog from "./HelpDialog";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   conversations: ChatConversation[];
@@ -16,19 +17,22 @@ interface Props {
 /** 相对时间：分钟内显示"刚刚"，其后逐级退化到日期。
  * 后端 SQLite 存的是 UTC 时间（YYYY-MM-DD HH:MM:SS 无时区后缀），
  * 补 Z 后缀让 JS 按 UTC 解析，避免 8 小时偏差。 */
-function relativeTime(iso: string): string {
+function relativeTime(
+  iso: string,
+  t: (key: string, params?: Record<string, string | number>) => string
+): string {
   if (!iso) return "";
   const normalized = iso.includes("T") ? iso : iso.replace(" ", "T");
   const time = new Date(normalized.endsWith("Z") ? normalized : normalized + "Z").getTime();
   if (Number.isNaN(time)) return "";
   const diff = Date.now() - time;
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return t("刚刚");
+  if (minutes < 60) return t("{n} 分钟前", { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return t("{n} 小时前", { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} 天前`;
+  if (days < 7) return t("{n} 天前", { n: days });
   return new Date(time).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 
@@ -39,6 +43,7 @@ export default function ChatSidebar({ conversations, currentId, onSelect, onCrea
   // 删除二次确认：第一次点击进入确认态，再点一次才真删（对齐候选队列惯例）
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const { t } = useI18n();
 
   const commitRename = (id: string) => {
     const title = draft.trim();
@@ -59,11 +64,11 @@ export default function ChatSidebar({ conversations, currentId, onSelect, onCrea
   return (
     <div className="w-60 shrink-0 flex flex-col gap-2 min-h-0">
       <Button variant="tonal" icon="add" className="w-full shrink-0" onClick={onCreate}>
-        新建对话
+        {t("新建对话")}
       </Button>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 pr-0.5">
         {conversations.length === 0 ? (
-          <div className="text-center py-8 text-body-sm text-on-surface-variant">还没有会话</div>
+          <div className="text-center py-8 text-body-sm text-on-surface-variant">{t("还没有会话")}</div>
         ) : (
           conversations.map((conv) => {
             const active = conv.id === currentId;
@@ -94,21 +99,21 @@ export default function ChatSidebar({ conversations, currentId, onSelect, onCrea
                 ) : (
                   <>
                     <p className="text-body-sm font-medium text-on-surface truncate pr-12">
-                      {conv.title || "新对话"}
+                      {conv.title || t("新对话")}
                     </p>
-                    <p className="text-label text-on-surface-variant mt-0.5">{relativeTime(conv.updated_at)}</p>
+                    <p className="text-label text-on-surface-variant mt-0.5">{relativeTime(conv.updated_at, t)}</p>
                     <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center">
                       {confirmingId === conv.id ? (
                         <button
                           type="button"
-                          title="再点一次确认删除"
+                          title={t("再点一次确认删除")}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDelete(conv.id);
                           }}
                           className="px-3 h-8 rounded-full text-label font-medium text-error hover:bg-error-container"
                         >
-                          确认删除
+                          {t("确认删除")}
                         </button>
                       ) : (
                         <>
@@ -116,7 +121,7 @@ export default function ChatSidebar({ conversations, currentId, onSelect, onCrea
                             icon="edit"
                             size={16}
                             className="w-8 h-8"
-                            title="重命名"
+                            title={t("重命名")}
                             onClick={(e) => {
                               e.stopPropagation();
                               setDraft(conv.title || "");
@@ -127,7 +132,7 @@ export default function ChatSidebar({ conversations, currentId, onSelect, onCrea
                             icon="delete"
                             size={16}
                             className="w-8 h-8"
-                            title="删除会话"
+                            title={t("删除会话")}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDelete(conv.id);
@@ -144,7 +149,7 @@ export default function ChatSidebar({ conversations, currentId, onSelect, onCrea
         )}
       </div>
       <Button data-tour="help-btn" variant="outlined" icon="help" className="w-full shrink-0" onClick={() => setShowHelp(true)}>
-        使用说明
+        {t("使用说明")}
       </Button>
       {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
     </div>

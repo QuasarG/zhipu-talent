@@ -15,6 +15,7 @@ import ResumeContent from "@/features/resume/ResumeContent";
 import EvaluationWorkspace from "@/features/resume/EvaluationWorkspace";
 import ImportOverlay from "@/features/resume/ImportOverlay";
 import CandidateMetaDropdown from "@/features/resume/CandidateMetaDropdown";
+import { useI18n } from "@/lib/i18n";
 
 /** 把导入预览的字段增量合并进详情：列表追加去重，单值取首个非空 */
 function mergePreviewFields(
@@ -68,6 +69,7 @@ export default function ResumeEvaluate() {
   const [liveNodeRuns, setLiveNodeRuns] = useState<EvaluationNodeRun[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [importPreview, setImportPreview] = useState<CandidateDetail | null>(null);
+  const { t } = useI18n();
   // 跟踪当前选中候选人：SSE 闭包用它判断"用户是否已切走"，避免残留状态污染
   const currentIdRef = useRef<string | null>(null);
   // 当前正在跑评估的候选人 abort 控制器
@@ -225,7 +227,7 @@ export default function ResumeEvaluate() {
           return;
         }
         const error = await resp.json().catch(() => null) as { detail?: string } | null;
-        throw new Error(error?.detail || "评估请求失败");
+        throw new Error(error?.detail || t("评估请求失败"));
       }
       // 后端已创建新的 evaluation_run：立即刷新详情，让 persistedRuns 指向新 run
       const fresh = await api.candidates.get(selectedId).catch(() => null);
@@ -241,7 +243,7 @@ export default function ResumeEvaluate() {
             label: e.label,
             phase: e.phase,
             status: e.status,
-            message: e.message || "已完成",
+            message: e.message || t("已完成"),
           };
           setLiveNodeRuns((runs) => [...runs.filter((run) => run.node !== nodeRun.node), nodeRun]);
         }
@@ -323,30 +325,30 @@ export default function ResumeEvaluate() {
   return (
     <div>
       <PageToolbar
-        title="简历评估"
-        subtitle="能力结构、Track 推荐与论文核验"
+        title={t("简历评估")}
+        subtitle={t("能力结构、Track 推荐与论文核验")}
         center={
           <CandidateMetaDropdown candidate={selected} busy={evaluating} />
         }
         right={
           <>
             {evaluating ? (
-              <StatusChip tone="warning" size="md" icon="pending">评估中</StatusChip>
+              <StatusChip tone="warning" size="md" icon="pending">{t("评估中")}</StatusChip>
             ) : selected?.verification_result === "running" ? (
-              <StatusChip tone="primary" size="md">论文核验中</StatusChip>
+              <StatusChip tone="primary" size="md">{t("论文核验中")}</StatusChip>
             ) : selected?.verification_result === "verified" ? (
-              <StatusChip tone="success" size="md" icon="check_circle">核验通过</StatusChip>
+              <StatusChip tone="success" size="md" icon="check_circle">{t("核验通过")}</StatusChip>
             ) : selected?.verification_result === "rejected" ? (
-              <StatusChip tone="error" size="md" icon="gpp_maybe">核验不通过</StatusChip>
+              <StatusChip tone="error" size="md" icon="gpp_maybe">{t("核验不通过")}</StatusChip>
             ) : selected?.verification_result === "needs_review" ? (
-              <StatusChip tone="warning" size="md" icon="help">待人工核验</StatusChip>
+              <StatusChip tone="warning" size="md" icon="help">{t("待人工核验")}</StatusChip>
             ) : selected ? (
-              <StatusChip tone="warning" size="md">待核验</StatusChip>
+              <StatusChip tone="warning" size="md">{t("待核验")}</StatusChip>
             ) : (
-              <StatusChip tone="neutral" size="md">空闲</StatusChip>
+              <StatusChip tone="neutral" size="md">{t("空闲")}</StatusChip>
             )}
             {evaluating ? (
-              <span className="inline-flex items-center justify-center w-10 h-10" title="评估中">
+              <span className="inline-flex items-center justify-center w-10 h-10" title={t("评估中")}>
                 <LoadingIndicator size={20} color="text-primary" />
               </span>
             ) : (
@@ -355,9 +357,9 @@ export default function ResumeEvaluate() {
                 icon="bolt"
                 onClick={handleEvaluate}
                 disabled={!selectedId || !selected?.evaluable}
-                title={selected?.evaluable ? "开始评估" : "核验未完成或有待核验论文"}
+                title={selected?.evaluable ? t("开始评估") : t("核验未完成或有待核验论文")}
               >
-                {selected?.evaluation ? "重新评估" : "开始评估"}
+                {selected?.evaluation ? t("重新评估") : t("开始评估")}
               </Button>
             )}
           </>
@@ -379,7 +381,7 @@ export default function ResumeEvaluate() {
         <Card variant="filled" className="min-h-0 overflow-hidden p-5">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <LoadingIndicator size={32} label="加载中…" />
+              <LoadingIndicator size={32} label={t("加载中…")} />
             </div>
           ) : importPreview ? (
             <ResumeContent key={importPreview.id} detail={importPreview} />
@@ -388,8 +390,8 @@ export default function ResumeEvaluate() {
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center gap-2">
               <Icon name="description" size={40} className="text-on-surface-variant" />
-              <p className="text-title">从左侧选择一位候选人</p>
-              <p className="text-body-sm text-on-surface-variant">导入简历后，候选人将出现在队列中</p>
+              <p className="text-title">{t("从左侧选择一位候选人")}</p>
+              <p className="text-body-sm text-on-surface-variant">{t("导入简历后，候选人将出现在队列中")}</p>
             </div>
           )}
         </Card>
@@ -410,8 +412,8 @@ export default function ResumeEvaluate() {
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center gap-2">
               <Icon name="fact_check" size={40} className="text-on-surface-variant" />
-              <p className="text-title">评估结果区</p>
-              <p className="text-body-sm text-on-surface-variant">选择候选人并评估后，能力评分与 Track 推荐将显示在此</p>
+              <p className="text-title">{t("评估结果区")}</p>
+              <p className="text-body-sm text-on-surface-variant">{t("选择候选人并评估后，能力评分与 Track 推荐将显示在此")}</p>
             </div>
           )}
         </Card>

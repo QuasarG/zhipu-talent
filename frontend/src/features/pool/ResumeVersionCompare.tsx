@@ -3,6 +3,7 @@ import type { ResumeVersionEntry } from "@/lib/types";
 import { api } from "@/lib/api";
 import Icon from "@/components/ui/Icon";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   personId: string;
@@ -56,6 +57,7 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [idxA, setIdxA] = useState(0);
   const [idxB, setIdxB] = useState(1);
+  const { t } = useI18n();
 
   useEffect(() => {
     setLoading(true);
@@ -77,9 +79,9 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
         {/* 头部 */}
         <div className="flex items-center gap-2 px-5 py-3 border-b border-outline-variant shrink-0">
           <Icon name="history" size={20} className="text-primary" />
-          <h2 className="text-title font-bold text-on-surface">简历版本对比</h2>
+          <h2 className="text-title font-bold text-on-surface">{t("简历版本对比")}</h2>
           {!loading && versions.length > 0 && (
-            <span className="text-label text-on-surface-variant">{versions.length} 个版本</span>
+            <span className="text-label text-on-surface-variant">{t("{count} 个版本", { count: versions.length })}</span>
           )}
           <button
             type="button"
@@ -94,20 +96,20 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
         <div className="flex-1 min-h-0 overflow-y-auto p-5">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <LoadingIndicator size={28} label="加载简历版本…" />
+              <LoadingIndicator size={28} label={t("加载简历版本…")} />
             </div>
           ) : versions.length === 0 ? (
-            <p className="text-center py-12 text-body-sm text-on-surface-variant">暂无简历版本数据</p>
+            <p className="text-center py-12 text-body-sm text-on-surface-variant">{t("暂无简历版本数据")}</p>
           ) : versions.length === 1 ? (
             <p className="text-center py-12 text-body-sm text-on-surface-variant">
-              仅 1 个版本（{versions[0].filename || "未命名"}），导入更多简历后可对比差异。
+              {t("仅 1 个版本（{name}），导入更多简历后可对比差异。", { name: versions[0].filename || t("未命名") })}
             </p>
           ) : (
             <>
               {/* 版本选择器 */}
               <div className="grid grid-cols-2 gap-4 mb-5">
                 <div>
-                  <label className="block text-label font-medium text-on-surface-variant mb-1">版本 A（旧）</label>
+                  <label className="block text-label font-medium text-on-surface-variant mb-1">{t("版本 A（旧）")}</label>
                   <select
                     value={idxA}
                     onChange={(e) => setIdxA(Number(e.target.value))}
@@ -115,13 +117,13 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
                   >
                     {versions.map((v, i) => (
                       <option key={v.submission_id} value={i}>
-                        {v.filename || "未命名"} · {fmtDate(v.created_at)}
+                        {t("{name} · {date}", { name: v.filename || t("未命名"), date: fmtDate(v.created_at) })}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-label font-medium text-on-surface-variant mb-1">版本 B（新）</label>
+                  <label className="block text-label font-medium text-on-surface-variant mb-1">{t("版本 B（新）")}</label>
                   <select
                     value={idxB}
                     onChange={(e) => setIdxB(Number(e.target.value))}
@@ -129,7 +131,7 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
                   >
                     {versions.map((v, i) => (
                       <option key={v.submission_id} value={i}>
-                        {v.filename || "未命名"} · {fmtDate(v.created_at)}
+                        {t("{name} · {date}", { name: v.filename || t("未命名"), date: fmtDate(v.created_at) })}
                       </option>
                     ))}
                   </select>
@@ -150,7 +152,7 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
                     <div key={key} className="border border-outline-variant rounded-md overflow-hidden">
                       <div className="flex items-center gap-2 px-3 py-2 bg-surface-low border-b border-outline-variant">
                         <Icon name={icon} size={16} className="text-primary" />
-                        <span className="text-body-sm font-bold text-on-surface">{label}</span>
+                        <span className="text-body-sm font-bold text-on-surface">{t(label)}</span>
                         <span className="text-label text-on-surface-variant ml-auto">
                           A:{listA.length} → B:{listB.length}
                           {hasChange && (
@@ -177,7 +179,7 @@ export default function ResumeVersionModal({ personId, onClose }: Props) {
                           ))}
                         </div>
                       ) : (
-                        <div className="px-3 py-2 text-body-sm text-on-surface-variant">无变化</div>
+                        <div className="px-3 py-2 text-body-sm text-on-surface-variant">{t("无变化")}</div>
                       )}
                     </div>
                   );

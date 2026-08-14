@@ -14,6 +14,7 @@ import RelationGraph from "@/features/pool/RelationGraph";
 import AddPersonDialog from "@/features/pool/AddPersonDialog";
 import GroupDrawer from "@/features/pool/GroupDrawer";
 import { useSessionState } from "@/lib/sessionState";
+import { useI18n } from "@/lib/i18n";
 
 export default function TalentPool() {
   const [persons, setPersons] = useState<PersonBrief[]>([]);
@@ -28,6 +29,7 @@ export default function TalentPool() {
   const [showAddPerson, setShowAddPerson] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
   const [groups, setGroups] = useState<TalentGroup[]>([]);
+  const { t } = useI18n();
 
   const load = useCallback(async () => {
     try {
@@ -127,13 +129,13 @@ export default function TalentPool() {
   return (
     <div className="w-full max-w-full h-[calc(100vh-48px)] min-h-0 min-w-0 overflow-hidden flex flex-col">
       <PageToolbar
-        title="人才库"
-        subtitle="统一档案、来源追踪与关系发现"
+        title={t("人才库")}
+        subtitle={t("统一档案、来源追踪与关系发现")}
         center={
           <SearchField
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索姓名、学校、机构、Track 或论文"
+            placeholder={t("搜索姓名、学校、机构、Track 或论文")}
             className="max-w-[480px] w-full"
           />
         }
@@ -141,13 +143,13 @@ export default function TalentPool() {
           <>
             <SegmentedButtons
               options={[
-                { value: "list", label: "列表详情", icon: "list" },
-                { value: "graph", label: "关系图谱", icon: "account_tree" },
+                { value: "list", label: t("列表详情"), icon: "list" },
+                { value: "graph", label: t("关系图谱"), icon: "account_tree" },
               ]}
               value={view}
               onChange={setView}
             />
-            <IconButton icon="refresh" variant="outlined" onClick={load} title="刷新" />
+            <IconButton icon="refresh" variant="outlined" onClick={load} title={t("刷新")} />
           </>
         }
       />
@@ -155,9 +157,9 @@ export default function TalentPool() {
       <div className="flex items-center gap-2 mb-4 flex-wrap px-2">
         <SegmentedButtons
           options={[
-            { value: "all" as const, label: `全部 ${counts.all}` },
-            { value: "resume" as const, label: `简历评估 ${counts.resume}` },
-            { value: "guest" as const, label: `人物调查 ${counts.invest}` },
+            { value: "all" as const, label: t("全部 {count}", { count: counts.all }) },
+            { value: "resume" as const, label: t("简历评估 {count}", { count: counts.resume }) },
+            { value: "guest" as const, label: t("人物调查 {count}", { count: counts.invest }) },
           ]}
           value={typeFilter}
           onChange={(v) => {
@@ -168,7 +170,7 @@ export default function TalentPool() {
         {typeFilter === "resume" && (
           <>
             <Chip selected={!trackFilter} onClick={() => setTrackFilter("")}>
-              全部
+              {t("全部")}
             </Chip>
             {TRACKS.map((t) => (
               <Chip key={t} selected={trackFilter === t} onClick={() => setTrackFilter(t)}>
@@ -183,7 +185,7 @@ export default function TalentPool() {
             onChange={(e) => setSchoolFilter(e.target.value)}
             className="h-8 px-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface cursor-pointer"
           >
-            <option value="">学校：全部</option>
+            <option value="">{t("学校：全部")}</option>
             {schools.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -193,9 +195,9 @@ export default function TalentPool() {
             onChange={(e) => setHrFilter(e.target.value)}
             className="h-8 px-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface cursor-pointer"
           >
-            <option value="">HR 状态：全部</option>
+            <option value="">{t("HR 状态：全部")}</option>
             {Object.entries(STATUS_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
+              <option key={v} value={v}>{t(l)}</option>
             ))}
           </select>
         </div>
@@ -210,10 +212,10 @@ export default function TalentPool() {
             <table className="w-full text-body-sm">
               <thead>
                 <tr className="text-label text-on-surface-variant text-left">
-                  <th className="pb-2 font-medium">姓名</th>
-                  <th className="pb-2 font-medium">学校</th>
+                  <th className="pb-2 font-medium">{t("姓名")}</th>
+                  <th className="pb-2 font-medium">{t("学校")}</th>
                   <th className="pb-2 font-medium">Track</th>
-                  <th className="pb-2 font-medium">综合分</th>
+                  <th className="pb-2 font-medium">{t("综合分")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -223,7 +225,7 @@ export default function TalentPool() {
                     onClick={() => selectPerson(p.id)}
                     className="cursor-pointer border-t border-outline-variant hover:bg-surface-low"
                   >
-                    <td className="py-2 text-on-surface">{p.name || "未命名"}</td>
+                    <td className="py-2 text-on-surface">{p.name || t("未命名")}</td>
                     <td className="py-2 text-on-surface-variant">{p.org || "—"}</td>
                     <td className="py-2 text-on-surface-variant capitalize">{classifyTrack(p) || "—"}</td>
                     <td className="py-2 text-on-surface-variant">{p.overall_score ?? "—"}</td>

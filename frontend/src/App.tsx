@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { api } from "./lib/api";
+import { useI18n } from "./lib/i18n";
 import NavRail from "./components/layout/NavRail";
 import LoadingIndicator from "./components/ui/LoadingIndicator";
 import Login from "./pages/Login";
@@ -15,6 +16,7 @@ import OnboardingTour from "./components/OnboardingTour";
 
 function App() {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string; display_name: string } | null | undefined>(undefined);
+  const { t } = useI18n();
 
   useEffect(() => {
     api.auth.status().then((d) => setCurrentUser(d.user));
@@ -23,7 +25,7 @@ function App() {
   if (currentUser === undefined) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <LoadingIndicator size={32} label="加载中…" />
+        <LoadingIndicator size={32} label={t("加载中…")} />
       </div>
     );
   }

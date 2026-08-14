@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PersonBrief } from "@/lib/types";
 import { IconButton } from "@/components/ui/Button";
 import { getSchoolLogo } from "@/lib/schoolLogos";
+import { useI18n } from "@/lib/i18n";
 import { classifyTrack } from "./TalentList";
 
 interface Props {
@@ -153,6 +154,11 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
   const fitRef = useRef(0);
   const fitViewRef = useRef<() => void>(() => {});
   const [stats, setStats] = useState({ persons: 0, schools: 0, tracks: 0 });
+  const { t } = useI18n();
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   useEffect(() => {
     selectedRef.current = selectedId;
@@ -250,7 +256,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         ctx.font = `600 ${Math.round(r * 0.85)}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText((n.label || "?").charAt(0), n.x, n.y + 1);
+        ctx.fillText((tRef.current(n.label) || "?").charAt(0), n.x, n.y + 1);
       } else if (n.type === "track") {
         // Track：实心小圆点，取 track 主题色
         ctx.beginPath();
@@ -343,7 +349,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         ctx.font = n.type === "person" ? "600 12px sans-serif" : "500 10px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillText(n.label, n.x, n.y + n.radius + 4);
+        ctx.fillText(tRef.current(n.label), n.x, n.y + n.radius + 4);
         if (n.type === "person" && n.tag) {
           ctx.font = "400 10px sans-serif";
           ctx.fillStyle = pal.label;
@@ -480,28 +486,28 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
           {SCHOOL_TOKENS.slice(0, 5).map((t) => (
             <span key={t} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: `var(${t})` }} />
           ))}
-          <span className="ml-1">头像描边颜色 = 学校</span>
+          <span className="ml-1">{t("头像描边颜色 = 学校")}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-primary" />
-          <span className="ml-1">实心圆点 = Track（仅简历评估）</span>
+          <span className="ml-1">{t("实心圆点 = Track（仅简历评估）")}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-5 border-t border-outline" />
-          <span>连线 = 教育经历 / Track</span>
+          <span>{t("连线 = 教育经历 / Track")}</span>
         </div>
       </div>
 
       {/* 底部控制条 */}
       <div className="absolute bottom-3 inset-x-3 flex items-center justify-between pointer-events-none">
         <span className="text-label text-on-surface-variant">
-          当前显示 {stats.persons} 位人才 · {stats.schools} 所学校 · {stats.tracks} 个 Track
+          {t("当前显示 {persons} 位人才 · {schools} 所学校 · {tracks} 个 Track", { persons: stats.persons, schools: stats.schools, tracks: stats.tracks })}
         </span>
         <div className="flex items-center rounded-full border border-outline-variant bg-surface-lowest pointer-events-auto">
-          <IconButton icon="remove" size={18} onClick={() => zoom(0.8)} title="缩小" />
-          <IconButton icon="add" size={18} onClick={() => zoom(1.2)} title="放大" />
-          <IconButton icon="center_focus_strong" size={18} onClick={reset} title="定位" />
-          <IconButton icon="fullscreen" size={18} onClick={toggleFullscreen} title="全屏" />
+          <IconButton icon="remove" size={18} onClick={() => zoom(0.8)} title={t("缩小")} />
+          <IconButton icon="add" size={18} onClick={() => zoom(1.2)} title={t("放大")} />
+          <IconButton icon="center_focus_strong" size={18} onClick={reset} title={t("定位")} />
+          <IconButton icon="fullscreen" size={18} onClick={toggleFullscreen} title={t("全屏")} />
         </div>
       </div>
     </div>

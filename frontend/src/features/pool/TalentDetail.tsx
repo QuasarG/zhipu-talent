@@ -8,6 +8,7 @@ import { StatusChip } from "@/components/ui/Chip";
 import Progress from "@/components/ui/Progress";
 import Icon from "@/components/ui/Icon";
 import { getSchoolLogo } from "@/lib/schoolLogos";
+import { useI18n } from "@/lib/i18n";
 import EngagementStatusControl from "./EngagementStatusControl";
 import ResumeVersionModal from "./ResumeVersionCompare";
 
@@ -37,14 +38,15 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
   const [saveError, setSaveError] = useState("");
   const [showVersionDiff, setShowVersionDiff] = useState(false);
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   if (!person) {
     return (
       <Card variant="filled" className="min-h-0 overflow-y-auto p-4">
         <div className="flex flex-col items-center justify-center h-full text-center gap-2">
           <Icon name="person_search" size={32} className="text-on-surface-variant" />
-          <p className="text-body text-on-surface">从左侧选择一位人才</p>
-          <p className="text-body-sm text-on-surface-variant">查看统一人才档案</p>
+          <p className="text-body text-on-surface">{t("从左侧选择一位人才")}</p>
+          <p className="text-body-sm text-on-surface-variant">{t("查看统一人才档案")}</p>
         </div>
       </Card>
     );
@@ -64,7 +66,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
       await api.candidates.updateEngagement(candidateId, engagement, "hr-web", "网页修改");
       await onUpdated(person.id);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "状态更新失败");
+      setSaveError(error instanceof Error ? error.message : t("状态更新失败"));
     } finally {
       setSaving(false);
     }
@@ -83,7 +85,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
             <div className="flex items-center gap-1.5">
               <span className="text-title-lg text-on-surface truncate">{person.name}</span>
               <StatusChip tone={person.person_type === "guest" ? "info" : "primary"} className="shrink-0 ml-auto">
-                {person.person_type === "guest" ? "人物调查" : "简历评估"}
+                {person.person_type === "guest" ? t("人物调查") : t("简历评估")}
               </StatusChip>
             </div>
             <p className="text-body-sm text-on-surface-variant truncate mt-0.5">
@@ -96,7 +98,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2 flex flex-col gap-3 justify-between">
         {/* HR 跟进状态 */}
         <section>
-          <h3 className="text-title mb-1.5">HR 跟进状态</h3>
+          <h3 className="text-title mb-1.5">{t("HR 跟进状态")}</h3>
           {candidateId ? (
             <EngagementStatusControl
               compact
@@ -105,7 +107,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
               onChange={saveEngagement}
             />
           ) : (
-            <p className="text-body-sm text-on-surface-variant">该人物没有关联简历，暂不能跟进</p>
+            <p className="text-body-sm text-on-surface-variant">{t("该人物没有关联简历，暂不能跟进")}</p>
           )}
           {saveError && <p className="mt-2 text-label text-error">{saveError}</p>}
         </section>
@@ -114,19 +116,19 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
         {latest && (
           <section>
             <h3 className="text-title mb-1.5 flex items-baseline justify-between gap-2">
-              能力概览
-              <span className="text-label font-normal text-on-surface-variant">能力描述，不代表录取结论</span>
+              {t("能力概览")}
+              <span className="text-label font-normal text-on-surface-variant">{t("能力描述，不代表录取结论")}</span>
             </h3>
             <div className="flex items-baseline gap-1">
               <span className="text-headline text-on-surface">{latest.overall_score ?? "—"}</span>
-              <span className="text-body-sm text-on-surface-variant">/100 综合</span>
+              <span className="text-body-sm text-on-surface-variant">{t("/100 综合")}</span>
             </div>
             {(latest.publication_score || latest.safety_net_score) ? (
               <p className="text-label text-on-surface-variant mt-0.5 tabular-nums">
-                {Math.round(latest.common_score ?? 0)} 通用
-                {" "}+ {Math.round((latest.overall_score ?? 0) - (latest.common_score ?? 0) - (latest.publication_score ?? 0) - (latest.safety_net_score ?? 0))} 专业
-                {(latest.publication_score ?? 0) > 0 && ` + ${Math.round(latest.publication_score ?? 0)} 论文`}
-                {(latest.safety_net_score ?? 0) > 0 && ` + ${Math.round(latest.safety_net_score ?? 0)} 加分`}
+                {t("{n} 通用", { n: Math.round(latest.common_score ?? 0) })}
+                {" "}+ {t("{n} 专业", { n: Math.round((latest.overall_score ?? 0) - (latest.common_score ?? 0) - (latest.publication_score ?? 0) - (latest.safety_net_score ?? 0)) })}
+                {(latest.publication_score ?? 0) > 0 && ` + ${t("{n} 论文", { n: Math.round(latest.publication_score ?? 0) })}`}
+                {(latest.safety_net_score ?? 0) > 0 && ` + ${t("{n} 加分", { n: Math.round(latest.safety_net_score ?? 0) })}`}
               </p>
             ) : null}
             {latest.dimension_scores?.length > 0 && (
@@ -151,7 +153,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
         {/* 推荐 Track */}
         {tracks.length > 0 && (
           <section>
-            <h3 className="text-title mb-1.5">推荐 Track</h3>
+            <h3 className="text-title mb-1.5">{t("推荐 Track")}</h3>
             <div className="flex flex-col gap-1.5">
               {tracks.map((t, i) => {
                 const name = t.track || t.name || "";
@@ -170,7 +172,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
 
         {/* 关系证据 */}
         <section>
-          <h3 className="text-title mb-1.5">关系证据</h3>
+          <h3 className="text-title mb-1.5">{t("关系证据")}</h3>
           <div className="flex flex-col gap-1.5">
             {person.org && (
               <div className="flex items-center gap-2">
@@ -184,8 +186,8 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
                   <Icon name="school" size={18} className="text-on-surface-variant shrink-0" />
                 )}
                 <span className="text-body-sm text-on-surface flex-1 truncate">{person.org}</span>
-                <span className="text-label text-on-surface-variant">教育经历</span>
-                <StatusChip tone="success">已确认</StatusChip>
+                <span className="text-label text-on-surface-variant">{t("教育经历")}</span>
+                <StatusChip tone="success">{t("已确认")}</StatusChip>
               </div>
             )}
             {reputation.map((r) => {
@@ -193,36 +195,36 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
               return (
                 <div key={r.id} className="flex items-center gap-2">
                   <Icon name="campaign" size={18} className="text-on-surface-variant shrink-0" />
-                  <span className="text-body-sm text-on-surface flex-1 truncate">舆情核查 · {r.level || "—"}</span>
-                  <StatusChip tone={confirmed ? "success" : "warning"}>
-                    {confirmed ? "已确认" : "待核验"}
+                <span className="text-body-sm text-on-surface flex-1 truncate">{t("舆情核查 · {level}", { level: r.level || "—" })}</span>
+                <StatusChip tone={confirmed ? "success" : "warning"}>
+                    {confirmed ? t("已确认") : t("待核验")}
                   </StatusChip>
                 </div>
               );
             })}
             {!person.org && reputation.length === 0 && (
-              <p className="text-body-sm text-on-surface-variant">暂无关系证据</p>
+              <p className="text-body-sm text-on-surface-variant">{t("暂无关系证据")}</p>
             )}
           </div>
         </section>
 
         {/* 最近更新：三项压成一行 */}
         <section>
-          <h3 className="text-title mb-1.5">最近更新</h3>
+          <h3 className="text-title mb-1.5">{t("最近更新")}</h3>
           <div className="flex flex-nowrap items-center gap-x-3 text-label overflow-hidden whitespace-nowrap">
             <span className="flex items-center gap-1">
               <Icon name="description" size={15} className="text-on-surface-variant" />
-              <span className="text-on-surface">简历评估</span>
+              <span className="text-on-surface">{t("简历评估")}</span>
               <span className="text-on-surface-variant">{evaluations.length ? `v${evaluations.length}` : "—"}</span>
             </span>
             <span className="flex items-center gap-1">
               <Icon name="fact_check" size={15} className="text-on-surface-variant" />
-              <span className="text-on-surface">舆情核查</span>
-              <span className="text-on-surface-variant">{reputation.length ? `${reputation.length} 条` : "—"}</span>
+              <span className="text-on-surface">{t("舆情核查")}</span>
+              <span className="text-on-surface-variant">{reputation.length ? t("{count} 条", { count: reputation.length }) : "—"}</span>
             </span>
             <span className="flex items-center gap-1">
               <Icon name="schedule" size={15} className="text-on-surface-variant" />
-              <span className="text-on-surface">档案</span>
+              <span className="text-on-surface">{t("档案")}</span>
               <span className="text-on-surface-variant">{fmtTime(person.updated_at)}</span>
             </span>
           </div>
@@ -232,7 +234,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
       {person.person_type !== "guest" && personId && (
         <div className="px-4 py-2 border-t border-outline-variant shrink-0">
           <Button variant="text" icon="compare" className="w-full" onClick={() => setShowVersionDiff(true)}>
-            简历版本对比
+            {t("简历版本对比")}
           </Button>
         </div>
       )}
@@ -247,7 +249,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
           className="w-full"
           onClick={() => navigate(`/talent-pool/${personId || person.id}`)}
         >
-          查看完整档案
+          {t("查看完整档案")}
         </Button>
       </div>
     </Card>

@@ -5,6 +5,7 @@ import Button, { IconButton } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 
 /** detail 是 JSON 字符串就格式化，否则原样展示 */
@@ -114,6 +115,7 @@ interface AskCardProps {
 
 /** 提问卡：单问单选 = 点选项即答；多选组可叠加；多子问题 = 各组选完底部合并提交 */
 function AskQuestionCard({ segment, interactive, onSend, userReply }: AskCardProps) {
+  const { t } = useI18n();
   const running = !segment.status;
   const groups = running ? [] : parseAskGroups(segment.detail);
   const merged = groups.length > 1;
@@ -201,7 +203,7 @@ function AskQuestionCard({ segment, interactive, onSend, userReply }: AskCardPro
               : "border-outline-variant text-on-surface-variant/70 cursor-default"
           )}
         >
-          {OTHER}
+          {t(OTHER)}
         </button>
       );
     }
@@ -229,7 +231,7 @@ function AskQuestionCard({ segment, interactive, onSend, userReply }: AskCardPro
               else onSend?.(`${OPTION_MARK}${t}`); // 单问单选：Enter 等同发送
             }
           }}
-          placeholder="输入你的回答…"
+          placeholder={t("输入你的回答…")}
           className="w-full min-w-0 bg-transparent text-on-primary placeholder:text-on-primary/60 outline-none disabled:opacity-60"
         />
       </div>
@@ -238,7 +240,7 @@ function AskQuestionCard({ segment, interactive, onSend, userReply }: AskCardPro
 
   const multiChip = (
     <StatusChip tone="primary" className="h-5 px-2 align-middle">
-      多选
+      {t("多选")}
     </StatusChip>
   );
 
@@ -246,15 +248,15 @@ function AskQuestionCard({ segment, interactive, onSend, userReply }: AskCardPro
     <div className="chat-enter my-2 rounded-lg border border-primary/30 bg-primary-container/40 px-4 py-3">
       <div className="flex items-center gap-1.5 text-label text-primary">
         {running ? (
-          <ThinkingOrb state="shaping" size={20} aria-label="正在构思问题" />
+          <ThinkingOrb state="shaping" size={20} aria-label={t("正在构思问题")} />
         ) : (
           <Icon name="quiz" size={16} />
         )}
-        <span>{segment.label || "提问"}</span>
+        <span>{t(segment.label) || t("提问")}</span>
       </div>
 
       {running ? (
-        <p className="mt-1 text-body text-on-surface">正在构思问题…</p>
+        <p className="mt-1 text-body text-on-surface">{t("正在构思问题…")}</p>
       ) : merged ? (
         <div className="mt-1 space-y-3">
           {groups.map((g, gi) => (
@@ -276,9 +278,9 @@ function AskQuestionCard({ segment, interactive, onSend, userReply }: AskCardPro
               disabled={!interactive || answeredCount === 0}
               onClick={submitMerged}
             >
-              提交回答（{answeredCount}/{groups.length}）
+              {t("提交回答（{answered}/{total}）", { answered: answeredCount, total: groups.length })}
             </Button>
-            <span className="text-label text-on-surface-variant">可留空，也可以直接在下方输入框回答</span>
+            <span className="text-label text-on-surface-variant">{t("可留空，也可以直接在下方输入框回答")}</span>
           </div>
         </div>
       ) : (
@@ -300,7 +302,7 @@ function AskQuestionCard({ segment, interactive, onSend, userReply }: AskCardPro
               disabled={!interactive || answersOf(0).length === 0}
               onClick={() => onSend?.(`${OPTION_MARK}${answersOf(0).join("；")}`)}
             >
-              提交回答{answersOf(0).length > 0 ? `（已选 ${answersOf(0).length} 项）` : ""}
+              {t("提交回答")}{answersOf(0).length > 0 ? t("（已选 {n} 项）", { n: answersOf(0).length }) : ""}
             </Button>
           )}
         </>
@@ -333,6 +335,7 @@ function parseJobs(detail?: string): JobItem[] {
 
 /** 岗位详情弹窗：完整 description/requirement，可滚动 */
 function JobDetailDialog({ job, onClose }: { job: JobItem; onClose: () => void }) {
+  const { t } = useI18n();
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/40 p-6"
@@ -352,18 +355,18 @@ function JobDetailDialog({ job, onClose }: { job: JobItem; onClose: () => void }
           {job.city_info && <StatusChip tone="neutral">{job.city_info}</StatusChip>}
           {job.recruit_type && <StatusChip tone="info">{job.recruit_type}</StatusChip>}
           {typeof job.score === "number" && (
-            <StatusChip tone="primary">契合 {Math.round(job.score * 100)}%</StatusChip>
+            <StatusChip tone="primary">{t("契合 {pct}%", { pct: Math.round(job.score * 100) })}</StatusChip>
           )}
         </div>
         {job.description && (
           <section className="mt-3">
-            <p className="mb-1 text-label text-on-surface-variant">岗位描述</p>
+            <p className="mb-1 text-label text-on-surface-variant">{t("岗位描述")}</p>
             <p className="whitespace-pre-wrap text-body-sm text-on-surface">{job.description}</p>
           </section>
         )}
         {job.requirement && (
           <section className="mt-3">
-            <p className="mb-1 text-label text-on-surface-variant">岗位要求</p>
+            <p className="mb-1 text-label text-on-surface-variant">{t("岗位要求")}</p>
             <p className="whitespace-pre-wrap text-body-sm text-on-surface">{job.requirement}</p>
           </section>
         )}
@@ -374,6 +377,7 @@ function JobDetailDialog({ job, onClose }: { job: JobItem; onClose: () => void }
 
 /** search_jobs 结果：横向滚动岗位选择器，选中 + 提交才发送，可查看详情 */
 function SearchJobsCard({ segment, interactive, onSend, userReply }: AskCardProps) {
+  const { t } = useI18n();
   const jobs = parseJobs(segment.detail);
   const [selected, setSelected] = useState<number | null>(null);
   const [noneFit, setNoneFit] = useState(false);
@@ -400,7 +404,7 @@ function SearchJobsCard({ segment, interactive, onSend, userReply }: AskCardProp
     <div className="chat-enter my-2 space-y-2">
       <p className="flex items-center gap-1.5 text-label text-on-surface-variant">
         <Icon name="work" size={14} />
-        检索到 {jobs.length} 个同类岗位，横向滑动查看，选一个最契合的提交
+        {t("检索到 {n} 个同类岗位，横向滑动查看，选一个最契合的提交", { n: jobs.length })}
       </p>
       <div className="flex snap-x gap-2 overflow-x-auto pb-1">
         {jobs.map((j, i) => {
@@ -437,7 +441,7 @@ function SearchJobsCard({ segment, interactive, onSend, userReply }: AskCardProp
               )}
               <div className="mt-2 flex items-center justify-between">
                 {typeof j.score === "number" && (
-                  <span className="text-label text-primary">契合 {Math.round(j.score * 100)}%</span>
+                  <span className="text-label text-primary">{t("契合 {pct}%", { pct: Math.round(j.score * 100) })}</span>
                 )}
                 <button
                   type="button"
@@ -447,7 +451,7 @@ function SearchJobsCard({ segment, interactive, onSend, userReply }: AskCardProp
                   }}
                   className="rounded-full px-2 py-0.5 text-label font-medium text-primary hover:bg-primary-container"
                 >
-                  详情
+                  {t("详情")}
                 </button>
               </div>
             </div>
@@ -474,7 +478,7 @@ function SearchJobsCard({ segment, interactive, onSend, userReply }: AskCardProp
                   : "border-outline-variant text-on-surface-variant/70 cursor-default"
           )}
         >
-          以上都不太符合
+          {t("以上都不太符合")}
         </button>
         <Button
           variant="filled"
@@ -483,7 +487,7 @@ function SearchJobsCard({ segment, interactive, onSend, userReply }: AskCardProp
           disabled={!interactive || (selected === null && !noneFit)}
           onClick={submit}
         >
-          提交
+          {t("提交")}
         </Button>
       </div>
       {detailIdx !== null && <JobDetailDialog job={jobs[detailIdx]} onClose={() => setDetailIdx(null)} />}
@@ -502,6 +506,7 @@ interface Props {
 
 /** 工具调用卡片：运行中 = shaping orb 动效；完成后折叠成一行摘要 */
 export default function ToolCallCard({ segment, interactive = false, onSend, userReply }: Props) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const running = !segment.status;
   const failed = segment.status === "error";
@@ -536,15 +541,15 @@ export default function ToolCallCard({ segment, interactive = false, onSend, use
         )}
       >
         {running ? (
-          <ThinkingOrb state="shaping" size={20} className="shrink-0" aria-label="正在调用工具" />
+          <ThinkingOrb state="shaping" size={20} className="shrink-0" aria-label={t("正在调用工具")} />
         ) : failed ? (
           <Icon name="error" size={18} fill className="text-error shrink-0" />
         ) : (
           <Icon name="check_circle" size={18} fill className="text-success shrink-0" />
         )}
-        <span className="font-medium text-on-surface shrink-0">{segment.label || segment.tool}</span>
+        <span className="font-medium text-on-surface shrink-0">{t(segment.label) || segment.tool}</span>
         <span className="flex-1 min-w-0 truncate text-on-surface-variant">
-          {running ? segment.args_summary : failed ? `失败 · ${segment.summary}` : segment.summary}
+          {running ? segment.args_summary : failed ? t("失败 · {summary}", { summary: segment.summary ?? "" }) : segment.summary}
         </span>
         {!running && segment.detail && (
           <Icon

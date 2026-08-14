@@ -7,6 +7,7 @@ import { StatusChip } from "@/components/ui/Chip";
 import ToolCallCard from "./ToolCallCard";
 import ActionCard from "./ActionCard";
 import CitationBadge from "./CitationBadge";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   message: ChatMessage;
@@ -66,6 +67,7 @@ function citePlugin(citations: ChatCitation[]) {
 
 /** assistant 消息：按 segments 顺序渲染 文本(markdown) / 工具卡片 / 决策卡片 */
 export default function AssistantMessage({ message, error, busy, onDecide }: Props) {
+  const { t } = useI18n();
   const citationMap = useMemo(
     () => new Map((message.citations || []).map((c) => [c.id, c])),
     [message.citations]
@@ -113,8 +115,8 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
         {message.content.segments.map(renderSegment)}
         {busy && message.status !== "awaiting_action" && (
           <div className="mt-3 flex items-center gap-2">
-            <ThinkingOrb state="shaping" size={20} aria-label="正在思考" />
-            <span className="text-body-sm text-on-surface-variant">正在思考…</span>
+            <ThinkingOrb state="shaping" size={20} aria-label={t("正在思考")} />
+            <span className="text-body-sm text-on-surface-variant">{t("正在思考…")}</span>
           </div>
         )}
         {error && (

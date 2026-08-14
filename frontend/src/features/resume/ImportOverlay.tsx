@@ -6,6 +6,7 @@ import Icon from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   onClose: () => void;
@@ -26,6 +27,7 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
   const [files, setFiles] = useState<FileState[]>([]);
   const [importing, setImporting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const { t } = useI18n();
 
   const ACCEPTED_EXTS = [".pdf", ".jsonl", ".md", ".txt", ".png", ".jpg", ".jpeg", ".webp"];
 
@@ -48,7 +50,7 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
   const handleFiles = async (fileList: FileList) => {
     const list = Array.from(fileList);
     if (!list.length) return;
-    const initial: FileState[] = list.map((f) => ({ name: f.name, status: "waiting", stage: "等待中" }));
+    const initial: FileState[] = list.map((f) => ({ name: f.name, status: "waiting", stage: t("等待中") }));
     setFiles(initial);
     setImporting(true);
     let hasError = false;
@@ -58,7 +60,7 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
 
     try {
       const resp = await api.import(formData);
-      if (!resp.ok) throw new Error("导入失败");
+      if (!resp.ok) throw new Error(t("导入失败"));
       for await (const event of parseSSE(resp)) {
         const e = event as { type: string; file_id?: string; file_name?: string; status?: string; stage?: string; message?: string; section?: string; fields?: Record<string, unknown>; done?: number; total?: number; imported_files?: number; failed_files?: number };
         if (!e.file_id) {
@@ -79,14 +81,14 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
             if (e.type === "structure") {
               // 分节字段透传给详情窗口实时填充，卡片本身只更新阶段文案
               onStructure?.(f.name, e.fields || {});
-              return { ...f, status: "running", stage: "正在解析结构化字段…" };
+              return { ...f, status: "running", stage: t("正在解析结构化字段…") };
             }
             if (e.type === "stage") {
               // stage 事件只更新进度文案，status 始终 running
               return { ...f, status: "running", stage: e.message || e.stage || "" };
             }
             if (e.type === "error") {
-              return { ...f, status: "error", stage: e.message || `失败于 ${e.stage}` };
+              return { ...f, status: "error", stage: e.message || t("失败于 {stage}", { stage: e.stage ?? "" }) };
             }
             return f;
           })
@@ -96,7 +98,7 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
       setFiles((prev) => prev.filter((f) => f.status !== "running"));
     } catch (error) {
       hasError = true;
-      const message = error instanceof Error ? error.message : "导入失败";
+      const message = error instanceof Error ? error.message : t("导入失败");
       setFiles((prev) => prev.map((f) => (
         f.status === "done" || f.status === "error"
           ? f
@@ -113,12 +115,12 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
     <div className="fixed bottom-6 left-[calc(72px+20px+16px)] w-[320px] z-[150]">
       <Card variant="elevated" className="p-4 max-h-[60vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-title">导入简历</span>
-          <IconButton icon="close" size={18} onClick={onClose} title="关闭" />
+          <span className="text-title">{t("导入简历")}</span>
+          <IconButton icon="close" size={18} onClick={onClose} title={t("关闭")} />
         </div>
 
         {files.length === 0 && importing ? (
-          <p className="py-4 text-center text-body-sm text-on-surface-variant">候选人已全部进队列，正在收尾…</p>
+          <p className="py-4 text-center text-body-sm text-on-surface-variant">{t("候选人已全部进队列，正在收尾…")}</p>
         ) : files.length === 0 ? (
           <button
             onClick={() => inputRef.current?.click()}
@@ -140,7 +142,7 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
             )}
           >
             <Icon name="upload_file" size={24} />
-            {dragActive ? "松开以导入文件" : "选择或拖入 PDF / 图片 / JSONL / MD / TXT 文件"}
+            {dragActive ? t("松开以导入文件") : t("选择或拖入 PDF / 图片 / JSONL / MD / TXT 文件")}
           </button>
         ) : (
           <div className="flex flex-col gap-2">
@@ -156,7 +158,7 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
                       f.status === "running" ? "primary" : "neutral"
                     }
                   >
-                    {f.status === "done" ? "完成" : f.status === "error" ? "失败" : f.status === "running" ? f.stage : "等待"}
+                    {f.status === "done" ? t("完成") : f.status === "error" ? t("失败") : f.status === "running" ? f.stage : t("等待")}
                   </StatusChip>
                 </div>
                 <p className="text-label text-on-surface-variant">{f.stage}</p>

@@ -6,6 +6,7 @@ import Icon from "@/components/ui/Icon";
 import Progress from "@/components/ui/Progress";
 import { StatusChip } from "@/components/ui/Chip";
 import SubmitDialog from "./SubmitDialog";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 
 type FieldState = "empty" | "rag" | "inferred" | "confirmed";
@@ -52,6 +53,7 @@ function FieldItem({
   conflicted: boolean;
 }) {
   const [showEvidence, setShowEvidence] = useState(false);
+  const { t } = useI18n();
   const state = fieldState(field);
   const meta = STATE_META[state];
   const value = valueText(field.value);
@@ -65,18 +67,18 @@ function FieldItem({
       )}
     >
       <div className="flex items-center gap-1.5">
-        <span className="text-label text-on-surface-variant">{field.label}</span>
+        <span className="text-label text-on-surface-variant">{t(field.label)}</span>
         <StatusChip tone={meta.tone} variant={state === "confirmed" ? "filled" : "dot"} className="h-5 px-2">
-          {meta.label}
+          {t(meta.label)}
         </StatusChip>
         {conflicted && (
           <StatusChip tone="error" variant="filled" className="h-5 px-2">
-            冲突
+            {t("冲突")}
           </StatusChip>
         )}
       </div>
       <div className={cn("mt-0.5 text-body", value ? "text-on-surface" : "text-on-surface-variant/50")}>
-        {value || "待澄清"}
+        {value || t("待澄清")}
       </div>
       {field.evidence && (
         <div className="mt-0.5">
@@ -86,11 +88,11 @@ function FieldItem({
             className="inline-flex items-center gap-0.5 text-label text-on-surface-variant hover:text-on-surface"
           >
             <Icon name={showEvidence ? "expand_less" : "expand_more"} size={14} />
-            证据
+            {t("证据")}
           </button>
           {showEvidence && (
             <div className="mt-0.5 rounded-sm bg-surface-high/60 px-2 py-1 text-label text-on-surface-variant whitespace-pre-wrap">
-              “{field.evidence}”
+              {t("“{text}”", { text: field.evidence })}
             </div>
           )}
         </div>
@@ -131,6 +133,7 @@ const EMPTY_PROFILE: ProfileCard = {
 
 /** 画像卡：简历纸形态——卡头岗位名大标题 + 分区小框 + 条目式字段 */
 export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables, busy, onConfirm, onOpenDeliverables }: Props) {
+  const { t } = useI18n();
   const [showSubmit, setShowSubmit] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const profile = rawProfile ?? EMPTY_PROFILE;
@@ -141,6 +144,7 @@ export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables,
     ...profile.optional_fields,
   };
   const labelOf = (key: string) => allFields[key]?.label || key;
+  const labelText = (key: string) => t(labelOf(key));
 
   const required = Object.values(profile.required_fields);
   const confirmedCount = required.filter((f) => fieldState(f) === "confirmed").length;
@@ -156,26 +160,26 @@ export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables,
             position ? "text-on-surface" : "text-on-surface-variant/60"
           )}
         >
-          {position || "岗位待定"}
+          {position || t("岗位待定")}
         </h2>
         {hasDeliverables ? (
           <StatusChip tone="success" variant="filled" icon="check_circle" className="shrink-0">
-            已确认
+            {t("已确认")}
           </StatusChip>
         ) : profile.converged ? (
           <StatusChip tone="primary" variant="filled" className="shrink-0">
-            可收敛 · 待确认
+            {t("可收敛 · 待确认")}
           </StatusChip>
         ) : (
           <StatusChip tone="primary" className="shrink-0">
-            澄清中
+            {t("澄清中")}
           </StatusChip>
         )}
       </div>
       <div className="mt-2 flex items-center justify-between text-label text-on-surface-variant">
-        <span>招聘画像 · 简历卡</span>
+        <span>{t("招聘画像 · 简历卡")}</span>
         <span>
-          硬性门槛已确认 {confirmedCount}/{required.length}
+          {t("硬性门槛已确认 {confirmed}/{total}", { confirmed: confirmedCount, total: required.length })}
         </span>
       </div>
       <Progress
@@ -191,8 +195,8 @@ export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables,
           >
             <Icon name="warning" size={16} className="mt-0.5 shrink-0 text-error" />
             <span>
-              <span className="font-medium">{c.fields.map(labelOf).join(" / ")}</span>
-              ：{c.description}
+              <span className="font-medium">{c.fields.map(labelText).join(" / ")}</span>
+              {t("：{desc}", { desc: c.description })}
             </span>
           </div>
         ))}
@@ -207,9 +211,9 @@ export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables,
             return (
               <section key={sec.title} className="rounded-md bg-surface-low p-2.5">
                 <div className="mb-1.5 flex items-center justify-between">
-                  <h3 className="text-label font-semibold text-on-surface">{sec.title}</h3>
+                  <h3 className="text-label font-semibold text-on-surface">{t(sec.title)}</h3>
                   <span className="text-label text-on-surface-variant">
-                    已确认 {done}/{entries.length}
+                    {t("已确认 {done}/{total}", { done, total: entries.length })}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-2">
@@ -230,12 +234,12 @@ export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables,
 
       {profile.converged && !hasDeliverables && (
         <Button variant="filled" icon="check" className="mt-3 w-full shrink-0" disabled={busy} onClick={onConfirm}>
-          确认画像，生成需求包
+          {t("确认画像，生成需求包")}
         </Button>
       )}
       {hasDeliverables && (
         <Button variant="filled" icon="description" className="mt-3 w-full shrink-0" onClick={onOpenDeliverables}>
-          打开需求包
+          {t("打开需求包")}
         </Button>
       )}
       <Button
@@ -244,7 +248,7 @@ export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables,
         className="mt-2 w-full shrink-0"
         onClick={() => !submitted && setShowSubmit(true)}
       >
-        {submitted ? "已提交给 HR 团队" : "提交给 HR 团队"}
+        {submitted ? t("已提交给 HR 团队") : t("提交给 HR 团队")}
       </Button>
 
       {showSubmit && (

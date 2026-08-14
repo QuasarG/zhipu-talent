@@ -1,7 +1,9 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import Icon from "@/components/ui/Icon";
+import LangToggle from "@/components/LangToggle";
 import logoUrl from "@/assets/zhipu-logo.svg";
 
 const navItems = [
@@ -14,10 +16,11 @@ const navItems = [
 
 /** MD3 Navigation Rail：80px 全高，active = pill 指示器 */
 export default function NavRail({ username }: { username?: string }) {
+  const { t } = useI18n();
   return (
     <nav data-tour="nav" className="sticky top-0 h-screen w-24 shrink-0 flex flex-col items-center py-5 bg-surface z-40">
       {/* Logo */}
-      <img src={logoUrl} alt="智谱" className="h-5 mb-9 select-none" draggable={false} />
+      <img src={logoUrl} alt={t("智谱")} className="h-5 mb-9 select-none" draggable={false} />
 
       {/* 导航项 */}
       <ul className="flex flex-col gap-3 flex-1 w-full items-center">
@@ -49,7 +52,7 @@ export default function NavRail({ username }: { username?: string }) {
                       isActive ? "text-on-surface font-semibold" : "text-on-surface-variant"
                     )}
                   >
-                    {label}
+                    {t(label)}
                   </span>
                 </>
               )}
@@ -59,12 +62,13 @@ export default function NavRail({ username }: { username?: string }) {
         })}
       </ul>
 
-      {/* 用户 + 登出 */}
+      {/* 用户 + 语言 + 登出 */}
       <div className="mt-auto flex flex-col items-center gap-3">
+        <LangToggle className="w-20 h-9 rounded-full" />
         <button
           onClick={() => api.auth.logout().then(() => window.location.reload())}
           className="state-layer w-10 h-10 rounded-full text-on-surface-variant flex items-center justify-center cursor-pointer"
-          title="退出登录"
+          title={t("退出登录")}
         >
           <Icon name="logout" size={20} />
         </button>

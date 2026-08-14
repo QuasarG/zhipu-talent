@@ -9,6 +9,7 @@ import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   candidates: CandidateBrief[];
@@ -39,6 +40,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [batchEvaluating, setBatchEvaluating] = useState(false);
+  const { t } = useI18n();
 
   const filtered = candidates.filter((c) => {
     if (filter !== "all" && classifyCandidate(c) !== filter) return false;
@@ -112,15 +114,15 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
       <SearchField
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="搜索姓名、学校或方向"
+        placeholder={t("搜索姓名、学校或方向")}
       />
 
       <SegmentedButtons<Filter>
         className="w-full [&>button]:flex-1"
         options={[
-          { value: "all", label: `全部 ${counts.all}` },
-          { value: "pending", label: `待评估 ${counts.pending}` },
-          { value: "completed", label: `已完成 ${counts.completed}` },
+          { value: "all", label: t("全部 {n}", { n: counts.all }) },
+          { value: "pending", label: t("待评估 {n}", { n: counts.pending }) },
+          { value: "completed", label: t("已完成 {n}", { n: counts.completed }) },
         ]}
         value={filter}
         onChange={setFilter}
@@ -129,7 +131,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
       {/* 候选人列表 */}
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1">
         {filtered.length === 0 ? (
-          <div className="text-center py-10 text-body-sm text-on-surface-variant">无匹配候选人</div>
+          <div className="text-center py-10 text-body-sm text-on-surface-variant">{t("无匹配候选人")}</div>
         ) : (
           filtered.map((c) => {
             const done = classifyCandidate(c) === "completed";
@@ -183,27 +185,27 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                 )}
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center justify-between gap-2">
-                    <span className="text-title truncate">{c.name || "未命名"}</span>
+                    <span className="text-title truncate">{c.name || t("未命名")}</span>
                     {c.evaluation_status === "running" ? (
                       <span className="inline-flex items-center gap-1 text-label text-primary shrink-0">
                         <LoadingIndicator size={14} color="text-primary" />
-                        评估中
+                        {t("评估中")}
                       </span>
                     ) : done ? (
-                      <StatusChip tone="success" className="shrink-0">已完成</StatusChip>
+                      <StatusChip tone="success" className="shrink-0">{t("已完成")}</StatusChip>
                     ) : c.verification_result === "running" ? (
                       <span className="inline-flex items-center gap-1 text-label text-primary shrink-0">
                         <LoadingIndicator size={14} color="text-primary" />
-                        核验中
+                        {t("核验中")}
                       </span>
                     ) : c.verification_result === "verified" ? (
-                      <StatusChip tone="success" className="shrink-0" icon="check_circle">核验通过</StatusChip>
+                      <StatusChip tone="success" className="shrink-0" icon="check_circle">{t("核验通过")}</StatusChip>
                     ) : c.verification_result === "rejected" ? (
-                      <StatusChip tone="error" className="shrink-0" icon="gpp_maybe">核验不通过</StatusChip>
+                      <StatusChip tone="error" className="shrink-0" icon="gpp_maybe">{t("核验不通过")}</StatusChip>
                     ) : c.verification_result === "needs_review" ? (
-                      <StatusChip tone="warning" className="shrink-0" icon="help">待人工核验</StatusChip>
+                      <StatusChip tone="warning" className="shrink-0" icon="help">{t("待人工核验")}</StatusChip>
                     ) : (
-                      <StatusChip tone="warning" className="shrink-0">待核验</StatusChip>
+                      <StatusChip tone="warning" className="shrink-0">{t("待核验")}</StatusChip>
                     )}
                   </span>
                   <span className="block text-body-sm text-on-surface-variant truncate">
@@ -218,14 +220,14 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                     /* inline 二次确认条：不再 hover 出现，常驻直到 ✓/✗ */
                     <span className="mt-1.5 flex items-center gap-2">
                       <span className="text-body-sm text-on-error-container">
-                        {evaluated ? "确认移出？" : "确认删除？"}
+                        {evaluated ? t("确认移出？") : t("确认删除？")}
                       </span>
                       <button
                         type="button"
                         disabled={deleting}
                         onClick={(e) => { e.stopPropagation(); doDelete(); }}
                         className="state-layer inline-flex items-center justify-center w-6 h-6 rounded-full bg-error text-on-error cursor-pointer disabled:opacity-40"
-                        title={evaluated ? "确认移出" : "确认删除"}
+                        title={evaluated ? t("确认移出") : t("确认删除")}
                       >
                         <Icon name="check" size={16} />
                       </button>
@@ -234,7 +236,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                         disabled={deleting}
                         onClick={(e) => { e.stopPropagation(); setConfirmingId(null); }}
                         className="state-layer inline-flex items-center justify-center w-6 h-6 rounded-full text-on-error-container cursor-pointer disabled:opacity-40"
-                        title="取消"
+                        title={t("取消")}
                       >
                         <Icon name="close" size={16} />
                       </button>
@@ -249,7 +251,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setConfirmingId(c.id); }}
                       className="state-layer inline-flex items-center justify-center w-7 h-7 rounded-full bg-surface-lowest text-on-surface-variant hover:text-error cursor-pointer shadow-sm"
-                      title={evaluated ? "移出队列" : "删除"}
+                      title={evaluated ? t("移出队列") : t("删除")}
                     >
                       <Icon name={evaluated ? "archive" : "delete"} size={16} />
                     </button>
@@ -264,10 +266,10 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
       {batchMode ? (
         <div className="flex items-center gap-1.5">
           <Button variant="text" icon="close" className="shrink-0 h-10 w-10 px-0" disabled={batchDeleting || batchEvaluating}
-            onClick={exitBatch} title="退出批量" />
+            onClick={exitBatch} title={t("退出批量")} />
           <Button variant="tonal" className="flex-1 h-10 min-w-0 whitespace-nowrap text-body-sm" disabled={batchDeleting || batchEvaluating}
             onClick={() => (selected.size === filtered.length && filtered.length > 0 ? clearAll() : selectAll())}>
-            {selected.size === filtered.length && filtered.length > 0 ? "取消全选" : "全选"}
+            {selected.size === filtered.length && filtered.length > 0 ? t("取消全选") : t("全选")}
           </Button>
           {onEvaluateBatch && (
             <Button
@@ -276,7 +278,7 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
               onClick={batchEvaluate}
               className="flex-1 h-10 min-w-0 whitespace-nowrap text-body-sm"
             >
-              {batchEvaluating ? "评估中…" : `评估(${evaluableCount || 0})`}
+              {batchEvaluating ? t("评估中…") : t("评估({n})", { n: evaluableCount || 0 })}
             </Button>
           )}
           <Button
@@ -285,17 +287,17 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
             onClick={batchDelete}
             className="flex-1 h-10 min-w-0 whitespace-nowrap text-body-sm bg-error text-on-error"
           >
-            {batchDeleting ? "处理中…" : `移除(${selected.size || 0})`}
+            {batchDeleting ? t("处理中…") : t("移除({n})", { n: selected.size || 0 })}
           </Button>
         </div>
       ) : (
         <div className="flex items-center gap-2">
           <Button variant="tonal" icon="upload" onClick={onImport} className="flex-1">
-            导入简历
+            {t("导入简历")}
           </Button>
           {candidates.length > 0 && (
             <Button variant="text" icon="checklist" onClick={() => setBatchMode(true)} className="shrink-0">
-              批量操作
+              {t("批量操作")}
             </Button>
           )}
         </div>

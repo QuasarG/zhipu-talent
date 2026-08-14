@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import type { ScholarshipApplication } from "@/lib/types";
 import PageToolbar from "@/components/layout/PageToolbar";
 import Card from "@/components/ui/Card";
@@ -18,9 +19,10 @@ import {
 } from "@/features/scholarship/scholarshipModel";
 
 export function ScholarshipStatusChip({ status }: { status: string }) {
+  const { t } = useI18n();
   return (
     <StatusChip tone={STATUS_TONES[status] ?? "neutral"}>
-      {STATUS_LABELS[status] ?? status}
+      {t(STATUS_LABELS[status] ?? status)}
     </StatusChip>
   );
 }
@@ -49,6 +51,7 @@ function AddApplicantDialog({ onClose, onDone }: DialogProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [screenResult, setScreenResult] = useState<{ status: string; missing: string[]; reasons: string[] } | null>(null);
+  const { t } = useI18n();
 
   const submitForm = async () => {
     if (!form.name.trim() || busy) return;
@@ -66,7 +69,7 @@ function AddApplicantDialog({ onClose, onDone }: DialogProps) {
       setCreated(app);
       setStep("upload");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败");
+      setError(err instanceof Error ? err.message : t("创建失败"));
     } finally {
       setBusy(false);
     }
@@ -83,7 +86,7 @@ function AddApplicantDialog({ onClose, onDone }: DialogProps) {
       setScreenResult(result);
       setStep("result");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "操作失败");
+      setError(err instanceof Error ? err.message : t("操作失败"));
     } finally {
       setBusy(false);
     }
@@ -99,30 +102,30 @@ function AddApplicantDialog({ onClose, onDone }: DialogProps) {
       <Card variant="elevated" className="w-[440px] p-5 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <p className="text-title-lg">
-            {step === "form" ? "添加申请人" : step === "upload" ? "上传申请材料" : "筛选结果"}
+            {step === "form" ? t("添加申请人") : step === "upload" ? t("上传申请材料") : t("筛选结果")}
           </p>
-          <IconButton icon="close" onClick={close} title="关闭" />
+          <IconButton icon="close" onClick={close} title={t("关闭")} />
         </div>
 
         {step === "form" && (
           <>
-            <input type="text" value={form.name} placeholder="姓名（必填）" className={inputClass}
+            <input type="text" value={form.name} placeholder={t("姓名（必填）")} className={inputClass}
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
             <select value={form.degree_type} className={cn(inputClass, "cursor-pointer")}
               onChange={(e) => setForm((p) => ({ ...p, degree_type: e.target.value }))}>
-              <option value="master">硕士</option>
-              <option value="phd">博士</option>
+              <option value="master">{t("硕士")}</option>
+              <option value="phd">{t("博士")}</option>
             </select>
-            <input type="text" value={form.expected_graduation} placeholder="预计毕业时间（YYYY-MM）" className={inputClass}
+            <input type="text" value={form.expected_graduation} placeholder={t("预计毕业时间（YYYY-MM）")} className={inputClass}
               onChange={(e) => setForm((p) => ({ ...p, expected_graduation: e.target.value }))} />
-            <input type="text" value={form.direction} placeholder="研究方向" className={inputClass}
+            <input type="text" value={form.direction} placeholder={t("研究方向")} className={inputClass}
               onChange={(e) => setForm((p) => ({ ...p, direction: e.target.value }))} />
-            <input type="text" value={form.school} placeholder="学校" className={inputClass}
+            <input type="text" value={form.school} placeholder={t("学校")} className={inputClass}
               onChange={(e) => setForm((p) => ({ ...p, school: e.target.value }))} />
-            <input type="text" value={form.advisors} placeholder="推荐导师（逗号分隔）" className={inputClass}
+            <input type="text" value={form.advisors} placeholder={t("推荐导师（逗号分隔）")} className={inputClass}
               onChange={(e) => setForm((p) => ({ ...p, advisors: e.target.value }))} />
             <Button variant="filled" icon="arrow_forward" className="w-full" disabled={!form.name.trim() || busy} onClick={submitForm}>
-              {busy ? "创建中…" : "下一步：上传材料"}
+              {busy ? t("创建中…") : t("下一步：上传材料")}
             </Button>
           </>
         )}
@@ -130,7 +133,7 @@ function AddApplicantDialog({ onClose, onDone }: DialogProps) {
         {step === "upload" && (
           <>
             <p className="text-body-sm text-on-surface-variant">
-              为「{created?.name}」上传材料：支持 zip 打包或多选散装文件，推荐信最多 2 封
+              {t("为「{name}」上传材料：支持 zip 打包或多选散装文件，推荐信最多 2 封", { name: created?.name ?? "" })}
             </p>
             <input
               type="file"
@@ -139,13 +142,13 @@ function AddApplicantDialog({ onClose, onDone }: DialogProps) {
               onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
             />
             {files.length > 0 && (
-              <p className="text-label text-on-surface-variant">已选 {files.length} 个文件</p>
+              <p className="text-label text-on-surface-variant">{t("已选 {n} 个文件", { n: files.length })}</p>
             )}
             <Button variant="filled" icon="upload" className="w-full" disabled={busy} onClick={() => uploadAndScreen(true)}>
-              {busy ? "处理中…" : files.length ? "上传并筛选" : "直接筛选"}
+              {busy ? t("处理中…") : files.length ? t("上传并筛选") : t("直接筛选")}
             </Button>
             <Button variant="text" className="w-full" disabled={busy} onClick={() => uploadAndScreen(false)}>
-              跳过上传，直接筛选
+              {t("跳过上传，直接筛选")}
             </Button>
           </>
         )}
@@ -158,7 +161,7 @@ function AddApplicantDialog({ onClose, onDone }: DialogProps) {
             </div>
             {screenResult.missing.length > 0 && (
               <p className="text-body-sm text-warning">
-                缺少材料：{screenResult.missing.map((k) => MATERIAL_KIND_LABELS[k] ?? k).join("、")}
+                {t("缺少材料：")}{screenResult.missing.map((k) => t(MATERIAL_KIND_LABELS[k] ?? k)).join(t("、"))}
               </p>
             )}
             {screenResult.reasons.length > 0 && (
@@ -166,7 +169,7 @@ function AddApplicantDialog({ onClose, onDone }: DialogProps) {
                 {screenResult.reasons.map((r) => <li key={r}>{r}</li>)}
               </ul>
             )}
-            <Button variant="tonal" className="w-full" onClick={close}>完成</Button>
+            <Button variant="tonal" className="w-full" onClick={close}>{t("完成")}</Button>
           </>
         )}
 
@@ -190,13 +193,15 @@ export default function Scholarship() {
     try {
       setApps(await api.scholarship.list());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : t("加载失败"));
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const { t } = useI18n();
 
   const runAction = async (id: string, action: string, fn: () => Promise<void>) => {
     if (busy[id]) return;
@@ -205,7 +210,7 @@ export default function Scholarship() {
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "操作失败");
+      setError(err instanceof Error ? err.message : t("操作失败"));
     } finally {
       setBusy((p) => {
         const next = { ...p };
@@ -254,12 +259,12 @@ export default function Scholarship() {
   return (
     <div className="w-full max-w-full h-[calc(100vh-48px)] min-h-0 min-w-0 overflow-hidden flex flex-col">
       <PageToolbar
-        title="奖学金初筛"
-        subtitle="Z.AI Scholarship 2026 · 材料筛查 → 盲评 → 舆情核验"
+        title={t("奖学金初筛")}
+        subtitle={t("Z.AI Scholarship 2026 · 材料筛查 → 盲评 → 舆情核验")}
         right={
           <>
-            <IconButton icon="refresh" variant="outlined" onClick={load} title="刷新" />
-            <Button icon="person_add" onClick={() => setShowAdd(true)}>添加申请人</Button>
+            <IconButton icon="refresh" variant="outlined" onClick={load} title={t("刷新")} />
+            <Button icon="person_add" onClick={() => setShowAdd(true)}>{t("添加申请人")}</Button>
           </>
         }
       />
@@ -268,23 +273,23 @@ export default function Scholarship() {
 
       <Card variant="filled" className="flex-1 min-h-0 overflow-y-auto p-4">
         {loading ? (
-          <div className="flex justify-center py-10"><LoadingIndicator size={28} label="加载中…" /></div>
+          <div className="flex justify-center py-10"><LoadingIndicator size={28} label={t("加载中…")} /></div>
         ) : apps.length === 0 ? (
-          <p className="text-body-sm text-on-surface-variant py-10 text-center">还没有申请人，点右上角「添加申请人」开始</p>
+          <p className="text-body-sm text-on-surface-variant py-10 text-center">{t("还没有申请人，点右上角「添加申请人」开始")}</p>
         ) : (
           <table className="w-full text-body-sm">
             <thead>
               <tr className="text-label text-on-surface-variant text-left">
-                <th className="pb-2 font-medium">姓名</th>
-                <th className="pb-2 font-medium">学校</th>
-                <th className="pb-2 font-medium">方向</th>
-                <th className="pb-2 font-medium">毕业时间</th>
-                <th className="pb-2 font-medium">状态</th>
-                <th className="pb-2 font-medium text-right">脱敏分</th>
-                <th className="pb-2 font-medium text-right">舆情调整</th>
-                <th className="pb-2 font-medium text-right">总分</th>
-                <th className="pb-2 font-medium text-right">待核验</th>
-                <th className="pb-2 font-medium text-right">操作</th>
+                <th className="pb-2 font-medium">{t("姓名")}</th>
+                <th className="pb-2 font-medium">{t("学校")}</th>
+                <th className="pb-2 font-medium">{t("方向")}</th>
+                <th className="pb-2 font-medium">{t("毕业时间")}</th>
+                <th className="pb-2 font-medium">{t("状态")}</th>
+                <th className="pb-2 font-medium text-right">{t("脱敏分")}</th>
+                <th className="pb-2 font-medium text-right">{t("舆情调整")}</th>
+                <th className="pb-2 font-medium text-right">{t("总分")}</th>
+                <th className="pb-2 font-medium text-right">{t("待核验")}</th>
+                <th className="pb-2 font-medium text-right">{t("操作")}</th>
               </tr>
             </thead>
             <tbody>
@@ -299,8 +304,8 @@ export default function Scholarship() {
                       className="cursor-pointer border-t border-outline-variant hover:bg-surface-low"
                     >
                       <td className="py-2 text-on-surface">
-                        {a.name || "未命名"}
-                        <span className="ml-1.5 text-label text-on-surface-variant">{DEGREE_LABELS[a.degree_type] ?? a.degree_type}</span>
+                        {a.name || t("未命名")}
+                        <span className="ml-1.5 text-label text-on-surface-variant">{t(DEGREE_LABELS[a.degree_type] ?? a.degree_type)}</span>
                       </td>
                       <td className="py-2 text-on-surface-variant">{a.school || "—"}</td>
                       <td className="py-2 text-on-surface-variant max-w-40 truncate">{a.direction || "—"}</td>
@@ -318,20 +323,20 @@ export default function Scholarship() {
                         {acting ? (
                           <span className="inline-flex items-center justify-end gap-1.5 text-label text-on-surface-variant w-full">
                             <LoadingIndicator size={14} />
-                            {acting === "evaluate" ? "评估中…" : acting === "screen" ? "筛选中…" : acting === "scan" ? "扫描中…" : "删除中…"}
+                            {acting === "evaluate" ? t("评估中…") : acting === "screen" ? t("筛选中…") : acting === "scan" ? t("扫描中…") : t("删除中…")}
                           </span>
                         ) : confirmingId === a.id ? (
                           <span className="inline-flex items-center justify-end gap-1 w-full">
-                            <span className="text-label text-error">确认删除？</span>
-                            <IconButton icon="check" size={16} className="w-8 h-8" title="确认" onClick={() => handleDelete(a.id)} />
-                            <IconButton icon="close" size={16} className="w-8 h-8" title="取消" onClick={() => setConfirmingId(null)} />
+                            <span className="text-label text-error">{t("确认删除？")}</span>
+                            <IconButton icon="check" size={16} className="w-8 h-8" title={t("确认")} onClick={() => handleDelete(a.id)} />
+                            <IconButton icon="close" size={16} className="w-8 h-8" title={t("取消")} onClick={() => setConfirmingId(null)} />
                           </span>
                         ) : (
                           <span className="inline-flex items-center justify-end w-full">
-                            <IconButton icon="fact_check" size={18} title="筛选" onClick={() => handleScreen(a.id)} />
-                            <IconButton icon="grade" size={18} title="评估" onClick={() => handleEvaluate(a.id)} />
-                            <IconButton icon="travel_explore" size={18} title="舆情扫描" onClick={() => handleScan(a.id)} />
-                            <IconButton icon="delete" size={18} title="删除" onClick={() => setConfirmingId(a.id)} />
+                            <IconButton icon="fact_check" size={18} title={t("筛选")} onClick={() => handleScreen(a.id)} />
+                            <IconButton icon="grade" size={18} title={t("评估")} onClick={() => handleEvaluate(a.id)} />
+                            <IconButton icon="travel_explore" size={18} title={t("舆情扫描")} onClick={() => handleScan(a.id)} />
+                            <IconButton icon="delete" size={18} title={t("删除")} onClick={() => setConfirmingId(a.id)} />
                           </span>
                         )}
                       </td>
@@ -340,7 +345,7 @@ export default function Scholarship() {
                       <tr className="text-label">
                         <td colSpan={10} className="pb-2 pt-0.5">
                           {missing.length > 0 && (
-                            <span className="text-warning mr-3">缺少：{missing.map((k) => MATERIAL_KIND_LABELS[k] ?? k).join("、")}</span>
+                            <span className="text-warning mr-3">{t("缺少：")}{missing.map((k) => t(MATERIAL_KIND_LABELS[k] ?? k)).join(t("、"))}</span>
                           )}
                           {reasons.map((r) => (
                             <span key={r} className="text-error mr-3">{r}</span>

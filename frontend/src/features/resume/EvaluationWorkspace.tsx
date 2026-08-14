@@ -15,6 +15,7 @@ import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 import ScoreOverview from "./ScoreOverview";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   candidateId?: string;
@@ -43,13 +44,15 @@ export default function EvaluationWorkspace({ candidateId = "none", evaluation, 
     return runs.filter((run) => known.has(run.node) && (run.status === "done" || run.status === "skipped")).length;
   }, [graph, evaluation?.node_runs, evaluationRun?.node_runs, liveNodeRuns]);
 
+  const { t } = useI18n();
+
   return (
     <div className="flex flex-col h-full min-h-0">
       <Tabs
         className="shrink-0"
         items={[
-          { value: "result", label: "评估结果" },
-          { value: "process", label: "运行过程", badge: evaluating ? "运行中" : completedCount || undefined },
+          { value: "result", label: t("评估结果") },
+          { value: "process", label: t("运行过程"), badge: evaluating ? t("运行中") : completedCount || undefined },
         ]}
         value={tab}
         onChange={setTab}
@@ -72,12 +75,13 @@ export default function EvaluationWorkspace({ candidateId = "none", evaluation, 
 }
 
 function ResultEmpty({ evaluating }: { evaluating: boolean }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center min-h-[360px] text-center gap-2">
       <Icon name={evaluating ? "pending_actions" : "fact_check"} size={40} className="text-on-surface-variant" />
-      <p className="text-title font-bold">{evaluating ? "评估正在运行" : "尚无评估结果"}</p>
+      <p className="text-title font-bold">{evaluating ? t("评估正在运行") : t("尚无评估结果")}</p>
       <p className="text-body-sm text-on-surface-variant">
-        {evaluating ? "可在运行过程页查看当前节点" : "完成论文核验后可启动评估"}
+        {evaluating ? t("可在运行过程页查看当前节点") : t("完成论文核验后可启动评估")}
       </p>
     </div>
   );
@@ -94,6 +98,7 @@ function EvaluationProcess({ graph, statePrefix, persistedRuns, liveRuns, evalua
     const merged = mergeRuns(persistedRuns, liveRuns);
     return new Map(merged.map((run) => [run.node, run]));
   }, [persistedRuns, liveRuns]);
+  const { t } = useI18n();
   const phaseStatuses = deriveStatuses(graph, runMap, evaluating);
   const allStatuses = [...phaseStatuses.values()].flatMap((phase) => [...phase.values()]);
   const finished = allStatuses.filter((item) => item.status === "done" || item.status === "skipped").length;
@@ -105,15 +110,15 @@ function EvaluationProcess({ graph, statePrefix, persistedRuns, liveRuns, evalua
       <header className="pb-4 border-b-2 border-outline-variant">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-title-lg font-bold text-on-surface">评估执行图谱</h2>
-            <p className="mt-1 text-body-sm text-on-surface-variant">完整展示节点、并行 Track 与实时运行状态</p>
+            <h2 className="text-title-lg font-bold text-on-surface">{t("评估执行图谱")}</h2>
+            <p className="mt-1 text-body-sm text-on-surface-variant">{t("完整展示节点、并行 Track 与实时运行状态")}</p>
           </div>
           <StatusChip
             tone={failed ? "error" : evaluating ? "primary" : finished === total && total ? "success" : "neutral"}
             variant={evaluating || failed ? "filled" : "dot"}
             icon={failed ? "error" : evaluating ? "sync" : finished === total && total ? "check_circle" : "schedule"}
           >
-            {failed ? `${failed} 个失败` : evaluating ? "运行中" : finished === total && total ? "已完成" : "待运行"}
+            {failed ? t("{n} 个失败", { n: failed }) : evaluating ? t("运行中") : finished === total && total ? t("已完成") : t("待运行")}
           </StatusChip>
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 mt-4">
@@ -239,10 +244,11 @@ function PhaseBlock({ phase, index, statuses, statePrefix }: {
 }
 
 function PhaseState({ running, failed, complete }: { running: boolean; failed: boolean; complete: boolean }) {
-  if (failed) return <span className="text-label font-bold text-error">失败</span>;
-  if (running) return <span className="text-label font-bold text-primary">运行中</span>;
-  if (complete) return <span className="text-label font-bold text-success">已完成</span>;
-  return <span className="text-label font-medium text-on-surface-variant">待运行</span>;
+  const { t } = useI18n();
+  if (failed) return <span className="text-label font-bold text-error">{t("失败")}</span>;
+  if (running) return <span className="text-label font-bold text-primary">{t("运行中")}</span>;
+  if (complete) return <span className="text-label font-bold text-success">{t("已完成")}</span>;
+  return <span className="text-label font-medium text-on-surface-variant">{t("待运行")}</span>;
 }
 
 function NodeGroup({ group, statuses, statePrefix }: { group: EvaluationGraphGroup; statuses: Map<string, DerivedStatus>; statePrefix: string }) {
@@ -256,6 +262,8 @@ function NodeGroup({ group, statuses, statePrefix }: { group: EvaluationGraphGro
     if (active) setOpen(true);
   }, [active, setOpen]);
 
+  const { t } = useI18n();
+
   return (
     <div className="pl-4">
       {(group.collapsible || group.description) && (
@@ -266,7 +274,7 @@ function NodeGroup({ group, statuses, statePrefix }: { group: EvaluationGraphGro
           onClick={() => setOpen((value) => !value)}
         >
           <span className="text-label font-bold text-on-surface-variant">{group.label}</span>
-          <span className="text-label text-on-surface-variant">{group.nodes.length} 个节点</span>
+          <span className="text-label text-on-surface-variant">{t("{n} 个节点", { n: group.nodes.length })}</span>
           <Icon name="expand_more" size={18} className={cn("ml-auto text-on-surface-variant transition-transform duration-300 ease-emphasized", open && "rotate-180")} />
         </button>
       )}
@@ -293,6 +301,7 @@ const NODE_STATUS = {
 } as const;
 
 function NodeRow({ label, status, message }: { label: string; status: EvaluationNodeStatus; message: string }) {
+  const { t } = useI18n();
   const config = NODE_STATUS[status];
   return (
     <div className="relative grid grid-cols-[30px_minmax(0,1fr)_54px] items-start gap-3 py-3 pr-2 min-h-[68px]">
@@ -304,7 +313,7 @@ function NodeRow({ label, status, message }: { label: string; status: Evaluation
         <span className="block mt-0.5 text-body-sm text-on-surface-variant leading-5">{message}</span>
       </span>
       <span className={cn("pt-1 text-label font-bold text-right", status === "running" ? "text-primary" : status === "done" ? "text-success" : status === "error" ? "text-error" : "text-on-surface-variant")}>
-        {config.label}
+        {t(config.label)}
       </span>
       {status === "running" && <span className="md3-running-bar absolute bottom-0 left-0 right-2" />}
     </div>

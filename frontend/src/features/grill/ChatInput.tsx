@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { IconButton } from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   busy: boolean;
@@ -11,6 +12,7 @@ interface Props {
 export default function ChatInput({ busy, onSend }: Props) {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
+  const { t } = useI18n();
 
   const send = () => {
     const text = value.trim();
@@ -43,13 +45,13 @@ export default function ChatInput({ busy, onSend }: Props) {
               send();
             }
           }}
-          placeholder="回答 Agent 的问题，或描述你想招的人……"
+          placeholder={t("回答 Agent 的问题，或描述你想招的人……")}
           className="flex-1 min-w-0 bg-transparent border-none outline-none resize-none py-2 text-body text-on-surface placeholder:text-on-surface-variant disabled:opacity-60"
         />
         <IconButton icon="send" variant="filled" onClick={send} disabled={busy || !value.trim()} />
       </div>
       <p className="text-center text-label text-on-surface-variant mt-2">
-        一次只问一个问题 · 说抽象词会被追问具体证据 · 前后矛盾会被当场指出
+        {t("一次只问一个问题 · 说抽象词会被追问具体证据 · 前后矛盾会被当场指出")}
       </p>
     </div>
   );

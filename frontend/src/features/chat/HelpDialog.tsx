@@ -1,6 +1,7 @@
 import Card from "@/components/ui/Card";
 import { IconButton } from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   onClose: () => void;
@@ -60,6 +61,7 @@ const SECTIONS: { icon: string; title: string; body: string[] }[] = [
 
 /** 人才问答使用说明浮窗 */
 export default function HelpDialog({ onClose }: Props) {
+  const { t } = useI18n();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/30 p-6" onClick={onClose}>
       <Card
@@ -69,22 +71,22 @@ export default function HelpDialog({ onClose }: Props) {
       >
         <div className="flex items-center justify-between shrink-0">
           <div>
-            <p className="text-headline">人才问答 · 使用说明</p>
-            <p className="text-body-sm text-on-surface-variant mt-0.5">库内优先 · 必要时联网调查 · 事实可溯源</p>
+            <p className="text-headline">{t("人才问答 · 使用说明")}</p>
+            <p className="text-body-sm text-on-surface-variant mt-0.5">{t("库内优先 · 必要时联网调查 · 事实可溯源")}</p>
           </div>
-          <IconButton icon="close" onClick={onClose} title="关闭" />
+          <IconButton icon="close" onClick={onClose} title={t("关闭")} />
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-5 pr-1">
           {SECTIONS.map((sec) => (
             <section key={sec.title}>
               <p className="text-title flex items-center gap-2 text-on-surface">
                 <Icon name={sec.icon} size={20} className="text-primary" />
-                {sec.title}
+                {t(sec.title)}
               </p>
               <ul className="mt-2 flex flex-col gap-1.5">
                 {sec.body.map((line) => (
                   <li key={line} className="text-body-sm text-on-surface-variant leading-relaxed pl-4 relative before:content-['•'] before:absolute before:left-0 before:text-primary">
-                    {line}
+                    {t(line)}
                   </li>
                 ))}
               </ul>

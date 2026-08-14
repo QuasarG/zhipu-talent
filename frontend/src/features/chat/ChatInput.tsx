@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { IconButton } from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   busy: boolean;
@@ -12,6 +13,7 @@ interface Props {
 export default function ChatInput({ busy, awaitingAction, onSend }: Props) {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
+  const { t } = useI18n();
   const disabled = busy || awaitingAction;
 
   const send = () => {
@@ -43,14 +45,16 @@ export default function ChatInput({ busy, awaitingAction, onSend }: Props) {
             }
           }}
           placeholder={
-            awaitingAction ? "请先完成上方选择" : "询问人才、比较经历，或调查一个明确人物……"
+            awaitingAction ? t("请先完成上方选择") : t("询问人才、比较经历，或调查一个明确人物……")
           }
           className="flex-1 min-w-0 bg-transparent border-none outline-none resize-none py-2 text-body text-on-surface placeholder:text-on-surface-variant disabled:opacity-60"
         />
         <IconButton icon="send" variant="filled" onClick={send} disabled={disabled || !value.trim()} />
       </div>
       <p className="text-center text-label text-on-surface-variant mt-2">
-        {awaitingAction ? "完成上方卡片的决策后，Agent 将继续回答" : "库内优先 · 必要时联网调查；新事实将以待核验状态保存"}
+        {awaitingAction
+          ? t("完成上方卡片的决策后，Agent 将继续回答")
+          : t("库内优先 · 必要时联网调查；新事实将以待核验状态保存")}
       </p>
     </div>
   );

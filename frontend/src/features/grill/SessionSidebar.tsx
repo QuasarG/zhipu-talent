@@ -2,20 +2,21 @@ import { useState } from "react";
 import type { GrillSessionSummary } from "@/lib/types";
 import Button, { IconButton } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 
 /** 相对时间：分钟内显示「刚刚」，逐级退化到日期；后端存 UTC ISO，带 Z 直接解析 */
-function relativeTime(iso: string): string {
+function relativeTime(iso: string, t: (key: string, params?: Record<string, string | number>) => string): string {
   if (!iso) return "";
   const time = new Date(iso).getTime();
   if (Number.isNaN(time)) return "";
   const minutes = Math.floor((Date.now() - time) / 60000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return t("刚刚");
+  if (minutes < 60) return t("{n} 分钟前", { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return t("{n} 小时前", { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} 天前`;
+  if (days < 7) return t("{n} 天前", { n: days });
   return new Date(time).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 
@@ -37,6 +38,7 @@ interface Props {
 /** 会话侧栏：新建/切换 + 悬浮删除（二次确认）+ 多选批量删除 */
 export default function SessionSidebar({ sessions, currentId, busy, onSelect, onCreate, onDelete }: Props) {
   // 单个删除二次确认：第一次点进确认态，3s 内再点才真删（参考项目惯例）
+  const { t } = useI18n();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [managing, setManaging] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -82,12 +84,12 @@ export default function SessionSidebar({ sessions, currentId, busy, onSelect, on
   return (
     <div className="flex w-60 shrink-0 flex-col gap-2 min-h-0">
       <Button variant="tonal" icon="add" className="w-full shrink-0" disabled={busy} onClick={onCreate}>
-        新建对话
+        {t("新建对话")}
       </Button>
 
       <div className="flex flex-1 min-h-0 flex-col gap-1 overflow-y-auto pr-0.5">
         {sessions.length === 0 ? (
-          <div className="py-8 text-center text-body-sm text-on-surface-variant">还没有会话</div>
+          <div className="py-8 text-center text-body-sm text-on-surface-variant">{t("还没有会话")}</div>
         ) : (
           sessions.map((s) => {
             const active = s.session_id === currentId;
@@ -124,14 +126,14 @@ export default function SessionSidebar({ sessions, currentId, busy, onSelect, on
                   {!managing && confirmingId === s.session_id ? (
                     <button
                       type="button"
-                      title="再点一次确认删除"
+                      title={t("再点一次确认删除")}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteOne(s.session_id);
                       }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-2 h-6 text-label font-medium text-error bg-surface-lowest hover:bg-error-container"
                     >
-                      确认删除
+                      {t("确认删除")}
                     </button>
                   ) : (
                     !managing && (
@@ -139,7 +141,7 @@ export default function SessionSidebar({ sessions, currentId, busy, onSelect, on
                         icon="delete"
                         size={16}
                         className="absolute right-2 top-1/2 -translate-y-1/2 hidden h-6 w-6 shrink-0 group-hover:flex"
-                        title="删除会话"
+                        title={t("删除会话")}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDeleteOne(s.session_id);
@@ -150,10 +152,10 @@ export default function SessionSidebar({ sessions, currentId, busy, onSelect, on
                 </div>
                 <div className="mt-1 flex items-center justify-between gap-2">
                   <StatusChip tone={STATUS_TONE[s.status] || "neutral"} className="h-5 px-2">
-                    {s.status}
+                    {t(s.status)}
                   </StatusChip>
                   <span className="shrink-0 text-label text-on-surface-variant">
-                    {relativeTime(s.updated_at)}
+                    {relativeTime(s.updated_at, t)}
                   </span>
                 </div>
               </div>
@@ -169,7 +171,7 @@ export default function SessionSidebar({ sessions, currentId, busy, onSelect, on
             className="h-8 px-3"
             onClick={() => setSelected(allSelected ? new Set() : new Set(sessions.map((s) => s.session_id)))}
           >
-            {allSelected ? "全不选" : "全选"}
+            {allSelected ? t("全不选") : t("全选")}
           </Button>
           <Button
             variant="text"
@@ -177,16 +179,16 @@ export default function SessionSidebar({ sessions, currentId, busy, onSelect, on
             disabled={!selected.size}
             onClick={handleBatchDelete}
           >
-            {confirmingBatch ? `确认删除 ${selected.size} 个？` : `删除选中（${selected.size}）`}
+            {confirmingBatch ? t("确认删除 {n} 个？", { n: selected.size }) : t("删除选中（{n}）", { n: selected.size })}
           </Button>
           <Button variant="text" className="h-8 px-3" onClick={exitManage}>
-            取消
+            {t("取消")}
           </Button>
         </div>
       ) : (
         sessions.length > 0 && (
           <Button variant="outlined" icon="checklist" className="w-full shrink-0" onClick={() => setManaging(true)}>
-            批量管理
+            {t("批量管理")}
           </Button>
         )
       )}

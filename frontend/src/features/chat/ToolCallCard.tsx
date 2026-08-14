@@ -3,6 +3,7 @@ import type { ChatSegment } from "@/lib/types";
 import Icon from "@/components/ui/Icon";
 import { ThinkingOrb } from "thinking-orbs";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 type ToolSegment = Extract<ChatSegment, { type: "tool" }>;
 
@@ -18,6 +19,7 @@ function prettyDetail(detail: string): string {
 /** 工具调用卡片：运行中 = shaping orb 轨迹形变动效；完成后折叠成一行摘要 */
 export default function ToolCallCard({ segment }: { segment: ToolSegment }) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useI18n();
   const running = !segment.status;
   const failed = segment.status === "error";
 
@@ -37,7 +39,7 @@ export default function ToolCallCard({ segment }: { segment: ToolSegment }) {
         )}
       >
         {running ? (
-          <ThinkingOrb state="shaping" size={20} className="shrink-0" aria-label="正在调用工具" />
+          <ThinkingOrb state="shaping" size={20} className="shrink-0" aria-label={t("正在调用工具")} />
         ) : failed ? (
           <Icon name="error" size={18} fill className="text-error shrink-0" />
         ) : (
@@ -45,7 +47,7 @@ export default function ToolCallCard({ segment }: { segment: ToolSegment }) {
         )}
         <span className="font-medium text-on-surface shrink-0">{segment.label || segment.tool}</span>
         <span className="flex-1 min-w-0 truncate text-on-surface-variant">
-          {running ? segment.args_summary : failed ? `失败 · ${segment.summary}` : segment.summary}
+          {running ? segment.args_summary : failed ? t("失败 · {summary}", { summary: String(segment.summary) }) : segment.summary}
         </span>
         {!running && segment.detail && (
           <Icon

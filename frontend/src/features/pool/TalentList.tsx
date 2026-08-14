@@ -16,6 +16,7 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
+import { useI18n } from "@/lib/i18n";
 import { ENGAGEMENT_LABELS } from "./talentPoolModel";
 
 interface Props {
@@ -81,6 +82,7 @@ function PersonRow({
   onDragStart: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: p.id, disabled: batchMode });
+  const { t } = useI18n();
   const track = classifyTrack(p);
   const status = p.engagement_status || "newly_admitted";
   const handleClick = () => {
@@ -133,12 +135,12 @@ function PersonRow({
       )}
       <span className="flex-1 min-w-0">
         <span className="flex items-center justify-between gap-2">
-          <span className="text-body font-medium text-on-surface truncate">{p.name || "未命名"}</span>
+          <span className="text-body font-medium text-on-surface truncate">{p.name || t("未命名")}</span>
           <span className="text-label text-on-surface-variant shrink-0">{fmtTime(p.updated_at)}</span>
         </span>
         <span className="flex items-center gap-1.5 mt-0.5">
           <StatusChip tone={HR_TONE[status] || "neutral"} className="shrink-0">
-            {STATUS_LABELS[status] || status}
+            {t(STATUS_LABELS[status] || status)}
           </StatusChip>
           <span className="text-body-sm text-on-surface-variant truncate capitalize">
             {[track, p.org].filter(Boolean).join(" · ") || "—"}
@@ -156,7 +158,7 @@ function PersonRow({
             type="button"
             onClick={(e) => { e.stopPropagation(); onConfirmDelete(); }}
             className="state-layer inline-flex items-center justify-center w-7 h-7 rounded-full bg-surface-lowest text-on-surface-variant hover:text-error cursor-pointer shadow-sm"
-            title="删除"
+            title={t("删除")}
           >
             <Icon name="delete" size={16} />
           </button>
@@ -166,13 +168,13 @@ function PersonRow({
       {/* 二次确认条 */}
       {confirming && (
         <span className="absolute inset-0 flex items-center justify-center gap-2 bg-error-container rounded-md">
-          <span className="text-body-sm font-semibold text-on-error-container">彻底删除？</span>
+          <span className="text-body-sm font-semibold text-on-error-container">{t("彻底删除？")}</span>
           <button type="button" onClick={(e) => { e.stopPropagation(); onConfirmDelete(); }}
-            className="state-layer w-6 h-6 rounded-full bg-error text-on-error flex items-center justify-center cursor-pointer" title="确认">
+            className="state-layer w-6 h-6 rounded-full bg-error text-on-error flex items-center justify-center cursor-pointer" title={t("确认")}>
             <Icon name="check" size={14} />
           </button>
           <button type="button" onClick={(e) => { e.stopPropagation(); onCancelDelete(); }}
-            className="state-layer w-6 h-6 rounded-full text-on-error-container flex items-center justify-center cursor-pointer" title="取消">
+            className="state-layer w-6 h-6 rounded-full text-on-error-container flex items-center justify-center cursor-pointer" title={t("取消")}>
             <Icon name="close" size={14} />
           </button>
         </span>
@@ -195,6 +197,7 @@ function GroupSection({
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: dropId });
+  const { t } = useI18n();
   return (
     <div className="flex flex-col">
       <div className={cn("flex items-center gap-1 px-1 py-1.5 rounded-t-md transition-colors", isOver && "bg-primary-container/40")}>
@@ -204,12 +207,12 @@ function GroupSection({
           <span className="text-label text-on-surface-variant">({count})</span>
         </button>
         {onRename && (
-          <button onClick={onRename} className="state-layer w-6 h-6 rounded-full flex items-center justify-center text-on-surface-variant hover:text-on-surface cursor-pointer opacity-0 group-hover:opacity-100" title="重命名">
+          <button onClick={onRename} className="state-layer w-6 h-6 rounded-full flex items-center justify-center text-on-surface-variant hover:text-on-surface cursor-pointer opacity-0 group-hover:opacity-100" title={t("重命名")}>
             <Icon name="edit" size={14} />
           </button>
         )}
         {onDelete && (
-          <button onClick={onDelete} className="state-layer w-6 h-6 rounded-full flex items-center justify-center text-on-surface-variant hover:text-error cursor-pointer opacity-0 group-hover:opacity-100" title="删除分组">
+          <button onClick={onDelete} className="state-layer w-6 h-6 rounded-full flex items-center justify-center text-on-surface-variant hover:text-error cursor-pointer opacity-0 group-hover:opacity-100" title={t("删除分组")}>
             <Icon name="delete" size={14} />
           </button>
         )}
@@ -237,6 +240,7 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
   const [batchNote, setBatchNote] = useState("");
+  const { t } = useI18n();
 
   useEffect(() => {
     try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed)); } catch { /* ignore */ }
@@ -324,11 +328,11 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
       } else {
         // 全部跳过时的原因汇总，不再静默
         const labels: Record<string, string> = {
-          not_found: "人物不存在",
-          skipped: "人物调查类型不可评估",
-          no_candidate: "无关联简历档案",
-          not_verified: "论文核验未通过",
-          failed: "启动失败",
+          not_found: t("人物不存在"),
+          skipped: t("人物调查类型不可评估"),
+          no_candidate: t("无关联简历档案"),
+          not_verified: t("论文核验未通过"),
+          failed: t("启动失败"),
         };
         const counts = new Map<string, number>();
         for (const r of resp.results) {
@@ -336,12 +340,12 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
           counts.set(key, (counts.get(key) || 0) + 1);
         }
         setBatchNote(
-          "未能启动评估：" + [...counts.entries()].map(([k, n]) => `${n} 人${k}`).join("，")
+          t("未能启动评估：{summary}", { summary: [...counts.entries()].map(([k, n]) => t("{n} 人{k}", { n, k })).join(t("，")) })
         );
       }
     } catch (err) {
       console.error("批量评估失败", err);
-      setBatchNote("批量评估请求失败，请稍后重试");
+      setBatchNote(t("批量评估请求失败，请稍后重试"));
     } finally {
       setBusy(false);
       setSelected(new Set());
@@ -391,19 +395,19 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
     <DndContext sensors={sensors} onDragEnd={onDragEnd}>
       <Card variant="filled" className="w-full max-w-full flex flex-col min-h-0 min-w-0 overflow-hidden p-3 gap-2">
         <div className="flex items-center justify-between px-1 shrink-0">
-          <span className="text-title">共 {persons.length} 位人才</span>
+          <span className="text-title">{t("共 {count} 位人才", { count: persons.length })}</span>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-1">
           <GroupSection
             dropId="drop-ungrouped"
-            title="未分组"
+            title={t("未分组")}
             count={grouped.ungrouped.length}
             collapsed={collapsed["ungrouped"] || false}
             onToggle={() => toggleGroup("ungrouped")}
           >
             {grouped.ungrouped.length === 0
-              ? <div className="text-center py-3 text-body-sm text-on-surface-variant">无</div>
+              ? <div className="text-center py-3 text-body-sm text-on-surface-variant">{t("无")}</div>
               : grouped.ungrouped.map(renderRow)}
           </GroupSection>
 
@@ -428,13 +432,13 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
                 />
               ) : null}
               {(grouped.byGroup[g.id] || []).length === 0
-                ? <div className="text-center py-3 text-body-sm text-on-surface-variant">拖入人才到此处</div>
+                ? <div className="text-center py-3 text-body-sm text-on-surface-variant">{t("拖入人才到此处")}</div>
                 : (grouped.byGroup[g.id] || []).map(renderRow)}
             </GroupSection>
           ))}
 
           {persons.length === 0 && (
-            <div className="text-center py-8 text-body-sm text-on-surface-variant">无匹配人才</div>
+            <div className="text-center py-8 text-body-sm text-on-surface-variant">{t("无匹配人才")}</div>
           )}
         </div>
 
@@ -446,10 +450,10 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
             )}
             <div className="flex items-center gap-1.5">
             <Button variant="text" icon="close" className="shrink-0 h-10 w-10 px-0" disabled={busy}
-              onClick={() => setBatchMode(false)} title="退出批量" />
+              onClick={() => setBatchMode(false)} title={t("退出批量")} />
             <Button variant="tonal" className="flex-1 h-10 text-body-sm" disabled={busy}
               onClick={() => (selected.size === visibleIds.length && visibleIds.length > 0 ? clearAll() : selectAll())}>
-              {selected.size === visibleIds.length && visibleIds.length > 0 ? "取消全选" : "全选"}
+              {selected.size === visibleIds.length && visibleIds.length > 0 ? t("取消全选") : t("全选")}
             </Button>
             <MoveMenu
               disabled={selected.size === 0 || busy}
@@ -463,9 +467,9 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
                 disabled={selected.size === 0 || busy || selectedHasGuest}
                 onClick={() => doBatchEvaluate()}
                 className="shrink-0 h-10 px-3 text-body-sm text-on-primary"
-                title={selectedHasGuest ? "选中包含人物调查类型，无法评估" : "批量重新评估"}
-              >
-                {busy ? "处理中…" : `评估(${selected.size})`}
+              title={selectedHasGuest ? t("选中包含人物调查类型，无法评估") : t("批量重新评估")}
+            >
+              {busy ? t("处理中…") : t("评估({count})", { count: selected.size })}
               </Button>
             )}
             </div>
@@ -477,17 +481,17 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
           <div className="flex items-center gap-1.5 shrink-0 border-t border-outline-variant pt-2">
             {onAddPerson && (
               <Button variant="tonal" icon="person_add" className="flex-1 h-10 min-w-0 whitespace-nowrap text-body-sm" onClick={onAddPerson}>
-                手动加入
+                {t("手动加入")}
               </Button>
             )}
             {onManageGroups && (
               <Button variant="outlined" icon="create_new_folder" className="flex-1 h-10 min-w-0 whitespace-nowrap text-body-sm" onClick={onManageGroups}>
-                分组
+                {t("分组")}
               </Button>
             )}
             {persons.length > 0 && (
               <Button variant="outlined" icon="checklist" className="flex-1 h-10 min-w-0 whitespace-nowrap text-body-sm" onClick={() => setBatchMode(true)}>
-                批量操作
+                {t("批量操作")}
               </Button>
             )}
           </div>
@@ -500,6 +504,7 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
 /** 移动到分组：悬浮按钮 + hover 向上弹出分组菜单 */
 function MoveMenu({ disabled, onPick, groups, count }: { disabled: boolean; onPick: (groupId: string | null) => void; groups: TalentGroup[]; count: number }) {
   const [open, setOpen] = useState(false);
+  const { t } = useI18n();
   return (
     <div
       className="relative flex-1 h-10"
@@ -508,12 +513,12 @@ function MoveMenu({ disabled, onPick, groups, count }: { disabled: boolean; onPi
     >
       <Button variant="filled" disabled={disabled} className="w-full h-10 text-body-sm text-on-primary"
         onClick={() => !disabled && setOpen((v) => !v)}>
-        移动到({count})
+        {t("移动到({count})", { count })}
       </Button>
       {open && (
         <div className="absolute left-0 right-0 bottom-full bg-surface rounded-t-md shadow-lg border border-outline-variant border-b-0 z-10 max-h-60 overflow-y-auto pb-1">
           {groups.length === 0 ? (
-            <div className="px-3 py-2 text-body-sm text-on-surface-variant">暂无分组</div>
+            <div className="px-3 py-2 text-body-sm text-on-surface-variant">{t("暂无分组")}</div>
           ) : (
             <>
               {groups.map((g) => (
@@ -535,7 +540,7 @@ function MoveMenu({ disabled, onPick, groups, count }: { disabled: boolean; onPi
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-body-sm hover:bg-surface-low text-on-surface-variant"
               >
                 <Icon name="remove" size={16} />
-                <span>移到未分组</span>
+                <span>{t("移到未分组")}</span>
               </button>
             </>
           )}

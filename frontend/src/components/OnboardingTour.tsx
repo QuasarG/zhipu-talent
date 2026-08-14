@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useI18n } from "@/lib/i18n";
 
 const STORAGE_KEY = "zhipu_talent.onboarding.v1";
 
@@ -92,6 +93,7 @@ export default function OnboardingTour() {
   const [bubbleVisible, setBubbleVisible] = useState(false);
   const navigate = useNavigate();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { t } = useI18n();
 
   const finish = useCallback(() => {
     setActive(false);
@@ -231,32 +233,32 @@ export default function OnboardingTour() {
         }}
       >
         <div className="flex items-center gap-2">
-          <span className="text-title font-bold text-on-surface">{current.title}</span>
+          <span className="text-title font-bold text-on-surface">{t(current.title)}</span>
           <span className="ml-auto text-label text-on-surface-variant">
             {step + 1} / {STEPS.length}
           </span>
         </div>
-        <p className="text-body-sm text-on-surface-variant leading-relaxed">{current.desc}</p>
+        <p className="text-body-sm text-on-surface-variant leading-relaxed">{t(current.desc)}</p>
         <div className="flex items-center gap-2 mt-1">
           {step > 0 && (
             <button
               onClick={() => setStep((s) => s - 1)}
               className="state-layer px-3 py-1.5 rounded-full text-body-sm text-on-surface-variant hover:bg-surface-low cursor-pointer"
             >
-              上一步
+              {t("上一步")}
             </button>
           )}
           <button
             onClick={finish}
             className="state-layer ml-auto px-3 py-1.5 rounded-full text-body-sm text-on-surface-variant hover:bg-surface-low cursor-pointer"
           >
-            跳过
+            {t("跳过")}
           </button>
           <button
             onClick={() => (isLast ? finish() : setStep((s) => s + 1))}
             className="state-layer px-4 py-1.5 rounded-full text-body-sm font-semibold bg-primary text-on-primary hover:opacity-90 cursor-pointer"
           >
-            {isLast ? "完成" : "下一步"}
+            {isLast ? t("完成") : t("下一步")}
           </button>
         </div>
       </div>

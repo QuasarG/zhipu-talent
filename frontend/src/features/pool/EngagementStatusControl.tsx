@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import Icon from "@/components/ui/Icon";
+import { useI18n } from "@/lib/i18n";
 import { ENGAGEMENT_LABELS, ENGAGEMENT_LIFECYCLE, transitionEngagementSelection } from "./talentPoolModel";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 
 export default function EngagementStatusControl({ value, saving, onChange, compact }: Props) {
   const [pending, setPending] = useState<string | null>(null);
+  const { t } = useI18n();
 
   useEffect(() => setPending(null), [value]);
 
@@ -25,9 +27,9 @@ export default function EngagementStatusControl({ value, saving, onChange, compa
   return (
     <div>
       {!ENGAGEMENT_LIFECYCLE.some(([status]) => status === value) && (
-        <p className="mb-2 text-label font-semibold text-on-surface-variant">当前：{ENGAGEMENT_LABELS[value] || value}</p>
+        <p className="mb-2 text-label font-semibold text-on-surface-variant">{t("当前：{label}", { label: t(ENGAGEMENT_LABELS[value] || value) })}</p>
       )}
-      <div className={cn("grid gap-1.5", compact ? "grid-cols-2" : "grid-cols-4")} role="group" aria-label="招聘生命周期状态">
+      <div className={cn("grid gap-1.5", compact ? "grid-cols-2" : "grid-cols-4")} role="group" aria-label={t("招聘生命周期状态")}>
         {ENGAGEMENT_LIFECYCLE.map(([status, label, icon]) => {
           const active = value === status;
           const confirming = pending === status;
@@ -45,17 +47,17 @@ export default function EngagementStatusControl({ value, saving, onChange, compa
                 confirming && "border-primary bg-primary-container text-on-primary-container",
                 !active && !confirming && "border-outline-variant bg-surface-lowest text-on-surface-variant hover:bg-surface-low",
               )}
-              title={confirming ? `再次点击确认切换为${label}` : label}
+              title={confirming ? t("再次点击确认切换为{label}", { label: t(label) }) : t(label)}
             >
               <span className="flex items-center justify-center gap-1 whitespace-nowrap">
                 <Icon name={confirming ? "check" : icon} size={15} className="shrink-0" />
-                <span>{confirming ? `确认${label}` : label}</span>
+                <span>{confirming ? t("确认{label}", { label: t(label) }) : t(label)}</span>
               </span>
             </button>
           );
         })}
       </div>
-      {pending && <p className="mt-1.5 text-label text-primary">再次点击带勾按钮以确认</p>}
+      {pending && <p className="mt-1.5 text-label text-primary">{t("再次点击带勾按钮以确认")}</p>}
     </div>
   );
 }

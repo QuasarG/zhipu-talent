@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, parseSSE } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import type {
   GrillChatMessage as ChatMessage,
   GrillChatSegment as ChatSegment,
@@ -100,6 +101,7 @@ interface Props {
 }
 
 export default function GrillWorkbench({ onSwitchMode }: Props) {
+  const { t } = useI18n();
   const [sessionId, setSessionId] = useState("");
   const [ready, setReady] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -286,7 +288,7 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
     } catch (err) {
       updateActive({
         type: "error",
-        payload: { message: err instanceof Error ? err.message : "请求失败" },
+        payload: { message: err instanceof Error ? err.message : t("请求失败") },
       });
       startFollow();
       return;
@@ -325,7 +327,7 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
       setDeliverables(await api.grill.regenerateDeliverables(sessionId));
       setShowDeliverables(true);
     } catch (err) {
-      setRegenError(err instanceof Error ? err.message : "生成失败");
+      setRegenError(err instanceof Error ? err.message : t("生成失败"));
       window.setTimeout(() => setRegenError(""), 5000);
     } finally {
       setRegenerating(false);
@@ -335,8 +337,8 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
   return (
     <div className="flex flex-col h-[calc(100vh-24px)]">
       <PageToolbar
-        title="画像澄清"
-        subtitle="面向用人部门 leader · 把模糊画像逼问清楚"
+        title={t("画像澄清")}
+        subtitle={t("面向用人部门 leader · 把模糊画像逼问清楚")}
         right={
           <div className="flex items-center gap-2">
             {regenError && <span className="text-label text-error">{regenError}</span>}
@@ -344,17 +346,17 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
               variant="tonal"
               icon="refresh"
               disabled={!deliverables || regenerating}
-              title={deliverables ? "基于当前画像与对话重新生成" : "需求包生成后可重新生成"}
+              title={deliverables ? t("基于当前画像与对话重新生成") : t("需求包生成后可重新生成")}
               onClick={handleRegen}
             >
-              {regenerating ? "生成中…" : "重新生成需求包"}
+              {regenerating ? t("生成中…") : t("重新生成需求包")}
             </Button>
             <SegmentedButtons
               value="clarify"
               onChange={(m) => onSwitchMode(m)}
               options={[
-                { value: "qa", label: "人才问答", icon: "forum" },
-                { value: "clarify", label: "画像澄清", icon: "psychology_alt" },
+                { value: "qa", label: t("人才问答"), icon: "forum" },
+                { value: "clarify", label: t("画像澄清"), icon: "psychology_alt" },
               ]}
             />
           </div>
@@ -377,24 +379,24 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
           <div ref={convRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-5 pr-1 pb-2">
             {!ready ? (
               <div className="flex-1 flex items-center justify-center">
-                <LoadingIndicator size={28} label="初始化会话…" />
+                <LoadingIndicator size={28} label={t("初始化会话…")} />
               </div>
             ) : messages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
                 <Icon name="psychology" size={40} className="text-on-surface-variant" />
-                <p className="text-title">说说你想招什么样的人？</p>
+                <p className="text-title">{t("说说你想招什么样的人？")}</p>
                 <p className="text-body-sm text-on-surface-variant">
-                  Agent 会像资深 HR 一样追问，右侧大纲与画像卡实时填充
+                  {t("Agent 会像资深 HR 一样追问，右侧大纲与画像卡实时填充")}
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {["我们想招个后端开发工程师。", "招一个 AI 产品经理实习生，base 北京。"].map((t) => (
+                  {["我们想招个后端开发工程师。", "招一个 AI 产品经理实习生，base 北京。"].map((s) => (
                     <button
-                      key={t}
+                      key={s}
                       type="button"
-                      onClick={() => send(t)}
+                      onClick={() => send(t(s))}
                       className="state-layer rounded-full border border-primary/50 bg-surface-lowest px-3 py-1.5 text-body-sm text-primary cursor-pointer hover:bg-primary-container"
                     >
-                      {t}
+                      {t(s)}
                     </button>
                   ))}
                 </div>
@@ -443,7 +445,7 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
             profile={profile}
             hasDeliverables={!!deliverables}
             busy={busy}
-            onConfirm={() => send("画像总结确认无误，请生成需求包。")}
+            onConfirm={() => send(t("画像总结确认无误，请生成需求包。"))}
             onOpenDeliverables={() => setShowDeliverables(true)}
           />
         </div>

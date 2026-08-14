@@ -5,6 +5,7 @@ import Button from "@/components/ui/Button";
 import Chip, { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 type ActionSegment = Extract<ChatSegment, { type: "action" }>;
 type Decision = Record<string, unknown>;
@@ -42,27 +43,30 @@ const inputClass =
   "w-full px-3 py-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface outline-none focus:outline-2 focus:outline-primary";
 
 /** 决策后的定格文案 */
-function decidedText(segment: ActionSegment): string {
+function decidedText(
+  segment: ActionSegment,
+  t: (key: string, params?: Record<string, string | number>) => string
+): string {
   const d = segment.decision || {};
   switch (segment.kind) {
     case "select_person": {
       const candidates = (segment.payload.candidates as PersonCandidate[]) || [];
       const picked = candidates.find((c) => c.person_id === d.choice);
-      return `已选择：${picked?.name || d.choice || "—"}`;
+      return t("已选择：{name}", { name: String(picked?.name || d.choice || "—") });
     }
     case "propose_add_person":
-      return d.approved ? "已加入人才库" : "已跳过入库";
+      return d.approved ? t("已加入人才库") : t("已跳过入库");
     case "resolve_fact_conflict":
-      return d.approved ? "已采信此条事实" : "已保持现状";
+      return d.approved ? t("已采信此条事实") : t("已保持现状");
     case "clarify":
-      return `已回答：${d.answer || "—"}`;
+      return t("已回答：{answer}", { answer: String(d.answer || "—") });
     case "review_reputation": {
       const verdicts = (d.verdicts as { action?: string }[]) || [];
       const ok = verdicts.filter((v) => v.action === "confirmed").length;
-      return `已核验：确认 ${ok} 条 / 驳回 ${verdicts.length - ok} 条`;
+      return t("已核验：确认 {ok} 条 / 驳回 {dismissed} 条", { ok, dismissed: verdicts.length - ok });
     }
     default:
-      return "已处理";
+      return t("已处理");
   }
 }
 
@@ -73,6 +77,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
   const [note, setNote] = useState("");
   const [answer, setAnswer] = useState("");
   const [verdicts, setVerdicts] = useState<Record<number, string>>({});
+  const { t } = useI18n();
   const decided = segment.decision != null;
   const payload = segment.payload;
   const submit = (decision: Decision) => onDecide(segment.action_id, decision);
@@ -83,7 +88,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
         const candidates = (payload.candidates as PersonCandidate[]) || [];
         return (
           <>
-            <p className="text-body-sm text-on-surface-variant">命中多个同名人物，请选择要调查的目标：</p>
+            <p className="text-body-sm text-on-surface-variant">{t("命中多个同名人物，请选择要调查的目标：")}</p>
             <div className="flex flex-col gap-1.5 mt-2">
               {candidates.map((c) => (
                 <button
@@ -103,7 +108,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                     size={18}
                     className={choice === c.person_id ? "text-primary" : "text-on-surface-variant"}
                   />
-                  <span className="text-body font-medium text-on-surface">{c.name || "未命名"}</span>
+                  <span className="text-body font-medium text-on-surface">{c.name || t("未命名")}</span>
                   <span className="text-body-sm text-on-surface-variant truncate">
                     {[c.org, c.direction].filter(Boolean).join(" · ")}
                   </span>
@@ -113,7 +118,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
             {!decided && (
               <div className="flex justify-end mt-3">
                 <Button variant="filled" icon="check" disabled={!choice || busy} onClick={() => submit({ choice })}>
-                  确认选择
+                  {t("确认选择")}
                 </Button>
               </div>
             )}
@@ -124,19 +129,19 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
         return (
           <>
             <div className="text-body-sm">
-              <p className="font-medium text-on-surface">{String(payload.name || "未命名")}</p>
+              <p className="font-medium text-on-surface">{String(payload.name || t("未命名"))}</p>
               <p className="text-on-surface-variant mt-0.5">
-                {[payload.org, payload.direction].filter(Boolean).map(String).join(" · ") || "暂无机构与方向信息"}
+                {[payload.org, payload.direction].filter(Boolean).map(String).join(" · ") || t("暂无机构与方向信息")}
               </p>
               {Boolean(payload.note) && <p className="text-on-surface-variant mt-1">{String(payload.note)}</p>}
             </div>
             {!decided && (
               <div className="flex justify-end gap-2 mt-3">
                 <Button variant="outlined" disabled={busy} onClick={() => submit({ approved: false })}>
-                  暂不入库
+                  {t("暂不入库")}
                 </Button>
                 <Button variant="filled" icon="person_add" disabled={busy} onClick={() => submit({ approved: true })}>
-                  加入人才库
+                  {t("加入人才库")}
                 </Button>
               </div>
             )}
@@ -147,12 +152,12 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
         return (
           <>
             <p className="text-body-sm text-on-surface-variant">
-              事实 #{String(payload.fact_id ?? "—")} 与现有记录冲突，Agent 建议采信以下内容：
+              {t("事实 #{id} 与现有记录冲突，Agent 建议采信以下内容：", { id: String(payload.fact_id ?? "—") })}
             </p>
             <div className="mt-2 px-3 py-2 rounded-md bg-surface-low text-body-sm text-on-surface">
               {Object.entries(chosen).map(([k, v]) => (
                 <p key={k}>
-                  <span className="text-on-surface-variant">{k}：</span>
+                  <span className="text-on-surface-variant">{t("{k}：", { k })}</span>
                   {String(v)}
                 </p>
               ))}
@@ -163,16 +168,16 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="备注（可选）"
+                  placeholder={t("备注（可选）")}
                   rows={2}
                   className={cn(inputClass, "mt-2 resize-y")}
                 />
                 <div className="flex justify-end gap-2 mt-2">
                   <Button variant="outlined" disabled={busy} onClick={() => submit({ approved: false, note })}>
-                    保持现状
+                    {t("保持现状")}
                   </Button>
                   <Button variant="filled" icon="check" disabled={busy} onClick={() => submit({ approved: true, note })}>
-                    采信此条
+                    {t("采信此条")}
                   </Button>
                 </div>
               </>
@@ -201,7 +206,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                     type="text"
                     value={answer}
                     onChange={(e) => setAnswer(e.target.value)}
-                    placeholder="输入你的回答"
+                    placeholder={t("输入你的回答")}
                     className={inputClass}
                   />
                   <Button
@@ -211,7 +216,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                     disabled={!answer.trim() || busy}
                     onClick={() => submit({ answer: answer.trim() })}
                   >
-                    提交
+                    {t("提交")}
                   </Button>
                 </div>
               </>
@@ -225,8 +230,9 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
         return (
           <>
             <p className="text-body-sm text-on-surface-variant">
-              以下舆情 Agent 无法确证{payload.name ? `（${String(payload.name)}）` : ""}，请逐条核验；
-              被驳回的条目不会进入最终总结：
+              {t("以下舆情 Agent 无法确证{name}，请逐条核验；被驳回的条目不会进入最终总结：", {
+                name: payload.name ? `（${String(payload.name)}）` : "",
+              })}
             </p>
             <div className="flex flex-col gap-2 mt-2">
               {items.map((item, i) => {
@@ -242,14 +248,14 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                   >
                     <div className="flex items-center gap-2">
                       <StatusChip tone={item.sentiment === "positive" ? "success" : "error"}>
-                        {item.sentiment === "positive" ? "正面" : "负面"}
+                        {item.sentiment === "positive" ? t("正面") : t("负面")}
                       </StatusChip>
                       <p className="text-body-sm font-medium text-on-surface flex-1 break-words">
-                        {item.title || "（无标题）"}
+                        {item.title || t("（无标题）")}
                       </p>
                       {verdict && (
                         <StatusChip tone={verdict === "confirmed" ? "success" : "neutral"}>
-                          {verdict === "confirmed" ? "已确认" : "已驳回"}
+                          {verdict === "confirmed" ? t("已确认") : t("已驳回")}
                         </StatusChip>
                       )}
                     </div>
@@ -257,7 +263,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                       <p className="text-body-sm text-on-surface-variant mt-1 break-words">{item.snippet}</p>
                     )}
                     {Boolean(item.concern) && (
-                      <p className="text-label text-on-surface-variant mt-1">疑点：{item.concern}</p>
+                      <p className="text-label text-on-surface-variant mt-1">{t("疑点：{concern}", { concern: String(item.concern) })}</p>
                     )}
                     <div className="flex items-center justify-between gap-2 mt-1.5">
                       {item.url ? (
@@ -268,7 +274,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                           className="inline-flex items-center gap-1 text-label text-primary hover:underline break-all"
                         >
                           <Icon name="open_in_new" size={14} />
-                          查看原文
+                          {t("查看原文")}
                         </a>
                       ) : (
                         <span />
@@ -280,7 +286,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                             className="h-7 px-3 text-xs"
                             onClick={() => setVerdicts((v) => ({ ...v, [i]: "dismissed" }))}
                           >
-                            驳回
+                            {t("驳回")}
                           </Button>
                           <Button
                             variant={verdicts[i] === "confirmed" ? "filled" : "outlined"}
@@ -288,7 +294,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                             icon="check"
                             onClick={() => setVerdicts((v) => ({ ...v, [i]: "confirmed" }))}
                           >
-                            确认
+                            {t("确认")}
                           </Button>
                         </div>
                       )}
@@ -308,8 +314,8 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
                       verdicts: items.map((_, i) => ({ index: i, action: verdicts[i] })),
                     })
                   }
-                >
-                  提交核验结果
+                  >
+                  {t("提交核验结果")}
                 </Button>
               </div>
             )}
@@ -317,7 +323,7 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
         );
       }
       default:
-        return <p className="text-body-sm text-on-surface-variant">未知动作类型：{segment.kind}</p>;
+        return <p className="text-body-sm text-on-surface-variant">{t("未知动作类型：{kind}", { kind: segment.kind })}</p>;
     }
   };
 
@@ -325,11 +331,11 @@ export default function ActionCard({ segment, busy, onDecide }: Props) {
     <Card variant="outlined" className="chat-enter my-2 p-4">
       <div className="flex items-center gap-2 mb-2.5">
         <Icon name={meta.icon} size={20} className="text-primary" />
-        <p className="text-title flex-1">{meta.title}</p>
+        <p className="text-title flex-1">{t(meta.title)}</p>
         {decided && (
           <span className="inline-flex items-center gap-1 text-label text-success">
             <Icon name="check_circle" size={16} fill />
-            {decidedText(segment)}
+            {decidedText(segment, t)}
           </span>
         )}
       </div>
