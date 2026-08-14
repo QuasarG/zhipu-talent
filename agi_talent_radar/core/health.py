@@ -120,11 +120,11 @@ def check_llm() -> str:
 
 
 def check_embedding() -> str:
-    """Embedding 探测：检查 Z_AI_API_KEY 是否配置。"""
+    """Embedding 探测：检查 LLM_API_KEY 是否配置。"""
     from agi_talent_radar.core.settings import get_settings
 
     settings = get_settings()
-    if not settings.is_configured("Z_AI_API_KEY"):
+    if not (settings.is_configured("LLM_API_KEY") or settings.is_configured("Z_AI_API_KEY")):
         return "unconfigured"
     return "configured"
 
@@ -174,11 +174,11 @@ def check_arxiv() -> str:
 
 
 def check_web_search() -> str:
-    """智谱 Web Search 探测：检查 Z_AI_API_KEY 是否配置。"""
+    """智谱 Web Search 探测：检查 LLM_API_KEY 是否配置。"""
     from agi_talent_radar.core.settings import get_settings
 
     settings = get_settings()
-    if not settings.is_configured("Z_AI_API_KEY"):
+    if not (settings.is_configured("LLM_API_KEY") or settings.is_configured("Z_AI_API_KEY")):
         return "unconfigured"
     return "configured"
 

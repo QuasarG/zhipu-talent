@@ -22,7 +22,6 @@ from typing import Any
 # 设置页只暴露外部服务的认证 Key，其它配置不对外。
 SENSITIVE_KEYS = frozenset({
     "LLM_API_KEY",
-    "Z_AI_API_KEY",
     "AMINER_API_TOKEN",
 })
 

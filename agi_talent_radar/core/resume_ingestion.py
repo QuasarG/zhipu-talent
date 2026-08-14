@@ -91,7 +91,7 @@ def extract_image_text(file_bytes: bytes) -> str:
     return _recognize_pixmap(pixmap)
 
 
-# 智谱云端 OCR 客户端（复用 Z_AI_API_KEY），失败回退本地 RapidOCR
+# 智谱云端 OCR 客户端（复用 LLM_API_KEY），失败回退本地 RapidOCR
 _ocr_client = None
 
 
@@ -100,7 +100,7 @@ def _cloud_ocr_client():
     if _ocr_client is None:
         import os
 
-        api_key = os.getenv("Z_AI_API_KEY", "").strip()
+        api_key = (os.getenv("LLM_API_KEY") or os.getenv("Z_AI_API_KEY", "")).strip()
         if not api_key:
             return None
         import zai

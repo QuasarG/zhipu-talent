@@ -7,7 +7,7 @@
 - 单条输入最多 3072 tokens；超出按字符粗略截断（不报错）。
 - 一次请求最多 64 条；切片和批处理必须遵守该限制。
 - 调用智谱开放平台 ``/api/paas/v4/embeddings``；
-  若 ``Z_AI_API_KEY`` 是开放平台 Key 则与 Web Search 共用。
+  Key 统一走 ``LLM_API_KEY``（智谱开放平台 Key，与 GLM 共用）。
 
 本模块只在调用真实 API 时才 import openai；测试可注入 fake client。
 """
@@ -44,13 +44,13 @@ class ZhipuEmbeddingClient:
         base_url: str | None = None,
         timeout: float = 60.0,
     ) -> None:
-        self.api_key = api_key or os.getenv("Z_AI_API_KEY", "").strip()
+        self.api_key = api_key or (os.getenv("LLM_API_KEY") or os.getenv("Z_AI_API_KEY", "")).strip()
         self.base_url = base_url or ZHIPU_EMBEDDINGS_URL
         self.timeout = timeout
 
     def embed(self, inputs: list[str], model: str = EMBEDDING_MODEL) -> list[list[float]]:
         if not self.api_key:
-            raise RuntimeError("Z_AI_API_KEY 未配置，无法调用智谱 Embedding。")
+            raise RuntimeError("LLM_API_KEY 未配置，无法调用智谱 Embedding。")
         try:
             import httpx
         except ImportError as exc:

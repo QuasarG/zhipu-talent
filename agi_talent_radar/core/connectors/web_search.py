@@ -1,7 +1,7 @@
 """智谱 web-search-prime MCP 连接器：舆情/公开信息检索。
 
 MCP 端点（streamable HTTP）：https://open.bigmodel.cn/api/mcp/web_search_prime/mcp
-工具名 web_search_prime，Authorization: Bearer <Z_AI_API_KEY>。
+工具名 web_search_prime，Authorization: Bearer <LLM_API_KEY>（智谱开放平台 Key）。
 替代旧 /api/paas/v4/web_search REST 直连。
 """
 from __future__ import annotations
@@ -27,9 +27,9 @@ def search_web(
 
     engine / recency_filter 是旧 REST 接口的参数，MCP 版不支持，仅为签名兼容保留。
     """
-    api_key = os.getenv("Z_AI_API_KEY", "").strip()
+    api_key = (os.getenv("LLM_API_KEY") or os.getenv("Z_AI_API_KEY", "")).strip()
     if not api_key:
-        raise ConnectorUnavailableError("缺少 Z_AI_API_KEY，无法调用网络搜索。")
+        raise ConnectorUnavailableError("缺少 LLM_API_KEY，无法调用网络搜索。")
     try:
         items = _fetch(query[:70], domain_filter, api_key)
     except ConnectorUnavailableError:
