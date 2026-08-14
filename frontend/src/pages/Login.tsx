@@ -1,18 +1,23 @@
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useTheme } from "@/lib/theme";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
-import Icon from "@/components/ui/Icon";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import LangToggle from "@/components/LangToggle";
+import logoUrl from "@/assets/zhipu-logo.svg";
+import logoWhiteUrl from "@/assets/zhipu-logo-white.svg";
+import logoEnUrl from "@/assets/zai-logo-en.svg";
+import logoEnWhiteUrl from "@/assets/zai-logo-en-white.svg";
 
 interface LoginProps {
   onLogin: () => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const { resolved } = useTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -35,9 +40,17 @@ export default function Login({ onLogin }: LoginProps) {
   return (
     <div className="flex items-center justify-center min-h-screen p-8 bg-surface">
       <Card variant="elevated" className="relative w-full max-w-[400px] p-8 text-center">
-        <LangToggle className="absolute top-4 right-4 h-8 px-3 rounded-md border border-outline-variant bg-surface-lowest" />
-        <Icon name="radar" size={40} className="text-primary" />
-        <h1 className="text-headline mt-3 mb-2">{t("智谱人才研究平台")}</h1>
+        {/* 语言切换：钉在卡片右上角（外层 span 负责定位，避免与按钮自身布局类冲突） */}
+        <span className="absolute top-4 right-4">
+          <LangToggle className="h-8 px-3 rounded-md border border-outline-variant" />
+        </span>
+        <img
+          src={lang === "en" ? (resolved === "dark" ? logoEnWhiteUrl : logoEnUrl) : resolved === "dark" ? logoWhiteUrl : logoUrl}
+          alt={t("智谱")}
+          className="h-7 mx-auto mb-4 select-none"
+          draggable={false}
+        />
+        <h1 className="text-headline mt-0 mb-2">{t("智谱人才研究平台")}</h1>
         <p className="text-body-sm text-on-surface-variant mb-8">
           {t("内部人才研究、简历评估与知识管理工具")}
         </p>
