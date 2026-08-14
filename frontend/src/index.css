@@ -74,59 +74,54 @@ html[lang="en"] .nav-rail-label {
   white-space: nowrap;
 }
 
-/* 设计令牌 · 电光蓝（黑白 85% + #2563EB 蓝 10% + #DBEAFE 浅蓝 5%，B 端科技感） */
+/* 设计令牌 · 智谱黑白灰高级感（取自 DeepSeek webui 设计基因：bluish 灰阶 + 1px 描边 + 极淡阴影） */
 @theme {
-  /* Color roles：黑白骨架 + 电光蓝强调 */
-  --color-primary: #2563EB;
+  /* Color roles：近黑主色 + bluish 中性阶 */
+  --color-primary: #0F1115;
   --color-on-primary: #FFFFFF;
-  --color-primary-container: #DBEAFE;
-  --color-on-primary-container: #1E40AF;
-  --color-secondary: #3B3F45;
+  --color-primary-container: #E9EDF2;
+  --color-on-primary-container: #0F1115;
+  --color-secondary: #61666B;
   --color-on-secondary: #FFFFFF;
-  --color-secondary-container: #EDF0F4;
-  --color-on-secondary-container: #17191D;
-  --color-tertiary: #6E747C;
+  --color-secondary-container: #E7E9EE;
+  --color-on-secondary-container: #1F2126;
+  --color-tertiary: #818588;
   --color-on-tertiary: #FFFFFF;
-  --color-tertiary-container: #DDE1E7;
-  --color-on-tertiary-container: #17191D;
+  --color-tertiary-container: #D8DBE0;
+  --color-on-tertiary-container: #1F2126;
   --color-error: #C03434;
   --color-on-error: #FFFFFF;
   --color-error-container: #FBE9E9;
   --color-on-error-container: #5C1212;
 
-  /* Surface：黑白灰阶（纯白底 → 浅灰模块），蓝色不进底色 */
-  --color-surface: #FAFBFC;
+  /* Surface：bluish 灰阶（0=纯白底 → highest=浅灰模块） */
+  --color-surface: #F9FAFB;
   --color-surface-dim: #CFD3D6;
   --color-surface-lowest: #FFFFFF;
-  --color-surface-low: #F1F3F6;
-  --color-surface-mid: #E9ECF0;
-  --color-surface-high: #E0E4E9;
-  --color-surface-highest: #D5DAE0;
-  --color-on-surface: #0A0C0E;
-  --color-on-surface-variant: #565B63;
-  --color-inverse-surface: #17191D;
-  --color-inverse-on-surface: #EDF0F4;
+  --color-surface-low: #F0F2F5;
+  --color-surface-mid: #E9EDF2;
+  --color-surface-high: #E1E5EB;
+  --color-surface-highest: #D6DAE0;
+  --color-on-surface: #0F1115;
+  --color-on-surface-variant: #5B6167;
+  --color-inverse-surface: #1F2126;
+  --color-inverse-on-surface: #E9EDF2;
 
-  /* Outline：黑 10% 描边 */
+  /* Outline：黑 10% 描边（DSh 风格） */
   --color-outline: #979CA6;
   --color-outline-variant: rgba(0, 0, 0, 0.1);
 
-  /* Status accents（点缀不抢蓝主色） */
-  --color-success: #1F7A3D;
+  /* Status accents（灰阶世界里的低饱和点缀） */
+  --color-success: #2E7D43;
   --color-success-container: #E2F1E6;
   --color-warning: #9A6B00;
   --color-warning-container: #FBF0D9;
 
-  /* 按钮交互三态：默认 #2563EB / hover 提亮 / pressed #1E40AF */
-  --color-primary-hover: #3B82F6;
-  --color-primary-pressed: #1E40AF;
-  --color-primary-container-hover: #BFDBFE;
-
-  /* Track 语义色（黑白灰为主，agent 挂电光蓝作旗舰 track） */
-  --color-track-agent: #2563EB;
-  --color-track-safety: #17191D;
-  --color-track-ai_infra: #6E747C;
-  --color-track-ai4science: #3B3F45;
+  /* Track 语义色（黑白灰体系：同阶灰 + 深浅区分） */
+  --color-track-agent: #0F1115;
+  --color-track-safety: #61666B;
+  --color-track-ai_infra: #818588;
+  --color-track-ai4science: #454A50;
   --color-track-multimodal: #979CA6;
   --color-track-base: #C7CBD0;
 
@@ -134,37 +129,37 @@ html[lang="en"] .nav-rail-label {
   --font-sans: "Montserrat", "MiSans", -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: "Roboto Mono", "SF Mono", Consolas, monospace;
 
-  /* Shape：8/12/16 圆角阶 */
+  /* Shape：DSh 圆角阶（8/12/16 为主） */
   --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 12px;
   --radius-xl: 16px;
 
-  /* Motion（0.1-0.3s ease-in-out） */
+  /* Motion（DSh：0.1-0.3s ease-in-out） */
   --ease-emphasized: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
   --ease-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Elevation：极淡阴影（黑 2%-8%） */
+  /* Elevation（DSh 极淡阴影：黑 2%-8%，无 umbra 多层） */
   --shadow-1: 0 2px 4px 0 rgba(0, 0, 0, 0.05);
   --shadow-2: 0 4px 12px 0 rgba(0, 0, 0, 0.02), 0 2px 8px 0 rgba(0, 0, 0, 0.04);
   --shadow-3: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
 }
 
-/* ---- 深色主题（黑白骨架不变，电光蓝在暗底提亮一档），令牌覆盖即全站生效 ---- */
+/* ---- 深色主题（DSh 暗色调：近黑底 + 白字 + 反白主按钮），令牌覆盖即全站生效 ---- */
 html[data-theme="dark"] {
-  --color-primary: #3B82F6;
-  --color-on-primary: #FFFFFF;
-  --color-primary-container: #1E3A5F;
-  --color-on-primary-container: #BFDBFE;
+  --color-primary: #F0F1F3;
+  --color-on-primary: #0F1115;
+  --color-primary-container: #3A3B40;
+  --color-on-primary-container: #E9EDF2;
   --color-secondary: #A7ABB2;
-  --color-on-secondary: #17191D;
+  --color-on-secondary: #0F1115;
   --color-secondary-container: #3A3B40;
-  --color-on-secondary-container: #EDF0F4;
+  --color-on-secondary-container: #E9EDF2;
   --color-tertiary: #7E838A;
-  --color-on-tertiary: #17191D;
+  --color-on-tertiary: #0F1115;
   --color-tertiary-container: #2E3033;
   --color-on-tertiary-container: #DEE1E6;
   --color-error: #E5484D;
@@ -172,17 +167,17 @@ html[data-theme="dark"] {
   --color-error-container: #3D1A1C;
   --color-on-error-container: #F9D8D9;
 
-  --color-surface: #101114;
-  --color-surface-dim: #0A0C0E;
-  --color-surface-lowest: #1D1F23;
-  --color-surface-low: #17191D;
-  --color-surface-mid: #1F2125;
-  --color-surface-high: #272A2E;
-  --color-surface-highest: #313438;
-  --color-on-surface: #F2F4F7;
+  --color-surface: #151517;
+  --color-surface-dim: #0F1115;
+  --color-surface-lowest: #232427;
+  --color-surface-low: #1D1F22;
+  --color-surface-mid: #232528;
+  --color-surface-high: #2B2D30;
+  --color-surface-highest: #343639;
+  --color-on-surface: #F0F1F3;
   --color-on-surface-variant: #A2A7AE;
-  --color-inverse-surface: #EDF0F4;
-  --color-inverse-on-surface: #17191D;
+  --color-inverse-surface: #E9EDF2;
+  --color-inverse-on-surface: #1F2126;
 
   --color-outline: #6A6F76;
   --color-outline-variant: rgba(255, 255, 255, 0.12);
@@ -192,16 +187,12 @@ html[data-theme="dark"] {
   --color-warning: #D9A94A;
   --color-warning-container: #3A3018;
 
-  --color-track-agent: #3B82F6;
-  --color-track-safety: #EDF0F4;
+  --color-track-agent: #F0F1F3;
+  --color-track-safety: #A2A7AE;
   --color-track-ai_infra: #7E838A;
   --color-track-ai4science: #C7CBD0;
   --color-track-multimodal: #8A8F96;
   --color-track-base: #565B61;
-
-  --color-primary-hover: #60A5FA;
-  --color-primary-pressed: #DBEAFE;
-  --color-primary-container-hover: #25476E;
 
   --shadow-1: 0 2px 4px 0 rgba(0, 0, 0, 0.3);
   --shadow-2: 0 4px 12px 0 rgba(0, 0, 0, 0.25), 0 2px 8px 0 rgba(0, 0, 0, 0.3);
