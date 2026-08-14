@@ -1,5 +1,13 @@
 export default {
   "设置": "Settings",
+  "外观": "Appearance",
+  "界面主题": "Theme",
+  "跟随系统时按操作系统外观自动切换": "Follows your OS appearance automatically in System mode",
+  "浅色": "Light",
+  "深色": "Dark",
+  "跟随系统": "System",
+  "当前：{mode}，点击切换": "Current: {mode}, click to switch",
+  "切换主题": "Switch theme",
   "外部服务 Key、Base URL 与模型配置": "External service keys, base URLs, and model configuration",
   "加载中…": "Loading…",
   "服务状态": "Service Status",

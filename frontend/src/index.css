@@ -84,79 +84,134 @@ html[lang="en"] .nav-rail-label {
   white-space: nowrap;
 }
 
-/* Material Design 3 设计令牌 · m3.material.io 同款紫罗兰 light scheme · 单一标准角色命名 */
-
+/* 设计令牌 · 智谱黑白灰高级感（取自 DeepSeek webui 设计基因：bluish 灰阶 + 1px 描边 + 极淡阴影） */
 @theme {
-  /* Color roles（MD3 基线紫，灰调不鲜艳） */
-  --color-primary: #6750A4;
+  /* Color roles：近黑主色 + bluish 中性阶 */
+  --color-primary: #0F1115;
   --color-on-primary: #FFFFFF;
-  --color-primary-container: #EADDFF;
-  --color-on-primary-container: #21005D;
-  --color-secondary: #625B71;
+  --color-primary-container: #E9EDF2;
+  --color-on-primary-container: #0F1115;
+  --color-secondary: #61666B;
   --color-on-secondary: #FFFFFF;
-  --color-secondary-container: #E8DEF8;
-  --color-on-secondary-container: #1D192B;
-  --color-tertiary: #4B607C;
+  --color-secondary-container: #E7E9EE;
+  --color-on-secondary-container: #1F2126;
+  --color-tertiary: #818588;
   --color-on-tertiary: #FFFFFF;
-  --color-tertiary-container: #D3E4FF;
-  --color-on-tertiary-container: #041C35;
-  --color-error: #BA1A1A;
+  --color-tertiary-container: #D8DBE0;
+  --color-on-tertiary-container: #1F2126;
+  --color-error: #C03434;
   --color-on-error: #FFFFFF;
-  --color-error-container: #FFDAD6;
-  --color-on-error-container: #410002;
+  --color-error-container: #FBE9E9;
+  --color-on-error-container: #5C1212;
 
-  /* Surface tonal levels（m3 站点 surface-0~5 迁移，淡薰衣草底） */
-  --color-surface: #FEFBFF;
-  --color-surface-dim: #D8D2DA;
+  /* Surface：bluish 灰阶（0=纯白底 → highest=浅灰模块） */
+  --color-surface: #F9FAFB;
+  --color-surface-dim: #CFD3D6;
   --color-surface-lowest: #FFFFFF;
-  --color-surface-low: #F8F1F6;
-  --color-surface-mid: #F2ECEE;
-  --color-surface-high: #ECE7E9;
-  --color-surface-highest: #E6E1E3;
-  --color-on-surface: #1C1B1D;
-  --color-on-surface-variant: #4D4256;
-  --color-inverse-surface: #2B292B;
-  --color-inverse-on-surface: #E6E1E3;
+  --color-surface-low: #F0F2F5;
+  --color-surface-mid: #E9EDF2;
+  --color-surface-high: #E1E5EB;
+  --color-surface-highest: #D6DAE0;
+  --color-on-surface: #0F1115;
+  --color-on-surface-variant: #5B6167;
+  --color-inverse-surface: #1F2126;
+  --color-inverse-on-surface: #E9EDF2;
 
-  /* Outline */
-  --color-outline: #787579;
-  --color-outline-variant: #CFC8D4;
+  /* Outline：黑 10% 描边（DSh 风格） */
+  --color-outline: #979CA6;
+  --color-outline-variant: rgba(0, 0, 0, 0.1);
 
-  /* Status accents (success/warning 走 MD3 扩展色) */
-  --color-success: #146C2E;
-  --color-success-container: #A6F2A5;
-  --color-warning: #7D5700;
-  --color-warning-container: #FFDEA0;
+  /* Status accents（灰阶世界里的低饱和点缀） */
+  --color-success: #2E7D43;
+  --color-success-container: #E2F1E6;
+  --color-warning: #9A6B00;
+  --color-warning-container: #FBF0D9;
 
-  /* Track 语义色（降饱和，与薰衣草底和谐） */
-  --color-track-agent: #6750A4;
-  --color-track-safety: #4F7290;
-  --color-track-ai_infra: #A17C3A;
-  --color-track-ai4science: #6E8A63;
-  --color-track-multimodal: #A9707C;
-  --color-track-base: #6B6B7D;
+  /* Track 语义色（黑白灰体系：同阶灰 + 深浅区分） */
+  --color-track-agent: #0F1115;
+  --color-track-safety: #61666B;
+  --color-track-ai_infra: #818588;
+  --color-track-ai4science: #454A50;
+  --color-track-multimodal: #979CA6;
+  --color-track-base: #C7CBD0;
 
   /* Typography（拉丁 Roboto Flex，中文 MiSans） */
   --font-sans: "Roboto Flex", "MiSans", "Roboto", -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: "Roboto Mono", "SF Mono", Consolas, monospace;
 
-  /* Shape (MD3 corner scale) */
-  --radius-xs: 4px;
+  /* Shape：DSh 圆角阶（8/12/16 为主） */
+  --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 28px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
-  /* Motion (MD3 emphasized/standard) */
-  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  /* Motion（DSh：0.1-0.3s ease-in-out） */
+  --ease-emphasized: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
   --ease-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Elevation（M3 官方 umbra/penumbra 双层阴影） */
-  --shadow-1: 0 1px 2px 0 rgba(0,0,0,0.30), 0 1px 3px 1px rgba(0,0,0,0.15);
-  --shadow-2: 0 1px 2px 0 rgba(0,0,0,0.30), 0 2px 6px 2px rgba(0,0,0,0.15);
-  --shadow-3: 0 1px 3px 0 rgba(0,0,0,0.30), 0 4px 8px 3px rgba(0,0,0,0.15);
+  /* Elevation（DSh 极淡阴影：黑 2%-8%，无 umbra 多层） */
+  --shadow-1: 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+  --shadow-2: 0 4px 12px 0 rgba(0, 0, 0, 0.02), 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+  --shadow-3: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* ---- 深色主题（DSh 暗色调：近黑底 + 白字 + 反白主按钮），令牌覆盖即全站生效 ---- */
+html[data-theme="dark"] {
+  --color-primary: #F0F1F3;
+  --color-on-primary: #0F1115;
+  --color-primary-container: #3A3B40;
+  --color-on-primary-container: #E9EDF2;
+  --color-secondary: #A7ABB2;
+  --color-on-secondary: #0F1115;
+  --color-secondary-container: #3A3B40;
+  --color-on-secondary-container: #E9EDF2;
+  --color-tertiary: #7E838A;
+  --color-on-tertiary: #0F1115;
+  --color-tertiary-container: #2E3033;
+  --color-on-tertiary-container: #DEE1E6;
+  --color-error: #E5484D;
+  --color-on-error: #FFFFFF;
+  --color-error-container: #3D1A1C;
+  --color-on-error-container: #F9D8D9;
+
+  --color-surface: #151517;
+  --color-surface-dim: #0F1115;
+  --color-surface-lowest: #232427;
+  --color-surface-low: #1D1F22;
+  --color-surface-mid: #232528;
+  --color-surface-high: #2B2D30;
+  --color-surface-highest: #343639;
+  --color-on-surface: #F0F1F3;
+  --color-on-surface-variant: #A2A7AE;
+  --color-inverse-surface: #E9EDF2;
+  --color-inverse-on-surface: #1F2126;
+
+  --color-outline: #6A6F76;
+  --color-outline-variant: rgba(255, 255, 255, 0.12);
+
+  --color-success: #58B36F;
+  --color-success-container: #1C3226;
+  --color-warning: #D9A94A;
+  --color-warning-container: #3A3018;
+
+  --color-track-agent: #F0F1F3;
+  --color-track-safety: #A2A7AE;
+  --color-track-ai_infra: #7E838A;
+  --color-track-ai4science: #C7CBD0;
+  --color-track-multimodal: #8A8F96;
+  --color-track-base: #565B61;
+
+  --shadow-1: 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 4px 12px 0 rgba(0, 0, 0, 0.25), 0 2px 8px 0 rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 0 1px 0 rgba(0, 0, 0, 0.5), 0 12px 32px 0 rgba(0, 0, 0, 0.5);
+}
+html[data-theme="dark"] .md3-card,
+html[data-theme="dark"] .md3-card-outlined,
+html[data-theme="dark"] .md3-card-elevated {
+  background-color: var(--color-surface-lowest);
 }
 
 /* ---- Reset（margin/padding 由 Tailwind preflight 处理，不能在非 layer 重复，否则会压掉 utilities） ---- */
@@ -180,9 +235,10 @@ body {
 .text-body-sm  { font-size: 13px; line-height: 18px; font-weight: 400; letter-spacing: 0; }
 .text-label    { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0; }
 
-/* ---- MD3 Cards（tonal surface 为主，elevated 用官方双层阴影） ---- */
+/* ---- Cards（DSh 风格：描边白卡 + 极淡阴影） ---- */
 .md3-card {
-  background-color: var(--color-surface-low);
+  background-color: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
   border-radius: var(--radius-lg);
 }
 .md3-card-outlined {
@@ -192,8 +248,9 @@ body {
 }
 .md3-card-elevated {
   background-color: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--shadow-2);
 }
 
 /* ---- MD3 State Layer（hover 8% / pressed 12%，emphasized 动效） ---- */

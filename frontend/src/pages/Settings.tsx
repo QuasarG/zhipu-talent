@@ -5,8 +5,10 @@ import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
+import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useTheme, type ThemeMode } from "@/lib/theme";
 import { resetOnboarding } from "@/components/OnboardingTour";
 import type { HealthReport } from "@/lib/types";
 
@@ -79,6 +81,7 @@ export default function Settings() {
   }, [load]);
 
   const { t } = useI18n();
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
 
   const startEdit = (key: string) => {
     setEditingKey(key);
@@ -122,6 +125,32 @@ export default function Settings() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
+          {/* 外观 */}
+          <section>
+            <h2 className="text-title-lg mb-3">{t("外观")}</h2>
+            <Card variant="outlined" className="flex items-center justify-between gap-4 p-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <Icon name="routine" size={20} className="text-on-surface-variant shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-title">{t("界面主题")}</p>
+                  <p className="text-body-sm text-on-surface-variant">
+                    {t("跟随系统时按操作系统外观自动切换")}
+                  </p>
+                </div>
+              </div>
+              <SegmentedButtons
+                value={themeMode}
+                onChange={(v) => setThemeMode(v as ThemeMode)}
+                options={[
+                  { value: "light", label: t("浅色"), icon: "light_mode" },
+                  { value: "dark", label: t("深色"), icon: "dark_mode" },
+                  { value: "system", label: t("跟随系统"), icon: "routine" },
+                ]}
+                className="shrink-0"
+              />
+            </Card>
+          </section>
+
           {/* 服务状态 */}
           <section>
             <h2 className="text-title-lg mb-3">{t("服务状态")}</h2>
