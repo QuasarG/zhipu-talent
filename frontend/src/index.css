@@ -75,8 +75,14 @@ html[lang="en"] .chat-markdown h4 {
   font-weight: 400; /* Bebas 单字重，禁伪粗 */
   letter-spacing: 0.04em;
 }
-/* 导航标签：英文单词长（Resume Screening），nowrap 缩一号保持单行居中 */
-html[lang="en"] .nav-rail-label { font-size: 11px; white-space: nowrap; }
+/* 导航标签：英文用 Bebas 窄体（实测最长标签 74.7px < 容器 80px），单行不截断 */
+html[lang="en"] .nav-rail-label {
+  font-family: "Bebas Neue", "MiSans", sans-serif;
+  font-size: 12px;
+  font-weight: 400; /* 覆盖 active 的 semibold，Bebas 单字重禁伪粗 */
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
 
 /* Material Design 3 设计令牌 · m3.material.io 同款紫罗兰 light scheme · 单一标准角色命名 */
 
