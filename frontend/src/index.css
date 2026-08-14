@@ -43,6 +43,18 @@
   font-display: swap;
   src: url("./assets/fonts/MiSans-Bold.woff2") format("woff2");
 }
+/* Bebas Neue：英文模式全站字体（单字重、无小写，中文自动回退 MiSans） */
+@font-face {
+  font-family: "Bebas Neue";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/BebasNeue-Regular.ttf") format("truetype");
+}
+/* i18n Provider 切语言时同步 <html lang>，英文模式整站换 Bebas Neue */
+html[lang="en"] body {
+  font-family: "Bebas Neue", "MiSans", "Roboto", system-ui, sans-serif;
+}
 
 /* Material Design 3 设计令牌 · m3.material.io 同款紫罗兰 light scheme · 单一标准角色命名 */
 
