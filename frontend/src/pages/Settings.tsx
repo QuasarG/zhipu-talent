@@ -12,6 +12,19 @@ import { useTheme, type ThemeMode } from "@/lib/theme";
 import { resetOnboarding } from "@/components/OnboardingTour";
 import type { HealthReport } from "@/lib/types";
 
+// 服务状态骨架：health 检测完成前先渲染这些卡片（status=checking）
+const HEALTH_SKELETON = [
+  "mysql",
+  "qdrant",
+  "llm",
+  "embedding",
+  "aminer",
+  "crossref",
+  "arxiv",
+  "openalex",
+  "web_search",
+].map((name) => ({ name, status: "checking", latency_ms: 0, detail: "", required: false }));
+
 const statusMeta: Record<string, { icon: string; cls: string }> = {
   ok: { icon: "check_circle", cls: "text-success" },
   degraded: { icon: "warning", cls: "text-warning" },
@@ -29,14 +42,9 @@ type ConfigValue = string | SensitiveValue;
 /** 每个 Key 对应的服务描述（名称 + 用途 + 图标） */
 const KEY_META: Record<string, { label: string; desc: string; icon: string }> = {
   LLM_API_KEY: {
-    label: "智谱 GLM-5.2",
-    desc: "简历评估、初筛分类、结构化解析、论文对齐等全部 LLM 工作节点（OpenAI 兼容端点）",
+    label: "智谱开放平台",
+    desc: "一把 Key 通吃：GLM-5.2 全部 LLM 节点 + Web Search 联网搜索 + Embedding 向量化 + 云端 OCR",
     icon: "neurology",
-  },
-  Z_AI_API_KEY: {
-    label: "智谱 Z.AI",
-    desc: "Web Search 联网搜索 + Embedding 向量化（人才知识库语义检索）",
-    icon: "search",
   },
   AMINER_API_TOKEN: {
     label: "AMiner 学术平台",
@@ -51,9 +59,10 @@ function isSensitive(v: ConfigValue): v is SensitiveValue {
 }
 
 export default function Settings() {
+  // health=null 表示检测进行中；config={} 表示配置读取中——都不挡页面，
+  // 卡片先渲染骨架，结果回来后逐卡片无缝定格
   const [health, setHealth] = useState<HealthReport | null>(null);
   const [config, setConfig] = useState<Record<string, ConfigValue>>({});
-  const [loading, setLoading] = useState(true);
   // 正在编辑的 key（一次只能编辑一个）
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -61,19 +70,9 @@ export default function Settings() {
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [h, c] = await Promise.all([
-        api.health(),
-        api.config.get(),
-      ]);
-      setHealth(h);
-      setConfig(c as Record<string, ConfigValue>);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
+    // 两个请求独立失败互不拖累；页面骨架先行，结果逐项填充
+    api.health().then(setHealth).catch(() => setHealth(null));
+    api.config.get().then((c) => setConfig(c as Record<string, ConfigValue>)).catch(() => setConfig({}));
   }, []);
 
   useEffect(() => {
@@ -114,17 +113,14 @@ export default function Settings() {
     }
   };
 
-  const configEntries = Object.entries(config);
+  // 配置未返回时先用白名单骨架渲染（值区显示骨架条），返回后无缝替换
+  const configEntries: [string, ConfigValue | null][] =
+    Object.entries(config).length > 0 ? (Object.entries(config) as [string, ConfigValue][]) : (Object.keys(KEY_META) as string[]).map((k): [string, ConfigValue | null] => [k, null]);
 
   return (
     <div>
       <PageToolbar title={t("设置")} subtitle={t("外部服务 Key、Base URL 与模型配置")} />
-      {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <LoadingIndicator size={32} label={t("加载中…")} />
-        </div>
-      ) : (
-        <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
           {/* 外观 */}
           <section>
             <h2 className="text-title-lg mb-3">{t("外观")}</h2>
@@ -155,7 +151,7 @@ export default function Settings() {
           <section>
             <h2 className="text-title-lg mb-3">{t("服务状态")}</h2>
             <div className="grid grid-cols-3 gap-3">
-              {health?.services.map((s) => {
+              {(health?.services ?? HEALTH_SKELETON).map((s) => {
                 const meta = statusMeta[s.status] ?? statusMeta.down;
                 return (
                   <Card key={s.name} variant="outlined" className="flex items-center justify-between gap-3 p-4">
@@ -187,7 +183,8 @@ export default function Settings() {
             )}
             <div className="grid grid-cols-1 gap-3 max-w-[640px]">
               {configEntries.map(([key, value]) => {
-                const sensitive = isSensitive(value);
+                const skeleton = value === null || value === undefined;
+                const sensitive = !skeleton && isSensitive(value as ConfigValue);
                 const isEditing = editingKey === key;
                 const meta = KEY_META[key];
                 // 从服务状态找对应的健康检查结果
@@ -209,17 +206,23 @@ export default function Settings() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {/* 服务连接状态 */}
-                        {svcHealth && (
+                        {/* 服务连接状态：检测中转圈，完成定格 */}
+                        {svcHealth ? (
                           <span className="inline-flex items-center gap-1 text-label text-on-surface-variant">
                             <span className={`w-2 h-2 rounded-full ${svcHealth.status === "ok" ? "bg-success" : svcHealth.status === "degraded" ? "bg-warning" : "bg-error"}`} />
                             {svcHealth.detail}
                           </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-label text-on-surface-variant">
+                            <LoadingIndicator size={14} strokeWidth={2} />
+                            {t("检测中…")}
+                          </span>
                         )}
-                        {sensitive && (
-                          <StatusChip tone={value.configured ? "success" : "warning"}>
-                            {value.configured ? t("已配置") : t("未配置")}
-                          </StatusChip>
+                        {sensitive && (value as SensitiveValue).configured && (
+                          <StatusChip tone="success">{t("已配置")}</StatusChip>
+                        )}
+                        {sensitive && !(value as SensitiveValue).configured && (
+                          <StatusChip tone="warning">{t("未配置")}</StatusChip>
                         )}
                       </div>
                     </div>
@@ -228,12 +231,16 @@ export default function Settings() {
                     {/* 值显示区（敏感项只显示脱敏，非敏感显示原值） */}
                     {!isEditing && (
                       <div className="flex items-center justify-between gap-2">
+                        {skeleton ? (
+                          <span className="skeleton-block h-3.5 w-40" aria-label="loading" />
+                        ) : (
                         <span
                           className={`text-body-sm text-on-surface-variant font-mono truncate min-w-0 ${sensitive ? "select-none" : ""}`}
-                          title={sensitive ? value.masked || undefined : value || undefined}
+                          title={sensitive ? (value as SensitiveValue).masked || undefined : (value as string) || undefined}
                         >
-                          {sensitive ? value.masked || t("（未配置）") : value || "—"}
+                          {sensitive ? (value as SensitiveValue).masked || t("（未配置）") : (value as string) || "—"}
                         </span>
+                        )}
                         <Button
                           variant="text"
                           icon="edit"
@@ -299,9 +306,8 @@ export default function Settings() {
                 {t("重新查看新手引导")}
               </Button>
             </div>
-          </section>
-        </div>
-      )}
+        </section>
+      </div>
     </div>
   );
 }
