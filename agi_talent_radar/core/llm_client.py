@@ -216,14 +216,8 @@ def _client() -> OpenAI:
     return _CLIENT
 
 
-def _thinking_kwargs(enable_thinking: bool) -> dict[str, Any]:
-    """按是否启用思考返回对应请求参数。
-
-    开启：低强度思考（提升事实对齐准确度，核验阶段专用）。
-    关闭：纯生成模式（评估等 17 处调用保持原行为）。
-    """
-    if enable_thinking:
-        return {"reasoning_effort": "low", "extra_body": {"thinking": {"type": "enabled"}}}
+def _thinking_kwargs(enable_thinking: bool = False) -> dict[str, Any]:
+    """GLM-5.2 全链路禁用思考：参数保留但恒返回 disabled（提示词工程已足够）。"""
     return {"extra_body": {"thinking": {"type": "disabled"}}}
 
 
