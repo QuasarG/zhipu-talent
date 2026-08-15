@@ -115,7 +115,17 @@ class DatabaseTest(unittest.TestCase):
                 for group in phase["groups"]
                 for node in group["nodes"]
             ]
-            self.assertEqual(len(graph_nodes), 15)
+            # 与图目录动态比对：加节点不用改这里（旧断言写死 15，catalog 演进到 17 后过时红灯）
+            from agi_talent_radar.core.graph import evaluation_graph_catalog as _catalog
+
+            catalog_nodes = [
+                node["node"]
+                for phase in _catalog()["phases"]
+                for group in phase["groups"]
+                for node in group["nodes"]
+            ]
+            self.assertEqual(sorted(graph_nodes), sorted(catalog_nodes))
+            self.assertEqual(len(graph_nodes), len(set(graph_nodes)))
             # 论文核验前移到导入阶段后，academic_check 不再出现在展示图谱
             self.assertNotIn("academic_check", graph_nodes)
             self.assertIn("ai4science_track", graph_nodes)
