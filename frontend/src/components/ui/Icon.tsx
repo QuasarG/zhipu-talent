@@ -1,8 +1,8 @@
 import { Icon as IconifyIcon, addCollection } from "@iconify/react";
-import subset from "@/assets/material-symbols-subset.json";
+import subset from "@/assets/tabler-subset.json";
 import nameMap from "@/assets/icon-name-map.json";
 
-// 离线加载 69 个 Material Symbols 图标子集（~20KB），不依赖网络
+// 离线加载 Tabler Icons 子集（2px 描边线条风，~26KB），不依赖网络
 addCollection(subset as never);
 
 const MAP = nameMap as Record<string, string>;
@@ -19,7 +19,7 @@ export default function Icon({ name, fill = false, size = 20, className }: IconP
   const iconifyName = MAP[name] || name.replace(/_/g, "-");
   return (
     <IconifyIcon
-      icon={`material-symbols:${iconifyName}`}
+      icon={`tabler:${iconifyName}`}
       width={size}
       height={size}
       className={className}
