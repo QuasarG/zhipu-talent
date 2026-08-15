@@ -6,7 +6,6 @@ import PageToolbar from "@/components/layout/PageToolbar";
 import SearchField from "@/components/ui/SearchField";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import Chip from "@/components/ui/Chip";
-import Card from "@/components/ui/Card";
 import { IconButton } from "@/components/ui/Button";
 import TalentList, { classifyTrack, STATUS_LABELS, TRACKS } from "@/features/pool/TalentList";
 import TalentDetail from "@/features/pool/TalentDetail";
@@ -25,7 +24,6 @@ export default function TalentPool() {
   const [trackFilter, setTrackFilter] = useSessionState("talent-pool.track-filter", "");
   const [schoolFilter, setSchoolFilter] = useSessionState("talent-pool.school-filter", "");
   const [hrFilter, setHrFilter] = useSessionState("talent-pool.hr-filter", "");
-  const [view, setView] = useSessionState<"list" | "graph">("talent-pool.view", "graph");
   const [showAddPerson, setShowAddPerson] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
   const [groups, setGroups] = useState<TalentGroup[]>([]);
@@ -141,14 +139,6 @@ export default function TalentPool() {
         }
         right={
           <>
-            <SegmentedButtons
-              options={[
-                { value: "list", label: t("列表详情"), icon: "list" },
-                { value: "graph", label: t("关系图谱"), icon: "account_tree" },
-              ]}
-              value={view}
-              onChange={setView}
-            />
             <IconButton icon="refresh" variant="outlined" onClick={load} title={t("刷新")} />
           </>
         }
@@ -205,36 +195,7 @@ export default function TalentPool() {
 
       <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
         <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} showBatchEvaluate />
-        {view === "graph" ? (
-          <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
-        ) : (
-          <Card variant="filled" className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-5">
-            <table className="w-full text-body-sm">
-              <thead>
-                <tr className="text-label text-on-surface-variant text-left">
-                  <th className="pb-2 font-medium">{t("姓名")}</th>
-                  <th className="pb-2 font-medium">{t("学校")}</th>
-                  <th className="pb-2 font-medium">Track</th>
-                  <th className="pb-2 font-medium">{t("综合分")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((p) => (
-                  <tr
-                    key={p.id}
-                    onClick={() => selectPerson(p.id)}
-                    className="cursor-pointer border-t border-outline-variant hover:bg-surface-low"
-                  >
-                    <td className="py-2 text-on-surface">{p.name || t("未命名")}</td>
-                    <td className="py-2 text-on-surface-variant">{p.org || "—"}</td>
-                    <td className="py-2 text-on-surface-variant capitalize">{classifyTrack(p) || "—"}</td>
-                    <td className="py-2 text-on-surface-variant">{p.overall_score ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        )}
+        <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
         <TalentDetail person={selected} personId={selectedId} onUpdated={handlePersonUpdated} />
       </div>
 

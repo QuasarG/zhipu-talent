@@ -128,7 +128,6 @@ export default {
   "人才库": "Talent Pool",
   "统一档案、来源追踪与关系发现": "Unified profiles, source tracking, and relationship discovery",
   "搜索姓名、学校、机构、Track 或论文": "Search by name, school, organization, Track, or publications",
-  "列表详情": "List Details",
   "关系图谱": "Relationship Graph",
   "全部 {count}": "All {count}",
   "简历评估 {count}": "Resume Evaluation {count}",
