@@ -1,14 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  useDroppable,
-  useDraggable,
-} from "@dnd-kit/core";
-import type { DragEndEvent } from "@dnd-kit/core";
+import { useDroppable, useDraggable } from "@dnd-kit/core";
 import type { PersonBrief, TalentGroup } from "@/lib/types";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -247,8 +239,6 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
   }, [collapsed]);
   useEffect(() => { setSelected(new Set()); setBatchNote(""); }, [batchMode, persons]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-
   const grouped = useMemo(() => {
     // 排序:有评分的优先,从高到低;无评分的排后面
     const sortByScore = (a: PersonBrief, b: PersonBrief) => {
@@ -300,13 +290,7 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
     }
   };
 
-  const onDragEnd = (e: DragEndEvent) => {
-    const personId = String(e.active.id);
-    const overId = String(e.over?.id || "");
-    if (!overId) return;
-    if (overId === "drop-ungrouped") doMove([personId], null);
-    else if (overId.startsWith("drop-group-")) doMove([personId], overId.slice("drop-group-".length));
-  };
+
 
   // 选中项是否包含 guest（人物调查，不可评估）
   const evaluatableIds = useMemo(
@@ -392,8 +376,7 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
   };
 
   return (
-    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-      <Card variant="filled" className="w-full max-w-full flex flex-col min-h-0 min-w-0 overflow-hidden p-3 gap-2">
+    <Card variant="filled" className="w-full max-w-full flex flex-col min-h-0 min-w-0 overflow-hidden p-3 gap-2">
         <div className="flex items-center justify-between px-1 shrink-0">
           <span className="text-title">{t("共 {count} 位人才", { count: persons.length })}</span>
         </div>
@@ -497,7 +480,6 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
           </div>
         )}
       </Card>
-    </DndContext>
   );
 }
 

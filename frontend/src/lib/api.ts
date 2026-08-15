@@ -210,6 +210,8 @@ export const api = {
         body: JSON.stringify({ bonus, note }),
       }),
   },
+  personResume: (personId: string) =>
+    fetchJSON<CandidateDetail>(`/api/persons/${personId}/resume`),
   share: {
     create: (personId: string) =>
       fetchJSON<{ share_path: string; token: string }>(`/api/persons/${personId}/share`, { method: "POST" }),

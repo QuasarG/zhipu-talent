@@ -1,0 +1,167 @@
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useDroppable } from "@dnd-kit/core";
+import { api } from "@/lib/api";
+import type { CandidateDetail } from "@/lib/types";
+import Icon from "@/components/ui/Icon";
+import Button from "@/components/ui/Button";
+import LoadingIndicator from "@/components/ui/LoadingIndicator";
+import ResumeContent from "@/features/resume/ResumeContent";
+import { useI18n } from "@/lib/i18n";
+import { cn } from "@/lib/cn";
+
+interface DeckEntry {
+  personId: string;
+  name: string;
+  detail?: CandidateDetail;
+  error?: string;
+}
+
+interface Props {
+  /** 左列表当前选中（点选也能一键入轨） */
+  selectedId: string | null;
+  personsName: (id: string) => string;
+  /** 页面级 DndContext 的 onDragEnd 通过 ref 调进来（拖入即加轨） */
+  deckApiRef?: RefObject<{ addToDeck: (id: string) => void } | null>;
+}
+
+/** 简历对比滑轨（niri 风）：左列表拖入卡片，Shift+滚轮横滚，恰好同时显示两份。 */
+export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props) {
+  const [deck, setDeck] = useState<DeckEntry[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { t } = useI18n();
+  const load = useCallback(async (personId: string) => {
+    setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, detail: undefined, error: undefined } : e)));
+    try {
+      const detail = await api.personResume(personId);
+      setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, detail } : e)));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t("加载失败");
+      setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, error: msg } : e)));
+    }
+  }, [t]);
+
+  const addToDeck = useCallback(
+    (personId: string) => {
+      setDeck((prev) => {
+        if (prev.some((e) => e.personId === personId)) return prev; // 去重
+        return [...prev, { personId, name: personsName(personId) }];
+      });
+      // 入轨即加载（重复添加时也刷新）
+      void load(personId);
+      // 新卡入轨后滚到最右
+      requestAnimationFrame(() => {
+        const el = scrollRef.current;
+        if (el) el.scrollLeft = el.scrollWidth;
+      });
+    },
+    [load, personsName],
+  );
+
+  useEffect(() => {
+    if (deckApiRef) deckApiRef.current = { addToDeck };
+  }, [deckApiRef, addToDeck]);
+
+  const removeFromDeck = (personId: string) => setDeck((prev) => prev.filter((e) => e.personId !== personId));
+  const clearDeck = () => setDeck([]);
+
+  // Shift+滚轮 → 横向滚动（niri 习惯）；无 Shift 时不动，避免抢垂直滚动
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.shiftKey) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY + e.deltaX;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const { setNodeRef, isOver } = useDroppable({ id: "track-deck-drop" });
+
+  return (
+    <div className="flex flex-col min-h-0 min-w-0 flex-1">
+        {/* 工具条 */}
+        <div className="flex items-center justify-between gap-2 px-3 h-11 shrink-0 border-b border-outline-variant">
+          <div className="flex items-center gap-2 min-w-0">
+            <Icon name="compare" size={16} className="text-primary shrink-0" />
+            <span className="text-label text-on-surface-variant truncate">
+              {t("对比滑轨 · 按住 Shift 滚动切换 · 从左侧拖入人才")}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {selectedId && (
+              <Button variant="text" icon="add" className="h-7 px-2 text-xs" onClick={() => addToDeck(selectedId)}>
+                {t("加入当前选中")}
+              </Button>
+            )}
+            {deck.length > 0 && (
+              <Button variant="text" icon="close" className="h-7 px-2 text-xs" onClick={clearDeck}>
+                {t("清空轨道")}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* 轨道体：横滚容器，每卡恰好占 1/2 视宽 */}
+        <div
+          ref={setNodeRef}
+          className={cn(
+            "flex-1 min-h-0 overflow-x-auto overflow-y-hidden transition-colors",
+            isOver && "bg-primary-container/40 outline-2 outline-dashed outline-primary",
+          )}
+        >
+          <div ref={scrollRef} className="flex h-full gap-3 p-3 w-max">
+            {deck.length === 0 ? (
+              <div className="flex items-center justify-center w-full min-w-0">
+                <div className="text-center py-16">
+                  <Icon name="compare" size={32} className="text-on-surface-variant" />
+                  <p className="mt-2 text-body text-on-surface">{t("轨道为空")}</p>
+                  <p className="text-body-sm text-on-surface-variant">{t("从左侧列表拖动人才到这里，或点击「加入当前选中」")}</p>
+                </div>
+              </div>
+            ) : (
+              deck.map((entry) => (
+                <section
+                  key={entry.personId}
+                  className="relative flex flex-col h-full rounded-md border border-outline-variant bg-surface-lowest overflow-hidden"
+                  style={{ width: "calc((100vw - 24rem - 4rem) / 2)" }}
+                >
+                  {/* 卡头：名字 + 分数 + 移除 */}
+                  <div className="flex items-center gap-2 px-3 h-10 shrink-0 border-b border-outline-variant bg-surface-low">
+                    <span className="text-title truncate">{entry.name}</span>
+                    <span className="ml-auto flex items-center gap-1 shrink-0">
+                      {entry.detail?.evaluation?.overall_score != null && (
+                        <span className="text-title font-bold text-primary tabular-nums">
+                          {entry.detail.evaluation.overall_score}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => removeFromDeck(entry.personId)}
+                        className="state-layer w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-error cursor-pointer"
+                        title={t("移出轨道")}
+                      >
+                        <Icon name="close" size={15} />
+                      </button>
+                    </span>
+                  </div>
+                  {/* 卡体：结构化简历/原件 Tabs（复用评估页） */}
+                  <div className="flex-1 min-h-0 overflow-y-auto p-3">
+                    {entry.error ? (
+                      <p className="text-body-sm text-error">{entry.error}</p>
+                    ) : !entry.detail ? (
+                      <div className="flex items-center justify-center py-10">
+                        <LoadingIndicator size={22} strokeWidth={2.5} />
+                      </div>
+                    ) : (
+                      <ResumeContent detail={entry.detail} />
+                    )}
+                  </div>
+                </section>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+  );
+}

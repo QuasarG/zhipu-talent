@@ -771,6 +771,21 @@ def create_app() -> Flask:
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
+    @app.get("/api/persons/<person_id>/resume")
+    def get_person_resume_view(person_id: str):
+        """按 person 取关联候选人完整详情（滑轨对比卡复用评估页的 ResumeContent）。"""
+        try:
+            from agi_talent_radar.core.database import get_session
+            from agi_talent_radar.core.db.repository import find_candidate_by_person
+
+            with get_session() as session:
+                candidate = find_candidate_by_person(session, person_id)
+                if candidate is None:
+                    return jsonify({"detail": "该人员没有关联简历档案"}), 404
+                return jsonify(_orm_to_detail(candidate))
+        except Exception as exc:
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
     @app.get("/api/persons/<person_id>/resume-versions")
     def list_resume_versions_view(person_id: str):
         """返回某人物的所有简历版本（每次导入一条），供前端对比。"""

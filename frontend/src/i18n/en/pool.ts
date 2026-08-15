@@ -1,4 +1,13 @@
 export default {
+  "该人员没有关联简历档案": "This person has no linked resume",
+  "从左侧列表拖动人才到这里，或点击「加入当前选中」": "Drag people here from the left list, or click Add selected",
+  "对比滑轨 · 按住 Shift 滚动切换 · 从左侧拖入人才": "Compare deck · hold Shift + scroll · drag people in from the left",
+  "加载失败": "Failed to load",
+  "移出轨道": "Remove from deck",
+  "轨道为空": "Deck is empty",
+  "清空轨道": "Clear deck",
+  "加入当前选中": "Add selected",
+"对比滑轨": "Compare Deck",
   "分享": "Share",
   "已复制链接": "Link copied",
   "生成中…": "Generating…",

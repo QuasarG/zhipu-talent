@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { PersonBrief, PersonDetail, TalentGroup } from "@/lib/types";
@@ -10,6 +10,8 @@ import { IconButton } from "@/components/ui/Button";
 import TalentList, { classifyTrack, STATUS_LABELS, TRACKS } from "@/features/pool/TalentList";
 import TalentDetail from "@/features/pool/TalentDetail";
 import RelationGraph from "@/features/pool/RelationGraph";
+import TrackDeck from "@/features/pool/TrackDeck";
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import AddPersonDialog from "@/features/pool/AddPersonDialog";
 import GroupDrawer from "@/features/pool/GroupDrawer";
 import { useSessionState } from "@/lib/sessionState";
@@ -24,6 +26,8 @@ export default function TalentPool() {
   const [trackFilter, setTrackFilter] = useSessionState("talent-pool.track-filter", "");
   const [schoolFilter, setSchoolFilter] = useSessionState("talent-pool.school-filter", "");
   const [hrFilter, setHrFilter] = useSessionState("talent-pool.hr-filter", "");
+  const [view, setView] = useSessionState<"graph" | "deck">("talent-pool.view", "graph");
+  const deckApiRef = useRef<{ addToDeck: (id: string) => void } | null>(null);
   const [showAddPerson, setShowAddPerson] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
   const [groups, setGroups] = useState<TalentGroup[]>([]);
@@ -124,7 +128,31 @@ export default function TalentPool() {
     [persons, typeFilter, trackFilter, schoolFilter, hrFilter]
   );
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const movePersons = async (ids: string[], groupId: string | null) => {
+    try {
+      await api.persons.batchMove(ids, groupId);
+      await load();
+    } catch (err) {
+      console.error("移动失败", err);
+    }
+  };
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const personId = String(e.active.id);
+    const overId = String(e.over?.id || "");
+    if (!overId) return;
+    if (overId === "track-deck-drop") {
+      deckApiRef.current?.addToDeck(personId);
+    } else if (overId === "drop-ungrouped") {
+      void movePersons([personId], null);
+    } else if (overId.startsWith("drop-group-")) {
+      void movePersons([personId], overId.slice("drop-group-".length));
+    }
+  };
+
   return (
+    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
     <div className="w-full max-w-full h-[calc(100vh-48px)] min-h-0 min-w-0 overflow-hidden flex flex-col">
       <PageToolbar
         title={t("人才库")}
@@ -139,6 +167,14 @@ export default function TalentPool() {
         }
         right={
           <>
+            <SegmentedButtons
+              options={[
+                { value: "graph", label: t("关系图谱"), icon: "account_tree" },
+                { value: "deck", label: t("对比滑轨"), icon: "compare" },
+              ]}
+              value={view}
+              onChange={setView}
+            />
             <IconButton icon="refresh" variant="outlined" onClick={load} title={t("刷新")} />
           </>
         }
@@ -193,11 +229,24 @@ export default function TalentPool() {
         </div>
       </div>
 
-      <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
-        <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} showBatchEvaluate />
-        <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
-        <TalentDetail person={selected} personId={selectedId} onUpdated={handlePersonUpdated} />
-      </div>
+      {view === "graph" ? (
+        <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
+          <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} showBatchEvaluate />
+          <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
+          <TalentDetail person={selected} personId={selectedId} onUpdated={handlePersonUpdated} />
+        </div>
+      ) : (
+        <div className="flex w-full max-w-full gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
+          <div className="min-w-0 max-w-[24rem] flex-1">
+            <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} />
+          </div>
+          <TrackDeck
+            selectedId={selectedId}
+            personsName={(id) => filtered.find((p) => p.id === id)?.name || id}
+            deckApiRef={deckApiRef}
+          />
+        </div>
+      )}
 
       {showAddPerson && (
         <AddPersonDialog onClose={() => setShowAddPerson(false)} onAdded={load} />
@@ -206,5 +255,6 @@ export default function TalentPool() {
         <GroupDrawer groups={groups} onChanged={load} onClose={() => setShowGroups(false)} />
       )}
     </div>
+    </DndContext>
   );
 }
