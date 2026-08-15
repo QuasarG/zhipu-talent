@@ -19,7 +19,7 @@ import { useI18n } from "@/lib/i18n";
 
 interface Props {
   candidateId?: string;
-  candidateName?: string;
+  candidatePersonId?: string | null;
   evaluation?: Evaluation;
   evaluationRun?: EvaluationRun;
   academicReport?: AcademicReport;
@@ -30,7 +30,7 @@ interface Props {
 
 type EvaluationTab = "result" | "process";
 
-export default function EvaluationWorkspace({ candidateName, candidateId = "none", evaluation, evaluationRun, academicReport, graph, liveNodeRuns, evaluating }: Props) {
+export default function EvaluationWorkspace({ candidatePersonId, candidateId = "none", evaluation, evaluationRun, academicReport, graph, liveNodeRuns, evaluating }: Props) {
   const statePrefix = `resume-evaluate.${candidateId}`;
   const [tab, setTab] = useSessionState<EvaluationTab>(`${statePrefix}.evaluation-tab`, evaluation ? "result" : "process");
 
@@ -60,7 +60,7 @@ export default function EvaluationWorkspace({ candidateName, candidateId = "none
       />
       <div className="flex-1 min-h-0 overflow-y-auto pt-4 pr-1">
         {tab === "result" ? (
-          evaluation ? <ScoreOverview evaluation={evaluation} academicReport={academicReport} candidateName={candidateName} /> : <ResultEmpty evaluating={evaluating} />
+          evaluation ? <ScoreOverview evaluation={evaluation} academicReport={academicReport} personId={candidatePersonId} /> : <ResultEmpty evaluating={evaluating} />
         ) : (
           <EvaluationProcess
             graph={graph}

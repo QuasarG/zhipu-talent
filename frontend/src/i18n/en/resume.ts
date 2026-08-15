@@ -1,4 +1,5 @@
 export default {
+  "该候选人尚未入库，入库后可分享": "This candidate is not in the talent pool yet; share after admission",
   "复制报告": "Copy Report",
   "复制评估报告 Markdown": "Copy evaluation report as Markdown",
   "已复制": "Copied",

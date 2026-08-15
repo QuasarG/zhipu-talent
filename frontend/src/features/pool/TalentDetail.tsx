@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PersonDetail } from "@/lib/types";
 import { api } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
@@ -69,15 +70,8 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
     try {
       const { share_path } = await api.share.create(person.id);
       const url = `${window.location.origin}${share_path}`;
-      const write = navigator.clipboard?.writeText(url).catch(() => {
-        const ta = document.createElement("textarea");
-        ta.value = url;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      });
-      await write;
+      const ok = await copyText(url);
+      if (!ok) throw new Error("copy failed");
       setShareState("copied");
       setTimeout(() => setShareState("idle"), 2500);
     } catch {

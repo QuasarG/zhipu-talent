@@ -15,12 +15,15 @@ import Icon from "@/components/ui/Icon";
 import Progress from "@/components/ui/Progress";
 import { StatusChip } from "@/components/ui/Chip";
 import { resolveTrackWeightPercent, tokenizeEvidenceReferences } from "./scoreOverviewModel";
+import { api } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/lib/i18n";
 
 interface Props {
   evaluation: Evaluation;
   academicReport?: AcademicReport;
-  candidateName?: string;
+  /** 关联人才库档案 ID：有值时「分享」生成只读档案链接 */
+  personId?: string | null;
 }
 
 const DIMENSION_COLORS = [
@@ -46,47 +49,7 @@ interface EvidenceSelection {
   anchor: HTMLElement;
 }
 
-/** 评估报告 → Markdown（粘贴到飞书/钉钉用，只取结论性字段，证据角标保留） */
-function buildReportMarkdown(evaluation: Evaluation, name: string): string {
-  const lines: string[] = [];
-  lines.push(`# ${name || "候选人"} · 评估报告`);
-  lines.push("");
-  lines.push(`**综合能力分**：${evaluation.overall_score} / 100`);
-  if (evaluation.one_liner) lines.push(`**一句话结论**：${evaluation.one_liner}`);
-  lines.push("");
-  if (evaluation.recommended_tracks?.length) {
-    lines.push("## 推荐 Track");
-    for (const tr of evaluation.recommended_tracks) {
-      lines.push(`- ${tr.track || tr.name}（权重 ${Math.round((tr.weight || 0) * 100)}%）`);
-    }
-    lines.push("");
-  }
-  if (evaluation.dimension_scores?.length) {
-    lines.push("## 通用能力维度");
-    for (const d of evaluation.dimension_scores) {
-      lines.push(`- **${d.label || d.key}**：${d.score} / 5${d.rationale ? ` — ${d.rationale}` : ""}`);
-    }
-    lines.push("");
-  }
-  if (evaluation.core_strengths?.length) {
-    lines.push("## 核心优势");
-    for (const item of evaluation.core_strengths) lines.push(`- ${item}`);
-    lines.push("");
-  }
-  if (evaluation.potential_risks?.length) {
-    lines.push("## 潜在风险");
-    for (const item of evaluation.potential_risks) lines.push(`- ${item}`);
-    lines.push("");
-  }
-  if (evaluation.interview_questions?.length) {
-    lines.push("## 建议面谈问题");
-    for (const q of evaluation.interview_questions) lines.push(`- ${q}`);
-    lines.push("");
-  }
-  return lines.join("\n");
-}
-
-export default function ScoreOverview({ evaluation, academicReport, candidateName }: Props) {
+export default function ScoreOverview({ evaluation, academicReport, personId }: Props) {
   const report = academicReport || evaluation.academic_report;
   const alignments = report?.alignments || [];
   const evidence = useMemo(() => evaluation.evidence || [], [evaluation.evidence]);
@@ -97,24 +60,21 @@ export default function ScoreOverview({ evaluation, academicReport, candidateNam
   const [activeEvidence, setActiveEvidence] = useState<EvidenceSelection | null>(null);
   const openEvidence = (item: EvidenceItem, anchor: HTMLElement) => setActiveEvidence({ item, anchor });
   const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
+  const [shareState, setShareState] = useState<"idle" | "working" | "done" | "error">("idle");
 
-  const copyMarkdown = async () => {
-    const md = buildReportMarkdown(evaluation, candidateName || "");
+  const shareProfile = async () => {
+    if (!personId) return;
+    setShareState("working");
     try {
-      await navigator.clipboard.writeText(md);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const { share_path } = await api.share.create(personId);
+      const url = `${window.location.origin}${share_path}`;
+      const ok = await copyText(url);
+      if (!ok) throw new Error("copy failed");
+      setShareState("done");
+      setTimeout(() => setShareState("idle"), 2500);
     } catch {
-      // ponytail: 剪贴板 API 不可用（如 http 非安全上下文）时退回选区法
-      const ta = document.createElement("textarea");
-      ta.value = md;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setShareState("error");
+      setTimeout(() => setShareState("idle"), 2500);
     }
   };
 
@@ -135,12 +95,13 @@ export default function ScoreOverview({ evaluation, academicReport, candidateNam
           </div>
           <div className="flex flex-col items-end gap-2">
             <button
-              onClick={copyMarkdown}
-              className="state-layer inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer"
-              title={copied ? t("已复制") : t("复制评估报告 Markdown")}
+              onClick={shareProfile}
+              disabled={!personId || shareState === "working"}
+              className="state-layer inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title={personId ? t("复制只读分享链接（30 天有效）") : t("该候选人尚未入库，入库后可分享")}
             >
-              <Icon name={copied ? "check" : "content_copy"} size={14} />
-              {copied ? t("已复制") : t("复制报告")}
+              <Icon name={shareState === "done" ? "check" : "share"} size={14} />
+              {shareState === "done" ? t("已复制链接") : shareState === "working" ? t("生成中…") : shareState === "error" ? t("分享失败") : t("分享")}
             </button>
             <StatusChip tone="info" icon="route">
               {t("路由 {n}%", { n: Math.round((evaluation.routing_confidence || 0) * 100) })}
