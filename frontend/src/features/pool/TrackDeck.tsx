@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { useDroppable } from "@dnd-kit/core";
 import { api } from "@/lib/api";
 import type { CandidateDetail } from "@/lib/types";
+import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
@@ -70,9 +71,13 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
     const el = scrollRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (!e.shiftKey) return;
-      e.preventDefault();
-      el.scrollLeft += e.deltaY + e.deltaX;
+      // 触摸板横向动能（|deltaX| 大）无条件吞掉：不 preventDefault 会被 Chrome
+      // 当导航手势（后退/前进）。Shift+滚轮转横向滚动。
+      const trackpadHorizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      if (trackpadHorizontal || e.shiftKey) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY + e.deltaX;
+      }
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -81,8 +86,8 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
   const { setNodeRef, isOver } = useDroppable({ id: "track-deck-drop" });
 
   return (
-    <div className="flex flex-col min-h-0 min-w-0 flex-1">
-        {/* 工具条 */}
+    <Card variant="filled" className="flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden">
+        {/* 工具条（卡片头） */}
         <div className="flex items-center justify-between gap-2 px-3 h-11 shrink-0 border-b border-outline-variant">
           <div className="flex items-center gap-2 min-w-0">
             <Icon name="compare" size={16} className="text-primary shrink-0" />
@@ -104,15 +109,19 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
           </div>
         </div>
 
-        {/* 轨道体：横滚容器，每卡恰好占 1/2 视宽 */}
+        {/* 轨道体：卡片内横滚区，每卡恰好占 1/2 视宽 */}
         <div
-          ref={setNodeRef}
+          ref={(node) => {
+            // 同一元素既是横滚容器又是拖放目标：合并两个 ref
+            scrollRef.current = node;
+            setNodeRef(node);
+          }}
           className={cn(
-            "flex-1 min-h-0 overflow-x-auto overflow-y-hidden transition-colors",
-            isOver && "bg-primary-container/40 outline-2 outline-dashed outline-primary",
+            "flex-1 min-h-0 overflow-x-auto overflow-y-hidden overscroll-x-contain transition-colors",
+            isOver && "bg-primary-container/40",
           )}
         >
-          <div ref={scrollRef} className="flex h-full gap-3 p-3 w-max">
+          <div className="flex h-full gap-3 p-3 w-max">
             {deck.length === 0 ? (
               <div className="flex items-center justify-center w-full min-w-0">
                 <div className="text-center py-16">
@@ -163,6 +172,6 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
             )}
           </div>
         </div>
-      </div>
+    </Card>
   );
 }
