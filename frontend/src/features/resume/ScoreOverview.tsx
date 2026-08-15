@@ -20,6 +20,7 @@ import { useI18n } from "@/lib/i18n";
 interface Props {
   evaluation: Evaluation;
   academicReport?: AcademicReport;
+  candidateName?: string;
 }
 
 const DIMENSION_COLORS = [
@@ -45,7 +46,47 @@ interface EvidenceSelection {
   anchor: HTMLElement;
 }
 
-export default function ScoreOverview({ evaluation, academicReport }: Props) {
+/** 评估报告 → Markdown（粘贴到飞书/钉钉用，只取结论性字段，证据角标保留） */
+function buildReportMarkdown(evaluation: Evaluation, name: string): string {
+  const lines: string[] = [];
+  lines.push(`# ${name || "候选人"} · 评估报告`);
+  lines.push("");
+  lines.push(`**综合能力分**：${evaluation.overall_score} / 100`);
+  if (evaluation.one_liner) lines.push(`**一句话结论**：${evaluation.one_liner}`);
+  lines.push("");
+  if (evaluation.recommended_tracks?.length) {
+    lines.push("## 推荐 Track");
+    for (const tr of evaluation.recommended_tracks) {
+      lines.push(`- ${tr.track || tr.name}（权重 ${Math.round((tr.weight || 0) * 100)}%）`);
+    }
+    lines.push("");
+  }
+  if (evaluation.dimension_scores?.length) {
+    lines.push("## 通用能力维度");
+    for (const d of evaluation.dimension_scores) {
+      lines.push(`- **${d.label || d.key}**：${d.score} / 5${d.rationale ? ` — ${d.rationale}` : ""}`);
+    }
+    lines.push("");
+  }
+  if (evaluation.core_strengths?.length) {
+    lines.push("## 核心优势");
+    for (const item of evaluation.core_strengths) lines.push(`- ${item}`);
+    lines.push("");
+  }
+  if (evaluation.potential_risks?.length) {
+    lines.push("## 潜在风险");
+    for (const item of evaluation.potential_risks) lines.push(`- ${item}`);
+    lines.push("");
+  }
+  if (evaluation.interview_questions?.length) {
+    lines.push("## 建议面谈问题");
+    for (const q of evaluation.interview_questions) lines.push(`- ${q}`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+export default function ScoreOverview({ evaluation, academicReport, candidateName }: Props) {
   const report = academicReport || evaluation.academic_report;
   const alignments = report?.alignments || [];
   const evidence = useMemo(() => evaluation.evidence || [], [evaluation.evidence]);
@@ -56,6 +97,26 @@ export default function ScoreOverview({ evaluation, academicReport }: Props) {
   const [activeEvidence, setActiveEvidence] = useState<EvidenceSelection | null>(null);
   const openEvidence = (item: EvidenceItem, anchor: HTMLElement) => setActiveEvidence({ item, anchor });
   const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+
+  const copyMarkdown = async () => {
+    const md = buildReportMarkdown(evaluation, candidateName || "");
+    try {
+      await navigator.clipboard.writeText(md);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ponytail: 剪贴板 API 不可用（如 http 非安全上下文）时退回选区法
+      const ta = document.createElement("textarea");
+      ta.value = md;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <div>
@@ -73,6 +134,14 @@ export default function ScoreOverview({ evaluation, academicReport }: Props) {
             <p className="mt-1 text-label text-on-surface-variant">{t("能力描述用于辅助复核，不代表录取结论")}</p>
           </div>
           <div className="flex flex-col items-end gap-2">
+            <button
+              onClick={copyMarkdown}
+              className="state-layer inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer"
+              title={copied ? t("已复制") : t("复制评估报告 Markdown")}
+            >
+              <Icon name={copied ? "check" : "content_copy"} size={14} />
+              {copied ? t("已复制") : t("复制报告")}
+            </button>
             <StatusChip tone="info" icon="route">
               {t("路由 {n}%", { n: Math.round((evaluation.routing_confidence || 0) * 100) })}
             </StatusChip>

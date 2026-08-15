@@ -402,6 +402,7 @@ export default function ResumeEvaluate() {
             <EvaluationWorkspace
               key={selected.id}
               candidateId={selected.id}
+              candidateName={selected.name}
               evaluation={selected.evaluation}
               evaluationRun={selected.evaluation_run}
               academicReport={selected.academic_report}
