@@ -175,6 +175,20 @@ def create_app() -> Flask:
     from agi_talent_radar.grill.api import build_grill_blueprint
 
     configure_app_session(app)
+
+    # 统一 500 兜底：不外泄异常文本（traceback/内部路径），只记日志 + 返回稳定 detail。
+    # 400/404 保持各路由自带的明确文案；这里只兜未捕获异常。
+    import logging
+
+    _logger = logging.getLogger(__name__)
+
+    @app.errorhandler(Exception)
+    def handle_uncaught(exc):
+        if isinstance(exc, HTTPException):
+            return jsonify({"detail": exc.description}), exc.code
+        _logger.exception("unhandled error")
+        return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
     app.register_blueprint(build_auth_blueprint())
     app.register_blueprint(build_config_blueprint())
     app.register_blueprint(build_knowledge_blueprint())
@@ -632,8 +646,19 @@ def create_app() -> Flask:
 
             with get_session() as session:
                 rows = list_persons(session, person_type=person_type, name=name, q=q, level=level, group_id=group_id)
+                # person→candidate 映射一次批量查，替代逐人 find_candidate_by_person 的 N+1
+                candidate_map = {}
+                if rows:
+                    from agi_talent_radar.core.db.orm import CandidateORM
+
+                    for c in (
+                        session.query(CandidateORM)
+                        .filter(CandidateORM.person_id.in_([r.id for r in rows]))
+                        .all()
+                    ):
+                        candidate_map[c.person_id] = c
                 return jsonify([
-                    _person_to_brief(row, find_candidate_by_person(session, row.id))
+                    _person_to_brief(row, candidate_map.get(row.id))
                     for row in rows
                 ])
         except Exception as exc:
@@ -1371,6 +1396,7 @@ def _orm_to_brief(row) -> dict[str, Any]:
         # 阶段 1 新字段：HR 跟进状态 + 来源
         "engagement_status": getattr(row, "engagement_status", "newly_admitted"),
         "admitted_at": _iso(getattr(row, "admitted_at", None)),
+        "person_id": getattr(row, "person_id", None),
         # 队列用：是否已评估，决定删除/移出语义（未评估=物理删，已评估=仅移出列表）
         "evaluated": bool(getattr(row, "evaluated", False)),
         # 论文核验状态：none | running | done
@@ -1494,6 +1520,7 @@ def _orm_to_detail(row) -> dict[str, Any]:
         "person_id": getattr(row, "person_id", None),
         "engagement_status": getattr(row, "engagement_status", "newly_admitted"),
         "admitted_at": _iso(getattr(row, "admitted_at", None)),
+        "person_id": getattr(row, "person_id", None),
         "sources": [s.source_kind for s in (row.sources or [])],
     }
 

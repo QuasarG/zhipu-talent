@@ -1,4 +1,5 @@
 export default {
+  "查看人才档案": "View talent profile",
   // CandidateMetaDropdown
   "阶段未知": "Stage unknown",
   "未选择候选人": "No candidate selected",
