@@ -35,7 +35,8 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
       const detail = await api.personResume(personId);
       setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, detail } : e)));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t("加载失败");
+      const raw = err instanceof Error ? err.message : "";
+      const msg = raw.includes("没有关联简历") ? t("该人员没有关联简历档案") : raw || t("加载失败");
       setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, error: msg } : e)));
     }
   }, [t]);

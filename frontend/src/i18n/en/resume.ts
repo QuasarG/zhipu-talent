@@ -1,4 +1,10 @@
 export default {
+  "该人员没有关联简历档案": "This person has no linked resume",
+  "复制只读分享链接（30 天有效）": "Copy read-only share link (valid for 30 days)",
+  "生成中…": "Generating…",
+  "已复制链接": "Link copied",
+  "分享失败": "Share failed",
+"分享": "Share",
   "该候选人尚未入库，入库后可分享": "This candidate is not in the talent pool yet; share after admission",
   "复制报告": "Copy Report",
   "复制评估报告 Markdown": "Copy evaluation report as Markdown",
