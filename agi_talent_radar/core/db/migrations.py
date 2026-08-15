@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 18
+LATEST_SCHEMA_VERSION = 19
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -166,6 +166,13 @@ def ensure_schema(engine) -> None:
             engine,
             18,
             "phase 18: grill 画像澄清模块 (grill_sessions 表)",
+        )
+    if current_version < 19:
+        # 只读分享令牌：share_tokens 新表由 create_all 自动创建，无需 ALTER。
+        _record_version(
+            engine,
+            19,
+            "phase 19: talent profile read-only share tokens (share_tokens 表)",
         )
     _ensure_indexes(engine)
 

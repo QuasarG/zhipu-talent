@@ -685,6 +685,92 @@ def create_app() -> Flask:
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
+    # ---- 人才档案只读分享（v1：token 链接） ----
+
+    @app.get("/share/<token>")
+    def share_page(token: str):
+        """只读分享页（React 路由接管，token 由前端调公开 API 校验）。"""
+        return render_spa()
+
+    @app.post("/api/persons/<person_id>/share")
+    def create_person_share(person_id: str):
+        """生成（或复用未过期未吊销的）只读分享令牌，返回完整 URL 路径。"""
+        import secrets
+        from datetime import datetime, timedelta
+
+        from agi_talent_radar.core.database import get_person_detail, get_session
+        from agi_talent_radar.core.db.orm import ShareTokenORM
+
+        try:
+            with get_session() as session:
+                if not get_person_detail(session, person_id):
+                    return jsonify({"detail": "人员不存在"}), 404
+                existing = (
+                    session.query(ShareTokenORM)
+                    .filter(
+                        ShareTokenORM.person_id == person_id,
+                        ShareTokenORM.revoked.is_(False),
+                    )
+                    .order_by(ShareTokenORM.created_at.desc())
+                    .first()
+                )
+                if existing is not None:
+                    token = existing.token
+                else:
+                    token = secrets.token_urlsafe(32)
+                    session.add(
+                        ShareTokenORM(
+                            token=token,
+                            person_id=person_id,
+                            created_by=(current_user_display_name() or "web"),
+                            expires_at=datetime.utcnow() + timedelta(days=30),
+                        )
+                    )
+                    session.commit()
+                return jsonify({"share_path": f"/share/{token}", "token": token})
+        except Exception as exc:
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
+    @app.delete("/api/persons/<person_id>/share")
+    def revoke_person_share(person_id: str):
+        from agi_talent_radar.core.database import get_session
+        from agi_talent_radar.core.db.orm import ShareTokenORM
+
+        try:
+            with get_session() as session:
+                session.query(ShareTokenORM).filter(ShareTokenORM.person_id == person_id).update(
+                    {"revoked": True}
+                )
+                session.commit()
+            return jsonify({"revoked": True})
+        except Exception as exc:
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
+    @app.get("/api/share/<token>")
+    def get_shared_person(token: str):
+        """公开只读：凭 token 返回该 person 完整档案（含评估历史）。不含任何他人数据。"""
+        from datetime import datetime
+
+        from agi_talent_radar.core.database import get_person_detail, get_session
+        from agi_talent_radar.core.db.orm import ShareTokenORM
+        from agi_talent_radar.core.db.repository import find_candidate_by_person
+
+        try:
+            with get_session() as session:
+                row = session.query(ShareTokenORM).filter_by(token=token).first()
+                if row is None or row.revoked:
+                    return jsonify({"detail": "链接无效或已被撤销"}), 404
+                if row.expires_at is not None and row.expires_at < datetime.utcnow():
+                    return jsonify({"detail": "链接已过期"}), 404
+                person = get_person_detail(session, row.person_id)
+                if person is None:
+                    return jsonify({"detail": "人员不存在"}), 404
+                candidate = find_candidate_by_person(session, person.id)
+                data = _person_to_detail(person, candidate)
+                return jsonify(data)
+        except Exception as exc:
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
     @app.get("/api/persons/<person_id>/resume-versions")
     def list_resume_versions_view(person_id: str):
         """返回某人物的所有简历版本（每次导入一条），供前端对比。"""
@@ -1388,6 +1474,24 @@ def _candidate_search_text(row) -> str:
     if isinstance(pubs, list):
         parts.extend(str(p) for p in pubs)
     return " ".join(p for p in parts if p)
+
+
+def current_user_display_name() -> str:
+    """当前登录用户显示名（分享记录 created_by 用）；无会话时空串。"""
+    try:
+        from flask import session as flask_session
+
+        uid = flask_session.get("user_id")
+        if not uid:
+            return ""
+        from agi_talent_radar.core.database import get_session
+        from agi_talent_radar.core.db.orm import UserORM
+
+        with get_session() as s:
+            user = s.get(UserORM, uid)
+            return (user.display_name or user.username) if user else ""
+    except Exception:
+        return ""
 
 
 def _orm_to_brief(row) -> dict[str, Any]:

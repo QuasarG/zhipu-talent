@@ -527,6 +527,25 @@ class EngagementStatusHistoryORM(Base):
     candidate = relationship("CandidateORM", back_populates="engagement_history")
 
 
+class ShareTokenORM(Base):
+    """人才档案只读分享令牌。
+
+    一次分享 = 一个 person 的只读视图；令牌随机不可猜，可吊销可续期。
+    不落访问日志（内部分享场景，避免无谓表膨胀）。
+    """
+
+    __tablename__ = "share_tokens"
+    __table_args__ = (Index("ix_share_tokens_token", "token", unique=True),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String(43), nullable=False, unique=True)  # urlsafe base64 32B
+    person_id = Column(String(36), ForeignKey("persons.id", ondelete="CASCADE"), nullable=False)
+    created_by = Column(String(128), default="")
+    revoked = Column(Boolean, default=False, nullable=False)
+    expires_at = Column(DateTime, nullable=True)  # NULL = 永久
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
 class IdentitySuggestionORM(Base):
     """入库身份归并节点的待审核建议。
 

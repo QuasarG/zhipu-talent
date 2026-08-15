@@ -142,6 +142,8 @@ def require_auth_page(view: Callable) -> Callable:
 
 # 不需要鉴权的路径前缀（白名单）。
 PUBLIC_PATHS = frozenset({"/login", "/api/auth/login", "/api/auth/status", "/health"})
+# 前缀白名单：只读分享页与其公开数据 API（凭随机 token 自证，不走会话）
+PUBLIC_PREFIXES = ("/share/", "/api/share/")
 
 
 def install_auth_middleware(app) -> None:
@@ -157,7 +159,7 @@ def install_auth_middleware(app) -> None:
     def _check_auth():
         path = request.path
         # 白名单
-        if path in PUBLIC_PATHS or path.startswith("/static/"):
+        if path in PUBLIC_PATHS or path.startswith(("/static/",) + PUBLIC_PREFIXES):
             return None
         if is_authenticated():
             return None
