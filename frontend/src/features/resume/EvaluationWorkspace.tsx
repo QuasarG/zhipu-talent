@@ -305,7 +305,7 @@ function NodeRow({ label, status, message }: { label: string; status: Evaluation
   const { t } = useI18n();
   const config = NODE_STATUS[status];
   return (
-    <div className="relative grid grid-cols-[30px_minmax(0,1fr)_54px] items-start gap-3 py-3 pr-2 min-h-[68px]">
+    <div className="relative grid grid-cols-[30px_minmax(0,1fr)_auto] items-start gap-3 py-3 pr-2 min-h-[68px]">
       <span className={cn("flex items-center justify-center w-7 h-7 rounded-sm", config.className)}>
         <Icon name={config.icon} size={17} className={status === "running" ? "md3-node-running" : ""} />
       </span>
