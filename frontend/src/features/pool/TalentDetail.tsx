@@ -10,6 +10,7 @@ import Icon from "@/components/ui/Icon";
 import { getSchoolLogo } from "@/lib/schoolLogos";
 import { useI18n } from "@/lib/i18n";
 import EngagementStatusControl from "./EngagementStatusControl";
+import EngagementHistory from "./EngagementHistory";
 import ResumeVersionModal from "./ResumeVersionCompare";
 
 interface Props {
@@ -36,6 +37,7 @@ function fmtTime(iso: string | null): string {
 export default function TalentDetail({ person, personId, onUpdated }: Props) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [historyKey, setHistoryKey] = useState(0);
   const [showVersionDiff, setShowVersionDiff] = useState(false);
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -64,6 +66,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
     setSaveError("");
     try {
       await api.candidates.updateEngagement(candidateId, engagement, "hr-web", "网页修改");
+      setHistoryKey((k) => k + 1);
       await onUpdated(person.id);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : t("状态更新失败"));
@@ -84,9 +87,16 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="text-title-lg text-on-surface truncate">{person.name}</span>
-              <StatusChip tone={person.person_type === "guest" ? "info" : "primary"} className="shrink-0 ml-auto">
+              <StatusChip tone={person.person_type === "guest" ? "info" : "primary"} className="shrink-0">
                 {person.person_type === "guest" ? t("人物调查") : t("简历评估")}
               </StatusChip>
+              <button
+                onClick={() => navigate(`/chat?ask=${encodeURIComponent(t("帮我全面分析一下{name}的背景、评估结果和潜在风险", { name: person.name || "" }))}`)}
+                className="state-layer shrink-0 ml-auto inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer"
+              >
+                <Icon name="forum" size={13} />
+                {t("问问 AI")}
+              </button>
             </div>
             <p className="text-body-sm text-on-surface-variant truncate mt-0.5">
               {person.org || "—"} · {person.direction || "—"}
@@ -110,6 +120,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
             <p className="text-body-sm text-on-surface-variant">{t("该人物没有关联简历，暂不能跟进")}</p>
           )}
           {saveError && <p className="mt-2 text-label text-error">{saveError}</p>}
+          {candidateId && <EngagementHistory candidateId={candidateId} refreshKey={historyKey} />}
         </section>
 
         {/* 能力概览：大分 + 全部维度带进度条，清晰度优先 */}

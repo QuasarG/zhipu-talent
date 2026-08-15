@@ -1,4 +1,8 @@
 export default {
+  "复制报告": "Copy Report",
+  "复制评估报告 Markdown": "Copy evaluation report as Markdown",
+  "已复制": "Copied",
+  "查看人才档案": "View talent profile",
   // CandidateMetaDropdown
   "阶段未知": "Stage unknown",
   "未选择候选人": "No candidate selected",

@@ -1,4 +1,6 @@
 export default {
+  "问问 AI": "Ask AI",
+  "帮我全面分析一下{name}的背景、评估结果和潜在风险": "Give me a full analysis of {name}: background, evaluation results, and potential risks",
   "关闭": "Close",
   "取消": "Cancel",
   "确认": "Confirm",
@@ -119,6 +121,9 @@ export default {
   "全选": "Select All",
   "选中包含人物调查类型，无法评估": "Selection includes Investigation profiles, which cannot be evaluated",
   "批量重新评估": "Batch Re-evaluate",
+  "流转历史": "History",
+  "暂无变更记录": "No changes yet",
+  "批量重新评估（人物调查类型自动跳过）": "Batch re-evaluate (investigation entries are skipped automatically)",
   "处理中…": "Processing…",
   "评估({count})": "Evaluate ({count})",
   "手动加入": "Add Manually",

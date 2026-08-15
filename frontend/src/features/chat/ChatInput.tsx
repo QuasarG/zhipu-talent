@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/ui/Button";
 import Icon from "@/components/ui/Icon";
 import { useI18n } from "@/lib/i18n";
@@ -7,14 +7,24 @@ interface Props {
   busy: boolean;
   awaitingAction: boolean;
   onSend: (text: string) => void;
+  /** 外部预填文案（如档案页「问问 AI」跳转带来的 ?ask=），仅挂载时生效 */
+  initialValue?: string;
 }
 
 /** 对话输入条：Enter 发送，Shift+Enter 换行 */
-export default function ChatInput({ busy, awaitingAction, onSend }: Props) {
-  const [value, setValue] = useState("");
+export default function ChatInput({ busy, awaitingAction, onSend, initialValue }: Props) {
+  const [value, setValue] = useState(initialValue ?? "");
   const ref = useRef<HTMLTextAreaElement>(null);
   const { t } = useI18n();
   const disabled = busy || awaitingAction;
+
+  useEffect(() => {
+    if (initialValue && ref.current) {
+      ref.current.style.height = "auto";
+      ref.current.style.height = `${Math.min(ref.current.scrollHeight, 120)}px`;
+      ref.current.focus();
+    }
+  }, [initialValue]);
 
   const send = () => {
     const text = value.trim();

@@ -3,6 +3,7 @@ import type { CandidateDetail } from "@/lib/types";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 import { cn } from "@/lib/cn";
+import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
 export default function CandidateMetaDropdown({ candidate, busy }: Props) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   // ESC 关闭
   useEffect(() => {
@@ -104,7 +106,17 @@ export default function CandidateMetaDropdown({ candidate, busy }: Props) {
               <MetaRow label={t("HR 状态")} value={t(hrStatusLabel(candidate.engagement_status))} />
               <MetaRow label={t("评估状态")} value={candidate.evaluated ? t("已评估") : t("未评估")} />
               <MetaRow label={t("置信度")} value={candidate.confidence != null ? `${(candidate.confidence * 100).toFixed(0)}%` : "—"} />
-              {candidate.person_id && <MetaRow label={t("人才库 ID")} value={candidate.person_id} mono />}
+              {candidate.person_id && (
+                <div className="col-span-2 mt-1">
+                  <button
+                    onClick={() => navigate(`/talent-pool/${candidate.person_id}`)}
+                    className="state-layer inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer"
+                  >
+                    <Icon name="open_in_new" size={14} />
+                    {t("查看人才档案")}
+                  </button>
+                </div>
+              )}
               {candidate.admitted_at && <MetaRow label={t("入库时间")} value={candidate.admitted_at.slice(0, 16).replace("T", " ")} />}
             </dl>
 
