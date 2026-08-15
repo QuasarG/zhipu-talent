@@ -11,7 +11,13 @@ from queue import Queue
 from threading import Lock, Thread
 from typing import Any
 
+import logging
+
+from werkzeug.exceptions import HTTPException
+
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+
+logger = logging.getLogger(__name__)
 
 from agi_talent_radar.core.import_agent import run_import_agent_stream
 from agi_talent_radar.core.education import top_school_names
@@ -272,7 +278,7 @@ def create_app() -> Flask:
                     data["evaluation_run"] = evaluation_run_to_dict(latest_run)
                 return jsonify(data)
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.post("/api/candidates/<candidate_id>/evaluate")
     def evaluate_candidate(candidate_id: str):
@@ -347,7 +353,7 @@ def create_app() -> Flask:
                 session.commit()
                 return jsonify({"id": candidate_id, "supplementary_info": candidate.supplementary_info})
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.delete("/api/candidates/<candidate_id>")
     def delete_candidate(candidate_id: str):
@@ -360,7 +366,7 @@ def create_app() -> Flask:
                     return jsonify({"detail": "候选人不存在"}), 404
                 return jsonify({"id": candidate_id, "deleted": True})
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.post("/api/candidates/<candidate_id>/dismiss")
     def dismiss_candidate(candidate_id: str):
@@ -375,7 +381,7 @@ def create_app() -> Flask:
                     return jsonify({"detail": "候选人不存在"}), 404
                 return jsonify({"id": moved.id, "group": moved.group, "dismissed": True})
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.get("/api/candidates/pending-publications")
     def list_pending_publications():
@@ -418,7 +424,7 @@ def create_app() -> Flask:
                         })
                 return jsonify(pending)
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.post("/api/candidates/<candidate_id>/publications/<int:alignment_index>/review")
     def review_publication(candidate_id: str, alignment_index: int):
@@ -468,7 +474,7 @@ def create_app() -> Flask:
                     "evaluable": _is_evaluable(candidate),
                 })
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.post("/api/candidates/<candidate_id>/verify-publications")
     def verify_publications(candidate_id: str):
@@ -502,7 +508,7 @@ def create_app() -> Flask:
                 session.commit()
                 return jsonify(result)
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.get("/api/candidates/<candidate_id>/pdf")
     def get_candidate_pdf(candidate_id: str):
@@ -526,7 +532,7 @@ def create_app() -> Flask:
             }.get(original_path.suffix.lower(), "application/octet-stream")
             return send_from_directory(_ROOT, original_path.name, mimetype=mimetype)
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.post("/api/candidates/<candidate_id>/move")
     def move_candidate(candidate_id: str):
@@ -543,7 +549,7 @@ def create_app() -> Flask:
                     return jsonify({"detail": "候选人不存在"}), 404
                 return jsonify({"id": moved.id, "group": moved.group})
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.patch("/api/candidates/<candidate_id>/engagement-status")
     def update_engagement_status(candidate_id: str):
@@ -565,7 +571,7 @@ def create_app() -> Flask:
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 400
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.get("/api/candidates/<candidate_id>/engagement-history")
     def list_engagement_history(candidate_id: str):
@@ -587,7 +593,7 @@ def create_app() -> Flask:
                     for h in history
                 ])
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.post("/api/persons/<person_id>/admit")
     def admit_person_to_pool(person_id: str):
@@ -607,7 +613,7 @@ def create_app() -> Flask:
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 400
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.post("/api/persons")
     def create_person_view():
@@ -631,7 +637,7 @@ def create_app() -> Flask:
                 session.commit()
                 return jsonify(_person_to_brief(person)), 201
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.get("/api/persons")
     def list_persons_view():
@@ -662,7 +668,7 @@ def create_app() -> Flask:
                     for row in rows
                 ])
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.get("/api/persons/<person_id>")
     def get_person_view(person_id: str):
@@ -677,7 +683,7 @@ def create_app() -> Flask:
                 candidate = find_candidate_by_person(session, person.id)
                 return jsonify(_person_to_detail(person, candidate))
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.get("/api/persons/<person_id>/resume-versions")
     def list_resume_versions_view(person_id: str):
@@ -689,7 +695,7 @@ def create_app() -> Flask:
             with get_session() as session:
                 return jsonify(list_person_resume_versions(session, person_id))
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.get("/api/persons/<person_id>/reputation")
     def list_person_reputation(person_id: str):
@@ -703,7 +709,7 @@ def create_app() -> Flask:
                 reports = sorted(person.reputation_reports, key=lambda r: r.created_at, reverse=True)
                 return jsonify([_reputation_report_to_dict(r) for r in reports])
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.delete("/api/persons/<person_id>")
     def delete_person(person_id: str):
@@ -724,7 +730,7 @@ def create_app() -> Flask:
                     pass
                 return jsonify({"id": person_id, "deleted": True})
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     # ---- 人才库分组（手工分类，一对多，全局共享）----
 
@@ -876,7 +882,7 @@ def create_app() -> Flask:
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 400
         except Exception as exc:
-            return jsonify({"detail": str(exc)}), 500
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
     @app.post("/api/import-file")
     def import_file():
