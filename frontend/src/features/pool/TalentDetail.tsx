@@ -87,9 +87,16 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="text-title-lg text-on-surface truncate">{person.name}</span>
-              <StatusChip tone={person.person_type === "guest" ? "info" : "primary"} className="shrink-0 ml-auto">
+              <StatusChip tone={person.person_type === "guest" ? "info" : "primary"} className="shrink-0">
                 {person.person_type === "guest" ? t("人物调查") : t("简历评估")}
               </StatusChip>
+              <button
+                onClick={() => navigate(`/chat?ask=${encodeURIComponent(t("帮我全面分析一下{name}的背景、评估结果和潜在风险", { name: person.name || "" }))}`)}
+                className="state-layer shrink-0 ml-auto inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer"
+              >
+                <Icon name="forum" size={13} />
+                {t("问问 AI")}
+              </button>
             </div>
             <p className="text-body-sm text-on-surface-variant truncate mt-0.5">
               {person.org || "—"} · {person.direction || "—"}

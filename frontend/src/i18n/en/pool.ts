@@ -1,4 +1,6 @@
 export default {
+  "问问 AI": "Ask AI",
+  "帮我全面分析一下{name}的背景、评估结果和潜在风险": "Give me a full analysis of {name}: background, evaluation results, and potential risks",
   "关闭": "Close",
   "取消": "Cancel",
   "确认": "Confirm",

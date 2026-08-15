@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, parseSSE } from "@/lib/api";
 import type { ChatConversation, ChatEvent, ChatMessage, ChatSegment } from "@/lib/types";
 import PageToolbar from "@/components/layout/PageToolbar";
@@ -85,6 +86,12 @@ export default function TalentChat() {
   const pollRef = useRef<number | null>(null);
   const currentIdRef = useRef<string | null>(null);
   const { t, lang } = useI18n();
+  // 档案页「问问 AI」跳转：?ask= 预填输入框（读一次即清，避免刷新重复触发）
+  const [searchParams, setSearchParams] = useSearchParams();
+  const prefill = searchParams.get("ask") || "";
+  useEffect(() => {
+    if (prefill) setSearchParams({}, { replace: true });
+  }, [prefill, setSearchParams]);
 
   const stopFollow = useCallback(() => {
     if (pollRef.current !== null) {
@@ -371,7 +378,7 @@ export default function TalentChat() {
             )}
           </div>
 
-          <ChatInput busy={busy} awaitingAction={awaitingAction} onSend={send} />
+          <ChatInput busy={busy} awaitingAction={awaitingAction} onSend={send} initialValue={prefill} />
         </div>
       </div>
     </div>
