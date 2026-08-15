@@ -55,6 +55,44 @@ sudo cp deploy/nginx-talent-radar.conf /etc/nginx/sites-enabled/
 
 数据库 schema 首次请求时自动迁移（版本化，幂等）。
 
+### 生产环境变量（`/etc/zhipu-talent.env`）
+
+| 变量 | 说明 |
+|---|---|
+| `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.2 + Web Search + Embedding + OCR 一把通吃） |
+| `OPENAI_MODEL` / `OPENAI_BASE_URL` | `glm-5.2` / `https://open.bigmodel.cn/api/paas/v4` |
+| `AMINER_API_TOKEN` | AMiner 论文核验/学者检索（可选） |
+| `FLASK_SESSION_SECRET` | 会话密钥（必填，随机长串） |
+| `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址/集合名 |
+
+设置页（/settings）可在线更新 Key（原子写回 .env，脱敏显示）。
+
+### 健康检查与运维
+
+```bash
+curl -s http://127.0.0.1:8503/health   # 应用 + 外部服务探测（有缓存）
+systemctl status talent-radar          # 应用（gunicorn 127.0.0.1:8503）
+systemctl status qdrant                # 向量库（数据在 /var/lib/qdrant）
+journalctl -u talent-radar -n 50       # 日志（500 详情只在日志，响应不外泄）
+```
+
+### 备份与恢复
+
+```bash
+# 数据 = SQLite + 简历原件 + Qdrant 存储（停服后冷拷一致性最佳）
+tar czf backup.tgz /var/lib/zhipu-talent
+# 恢复：解回原路径后 systemctl restart talent-radar
+```
+
+### 故障排查速查
+
+| 症状 | 先看 |
+|---|---|
+| 首页 502 | `systemctl status talent-radar` + 日志尾 50 行 |
+| 评估一直失败 | 设置页「重新检测」看 llm/embedding 状态 |
+| 语义检索空结果 | qdrant 是否 active、集合是否存在 |
+| 问答报「服务器内部错误」 | `journalctl -u talent-radar` 搜对应时间点 traceback |
+
 ## 项目结构
 
 ```
