@@ -99,7 +99,18 @@ def list_persons(
         query = query.filter(PersonORM.group_id.is_(None))
     elif group_id:
         query = query.filter(PersonORM.group_id == group_id)
-    return query.order_by(PersonORM.updated_at.desc()).limit(limit).offset(offset).all()
+    # selectinload 预载 brief 用到的关系：消除列表页逐人 lazy load 的 N+1
+    from sqlalchemy.orm import selectinload
+    return (
+        query.options(
+            selectinload(PersonORM.evaluations),
+            selectinload(PersonORM.reputation_reports),
+        )
+        .order_by(PersonORM.updated_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
 
 
 def get_person_detail(session, person_id: str) -> PersonORM | None:
