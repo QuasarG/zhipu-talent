@@ -150,6 +150,43 @@ export default function ScoreOverview({ evaluation, academicReport, candidateNam
         </div>
       </header>
 
+      {/* 优势/风险前置：紧贴分数的独立强调卡（原来是压在最底的折叠项） */}
+      {!!evaluation.core_strengths?.length && (
+        <section className="mt-4 rounded-md border border-outline-variant bg-surface-lowest overflow-hidden">
+          <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+            <Icon name="workspace_premium" size={18} className="text-success shrink-0" />
+            <h3 className="text-title text-on-surface">{t("核心优势")}</h3>
+            <span className="text-label text-on-surface-variant">{t("{n} 项", { n: evaluation.core_strengths.length })}</span>
+          </div>
+          <ol className="px-4 pb-3 space-y-1.5">
+            {evaluation.core_strengths.map((item, index) => (
+              <li key={index} className="grid grid-cols-[20px_minmax(0,1fr)] gap-2 text-body-sm leading-5 text-on-surface">
+                <span className="font-bold tabular-nums text-success">{String(index + 1).padStart(2, "0")}</span>
+                <span><EvidenceText text={item} evidenceById={evidenceById} onOpen={openEvidence} /></span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {!!evaluation.potential_risks?.length && (
+        <section className="mt-3 rounded-md border border-outline-variant bg-surface-lowest overflow-hidden">
+          <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+            <Icon name="warning" size={18} className="text-error shrink-0" />
+            <h3 className="text-title text-on-surface">{t("潜在风险")}</h3>
+            <span className="text-label text-on-surface-variant">{t("{n} 项", { n: evaluation.potential_risks.length })}</span>
+          </div>
+          <ol className="px-4 pb-3 space-y-1.5">
+            {evaluation.potential_risks.map((item, index) => (
+              <li key={index} className="grid grid-cols-[20px_minmax(0,1fr)] gap-2 text-body-sm leading-5 text-on-surface">
+                <span className="font-bold tabular-nums text-error">{String(index + 1).padStart(2, "0")}</span>
+                <span><EvidenceText text={item} evidenceById={evidenceById} onOpen={openEvidence} /></span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       {!!evaluation.dimension_scores?.length && (
         <ResultSection title={t("通用能力维度")} icon="analytics" count={evaluation.dimension_scores.length}>
           <div className="divide-y divide-outline-variant">
@@ -206,8 +243,6 @@ export default function ScoreOverview({ evaluation, academicReport, candidateNam
       )}
 
       <ResultSection title={t("复核与面谈")} icon="forum">
-        <ExpandableList title={t("核心优势")} icon="workspace_premium" items={evaluation.core_strengths} evidenceById={evidenceById} onEvidence={openEvidence} defaultOpen />
-        <ExpandableList title={t("潜在风险")} icon="warning" items={evaluation.potential_risks} evidenceById={evidenceById} onEvidence={openEvidence} />
         <ExpandableList title={t("建议面谈问题")} icon="quiz" items={evaluation.interview_questions} evidenceById={evidenceById} onEvidence={openEvidence} />
         <ExpandableList title={t("培养方向")} icon="trending_up" items={evaluation.cultivation_direction} evidenceById={evidenceById} onEvidence={openEvidence} />
       </ResultSection>

@@ -74,3 +74,42 @@
 - grill/奖学金撤导航（需要产品确认，改一行路由的事）
 - agents/ 7 个零测试模块补最小 happy-path 测试（优先 safety_net/evidence_extractor）
 - workbench.py 拆分（先搬导入流水线，纯移动零逻辑变更）
+
+---
+
+## 六、评估哲学评审：evidence 依赖偏差（2026-08-15 深度调研）
+
+> 用户直觉：「候选人对简历项目写得越详细，得分就会越高」。深度走查结论：**成立，且是结构性的**。
+
+### 传导链（写细→高分的具体路径）
+
+分数公式本身不含证据条数（`score/5×max_points`），但条数通过四道 gate 间接决定分数天花板：
+
+1. **无证据 = 封顶 1.0/5**（common critic + track `_calibrate_scores`）——不写特定词汇的实质工作直接判死刑
+2. **无量化数字 = 封顶 2.5/5**——`has_metric` 靠文本里出现数字判定；不写"35%"的同等贡献恒 ≤2.5
+3. **`has_specific_tool` 被当成"验证"**（`tracks/shared/engine.py:206` `_has_verification`）——简历里写个工具名就解锁 2.5 封顶，把"用了什么"误当"做成了什么"
+4. **高分定义含「多项」**（4.5 档="多项独立高质量成果"）+ 来源数硬门槛（learning_transfer/growth 需 ≥2 来源 ≥2 条 credible）——**两个小项目 > 一个同体量项目**
+5. **纯条数触发的保底**（portfolio floors：6 来源 strength≥4 / 3 ownership / 2 发表 → 六维度直接抬到 4.0-4.5 地板）
+6. **publication 未知状态兜底 0.3**——简历不写明状态/位次就按 0.3 乘，惩罚"没写"而非"没有"
+
+### 对冲规则（已有但不够）
+
+评分 prompt 里有反规则（"不要因简历没写成论文就压分""缺细节不得多维度重复扣分""机构档位不得加分"），但它们是软约束（对 LLM 说），上面 1-6 是硬约束（程序 gate）——**硬 gate 永远赢**。
+
+### 意外发现：integrity 机制是死的
+
+- `quote_integrity_flags`（证据可追溯校验）在现行链路**无任何消费者**——疑似幻觉的证据只留 flag，不降分不重抽
+- evidence 重抽循环（`MAX_EVIDENCE_REWRITE_LOOPS=2`）**未接线**——critic.py 是 legacy，multi-track graph 无回边
+- 即：证据质量校验形同虚设，而分数却完全建立在证据上
+
+### 重复运行：每次评估全链重跑
+
+同一候选人重复评估 = 重新抽取全部证据 + 重新评分，无冻结/复用/中位数。HANDOVER §5 的"证据一次冻结+3 轮中位数"是未实施的设计。同简历两次评估的证据集可能不同（温度 0.1 缓解但非零），分数随之漂移。
+
+### 改进方向（按性价比排序，未实施）
+
+1. **接线 integrity 消费者**（小）：global_critic 汇总 `evidence_integrity_flags` 进 critic_flags，不可追溯证据降 strength——机制已在，只差一行汇总
+2. **`has_specific_tool` 移出验证三元组**（小）：engine.py `_has_verification` 只认 metric/产物/发表，工具名只作信号不作验证
+3. **"写得少"的对冲说明**（中）：评分 prompt 加"简历详略是写作习惯不是能力信号；同样实质下，简写不应低于详写"——软约束对软偏见
+4. **portfolio floors 加质量权重**（中）：6 来源触发前先要求 credible 占比，纯堆量不触发地板
+5. **证据冻结复用**（大）：同 raw_text hash 复用上次证据集，评分 3 轮中位数——这是 HANDOVER 里的既定设计，做成后重复评估分数稳定
