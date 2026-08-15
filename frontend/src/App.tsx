@@ -12,6 +12,7 @@ import TalentProfile from "./pages/TalentProfile";
 import Scholarship from "./pages/Scholarship";
 import ScholarshipDetail from "./pages/ScholarshipDetail";
 import Settings from "./pages/Settings";
+import SharedProfile from "./pages/SharedProfile";
 import OnboardingTour from "./components/OnboardingTour";
 
 function App() {
@@ -28,6 +29,11 @@ function App() {
         <LoadingIndicator size={32} label={t("加载中…")} />
       </div>
     );
+  }
+
+  // 只读分享页：凭随机 token 自证，不要求登录，也不进主应用布局
+  if (window.location.pathname.startsWith("/share/")) {
+    return <SharedProfile />;
   }
 
   if (currentUser === null) {

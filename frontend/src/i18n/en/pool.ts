@@ -1,4 +1,11 @@
 export default {
+  "分享": "Share",
+  "已复制链接": "Link copied",
+  "生成中…": "Generating…",
+  "分享失败": "Share failed",
+  "复制只读分享链接（30 天有效）": "Copy read-only share link (valid for 30 days)",
+  "人才档案 · 只读分享": "Talent Profile · Read-only Share",
+  "无法打开此分享链接": "Cannot open this share link",
   "问问 AI": "Ask AI",
   "帮我全面分析一下{name}的背景、评估结果和潜在风险": "Give me a full analysis of {name}: background, evaluation results, and potential risks",
   "关闭": "Close",

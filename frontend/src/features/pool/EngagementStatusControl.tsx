@@ -9,13 +9,24 @@ interface Props {
   saving?: boolean;
   onChange: (value: string) => void | Promise<void>;
   compact?: boolean;
+  /** 只读（分享页）：只展示当前状态，不渲染可点选项 */
+  readOnly?: boolean;
 }
 
-export default function EngagementStatusControl({ value, saving, onChange, compact }: Props) {
+export default function EngagementStatusControl({ value, saving, onChange, compact, readOnly }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   const { t } = useI18n();
 
   useEffect(() => setPending(null), [value]);
+
+  if (readOnly) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-body-sm text-on-surface">
+        <span className="w-2 h-2 rounded-full bg-primary" />
+        {ENGAGEMENT_LABELS[value] || value}
+      </span>
+    );
+  }
 
   const select = async (clicked: string) => {
     if (saving) return;

@@ -17,6 +17,8 @@ interface Props {
   person: PersonDetail | null;
   personId: string | null;
   onUpdated: (id: string) => void;
+  /** 只读模式（分享页）：隐藏一切编辑/操作入口 */
+  readOnly?: boolean;
 }
 
 const TRACK_TOKENS: Record<string, string> = {
@@ -34,9 +36,10 @@ function fmtTime(iso: string | null): string {
   return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function TalentDetail({ person, personId, onUpdated }: Props) {
+export default function TalentDetail({ person, personId, onUpdated, readOnly }: Props) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [shareState, setShareState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const [historyKey, setHistoryKey] = useState(0);
   const [showVersionDiff, setShowVersionDiff] = useState(false);
   const navigate = useNavigate();
@@ -59,6 +62,29 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
   const reputation = person.reputation_reports || [];
   const initials = (person.name || "?").charAt(0);
   const candidateId = person.candidate_id || "";
+
+  const shareProfile = async () => {
+    if (!person) return;
+    setShareState("copying");
+    try {
+      const { share_path } = await api.share.create(person.id);
+      const url = `${window.location.origin}${share_path}`;
+      const write = navigator.clipboard?.writeText(url).catch(() => {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      });
+      await write;
+      setShareState("copied");
+      setTimeout(() => setShareState("idle"), 2500);
+    } catch {
+      setShareState("error");
+      setTimeout(() => setShareState("idle"), 2500);
+    }
+  };
 
   const saveEngagement = async (engagement: string) => {
     if (!candidateId) return;
@@ -90,13 +116,25 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
               <StatusChip tone={person.person_type === "guest" ? "info" : "primary"} className="shrink-0">
                 {person.person_type === "guest" ? t("人物调查") : t("简历评估")}
               </StatusChip>
-              <button
-                onClick={() => navigate(`/chat?ask=${encodeURIComponent(t("帮我全面分析一下{name}的背景、评估结果和潜在风险", { name: person.name || "" }))}`)}
-                className="state-layer shrink-0 ml-auto inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer"
-              >
-                <Icon name="forum" size={13} />
-                {t("问问 AI")}
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={shareProfile}
+                  className="state-layer shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer"
+                  title={t("复制只读分享链接（30 天有效）")}
+                >
+                  <Icon name={shareState === "copied" ? "check" : "share"} size={13} />
+                  {shareState === "copied" ? t("已复制链接") : shareState === "copying" ? t("生成中…") : shareState === "error" ? t("分享失败") : t("分享")}
+                </button>
+              )}
+              {!readOnly && (
+                <button
+                  onClick={() => navigate(`/chat?new=1&ask=${encodeURIComponent(t("帮我全面分析一下{name}的背景、评估结果和潜在风险", { name: person.name || "" }))}`)}
+                  className="state-layer shrink-0 ml-auto inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer"
+                >
+                  <Icon name="forum" size={13} />
+                  {t("问问 AI")}
+                </button>
+              )}
             </div>
             <p className="text-body-sm text-on-surface-variant truncate mt-0.5">
               {person.org || "—"} · {person.direction || "—"}
@@ -114,6 +152,7 @@ export default function TalentDetail({ person, personId, onUpdated }: Props) {
               compact
               value={person.engagement_status || "newly_admitted"}
               saving={saving}
+              readOnly={readOnly}
               onChange={saveEngagement}
             />
           ) : (

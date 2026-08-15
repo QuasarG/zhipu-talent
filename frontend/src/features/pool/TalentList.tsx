@@ -448,7 +448,7 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
             {batchNote && (
               <p className="mb-1.5 px-1 text-body-sm text-error">{batchNote}</p>
             )}
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
             <Button variant="text" icon="close" className="shrink-0 h-10 w-10 px-0" disabled={busy}
               onClick={() => setBatchMode(false)} title={t("退出批量")} />
             <Button variant="tonal" className="flex-1 h-10 text-body-sm" disabled={busy}
@@ -466,7 +466,7 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
                 variant="filled"
                 disabled={evaluatableIds.length === 0 || busy}
                 onClick={() => doBatchEvaluate()}
-                className="shrink-0 h-10 px-3 text-body-sm text-on-primary"
+                className="flex-1 min-w-[92px] h-10 px-3 text-body-sm text-on-primary whitespace-nowrap"
               title={t("批量重新评估（人物调查类型自动跳过）")}
             >
               {busy ? t("处理中…") : t("评估({count})", { count: evaluatableIds.length })}

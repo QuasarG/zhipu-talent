@@ -210,6 +210,14 @@ export const api = {
         body: JSON.stringify({ bonus, note }),
       }),
   },
+  share: {
+    create: (personId: string) =>
+      fetchJSON<{ share_path: string; token: string }>(`/api/persons/${personId}/share`, { method: "POST" }),
+    revoke: (personId: string) =>
+      fetchJSON<{ revoked: boolean }>(`/api/persons/${personId}/share`, { method: "DELETE" }),
+    // 公开端点（无鉴权，凭随机 token）
+    get: (token: string) => fetchJSON<PersonDetail>(`/api/share/${token}`),
+  },
   import: (formData: FormData) =>
     fetch(BASE + "/api/import-file", { method: "POST", body: formData }),
   chat: {
