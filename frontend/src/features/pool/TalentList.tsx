@@ -309,17 +309,17 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
   };
 
   // 选中项是否包含 guest（人物调查，不可评估）
-  const selectedHasGuest = useMemo(
-    () => persons.some((p) => selected.has(p.id) && p.person_type === "guest"),
+  const evaluatableIds = useMemo(
+    () => persons.filter((p) => selected.has(p.id) && p.person_type !== "guest").map((p) => p.id),
     [persons, selected],
   );
 
   const doBatchEvaluate = async () => {
-    if (selected.size === 0 || busy || selectedHasGuest) return;
+    if (evaluatableIds.length === 0 || busy) return;
     setBusy(true);
     setBatchNote("");
     try {
-      const resp = await api.persons.batchEvaluate([...selected]);
+      const resp = await api.persons.batchEvaluate(evaluatableIds);
       onChanged?.();
       // 评估在后端跑起来了：跳简历评估页并聚焦第一个，页面有 running 轮询
       const started = resp.results.filter((r) => r.status === "started" && r.candidate_id);
@@ -464,12 +464,12 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
             {showBatchEvaluate && (
               <Button
                 variant="filled"
-                disabled={selected.size === 0 || busy || selectedHasGuest}
+                disabled={evaluatableIds.length === 0 || busy}
                 onClick={() => doBatchEvaluate()}
                 className="shrink-0 h-10 px-3 text-body-sm text-on-primary"
-              title={selectedHasGuest ? t("选中包含人物调查类型，无法评估") : t("批量重新评估")}
+              title={t("批量重新评估（人物调查类型自动跳过）")}
             >
-              {busy ? t("处理中…") : t("评估({count})", { count: selected.size })}
+              {busy ? t("处理中…") : t("评估({count})", { count: evaluatableIds.length })}
               </Button>
             )}
             </div>
