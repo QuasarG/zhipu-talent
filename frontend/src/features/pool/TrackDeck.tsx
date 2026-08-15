@@ -118,17 +118,17 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
           }}
           className={cn(
             "flex-1 min-h-0 overflow-x-auto overflow-y-hidden overscroll-x-contain transition-colors",
+            // 空态时容器自身就是居中布局（grid place-items 不依赖子项宽高传递）
+            deck.length === 0 && "grid place-items-center",
             isOver && "bg-primary-container/40",
           )}
         >
           {deck.length === 0 ? (
-            /* 空态不进 w-max 布局：直接铺满横滚容器，内容居中 */
-            <div className="flex h-full w-full items-center justify-center">
-              <div className="text-center">
-                <Icon name="compare" size={32} className="text-on-surface-variant" />
-                <p className="mt-2 text-body text-on-surface">{t("轨道为空")}</p>
-                <p className="text-body-sm text-on-surface-variant">{t("从左侧列表拖动人才到这里，或点击「加入当前选中」")}</p>
-              </div>
+            /* 空态：容器 grid 居中，内容块只管排字 */
+            <div className="text-center px-6">
+              <Icon name="compare" size={32} className="text-on-surface-variant" />
+              <p className="mt-2 text-body text-on-surface">{t("轨道为空")}</p>
+              <p className="text-body-sm text-on-surface-variant">{t("从左侧列表拖动人才到这里，或点击「加入当前选中」")}</p>
             </div>
           ) : (
           <div className="flex h-full gap-3 p-3 w-max">
