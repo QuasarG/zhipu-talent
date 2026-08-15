@@ -40,10 +40,11 @@ function App() {
         <NavRail username={currentUser.display_name || currentUser.username} />
         <main className="flex-1 min-w-0 px-6 pb-6">
           <Routes>
-            <Route path="/" element={<TalentChat />} />
+            <Route path="/" element={<TalentPool />} />
             <Route path="/resume-evaluate" element={<ResumeEvaluate />} />
-            <Route path="/knowledge" element={<Navigate to="/" replace />} />
-            <Route path="/talent-pool" element={<TalentPool />} />
+            <Route path="/chat" element={<TalentChat />} />
+            <Route path="/knowledge" element={<Navigate to="/chat" replace />} />
+            <Route path="/talent-pool" element={<Navigate to="/" replace />} />
             <Route path="/talent-pool/:personId" element={<TalentProfile />} />
             <Route path="/scholarship" element={<Scholarship />} />
             <Route path="/scholarship/:id" element={<ScholarshipDetail />} />

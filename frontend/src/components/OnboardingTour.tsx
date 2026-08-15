@@ -21,10 +21,10 @@ const STEPS: TourStep[] = [
     placement: "right",
   },
   {
-    selector: '[data-tour="nav-chat"]',
+    selector: '[data-tour="nav-pool"]',
     route: "/",
-    title: "人才问答",
-    desc: "输入姓名即可让 AI Agent 自动检索人才库、查论文、查舆情，生成调查报告。上下文取决于调用的模型（当前是 GLM-5.2[1M]）。",
+    title: "人才库",
+    desc: "所有评估入库的人才都在这里。关系图谱可视化人才网络，列表视图查看评分排序，右侧详情栏看完整档案和简历版本对比。",
     placement: "right",
   },
   {
@@ -35,10 +35,10 @@ const STEPS: TourStep[] = [
     placement: "right",
   },
   {
-    selector: '[data-tour="nav-pool"]',
-    route: "/talent-pool",
-    title: "人才库",
-    desc: "所有评估入库的人才都在这里。关系图谱可视化人才网络，列表视图查看评分排序，右侧详情栏看完整档案和简历版本对比。",
+    selector: '[data-tour="nav-chat"]',
+    route: "/chat",
+    title: "人才问答",
+    desc: "输入姓名即可让 AI Agent 自动检索人才库、查论文、查舆情，生成调查报告。上下文取决于调用的模型（当前是 GLM-5.2[1M]）。",
     placement: "right",
   },
   {
