@@ -1,4 +1,5 @@
 export default {
+  "拖动中…": "Dragging…",
   "链接无效或已被撤销": "Link invalid or revoked",
   "该人员没有关联简历档案": "This person has no linked resume",
   "从左侧列表拖动人才到这里，或点击「加入当前选中」": "Drag people here from the left list, or click Add selected",

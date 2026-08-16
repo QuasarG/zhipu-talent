@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { useDroppable } from "@dnd-kit/core";
+import { DragOverlay, useDroppable, type DragStartEvent, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { api } from "@/lib/api";
 import type { CandidateDetail } from "@/lib/types";
 import Card from "@/components/ui/Card";
@@ -23,13 +24,34 @@ interface Props {
   personsName: (id: string) => string;
   /** 页面级 DndContext 的 onDragEnd 通过 ref 调进来（拖入即加轨） */
   deckApiRef?: RefObject<{ addToDeck: (id: string) => void } | null>;
+  /** 页面级 DndContext 转发：滑轨卡自身拖拽事件（deck 内重排） */
+  deckDragApiRef?: RefObject<{ onDeckDragStart: (e: DragStartEvent) => void; onDeckDragEnd: (e: DragEndEvent) => void } | null>;
 }
 
 /** 简历对比滑轨（niri 风）：左列表拖入卡片，Shift+滚轮横滚，恰好同时显示两份。 */
-export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props) {
-  const [deck, setDeck] = useState<DeckEntry[]>([]);
+export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDragApiRef }: Props) {
+  // 滑轨状态跟随：sessionStorage 存 personId 顺序（刷新恢复；标签页隔离，不跨用户同步）
+  const DECK_KEY = "talent-pool.deck";
+  const [deck, setDeck] = useState<DeckEntry[]>(() => {
+    try {
+      const ids = JSON.parse(sessionStorage.getItem(DECK_KEY) || "[]") as string[];
+      return ids.map((id) => ({ personId: id, name: "" }));
+    } catch {
+      return [];
+    }
+  });
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { t } = useI18n();
+
+  // deck 变更即持久化
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(DECK_KEY, JSON.stringify(deck.map((e) => e.personId)));
+    } catch {
+      /* ignore */
+    }
+  }, [deck]);
   const load = useCallback(async (personId: string) => {
     setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, detail: undefined, error: undefined } : e)));
     try {
@@ -41,6 +63,17 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
       setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, error: msg } : e)));
     }
   }, [t]);
+
+  // 刷新恢复：补名字 + 懒加载详情（personsName 由父层传入，恢复时列表已就位）
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current || deck.length === 0) return;
+    hydratedRef.current = true;
+    setDeck((prev) => prev.map((e) => ({ ...e, name: e.name || personsName(e.personId) })));
+    for (const e of deck) {
+      if (!e.detail && !e.error) void load(e.personId);
+    }
+  }, [deck, personsName, load]);
 
   const addToDeck = useCallback(
     (personId: string) => {
@@ -62,6 +95,32 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
   useEffect(() => {
     if (deckApiRef) deckApiRef.current = { addToDeck };
   }, [deckApiRef, addToDeck]);
+
+  const onDeckDragStart = useCallback((e: DragStartEvent) => {
+    setDraggingId(String(e.active.id));
+  }, []);
+
+  const onDeckDragEnd = useCallback((e: DragEndEvent) => {
+    setDraggingId(null);
+    const from = String(e.active.id);
+    const to = e.over ? String(e.over.id) : "";
+    if (!to || from === to) return;
+    // deck 内重排：把 from 移到 to 的位置
+    setDeck((prev) => {
+      const fi = prev.findIndex((x) => x.personId === from);
+      const ti = prev.findIndex((x) => x.personId === to);
+      if (fi < 0 || ti < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fi, 1);
+      next.splice(ti, 0, moved);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (deckDragApiRef) deckDragApiRef.current = { onDeckDragStart, onDeckDragEnd };
+  }, [deckDragApiRef, onDeckDragStart, onDeckDragEnd]);
+
 
   const removeFromDeck = (personId: string) => setDeck((prev) => prev.filter((e) => e.personId !== personId));
   const clearDeck = () => setDeck([]);
@@ -132,11 +191,55 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
             </div>
           ) : (
           <div className="flex h-full gap-3 p-3 w-max">
+            <SortableContext items={deck.map((e) => e.personId)} strategy={horizontalListSortingStrategy}>
             {deck.map((entry) => (
-                <section
+                <DeckCard
                   key={entry.personId}
-                  className="relative flex flex-col h-full rounded-md border border-outline-variant bg-surface-lowest overflow-hidden"
-                  style={{ width: "calc((100vw - 24rem - 4rem) / 2)" }}
+                  entry={entry}
+                  dragging={draggingId === entry.personId}
+                  onRemove={() => removeFromDeck(entry.personId)}
+                  t={t}
+                />
+            ))}
+            </SortableContext>
+          </div>
+          )}
+          {/* 拖动动效：浮起卡影跟随指针（真身在原地半透明占位） */}
+          <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2,0,0,1)" }}>
+            {draggingId ? (
+              <DeckCardGhost entry={deck.find((e) => e.personId === draggingId)!} t={t} />
+            ) : null}
+          </DragOverlay>
+        </div>
+    </Card>
+  );
+}
+
+/** 轨道内可排序卡片 */
+function DeckCard({ entry, dragging, onRemove, t }: {
+  entry: DeckEntry;
+  dragging: boolean;
+  onRemove: () => void;
+  t: (k: string) => string;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isSorting } = useSortable({
+    id: entry.personId,
+    data: { type: "deck-card" },
+  });
+  return (
+                <section
+                  ref={setNodeRef}
+                  {...attributes}
+                  {...listeners}
+                  style={{
+                    width: "calc((100vw - 24rem - 4rem) / 2)",
+                    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+                    transition: isSorting ? transition : undefined,
+                  }}
+                  className={cn(
+                    "relative flex flex-col h-full rounded-md border border-outline-variant bg-surface-lowest overflow-hidden shrink-0 select-none",
+                    dragging ? "opacity-40 ring-2 ring-primary" : "cursor-grab active:cursor-grabbing",
+                  )}
                 >
                   {/* 卡头：名字 + 分数 + 移除 */}
                   <div className="flex items-center gap-2 px-3 h-10 shrink-0 border-b border-outline-variant bg-surface-low">
@@ -148,7 +251,7 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
                         </span>
                       )}
                       <button
-                        onClick={() => removeFromDeck(entry.personId)}
+                        onClick={onRemove}
                         className="state-layer w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-error cursor-pointer"
                         title={t("移出轨道")}
                       >
@@ -157,7 +260,7 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
                     </span>
                   </div>
                   {/* 卡体：结构化简历/原件 Tabs（复用评估页） */}
-                  <div className="flex-1 min-h-0 overflow-y-auto p-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto p-3" onPointerDown={(e) => e.stopPropagation()}>
                     {entry.error ? (
                       <p className="text-body-sm text-error">{entry.error}</p>
                     ) : !entry.detail ? (
@@ -169,10 +272,23 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef }: Props
                     )}
                   </div>
                 </section>
-              ))}
-          </div>
-          )}
-        </div>
-    </Card>
+  );
+}
+
+/** DragOverlay 的浮起影子卡（只渲染头部骨架，轻量跟随） */
+function DeckCardGhost({ entry, t }: { entry: DeckEntry; t: (k: string) => string }) {
+  return (
+    <div
+      style={{ width: "calc((100vw - 24rem - 4rem) / 2)" }}
+      className="flex flex-col rounded-md border-2 border-primary bg-surface-lowest overflow-hidden shadow-3 rotate-1"
+    >
+      <div className="flex items-center gap-2 px-3 h-10 border-b border-outline-variant bg-surface-low">
+        <Icon name="drag_indicator" size={15} className="text-primary" />
+        <span className="text-title truncate">{entry.name}</span>
+      </div>
+      <div className="flex-1 grid place-items-center">
+        <span className="text-label text-on-surface-variant">{t("拖动中…")}</span>
+      </div>
+    </div>
   );
 }
