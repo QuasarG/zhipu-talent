@@ -9,6 +9,7 @@ import {
 } from "react";
 import chatEn from "@/i18n/en/chat";
 import grillEn from "@/i18n/en/grill";
+import jdEn from "@/i18n/en/jd";
 import poolEn from "@/i18n/en/pool";
 import resumeEn from "@/i18n/en/resume";
 import scholarshipEn from "@/i18n/en/scholarship";
@@ -22,6 +23,7 @@ const enDict: Record<string, string> = Object.assign(
   {},
   chatEn,
   grillEn,
+  jdEn,
   poolEn,
   resumeEn,
   scholarshipEn,

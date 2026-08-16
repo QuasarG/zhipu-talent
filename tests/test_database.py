@@ -128,7 +128,8 @@ class DatabaseTest(unittest.TestCase):
             self.assertEqual(len(graph_nodes), len(set(graph_nodes)))
             # 论文核验前移到导入阶段后，academic_check 不再出现在展示图谱
             self.assertNotIn("academic_check", graph_nodes)
-            self.assertIn("ai4science_track", graph_nodes)
+            # 硬编码 6 track 已废弃：图谱只暴露单个 JD 驱动动态节点
+            self.assertIn("dynamic_tracks", graph_nodes)
             self.assertEqual(
                 [phase["key"] for phase in payload["evaluation_graph"]["phases"]],
                 ["preparation", "routing", "parallel", "aggregation"],

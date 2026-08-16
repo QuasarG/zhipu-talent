@@ -5,15 +5,13 @@ from unittest.mock import patch
 
 from agi_talent_radar.agents.common_potential import run_common_critic, run_common_scorer
 from agi_talent_radar.agents.routing.track_router import _normalize_assignments
-from agi_talent_radar.agents.tracks.registry import TRACK_SPECS
-from agi_talent_radar.agents.tracks.agent.nodes import _calibrate_agent_portfolio
-from agi_talent_radar.agents.tracks.safety.nodes import _calibrate_security_portfolio
 from agi_talent_radar.agents.tracks.shared.engine import _supports_high_score
 from agi_talent_radar.core.models import CandidateResume, DimensionScore, EvidenceItem, NormalizedResume
 from agi_talent_radar.core.resume_ingestion import extract_pdf_text
 from agi_talent_radar.core.runner import run_candidate
 from tests.llm_fixtures import mock_llm_json
 from tests.resume_fixtures import make_resume_fixtures
+from tests.track_fixtures import make_dynamic_specs, make_spec, patch_active_specs
 
 
 class MultiTrackTest(unittest.TestCase):
@@ -188,6 +186,7 @@ class MultiTrackTest(unittest.TestCase):
             ],
             normalized,
             evidence,
+            make_dynamic_specs(),
         )
 
         self.assertEqual([item.track for item in assignments], ["safety", "agent"])
@@ -276,34 +275,24 @@ class MultiTrackTest(unittest.TestCase):
         self.assertEqual(resume.projects[0].name, "Coding Agent")
         self.assertTrue(all(isinstance(detail, str) for detail in resume.projects[0].details))
 
-    def test_each_track_rubric_has_sixty_points(self) -> None:
-        self.assertEqual(
-            set(TRACK_SPECS),
-            {"base", "agent", "safety", "multimodal", "ai_infra", "ai4science"},
-        )
-        for spec in TRACK_SPECS.values():
-            self.assertEqual(spec.max_points, 60)
-            self.assertEqual(len({item.key for item in spec.dimensions}), len(spec.dimensions))
+    def test_jd_spec_normalization_enforces_sixty_point_budget(self) -> None:
+        from agi_talent_radar.agents.jd_spec import _normalize_spec
 
-    def test_security_and_agent_weights_prioritize_method_depth(self) -> None:
-        safety = {item.key: item.max_points for item in TRACK_SPECS["safety"].dimensions}
-        agent = {item.key: item.max_points for item in TRACK_SPECS["agent"].dimensions}
+        spec = make_spec("jd_x", dims=(("a", "甲", 10), ("b", "乙", 10), ("c", "丙", 10)))
+        normalized = _normalize_spec(spec)
 
-        self.assertEqual(
-            safety,
-            {
-                "security_insight": 10,
-                "method_innovation": 14,
-                "validation_rigor": 12,
-                "research_impact": 10,
-                "security_engineering": 8,
-                "ai_safety_transfer": 6,
-            },
-        )
-        self.assertEqual(agent["agent_method"], 14)
-        self.assertEqual(agent["verification_reliability"], 10)
-        self.assertNotIn("self_evolution", agent)
-        self.assertEqual(agent["agent_research_impact"], 10)
+        self.assertAlmostEqual(sum(d.max_points for d in normalized.dimensions), 60.0)
+        self.assertEqual(len(normalized.dimensions), 3)
+
+    def test_track_spec_dict_round_trip(self) -> None:
+        from agi_talent_radar.agents.tracks.shared.spec import TrackSpec
+
+        spec = make_spec("roundtrip", keywords=("rlhf", "蒸馏"))
+        restored = TrackSpec.from_dict(spec.to_dict())
+
+        self.assertEqual(restored.key, spec.key)
+        self.assertEqual(restored.dimensions, spec.dimensions)
+        self.assertEqual(restored.keywords, spec.keywords)
 
     def test_multiple_independent_strong_results_support_high_track_score(self) -> None:
         evidence = [
@@ -325,76 +314,9 @@ class MultiTrackTest(unittest.TestCase):
 
         self.assertTrue(_supports_high_score(evidence))
 
-    def test_security_portfolio_calibration_requires_hard_combination_evidence(self) -> None:
-        scores = [
-            DimensionScore(key=item.key, label=item.label, score=3, max_points=item.max_points)
-            for item in TRACK_SPECS["safety"].dimensions
-        ]
-        evidence = [
-            EvidenceItem(
-                id=f"e_project_{index}",
-                dimension="track_specific",
-                source=f"安全项目 {index}",
-                quote="负责安全方法与工具实现",
-                strength=4,
-                has_ownership=True,
-                has_specific_tool=index == 0,
-            )
-            for index in range(6)
-        ]
-        evidence.extend(
-            [
-                EvidenceItem(
-                    id="e_pub_1",
-                    dimension="evidence_credibility",
-                    source="ASE 2024",
-                    quote="已发表 CCF-A",
-                    signals=["发表状态:已发表"],
-                    strength=4,
-                ),
-                EvidenceItem(
-                    id="e_pub_2",
-                    dimension="evidence_credibility",
-                    source="ASE 2025",
-                    quote="已发表 CCF-A",
-                    signals=["发表状态:已发表"],
-                    strength=4,
-                ),
-            ]
-        )
-
-        calibrated = {item.key: item for item in _calibrate_security_portfolio(scores, evidence)}
-
-        self.assertEqual(calibrated["method_innovation"].score, 4.5)
-        self.assertEqual(calibrated["validation_rigor"].score, 4.0)
-        self.assertEqual(calibrated["ai_safety_transfer"].score, 3.0)
-
-    def test_agent_portfolio_calibration_does_not_require_self_evolution(self) -> None:
-        scores = [
-            DimensionScore(key=item.key, label=item.label, score=2, max_points=item.max_points)
-            for item in TRACK_SPECS["agent"].dimensions
-        ]
-        evidence = [
-            EvidenceItem(
-                id=f"e_agent_{index}",
-                dimension="track_specific",
-                source=f"Agent 成果 {index}",
-                quote="共同一作已发表 Agent 研究",
-                signals=["发表状态:已发表", "作者位置:共同一作"],
-                strength=4,
-                has_ownership=True,
-            )
-            for index in range(3)
-        ]
-
-        calibrated = {item.key: item for item in _calibrate_agent_portfolio(scores, evidence)}
-
-        self.assertEqual(calibrated["agent_method"].score, 3.5)
-        self.assertEqual(calibrated["agent_research_impact"].score, 4.0)
-
     def test_candidate_uses_normalized_multi_track_portfolio(self) -> None:
         resume = make_resume_fixtures()[0]
-        with mock_llm_json():
+        with mock_llm_json(), patch_active_specs():
             result = run_candidate(resume)
 
         self.assertGreaterEqual(len(result.track_assignments), 1)

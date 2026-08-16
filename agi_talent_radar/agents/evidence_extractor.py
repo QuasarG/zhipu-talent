@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from agi_talent_radar.agents.common_potential.rubric import COMMON_RUBRIC
-from agi_talent_radar.agents.tracks.registry import TRACK_SPECS
+from agi_talent_radar.agents.tracks.registry import load_active_specs
 from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.models import EvidenceItem, NormalizedResume
 from agi_talent_radar.agents.evidence_integrity import quote_integrity_flags
@@ -18,7 +18,7 @@ EVIDENCE_PROMPT = """
 1. 像尽调律师一样，优先提取「具体技术栈 / 具体动作动词 / 量化结果 / ownership 信号 / 验证闭环」。
 2. 每条 evidence.quote 必须尽量使用简历原文短句；允许裁剪或压缩，但必须可从原文追溯，禁止扩写、脑补、编造数据。
 3. 通用潜力不看学校、GPA、名企或热门方向。已正式发表的同行评议成果可作为研究验证和证据可信度信号，但不能单凭会议名称推断本人贡献。
-4. Track 专业证据必须标注 track_hints，可多选 base, agent, safety, multimodal, ai_infra, ai4science。判定指引：agent 覆盖软件工程（代码/bug/缺陷/测试/程序修复/issue/empirical study/代码大模型）；ai_infra 覆盖训练推理系统优化（吞吐/显存/算子/量化/分布式）；两者不可混淆——"性能缺陷定位""代码修复"属于 agent，不属于 ai_infra。
+4. Track 专业证据必须标注 track_hints，从输入 track_rubrics 的 key 中多选（key 原样引用，不得编造）。
 5. 如果某维度没有直接证据，不要硬凑，直接跳过。
 6. 优先捕捉能区分“真正高潜”与“简历光鲜”的证据：问题约束、baseline、评测、错误归因、验证方式、本人负责范围和可复现产物。
 7. 必须区分「草稿、已投稿、在审、已接收、已发表」：高水平正式发表成果可给 strength 4，若同时有作者位置或本人贡献可给 5；草稿、已投稿或在审题目通常不高于 2。
@@ -70,7 +70,7 @@ def run_evidence_extractor(state: dict) -> dict:
                 }
                 for item in COMMON_RUBRIC
             ],
-            "track_rubrics": {key: spec.as_prompt_dict() for key, spec in TRACK_SPECS.items()},
+            "track_rubrics": {key: spec.as_prompt_dict() for key, spec in load_active_specs().items()},
             "resume": normalized.model_dump(exclude={"education_raw", "experiences_raw"}),
             "academic_report": state.get("academic_report", {}),
             "repair_feedback": repair_feedback,

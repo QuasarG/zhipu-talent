@@ -683,6 +683,27 @@ class TalentGroupORM(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 
+class JdEntryORM(Base):
+    """JD 池条目：原文 + LLM 起草的 track spec（人批激活后参与评估）。
+
+    status: draft（未激活）→ active（参与评估）→ archived（停用保留）。
+    spec 为 TrackSpec.to_dict() 的 JSON；spec_version 每次重起草 +1。
+    """
+
+    __tablename__ = "jd_entries"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    title = Column(String(200), nullable=False)
+    team = Column(String(200), default="")
+    raw_text = Column(Text, nullable=False)
+    track_key = Column(String(64), default="", index=True)
+    spec = Column(Text, default="")
+    spec_version = Column(Integer, default=0)
+    status = Column(String(16), default="draft", index=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class ConversationORM(Base):
     """一段人才问答会话（按 owner 隔离，只有聊天记录分用户）。"""
 

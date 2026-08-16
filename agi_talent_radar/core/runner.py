@@ -81,6 +81,12 @@ def _node_summary(node_key: str, update: dict) -> str:
     if node_key == "common_critic":
         flags = update.get("common_critic_flags", [])
         return f"通用潜力校准为 {float(update.get('common_score', 0)):.1f} / 40，发现 {len(flags)} 个封顶项。"
+    if node_key == "dynamic_tracks":
+        results = update.get("track_results", [])
+        if not results:
+            return "JD 池为空或未命中任何岗位 Track，跳过专业评估。"
+        parts = "、".join(f"{r.get('label')} {float(r.get('calibrated_score', 0)):.1f}" for r in results)
+        return f"岗位 Track 评估完成：{parts}（单项满分 60）。"
     if node_key.endswith("_track"):
         results = update.get("track_results", [])
         if not results:
@@ -117,7 +123,7 @@ def _node_summary(node_key: str, update: dict) -> str:
 
 
 def _node_event_status(node_key: str, update: dict) -> str:
-    if node_key.endswith("_track") and not update.get("track_results"):
+    if (node_key == "dynamic_tracks" or node_key.endswith("_track")) and not update.get("track_results"):
         return "skipped"
     return "done"
 
@@ -127,7 +133,7 @@ def _node_phase(node_key: str) -> str:
         return "preparation"
     if node_key in {"track_router", "route_auditor"}:
         return "routing"
-    if node_key in {"common_scorer", "common_critic"} or node_key.endswith("_track"):
+    if node_key in {"common_scorer", "common_critic", "dynamic_tracks"} or node_key.endswith("_track"):
         return "parallel"
     return "aggregation"
 

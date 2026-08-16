@@ -6,7 +6,8 @@ from typing import Annotated, Any, Literal, TypedDict
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-TrackKey = Literal["base", "agent", "safety", "multimodal", "ai_infra", "ai4science"]
+# Track 不再是写死的枚举：JD 池驱动动态生成，key 为 spec slug（见 agents/tracks/registry.py）
+TrackKey = str
 
 
 class ResumeProject(BaseModel):

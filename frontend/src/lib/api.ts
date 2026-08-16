@@ -7,6 +7,7 @@ import type {
   GrillSessionState,
   GrillSessionSummary,
   HealthReport,
+  JdEntry,
   PendingPublication,
   PersonBrief,
   PersonDetail,
@@ -148,6 +149,34 @@ export const api = {
       }),
     delete: (id: string) =>
       fetchJSON<{ id: string; deleted: boolean }>(`/api/talent-groups/${id}`, { method: "DELETE" }),
+  },
+  jds: {
+    list: () => fetchJSON<JdEntry[]>("/api/jds"),
+    create: (data: { title: string; team: string; raw_text: string }) =>
+      fetchJSON<JdEntry>("/api/jds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: { title: string; team: string; raw_text: string }) =>
+      fetchJSON<JdEntry>(`/api/jds/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      fetchJSON<{ id: string; deleted: boolean }>(`/api/jds/${id}`, { method: "DELETE" }),
+    generateSpec: (id: string) =>
+      fetchJSON<JdEntry>(`/api/jds/${id}/generate-spec`, { method: "POST" }),
+    setStatus: (id: string, status: "draft" | "active" | "archived") =>
+      fetchJSON<JdEntry>(`/api/jds/${id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      }),
+  },
+  tracks: {
+    active: () => fetchJSON<{ key: string; label: string }[]>("/api/tracks/active"),
   },
   reputation: {
     review: (reportId: number, action: "confirmed" | "dismissed", reviewer: string, note: string) =>

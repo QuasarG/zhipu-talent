@@ -51,6 +51,24 @@ PortfolioCalibrator = Callable[
 ]
 
 
+def run_dynamic_tracks(state: dict[str, Any]) -> dict[str, Any]:
+    """JD 池驱动的动态 track 节点：对路由命中的每个 active track 跑共享引擎。
+
+    替代旧的 6 个静态 track 节点——track 集合随 JD 池实时变动，
+    spec 在节点运行时从 DB 加载，graph 无需为增删 track 重新编译。
+    """
+    from agi_talent_radar.agents.tracks.registry import load_active_specs
+
+    specs = load_active_specs()
+    results: list[dict[str, Any]] = []
+    for raw in state.get("track_assignments", []):
+        spec = specs.get(str(raw.get("track", "")))
+        if spec is None:
+            continue
+        results.extend(run_track_chain(state, spec).get("track_results", []))
+    return {"track_results": results}
+
+
 def run_track_chain(
     state: dict[str, Any],
     spec: TrackSpec,

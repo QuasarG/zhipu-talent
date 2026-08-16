@@ -16,6 +16,7 @@ from agi_talent_radar.core.db.orm import (
     EvaluationNodeRunORM,
     EvaluationORM,
     IdentitySuggestionORM,
+    JdEntryORM,
     MergeAuditORM,
     PersonORM,
     PublicationClaimORM,
@@ -163,7 +164,7 @@ def save_evaluation(
     ev.evaluation_mode = evaluation.evaluation_mode
     ev.publication_score = evaluation.publication_score
     ev.safety_net_score = evaluation.safety_net_score
-    ev.config_version = current_scoring_version()
+    ev.config_version = current_scoring_version(session)
     ev.person_id = _link_person(session, evaluation).id
     ev.status = "completed"
     ev.error_message = ""
@@ -1063,4 +1064,84 @@ def create_publication_verification_task(
             "evaluation_id": evaluation_id,
             "claim_ids": claim_ids,
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# JD 池：JD 原文 + LLM 起草的 track spec（人批激活后参与评估）
+# ---------------------------------------------------------------------------
+
+
+def jd_to_dict(row: JdEntryORM) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "title": row.title,
+        "team": row.team or "",
+        "raw_text": row.raw_text or "",
+        "track_key": row.track_key or "",
+        "spec": json.loads(row.spec) if row.spec else None,
+        "spec_version": row.spec_version or 0,
+        "status": row.status or "draft",
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+        "updated_at": row.updated_at.isoformat() if row.updated_at else "",
+    }
+
+
+def list_jds(session, include_archived: bool = True) -> list[JdEntryORM]:
+    query = session.query(JdEntryORM)
+    if not include_archived:
+        query = query.filter(JdEntryORM.status != "archived")
+    return list(query.order_by(JdEntryORM.created_at.desc()).all())
+
+
+def create_jd(session, title: str, team: str, raw_text: str) -> JdEntryORM:
+    row = JdEntryORM(title=title, team=team, raw_text=raw_text)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def update_jd(session, jd_id: str, title: str, team: str, raw_text: str) -> JdEntryORM | None:
+    row = session.get(JdEntryORM, jd_id)
+    if row is None:
+        return None
+    row.title = title
+    row.team = team
+    # 原文变更后旧 spec 失效，回到草稿待重起草
+    if raw_text != (row.raw_text or ""):
+        row.status = "draft"
+    row.raw_text = raw_text
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def save_jd_spec(session, jd_id: str, spec_dict: dict[str, Any]) -> JdEntryORM | None:
+    row = session.get(JdEntryORM, jd_id)
+    if row is None:
+        return None
+    row.spec = json.dumps(spec_dict, ensure_ascii=False)
+    row.track_key = str(spec_dict.get("key", ""))
+    row.spec_version = (row.spec_version or 0) + 1
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def delete_jd(session, jd_id: str) -> bool:
+    row = session.get(JdEntryORM, jd_id)
+    if row is None:
+        return False
+    session.delete(row)
+    session.commit()
+    return True
+
+
+def list_active_jds(session) -> list[JdEntryORM]:
+    return list(
+        session.query(JdEntryORM)
+        .filter(JdEntryORM.status == "active", JdEntryORM.spec != "")
+        .order_by(JdEntryORM.created_at.asc())
+        .all()
     )

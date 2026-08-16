@@ -1,33 +1,35 @@
+"""Track 注册表：JD 池驱动的动态 spec 加载。
+
+旧的 6 个硬编码 track（base/agent/safety/...）已废弃：spec 由 JD 池条目携带
+（LLM 起草、人批激活），评估时从 DB 实时加载，JD 池变动即 track 集合变动。
+"""
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
 
-from agi_talent_radar.agents.tracks.agent import run_agent_track
-from agi_talent_radar.agents.tracks.agent import SPEC as AGENT_SPEC
-from agi_talent_radar.agents.tracks.ai4science import run_ai4science_track
-from agi_talent_radar.agents.tracks.ai4science import SPEC as AI4SCIENCE_SPEC
-from agi_talent_radar.agents.tracks.base import run_base_track
-from agi_talent_radar.agents.tracks.base import SPEC as BASE_SPEC
-from agi_talent_radar.agents.tracks.multimodal import run_multimodal_track
-from agi_talent_radar.agents.tracks.multimodal import SPEC as MULTIMODAL_SPEC
-from agi_talent_radar.agents.tracks.safety import run_safety_track
-from agi_talent_radar.agents.tracks.safety import SPEC as SAFETY_SPEC
 from agi_talent_radar.agents.tracks.shared.spec import TrackSpec
-from agi_talent_radar.agents.tracks.ai_infra import run_ai_infra_track
-from agi_talent_radar.agents.tracks.ai_infra import SPEC as AI_INFRA_SPEC
-from agi_talent_radar.core.models import TrackKey
 
 
-TRACK_SPECS: dict[TrackKey, TrackSpec] = {
-    spec.key: spec
-    for spec in [BASE_SPEC, AGENT_SPEC, SAFETY_SPEC, MULTIMODAL_SPEC, AI_INFRA_SPEC, AI4SCIENCE_SPEC]
-}
+def specs_from_rows(rows) -> dict[str, TrackSpec]:
+    """把 JD 条目行解析成 {track_key: TrackSpec}，坏 spec 跳过（不拖死整池）。"""
+    result: dict[str, TrackSpec] = {}
+    for row in rows:
+        try:
+            spec = TrackSpec.from_dict(json.loads(row.spec))
+        except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+            continue
+        if spec.key and spec.dimensions:
+            result[spec.key] = spec
+    return result
 
-TRACK_RUNNERS: dict[TrackKey, Callable[[dict], dict]] = {
-    "base": run_base_track,
-    "agent": run_agent_track,
-    "safety": run_safety_track,
-    "multimodal": run_multimodal_track,
-    "ai_infra": run_ai_infra_track,
-    "ai4science": run_ai4science_track,
-}
+
+def load_active_specs(session=None) -> dict[str, TrackSpec]:
+    """加载 JD 池中 active 条目的 track spec；不传 session 时自开自关。"""
+    from agi_talent_radar.core.db.repository import list_active_jds
+
+    if session is not None:
+        return specs_from_rows(list_active_jds(session))
+    from agi_talent_radar.core.db.runtime import get_session
+
+    with get_session() as owned:
+        return specs_from_rows(list_active_jds(owned))

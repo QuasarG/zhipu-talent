@@ -36,7 +36,6 @@ export function classifyTrack(p: { direction?: string; dominant_track?: string; 
 }
 
 export const STATUS_LABELS = ENGAGEMENT_LABELS;
-export const TRACKS = ["base", "agent", "safety", "ai_infra", "multimodal", "ai4science"];
 
 const HR_TONE: Record<string, "success" | "warning" | "info" | "primary" | "neutral"> = {
   newly_admitted: "neutral", screening: "warning", interviewing: "primary",

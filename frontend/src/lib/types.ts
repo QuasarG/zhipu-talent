@@ -605,3 +605,37 @@ export interface ServiceHealth {
   detail: string;
   latency_ms: number;
 }
+
+
+// ---- JD 池（驱动动态 track 评估）----
+export interface JdDimensionSpec {
+  key: string;
+  label: string;
+  max_points: number;
+  evidence_rule: string;
+}
+
+export interface JdTrackSpec {
+  key: string;
+  label: string;
+  max_points: number;
+  evidence_focus: string;
+  high_score_rule: string;
+  dimensions: JdDimensionSpec[];
+  keywords?: string[];
+}
+
+export type JdStatus = "draft" | "active" | "archived";
+
+export interface JdEntry {
+  id: string;
+  title: string;
+  team: string;
+  raw_text: string;
+  track_key: string;
+  spec: JdTrackSpec | null;
+  spec_version: number;
+  status: JdStatus;
+  created_at: string;
+  updated_at: string;
+}

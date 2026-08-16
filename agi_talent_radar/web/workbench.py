@@ -920,6 +920,107 @@ def create_app() -> Flask:
             session.commit()
             return jsonify({"id": group_id, "deleted": True})
 
+    # ---- JD 池：JD 原文管理 + track spec 起草/激活（驱动动态 track 评估）----
+
+    @app.get("/api/jds")
+    def list_jds_view():
+        from agi_talent_radar.core.db.repository import jd_to_dict, list_jds
+        from agi_talent_radar.core.db.runtime import get_session
+
+        with get_session() as session:
+            return jsonify([jd_to_dict(row) for row in list_jds(session)])
+
+    @app.post("/api/jds")
+    def create_jd_view():
+        from agi_talent_radar.core.db.repository import create_jd, jd_to_dict
+        from agi_talent_radar.core.db.runtime import get_session
+
+        body = request.get_json(silent=True) or {}
+        title = str(body.get("title", "")).strip()
+        raw_text = str(body.get("raw_text", "")).strip()
+        if not title or not raw_text:
+            return jsonify({"detail": "title 和 raw_text 不能为空"}), 400
+        with get_session() as session:
+            row = create_jd(session, title[:200], str(body.get("team", "")).strip()[:200], raw_text)
+            return jsonify(jd_to_dict(row)), 201
+
+    @app.patch("/api/jds/<jd_id>")
+    def update_jd_view(jd_id: str):
+        from agi_talent_radar.core.db.repository import jd_to_dict, update_jd
+        from agi_talent_radar.core.db.runtime import get_session
+
+        body = request.get_json(silent=True) or {}
+        with get_session() as session:
+            row = update_jd(
+                session, jd_id,
+                str(body.get("title", "")).strip()[:200],
+                str(body.get("team", "")).strip()[:200],
+                str(body.get("raw_text", "")).strip(),
+            )
+            if row is None:
+                return jsonify({"detail": "JD 不存在"}), 404
+            return jsonify(jd_to_dict(row))
+
+    @app.delete("/api/jds/<jd_id>")
+    def delete_jd_view(jd_id: str):
+        from agi_talent_radar.core.db.repository import delete_jd
+        from agi_talent_radar.core.db.runtime import get_session
+
+        with get_session() as session:
+            if not delete_jd(session, jd_id):
+                return jsonify({"detail": "JD 不存在"}), 404
+            return jsonify({"id": jd_id, "deleted": True})
+
+    @app.post("/api/jds/<jd_id>/generate-spec")
+    def generate_jd_spec_view(jd_id: str):
+        """LLM 起草 track spec（仅落草稿，激活走单独端点，人批才生效）。"""
+        from agi_talent_radar.agents.jd_spec import draft_track_spec
+        from agi_talent_radar.core.db.orm import JdEntryORM
+        from agi_talent_radar.core.db.repository import jd_to_dict, save_jd_spec
+        from agi_talent_radar.core.db.runtime import get_session
+
+        try:
+            with get_session() as session:
+                row = session.get(JdEntryORM, jd_id)
+                if row is None:
+                    return jsonify({"detail": "JD 不存在"}), 404
+                spec = draft_track_spec(row.title, row.team or "", row.raw_text or "")
+                if not spec.dimensions:
+                    return jsonify({"detail": "LLM 起草失败：未产出有效维度，请重试"}), 502
+                row = save_jd_spec(session, jd_id, spec.to_dict())
+                return jsonify(jd_to_dict(row))
+        except Exception as exc:
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
+    @app.post("/api/jds/<jd_id>/status")
+    def set_jd_status_view(jd_id: str):
+        from agi_talent_radar.core.db.orm import JdEntryORM
+        from agi_talent_radar.core.db.repository import jd_to_dict
+        from agi_talent_radar.core.db.runtime import get_session
+
+        body = request.get_json(silent=True) or {}
+        status = str(body.get("status", "")).strip()
+        if status not in {"draft", "active", "archived"}:
+            return jsonify({"detail": "status 必须是 draft/active/archived"}), 400
+        with get_session() as session:
+            row = session.get(JdEntryORM, jd_id)
+            if row is None:
+                return jsonify({"detail": "JD 不存在"}), 404
+            if status == "active" and not (row.spec or ""):
+                return jsonify({"detail": "尚未起草 spec，不能激活"}), 400
+            row.status = status
+            session.commit()
+            session.refresh(row)
+            return jsonify(jd_to_dict(row))
+
+    @app.get("/api/tracks/active")
+    def list_active_tracks_view():
+        """当前参与评估的岗位 Track（JD 池 active 条目），前端筛选项/展示用。"""
+        from agi_talent_radar.agents.tracks.registry import load_active_specs
+
+        specs = load_active_specs()
+        return jsonify([{"key": spec.key, "label": spec.label} for spec in specs.values()])
+
     @app.post("/api/persons/<person_id>/move")
     def move_person(person_id: str):
         from agi_talent_radar.core.db.runtime import get_session

@@ -12,6 +12,7 @@ from agi_talent_radar.core.io import load_resumes
 from agi_talent_radar.core.models import CandidateResume, ResumeExperience, ResumeProject
 from agi_talent_radar.core.runner import run_batch, run_candidate
 from tests.llm_fixtures import mock_llm_json
+from tests.track_fixtures import patch_active_specs
 from tests.resume_fixtures import make_resume_fixtures
 
 
@@ -31,7 +32,7 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_single_candidate_returns_structured_result(self) -> None:
         resume = make_resume_fixtures()[0]
-        with mock_llm_json():
+        with mock_llm_json(), patch_active_specs():
             result = run_candidate(resume)
         self.assertEqual(result.id, resume.id)
         self.assertGreaterEqual(result.overall_score, 55)
@@ -112,6 +113,7 @@ class BatchAgentTest(unittest.TestCase):
         resumes = make_resume_fixtures()
         with (
             mock_llm_json(),
+            patch_active_specs(),
             patch("agi_talent_radar.core.import_agent._persist_single_import"),
             patch("agi_talent_radar.core.runner._persist_evaluations"),
         ):
@@ -126,7 +128,7 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_evidence_quotes_are_from_resume_text(self) -> None:
         resume = make_resume_fixtures()[0]
-        with mock_llm_json():
+        with mock_llm_json(), patch_active_specs():
             result = run_candidate(resume)
         raw_text = "\n".join(
             [
@@ -144,7 +146,7 @@ class BatchAgentTest(unittest.TestCase):
 
     def test_critic_does_not_flag_joined_skill_evidence_as_hallucination(self) -> None:
         resume = make_resume_fixtures()[2]
-        with mock_llm_json():
+        with mock_llm_json(), patch_active_specs():
             result = run_candidate(resume)
         joined_flags = "\n".join(result.critic_flags)
         self.assertNotIn("疑似幻觉证据", joined_flags)

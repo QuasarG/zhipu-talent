@@ -7,7 +7,7 @@ import SearchField from "@/components/ui/SearchField";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import Chip from "@/components/ui/Chip";
 import { IconButton } from "@/components/ui/Button";
-import TalentList, { classifyTrack, STATUS_LABELS, TRACKS } from "@/features/pool/TalentList";
+import TalentList, { classifyTrack, STATUS_LABELS } from "@/features/pool/TalentList";
 import TalentDetail from "@/features/pool/TalentDetail";
 import RelationGraph from "@/features/pool/RelationGraph";
 import TrackDeck from "@/features/pool/TrackDeck";
@@ -35,7 +35,13 @@ export default function TalentPool() {
   const [showAddPerson, setShowAddPerson] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
   const [groups, setGroups] = useState<TalentGroup[]>([]);
+  // Track 筛选项来自 JD 池激活的岗位 Track（原 6 个硬编码 track 已废弃）
+  const [activeTracks, setActiveTracks] = useState<{ key: string; label: string }[]>([]);
   const { t } = useI18n();
+
+  useEffect(() => {
+    api.tracks.active().then(setActiveTracks).catch(() => setActiveTracks([]));
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -208,14 +214,14 @@ export default function TalentPool() {
             setTrackFilter("");
           }}
         />
-        {typeFilter === "resume" && (
+        {typeFilter === "resume" && activeTracks.length > 0 && (
           <>
             <Chip selected={!trackFilter} onClick={() => setTrackFilter("")}>
               {t("全部")}
             </Chip>
-            {TRACKS.map((t) => (
-              <Chip key={t} selected={trackFilter === t} onClick={() => setTrackFilter(t)}>
-                <span className="capitalize">{t}</span>
+            {activeTracks.map((tr) => (
+              <Chip key={tr.key} selected={trackFilter === tr.key} onClick={() => setTrackFilter(tr.key)}>
+                <span>{tr.label}</span>
               </Chip>
             ))}
           </>
