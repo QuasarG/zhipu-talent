@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { DragOverlay, useDroppable, type DragStartEvent, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { api } from "@/lib/api";
@@ -24,11 +24,11 @@ interface Props {
   personsName: (id: string) => string;
   /** 页面级 DndContext 的 onDragEnd 通过 ref 调进来（拖入即加轨） */
   deckApiRef?: RefObject<{ addToDeck: (id: string) => void } | null>;
-  /** 页面级 DndContext 转发：滑轨卡自身拖拽事件（deck 内重排） */
+  /** 页面级 DndContext 转发：滑轨卡自身拖拽事件（deck 内重排）。
+      onDeckDragStart 返回 true 表示拖的是轨内卡（页面据此锁横轴） */
   deckDragApiRef?: RefObject<{
-    onDeckDragStart: (e: DragStartEvent) => void;
+    onDeckDragStart: (e: DragStartEvent) => boolean;
     onDeckDragEnd: (e: DragEndEvent) => void;
-    onDeckDragMove: (overId: string | null) => void;
   } | null>;
 }
 
@@ -48,7 +48,8 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
     }
   });
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [overIdx, setOverIdx] = useState(-1);
+  // 抓取点在卡片内的偏移：让浮起的小卡贴在光标旁而不是卡片左上角
+  const [grabOffset, setGrabOffset] = useState({ x: 24, y: 22 });
   const scrollRef = useRef<HTMLDivElement>(null);
   const { t } = useI18n();
 
@@ -109,29 +110,23 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
     if (deckApiRef) deckApiRef.current = { addToDeck };
   }, [deckApiRef, addToDeck]);
 
-  const onDeckDragStart = useCallback((e: DragStartEvent) => {
-    setDraggingId(String(e.active.id));
-    setOverIdx(deck.findIndex((x) => x.personId === String(e.active.id)));
-  }, [deck]);
-
-  // 拖动中：指针在卡 i 上 → 占位框显示在 i 的位置（移除自身后插入）
-  const onDeckDragMove = useCallback((overId: string | null) => {
-    if (!overId) {
-      setOverIdx(-1);
-      return;
+  const onDeckDragStart = useCallback((e: DragStartEvent): boolean => {
+    const id = String(e.active.id);
+    // 左列表拖入不走轨内重排（此前误设 draggingId 会导致浮层拿到 undefined 崩掉）
+    if (!deck.some((x) => x.personId === id)) return false;
+    setDraggingId(id);
+    const ae = e.activatorEvent as Partial<PointerEvent>;
+    const rect = e.active.rect.current.initial;
+    if (rect && typeof ae.clientX === "number" && typeof ae.clientY === "number") {
+      setGrabOffset({ x: ae.clientX - rect.left, y: ae.clientY - rect.top });
     }
-    setDeck((prev) => {
-      const ti = prev.findIndex((x) => x.personId === overId);
-      if (ti >= 0) setOverIdx(ti);
-      return prev;
-    });
-  }, []);
+    return true;
+  }, [deck]);
 
   const onDeckDragEnd = useCallback((e: DragEndEvent) => {
     const from = String(e.active.id);
     const to = e.over ? String(e.over.id) : "";
     setDraggingId(null);
-    setOverIdx(-1);
     if (!to || from === to) return;
     setDeck((prev) => {
       const fi = prev.findIndex((x) => x.personId === from);
@@ -145,8 +140,8 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
   }, []);
 
   useEffect(() => {
-    if (deckDragApiRef) deckDragApiRef.current = { onDeckDragStart, onDeckDragEnd, onDeckDragMove };
-  }, [deckDragApiRef, onDeckDragStart, onDeckDragEnd, onDeckDragMove]);
+    if (deckDragApiRef) deckDragApiRef.current = { onDeckDragStart, onDeckDragEnd };
+  }, [deckDragApiRef, onDeckDragStart, onDeckDragEnd]);
 
 
   const removeFromDeck = (personId: string) => setDeck((prev) => prev.filter((e) => e.personId !== personId));
@@ -170,6 +165,7 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
   }, []);
 
   const { setNodeRef, isOver } = useDroppable({ id: "track-deck-drop" });
+  const dragEntry = draggingId ? deck.find((e) => e.personId === draggingId) : undefined;
 
   return (
     <Card variant="filled" className="flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -219,35 +215,28 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
           ) : (
           <div className="flex h-full gap-3 p-3 w-max">
             <SortableContext items={deck.map((e) => e.personId)} strategy={horizontalListSortingStrategy}>
-            {deck.map((entry, idx) => (
-                <Fragment key={entry.personId}>
-                  {/* 虚线占位框：拖动时实时出现在插位处（指针移到别的卡上即跳动） */}
-                  {draggingId && overIdx === idx && entry.personId !== draggingId && <PlaceholderSlot t={t} />}
-                  <DeckCard
-                    entry={entry}
-                    dragging={draggingId === entry.personId}
-                    onRemove={() => removeFromDeck(entry.personId)}
-                    t={t}
-                  />
-                </Fragment>
+            {deck.map((entry) => (
+                <DeckCard
+                  key={entry.personId}
+                  entry={entry}
+                  dragging={draggingId === entry.personId}
+                  onRemove={() => removeFromDeck(entry.personId)}
+                  t={t}
+                />
             ))}
-            {/* 拖到最右（无目标）时占位框贴末尾 */}
-            {draggingId && overIdx === -1 && deck[deck.length - 1]?.personId !== draggingId && <PlaceholderSlot t={t} />}
             </SortableContext>
           </div>
           )}
-          {/* 拖动动效：浮起卡影跟随指针（真身在原地半透明占位） */}
-          <DragOverlay dropAnimation={null}>
-            {draggingId ? (
-              <MiniDragCard entry={deck.find((e) => e.personId === draggingId)!} />
-            ) : null}
+          {/* 拖动动效：被拖卡原地淡出成虚线框，光标处弹起半透明小卡 */}
+          <DragOverlay dropAnimation={{ duration: 240, easing: "cubic-bezier(0.18, 0, 0.2, 1)" }}>
+            {dragEntry ? <MiniDragCard entry={dragEntry} grabOffset={grabOffset} /> : null}
           </DragOverlay>
         </div>
     </Card>
   );
 }
 
-/** 轨道内可排序卡片 */
+/** 轨道内可排序卡片：仅卡头横栏可拖；拖动时真身淡出、虚线框随指针滑移 */
 function DeckCard({ entry, dragging, onRemove, t }: {
   entry: DeckEntry;
   dragging: boolean;
@@ -258,69 +247,106 @@ function DeckCard({ entry, dragging, onRemove, t }: {
     id: entry.personId,
     data: { type: "deck-card" },
   });
-  // 让位动画：spring（弹性位移）替代默认 linear，松手回弹有生命感
-  const springTransition = isSorting
-    ? "transform 260ms cubic-bezier(0.18, 0, 0.2, 1.2)"
+  // 让位动画：兄弟卡 spring 位移让位；被拖卡（虚线框）紧跟指针，不加过渡
+  const shiftTransition = isSorting && !dragging
+    ? "transform 280ms cubic-bezier(0.18, 0, 0.2, 1.12)"
     : transition;
   return (
-                <section
-                  ref={setNodeRef}
-                  {...attributes}
-                  {...listeners}
-                  style={{
-                    width: "calc((100vw - 24rem - 4rem) / 2)",
-                    transform: transform
-                      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
-                      : undefined,
-                    transition: springTransition,
-                  }}
-                  className={cn(
-                    "relative flex flex-col h-full rounded-md border overflow-hidden shrink-0 select-none",
-                    dragging
-                      ? "opacity-0 pointer-events-none"
-                      : "border-outline-variant bg-surface-lowest cursor-grab active:cursor-grabbing",
-                  )}
-                >
-                  {/* 卡头：名字 + 分数 + 移除 */}
-                  <div className="flex items-center gap-2 px-3 h-10 shrink-0 border-b border-outline-variant bg-surface-low">
-                    <span className="text-title truncate">{entry.name || "…"}</span>
-                    <span className="ml-auto flex items-center gap-1 shrink-0">
-                      {entry.detail?.evaluation?.overall_score != null && (
-                        <span className="text-title font-bold text-primary tabular-nums">
-                          {entry.detail.evaluation.overall_score}
-                        </span>
-                      )}
-                      <button
-                        onClick={onRemove}
-                        className="state-layer w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-error cursor-pointer"
-                        title={t("移出轨道")}
-                      >
-                        <Icon name="close" size={15} />
-                      </button>
-                    </span>
-                  </div>
-                  {/* 卡体：结构化简历/原件 Tabs（复用评估页） */}
-                  <div className="flex-1 min-h-0 overflow-y-auto p-3" onPointerDown={(e) => e.stopPropagation()}>
-                    {entry.error ? (
-                      <p className="text-body-sm text-error">{entry.error}</p>
-                    ) : !entry.detail ? (
-                      <div className="flex items-center justify-center py-10">
-                        <LoadingIndicator size={22} strokeWidth={2.5} />
-                      </div>
-                    ) : (
-                      <ResumeContent detail={entry.detail} />
-                    )}
-                  </div>
-                </section>
+    <section
+      ref={setNodeRef}
+      style={{
+        width: "calc((100vw - 24rem - 4rem) / 2)",
+        transform: transform
+          ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+          : undefined,
+        transition: dragging ? undefined : shiftTransition,
+      }}
+      className={cn(
+        "relative flex flex-col h-full rounded-md border overflow-hidden shrink-0 select-none",
+        dragging ? "border-transparent" : "border-outline-variant bg-surface-lowest",
+      )}
+    >
+      {/* 真身内容：拖动时快速淡出，留下虚线框占位 */}
+      <div
+        className={cn(
+          "flex flex-col flex-1 min-h-0 transition-opacity duration-150",
+          dragging && "opacity-0 pointer-events-none",
+        )}
+      >
+        {/* 卡头横栏 = 拖拽把手：名字 + 分数 + 移除 */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="flex items-center gap-2 px-3 h-10 shrink-0 border-b border-outline-variant bg-surface-low cursor-grab active:cursor-grabbing [touch-action:none] outline-none focus-visible:bg-primary-container/30"
+        >
+          <Icon name="drag_indicator" size={15} className="text-on-surface-variant shrink-0" />
+          <span className="text-title truncate">{entry.name || "…"}</span>
+          <span className="ml-auto flex items-center gap-1 shrink-0">
+            {entry.detail?.evaluation?.overall_score != null && (
+              <span className="text-title font-bold text-primary tabular-nums">
+                {entry.detail.evaluation.overall_score}
+              </span>
+            )}
+            <button
+              onClick={onRemove}
+              className="state-layer w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-error cursor-pointer"
+              title={t("移出轨道")}
+            >
+              <Icon name="close" size={15} />
+            </button>
+          </span>
+        </div>
+        {/* 卡体：结构化简历/原件 Tabs（复用评估页） */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-3" onPointerDown={(e) => e.stopPropagation()}>
+          {entry.error ? (
+            <p className="text-body-sm text-error">{entry.error}</p>
+          ) : !entry.detail ? (
+            <div className="flex items-center justify-center py-10">
+              <LoadingIndicator size={22} strokeWidth={2.5} />
+            </div>
+          ) : (
+            <ResumeContent detail={entry.detail} />
+          )}
+        </div>
+      </div>
+      {/* 虚线占位框：常驻 DOM 只做透明度交叉淡入，拖动时随指针在轨道内滑动 */}
+      <div
+        aria-hidden
+        className={cn(
+          "absolute inset-0 rounded-md border-2 border-dashed border-primary/60 bg-primary-container/10 grid place-items-center transition-opacity duration-150 pointer-events-none",
+          dragging ? "opacity-100" : "opacity-0",
+        )}
+      >
+        <span className="text-label text-primary/70">{t("松手放到这里")}</span>
+      </div>
+    </section>
   );
 }
 
-/** 贴鼠标的迷你拖影卡：原卡缩小版（头像字+名字+分数），轻且有信息量 */
-function MiniDragCard({ entry }: { entry: DeckEntry }) {
+/** 贴鼠标的迷你拖影卡：弹入（scale+opacity+blur），半透明，随光标滑动 */
+function MiniDragCard({ entry, grabOffset }: { entry: DeckEntry; grabOffset: { x: number; y: number } }) {
+  // 弹入：挂载后下一帧置位，由小放大浮现，读起来像整卡收缩聚到光标上
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setSettled(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
   return (
     <div
-      style={{ transform: "scale(1)" }}
-      className="flex items-center gap-2.5 h-11 px-4 rounded-full bg-surface-lowest border-2 border-primary shadow-2 select-none"
+      style={{
+        // 贴光标：左缘略偏光标左侧、垂直居中于光标；叠加弹入缩放
+        transform: `translate(${grabOffset.x - 20}px, ${grabOffset.y - 22}px) scale(${settled ? 1 : 0.4})`,
+        opacity: settled ? 1 : 0,
+        filter: settled ? "blur(0px)" : "blur(3px)",
+        transition: "transform 240ms cubic-bezier(0.2, 0, 0, 1), opacity 160ms ease-out, filter 200ms ease-out",
+      }}
+      className="flex items-center gap-2.5 h-11 px-4 rounded-full bg-surface-lowest/85 backdrop-blur-sm border-2 border-primary/80 shadow-2 select-none"
     >
       <Icon name="drag_indicator" size={15} className="text-primary shrink-0" />
       <span className="w-7 h-7 rounded-full bg-primary-container text-on-primary-container grid place-items-center text-label font-bold shrink-0">
@@ -330,18 +356,6 @@ function MiniDragCard({ entry }: { entry: DeckEntry }) {
       {entry.detail?.evaluation?.overall_score != null && (
         <span className="text-body font-bold text-primary tabular-nums shrink-0">{entry.detail.evaluation.overall_score}</span>
       )}
-    </div>
-  );
-}
-
-/** 轨道内的虚线占位框：拖动时实时移动的插位指示 */
-function PlaceholderSlot({ t }: { t: (k: string) => string }) {
-  return (
-    <div
-      style={{ width: "calc((100vw - 24rem - 4rem) / 2)" }}
-      className="h-full shrink-0 rounded-md border-2 border-dashed border-primary/70 bg-primary-container/10 grid place-items-center"
-    >
-      <span className="text-label text-primary/80">{t("松手放到这里")}</span>
     </div>
   );
 }
