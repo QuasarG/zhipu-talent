@@ -72,7 +72,7 @@ function PersonRow({
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef } = useDraggable({
     id: p.id,
     disabled: batchMode,
     data: { type: "person-row" },
@@ -104,7 +104,6 @@ function PersonRow({
       className={cn(
         "group relative flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left cursor-grab active:cursor-grabbing transition-colors duration-100 outline-none",
         "focus-visible:ring-2 focus-visible:ring-primary",
-        isDragging && "opacity-30",
         batchMode && checked
           ? "bg-secondary-container shadow-[inset_0_0_0_2px_var(--color-primary)]"
           : confirming

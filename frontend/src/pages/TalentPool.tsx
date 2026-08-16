@@ -161,8 +161,13 @@ export default function TalentPool() {
     }
   };
 
+  const onDragCancel = () => {
+    // 取消（Esc 等）也要清掉轨内拖拽态，否则虚线框残留
+    deckDragApiRef.current?.onDeckDragEnd({ active: { id: "" }, over: null } as never);
+  };
+
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
     <div className="w-full max-w-full h-[calc(100vh-48px)] min-h-0 min-w-0 overflow-hidden flex flex-col">
       <PageToolbar
         title={t("人才库")}
