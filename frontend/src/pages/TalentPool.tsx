@@ -237,7 +237,7 @@ export default function TalentPool() {
         </div>
       ) : (
         <div className="flex w-full max-w-full gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
-          <div className="min-w-0 max-w-[24rem] flex-1">
+          <div className="min-w-0 max-w-[24rem] flex-1 h-full min-h-0 flex">
             <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} />
           </div>
           <TrackDeck
