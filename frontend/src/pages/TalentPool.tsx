@@ -12,7 +12,6 @@ import TalentDetail from "@/features/pool/TalentDetail";
 import RelationGraph from "@/features/pool/RelationGraph";
 import TrackDeck from "@/features/pool/TrackDeck";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import AddPersonDialog from "@/features/pool/AddPersonDialog";
 import GroupDrawer from "@/features/pool/GroupDrawer";
 import { useSessionState } from "@/lib/sessionState";
@@ -30,11 +29,9 @@ export default function TalentPool() {
   const [view, setView] = useSessionState<"graph" | "deck">("talent-pool.view", "graph");
   const deckApiRef = useRef<{ addToDeck: (id: string) => void } | null>(null);
   const deckDragApiRef = useRef<{
-    onDeckDragStart: (e: { active: { id: string | number } }) => boolean;
+    onDeckDragStart: (e: { active: { id: string | number } }) => void;
     onDeckDragEnd: (e: { active: { id: string | number }; over?: { id: string | number } | null }) => void;
   } | null>(null);
-  // 轨内卡重排时锁定横轴（虚线框只在轨道内滑动；左列表拖入不锁）
-  const [deckDragActive, setDeckDragActive] = useState(false);
   const [showAddPerson, setShowAddPerson] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
   const [groups, setGroups] = useState<TalentGroup[]>([]);
@@ -146,12 +143,12 @@ export default function TalentPool() {
   };
 
   const onDragStart = (e: { active: { id: string | number } }) => {
-    setDeckDragActive(deckDragApiRef.current?.onDeckDragStart(e as never) ?? false);
+    deckDragApiRef.current?.onDeckDragStart(e as never);
   };
 
   const onDragEnd = (e: DragEndEvent) => {
-    setDeckDragActive(false);
-    const personId = String(e.active.id);
+    // 轨内卡的拖拽 id 带 deck: 前缀（与左列表行隔离），先剥掉再走业务逻辑
+    const personId = String(e.active.id).replace(/^deck:/, "");
     const overId = String(e.over?.id || "");
     deckDragApiRef.current?.onDeckDragEnd(e as never); // 滑轨卡自身重排（内部判断目标）
     if (!overId) return;
@@ -165,7 +162,7 @@ export default function TalentPool() {
   };
 
   return (
-    <DndContext sensors={sensors} modifiers={deckDragActive ? [restrictToHorizontalAxis] : undefined} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
     <div className="w-full max-w-full h-[calc(100vh-48px)] min-h-0 min-w-0 overflow-hidden flex flex-col">
       <PageToolbar
         title={t("人才库")}

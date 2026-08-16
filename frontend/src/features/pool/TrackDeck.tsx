@@ -24,13 +24,16 @@ interface Props {
   personsName: (id: string) => string;
   /** 页面级 DndContext 的 onDragEnd 通过 ref 调进来（拖入即加轨） */
   deckApiRef?: RefObject<{ addToDeck: (id: string) => void } | null>;
-  /** 页面级 DndContext 转发：滑轨卡自身拖拽事件（deck 内重排）。
-      onDeckDragStart 返回 true 表示拖的是轨内卡（页面据此锁横轴） */
+  /** 页面级 DndContext 转发：滑轨卡自身拖拽事件（deck 内重排） */
   deckDragApiRef?: RefObject<{
-    onDeckDragStart: (e: DragStartEvent) => boolean;
+    onDeckDragStart: (e: DragStartEvent) => void;
     onDeckDragEnd: (e: DragEndEvent) => void;
   } | null>;
 }
+
+/** 轨内卡的拖拽 id 加前缀：左列表行也用 personId 注册，不隔离会互相劫持激活节点 */
+const deckDragId = (personId: string) => `deck:${personId}`;
+const fromDragId = (dragId: string) => (dragId.startsWith("deck:") ? dragId.slice(5) : null);
 
 /** 简历对比滑轨（niri 风）：左列表拖入卡片，Shift+滚轮横滚，恰好同时显示两份。 */
 export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDragApiRef }: Props) {
@@ -65,7 +68,8 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
     setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, detail: undefined, error: undefined } : e)));
     try {
       const detail = await api.personResume(personId);
-      setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, detail } : e)));
+      // 详情回填名字：sessionStorage 里可能只剩 id 占位名
+      setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, detail, name: detail.name || e.name } : e)));
     } catch (err) {
       const raw = err instanceof Error ? err.message : "";
       const msg = raw.includes("没有关联简历") ? t("该人员没有关联简历档案") : raw || t("加载失败");
@@ -110,28 +114,30 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
     if (deckApiRef) deckApiRef.current = { addToDeck };
   }, [deckApiRef, addToDeck]);
 
-  const onDeckDragStart = useCallback((e: DragStartEvent): boolean => {
-    const id = String(e.active.id);
-    // 左列表拖入不走轨内重排（此前误设 draggingId 会导致浮层拿到 undefined 崩掉）
-    if (!deck.some((x) => x.personId === id)) return false;
+  const onDeckDragStart = useCallback((e: DragStartEvent) => {
+    // 只认 deck: 前缀（左列表行拖入不触发轨内重排；此前同 id 会劫持出幻影占位框）
+    const id = fromDragId(String(e.active.id));
+    if (!id || !deck.some((x) => x.personId === id)) return;
     setDraggingId(id);
     const ae = e.activatorEvent as Partial<PointerEvent>;
     const rect = e.active.rect.current.initial;
     if (rect && typeof ae.clientX === "number" && typeof ae.clientY === "number") {
       setGrabOffset({ x: ae.clientX - rect.left, y: ae.clientY - rect.top });
     }
-    return true;
   }, [deck]);
 
   const onDeckDragEnd = useCallback((e: DragEndEvent) => {
-    const from = String(e.active.id);
-    const to = e.over ? String(e.over.id) : "";
+    const from = fromDragId(String(e.active.id));
+    const to = e.over ? fromDragId(String(e.over.id)) : null;
     setDraggingId(null);
-    if (!to || from === to) return;
+    if (!from) return;
     setDeck((prev) => {
       const fi = prev.findIndex((x) => x.personId === from);
-      const ti = prev.findIndex((x) => x.personId === to);
-      if (fi < 0 || ti < 0) return prev;
+      if (fi < 0) return prev;
+      // 落在轨道容器空白处（非某张卡）→ 移到末尾；落出轨道 → 不动
+      const ti = to == null ? (e.over?.id === "track-deck-drop" ? prev.length - 1 : -1)
+        : prev.findIndex((x) => x.personId === to);
+      if (ti < 0 || ti === fi) return prev;
       const next = [...prev];
       const [moved] = next.splice(fi, 1);
       next.splice(ti, 0, moved);
@@ -166,6 +172,11 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
 
   const { setNodeRef, isOver } = useDroppable({ id: "track-deck-drop" });
   const dragEntry = draggingId ? deck.find((e) => e.personId === draggingId) : undefined;
+  // 展示名：详情名 > 列表实时名 > 轨道存名（存储里可能只剩 id 占位）
+  const displayName = (e: DeckEntry) => {
+    const fresh = personsName(e.personId);
+    return e.detail?.name || (fresh !== e.personId ? fresh : "") || e.name || fresh;
+  };
 
   return (
     <Card variant="filled" className="flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -214,11 +225,12 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
             </div>
           ) : (
           <div className="flex h-full gap-3 p-3 w-max">
-            <SortableContext items={deck.map((e) => e.personId)} strategy={horizontalListSortingStrategy}>
+            <SortableContext items={deck.map((e) => deckDragId(e.personId))} strategy={horizontalListSortingStrategy}>
             {deck.map((entry) => (
                 <DeckCard
                   key={entry.personId}
                   entry={entry}
+                  displayName={displayName(entry)}
                   dragging={draggingId === entry.personId}
                   onRemove={() => removeFromDeck(entry.personId)}
                   t={t}
@@ -229,7 +241,7 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
           )}
           {/* 拖动动效：被拖卡原地淡出成虚线框，光标处弹起半透明小卡 */}
           <DragOverlay dropAnimation={{ duration: 240, easing: "cubic-bezier(0.18, 0, 0.2, 1)" }}>
-            {dragEntry ? <MiniDragCard entry={dragEntry} grabOffset={grabOffset} /> : null}
+            {dragEntry ? <MiniDragCard name={displayName(dragEntry)} entry={dragEntry} grabOffset={grabOffset} /> : null}
           </DragOverlay>
         </div>
     </Card>
@@ -237,14 +249,15 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
 }
 
 /** 轨道内可排序卡片：仅卡头横栏可拖；拖动时真身淡出、虚线框随指针滑移 */
-function DeckCard({ entry, dragging, onRemove, t }: {
+function DeckCard({ entry, displayName, dragging, onRemove, t }: {
   entry: DeckEntry;
+  displayName: string;
   dragging: boolean;
   onRemove: () => void;
   t: (k: string) => string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isSorting } = useSortable({
-    id: entry.personId,
+    id: deckDragId(entry.personId),
     data: { type: "deck-card" },
   });
   // 让位动画：兄弟卡 spring 位移让位；被拖卡（虚线框）紧跟指针，不加过渡
@@ -256,8 +269,9 @@ function DeckCard({ entry, dragging, onRemove, t }: {
       ref={setNodeRef}
       style={{
         width: "calc((100vw - 24rem - 4rem) / 2)",
+        // 虚线框钳在轨道内：只吃横向位移，纵向由光标处的迷你卡自由跟随
         transform: transform
-          ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+          ? `translate3d(${transform.x}px, 0px, 0)`
           : undefined,
         transition: dragging ? undefined : shiftTransition,
       }}
@@ -280,7 +294,7 @@ function DeckCard({ entry, dragging, onRemove, t }: {
           className="flex items-center gap-2 px-3 h-10 shrink-0 border-b border-outline-variant bg-surface-low cursor-grab active:cursor-grabbing [touch-action:none] outline-none focus-visible:bg-primary-container/30"
         >
           <Icon name="drag_indicator" size={15} className="text-on-surface-variant shrink-0" />
-          <span className="text-title truncate">{entry.name || "…"}</span>
+          <span className="text-title truncate">{displayName || "…"}</span>
           <span className="ml-auto flex items-center gap-1 shrink-0">
             {entry.detail?.evaluation?.overall_score != null && (
               <span className="text-title font-bold text-primary tabular-nums">
@@ -324,7 +338,7 @@ function DeckCard({ entry, dragging, onRemove, t }: {
 }
 
 /** 贴鼠标的迷你拖影卡：弹入（scale+opacity+blur），半透明，随光标滑动 */
-function MiniDragCard({ entry, grabOffset }: { entry: DeckEntry; grabOffset: { x: number; y: number } }) {
+function MiniDragCard({ name, entry, grabOffset }: { name: string; entry: DeckEntry; grabOffset: { x: number; y: number } }) {
   // 弹入：挂载后下一帧置位，由小放大浮现，读起来像整卡收缩聚到光标上
   const [settled, setSettled] = useState(false);
   useEffect(() => {
@@ -350,9 +364,9 @@ function MiniDragCard({ entry, grabOffset }: { entry: DeckEntry; grabOffset: { x
     >
       <Icon name="drag_indicator" size={15} className="text-primary shrink-0" />
       <span className="w-7 h-7 rounded-full bg-primary-container text-on-primary-container grid place-items-center text-label font-bold shrink-0">
-        {(entry.name || "?").charAt(0)}
+        {(name || "?").charAt(0)}
       </span>
-      <span className="text-body font-semibold text-on-surface truncate max-w-[10rem]">{entry.name}</span>
+      <span className="text-body font-semibold text-on-surface truncate max-w-[10rem]">{name}</span>
       {entry.detail?.evaluation?.overall_score != null && (
         <span className="text-body font-bold text-primary tabular-nums shrink-0">{entry.detail.evaluation.overall_score}</span>
       )}
