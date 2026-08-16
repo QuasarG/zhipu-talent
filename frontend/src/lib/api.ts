@@ -152,6 +152,12 @@ export const api = {
   },
   jds: {
     list: () => fetchJSON<JdEntry[]>("/api/jds"),
+    parse: (text: string) =>
+      fetchJSON<{ title: string; team: string }>("/api/jds/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      }),
     create: (data: { title: string; team: string; raw_text: string }) =>
       fetchJSON<JdEntry>("/api/jds", {
         method: "POST",

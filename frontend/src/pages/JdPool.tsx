@@ -223,24 +223,56 @@ function JdEditDialog({ jd, onClose, onSaved }: { jd: JdEntry | null; onClose: (
     team: jd?.team || "",
     raw_text: jd?.raw_text || "",
   });
-  const [saving, setSaving] = useState(false);
+  // stage：新建时一键三连（解析→保存→起草）分阶段提示
+  const [stage, setStage] = useState<"parse" | "save" | "draft" | null>(null);
   const [error, setError] = useState("");
   const { t } = useI18n();
 
-  const submit = async () => {
-    if (!form.title.trim() || !form.raw_text.trim() || saving) return;
-    setSaving(true);
+  const parse = async () => {
+    if (!form.raw_text.trim() || stage) return;
+    setStage("parse");
     setError("");
     try {
-      if (jd) await api.jds.update(jd.id, form);
-      else await api.jds.create(form);
+      const brief = await api.jds.parse(form.raw_text.trim());
+      setForm((p) => ({ ...p, title: brief.title || p.title, team: brief.team || p.team }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("解析失败"));
+    } finally {
+      setStage(null);
+    }
+  };
+
+  const submit = async () => {
+    if (!form.raw_text.trim() || stage) return;
+    setError("");
+    try {
+      if (jd) {
+        setStage("save");
+        await api.jds.update(jd.id, form);
+      } else {
+        // 新建：标题留空先自动解析补齐，然后建条目 + 直接起草 spec，一气呵成
+        let title = form.title.trim();
+        let team = form.team.trim();
+        if (!title) {
+          setStage("parse");
+          const brief = await api.jds.parse(form.raw_text.trim());
+          title = brief.title;
+          team = team || brief.team;
+        }
+        setStage("save");
+        const created = await api.jds.create({ title: title || t("未命名 JD"), team, raw_text: form.raw_text.trim() });
+        setStage("draft");
+        await api.jds.generateSpec(created.id);
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("保存失败"));
     } finally {
-      setSaving(false);
+      setStage(null);
     }
   };
+
+  const busyText = stage === "parse" ? t("智能解析中…") : stage === "draft" ? t("起草 spec 中…") : t("保存中…");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/30" onClick={onClose}>
@@ -249,11 +281,24 @@ function JdEditDialog({ jd, onClose, onSaved }: { jd: JdEntry | null; onClose: (
           <p className="text-title-lg">{jd ? t("编辑 JD") : t("添加 JD")}</p>
           <IconButton icon="close" onClick={onClose} title={t("关闭")} />
         </div>
+        <textarea
+          value={form.raw_text}
+          onChange={(e) => setForm((p) => ({ ...p, raw_text: e.target.value }))}
+          placeholder={t("直接粘贴 JD 全文（必填）：团队介绍、工作内容、职位要求、加分项……")}
+          className={cn(inputClass, "min-h-56 resize-y")}
+          autoFocus
+        />
+        <div className="flex items-center gap-2">
+          <Button variant="text" icon="neurology" className="h-8 px-2 text-xs" disabled={!form.raw_text.trim() || stage !== null} onClick={parse}>
+            {stage === "parse" ? t("智能解析中…") : t("智能解析标题/团队")}
+          </Button>
+          <span className="text-label text-on-surface-variant">{t("解析结果可手动修改")}</span>
+        </div>
         <input
           type="text"
           value={form.title}
           onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-          placeholder={t("岗位标题（必填），如：多模态生成算法研究")}
+          placeholder={t("岗位标题（留空则保存时自动解析）")}
           className={cn(inputClass, "h-9")}
         />
         <input
@@ -263,18 +308,12 @@ function JdEditDialog({ jd, onClose, onSaved }: { jd: JdEntry | null; onClose: (
           placeholder={t("团队 / 研究组")}
           className={cn(inputClass, "h-9")}
         />
-        <textarea
-          value={form.raw_text}
-          onChange={(e) => setForm((p) => ({ ...p, raw_text: e.target.value }))}
-          placeholder={t("JD 原文（必填）：团队介绍、工作内容、职位要求、加分项……")}
-          className={cn(inputClass, "min-h-56 resize-y")}
-        />
         {jd && jd.status === "active" && (
           <p className="text-label text-on-surface-variant">{t("修改原文后 spec 失效，该 JD 将退回草稿待重新起草")}</p>
         )}
         {error && <p className="text-label text-error">{error}</p>}
-        <Button variant="tonal" icon="save" className="w-full" disabled={!form.title.trim() || !form.raw_text.trim() || saving} onClick={submit}>
-          {saving ? t("保存中…") : t("保存")}
+        <Button variant="tonal" icon="save" className="w-full" disabled={!form.raw_text.trim() || stage !== null} onClick={submit}>
+          {stage ? busyText : jd ? t("保存") : t("保存并起草 spec")}
         </Button>
       </Card>
     </div>

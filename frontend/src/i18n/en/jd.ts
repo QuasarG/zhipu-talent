@@ -30,4 +30,14 @@ export default {
   "修改原文后 spec 失效，该 JD 将退回草稿待重新起草":
     "Editing the text invalidates the spec; the JD returns to draft",
   "保存失败": "Failed to save",
+  "智能解析中…": "Parsing…",
+  "起草 spec 中…": "Drafting spec…",
+  "智能解析标题/团队": "Auto-parse title/team",
+  "解析结果可手动修改": "Parsed fields are editable",
+  "解析失败": "Parse failed",
+  "直接粘贴 JD 全文（必填）：团队介绍、工作内容、职位要求、加分项……":
+    "Paste the full JD (required): team intro, responsibilities, requirements, bonus items…",
+  "岗位标题（留空则保存时自动解析）": "Job title (auto-parsed on save if empty)",
+  "未命名 JD": "Untitled JD",
+  "保存并起草 spec": "Save & draft spec",
 };

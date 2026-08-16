@@ -1013,6 +1013,20 @@ def create_app() -> Flask:
             session.refresh(row)
             return jsonify(jd_to_dict(row))
 
+    @app.post("/api/jds/parse")
+    def parse_jd_view():
+        """智能解析粘贴的 JD 全文 → {title, team}，供表单预填。"""
+        from agi_talent_radar.agents.jd_spec import parse_jd_brief
+
+        body = request.get_json(silent=True) or {}
+        text = str(body.get("text", "")).strip()
+        if not text:
+            return jsonify({"detail": "text 不能为空"}), 400
+        try:
+            return jsonify(parse_jd_brief(text))
+        except Exception:
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
     @app.get("/api/tracks/active")
     def list_active_tracks_view():
         """当前参与评估的岗位 Track（JD 池 active 条目），前端筛选项/展示用。"""

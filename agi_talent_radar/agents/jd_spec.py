@@ -40,6 +40,26 @@ JD_SPEC_PROMPT = """
 """.strip()
 
 
+def parse_jd_brief(text: str) -> dict[str, str]:
+    """智能解析粘贴的 JD 全文：提取岗位标题和团队名（找不到给空串）。"""
+    response = llm_client.call_llm_json(JD_BRIEF_PROMPT, {"jd": text}, temperature=0.1)
+    return {
+        "title": str(response.get("title", "")).strip(),
+        "team": str(response.get("team", "")).strip(),
+    }
+
+
+JD_BRIEF_PROMPT = """
+你是招聘 JD 解析助手。只输出 JSON 对象，字段必须是 title, team。
+
+从用户粘贴的 JD 全文中提取：
+- title：具体岗位/方向名（如"多模态生成算法研究"），取 JD 里最贴近工作内容的表述，不要公司 slogan；
+- team：团队/部门名称（如"智谱多模态大模型团队"），找不到就空字符串。
+
+不要输出 Markdown。
+""".strip()
+
+
 def draft_track_spec(title: str, team: str, raw_text: str) -> TrackSpec:
     response = llm_client.call_llm_json(
         JD_SPEC_PROMPT,

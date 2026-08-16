@@ -53,6 +53,16 @@ class JdApiTest(unittest.TestCase):
         resp = self.client.post("/api/jds", json={"title": "", "raw_text": ""})
         self.assertEqual(resp.status_code, 400)
 
+    def test_parse_returns_title_and_team(self) -> None:
+        with patch(
+            "agi_talent_radar.agents.jd_spec.parse_jd_brief",
+            return_value={"title": "多模态生成算法研究", "team": "智谱多模态大模型团队"},
+        ):
+            resp = self.client.post("/api/jds/parse", json={"text": "【团队介绍】智谱多模态……"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["team"], "智谱多模态大模型团队")
+        self.assertEqual(self.client.post("/api/jds/parse", json={"text": ""}).status_code, 400)
+
     def test_spec_draft_and_activation_gate(self) -> None:
         jd_id = self._create()
 
