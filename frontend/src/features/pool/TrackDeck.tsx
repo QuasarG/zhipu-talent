@@ -209,10 +209,7 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
           <DragOverlay
             // 跟随是 spring（modifiers 由 dnd-kit 内建约束）
             modifiers={[restrictToHorizontalAxis]}
-            dropAnimation={{
-              duration: 280,
-              easing: "cubic-bezier(0.2, 0, 0, 1.4)", // 轻微过冲的落位弹
-            }}
+            dropAnimation={null}
           >
             {draggingId ? (
               <DeckCardGhost entry={deck.find((e) => e.personId === draggingId)!} />
@@ -246,13 +243,15 @@ function DeckCard({ entry, dragging, onRemove, t }: {
                   style={{
                     width: "calc((100vw - 24rem - 4rem) / 2)",
                     transform: transform
-                      ? `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${dragging ? 0.98 : 1})`
+                      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
                       : undefined,
                     transition: springTransition,
                   }}
                   className={cn(
-                    "relative flex flex-col h-full rounded-md border border-outline-variant bg-surface-lowest overflow-hidden shrink-0 select-none",
-                    dragging ? "opacity-35 outline-2 outline-dashed outline-primary" : "cursor-grab active:cursor-grabbing",
+                    "relative flex flex-col h-full rounded-md border overflow-hidden shrink-0 select-none transition-[opacity,scale,border-color] duration-300 ease-emphasized",
+                    dragging
+                      ? "opacity-0 scale-90 border-primary bg-primary-container/30 pointer-events-none"
+                      : "border-outline-variant bg-surface-lowest cursor-grab active:cursor-grabbing",
                   )}
                 >
                   {/* 卡头：名字 + 分数 + 移除 */}
@@ -293,27 +292,12 @@ function DeckCard({ entry, dragging, onRemove, t }: {
 function DeckCardGhost({ entry }: { entry: DeckEntry }) {
   return (
     <div
-      style={{
-        width: "calc((100vw - 24rem - 4rem) / 2)",
-        transform: "rotate(1.2deg) scale(1.03)",
-        boxShadow: "0 18px 48px -12px rgba(0,0,0,0.35), 0 4px 12px rgba(0,0,0,0.12)",
-      }}
-      className="flex flex-col h-full rounded-md border-2 border-primary bg-surface-lowest overflow-hidden"
+      style={{ width: "calc((100vw - 24rem - 4rem) / 2)" }}
+      className="h-24 rounded-md border-2 border-dashed border-primary bg-primary-container/20 backdrop-blur-[2px] grid place-items-center"
     >
-      <div className="flex items-center gap-2 px-3 h-10 shrink-0 border-b border-outline-variant bg-surface-low">
-        <Icon name="drag_indicator" size={15} className="text-primary" />
-        <span className="text-title truncate">{entry.name}</span>
-      </div>
-      <div className="flex-1 min-h-0 overflow-hidden opacity-40 pointer-events-none">
-        {entry.error ? (
-          <p className="text-body-sm text-error p-3">{entry.error}</p>
-        ) : entry.detail ? (
-          <ResumeContent detail={entry.detail} />
-        ) : (
-          <div className="grid place-items-center h-full">
-            <LoadingIndicator size={22} strokeWidth={2.5} />
-          </div>
-        )}
+      <div className="flex items-center gap-2 text-primary">
+        <Icon name="drag_indicator" size={18} />
+        <span className="text-body-sm font-semibold truncate max-w-[60%]">{entry.name}</span>
       </div>
     </div>
   );
