@@ -10,7 +10,9 @@
 
 - **人才问答**：自然语言提问，AI Agent 自动检索人才库、查论文、查舆情，生成调查报告
 - **简历评估**：导入 PDF/图片简历，自动结构化解析、论文核验、多维度 AI 评分
-- **人才库**：统一档案管理、关系图谱可视化、分组收纳、版本对比
+- **人才库**：统一档案管理、关系图谱可视化、分组收纳、对比滑轨、版本对比
+- **JD 池**：JD 粘贴即录入（智能解析标题/团队），LLM 起草岗位 Track 评估规格，人批激活后驱动评估
+- **画像澄清（Grill）**：面向用人部门的需求澄清问答，蓝本岗位检索自 Moka 全量 JD 向量库
 
 ## 技术栈
 
@@ -19,8 +21,8 @@
 | 后端 | Flask、SQLAlchemy、LangGraph |
 | 前端 | React 19、TypeScript、Tailwind CSS 4、Vite |
 | LLM | 智谱 GLM-5.2（评估/问答，OpenAI 兼容端点）、智谱 ZAI（OCR/Embedding/Web Search） |
-| 向量库 | Qdrant（人才知识检索） |
-| 数据库 | SQLite（生产）/ MySQL（可选） |
+| 向量库 | Qdrant（人才知识 talent_knowledge / 岗位库 grill_jobs 双集合） |
+| 数据库 | MySQL（生产）/ SQLite（本地可选） |
 
 ## 快速开始
 
@@ -79,7 +81,9 @@ journalctl -u talent-radar -n 50       # 日志（500 详情只在日志，响�
 ### 备份与恢复
 
 ```bash
-# 数据 = SQLite + 简历原件 + Qdrant 存储（停服后冷拷一致性最佳）
+# 生产库为 MySQL（localhost:3306/talent_radar）
+mysqldump -uroot -p talent_radar --single-transaction > backup.sql
+# 简历原件 + Qdrant 存储（停服后冷拷一致性最佳）
 tar czf backup.tgz /var/lib/zhipu-talent
 # 恢复：解回原路径后 systemctl restart talent-radar
 ```
@@ -97,7 +101,8 @@ tar czf backup.tgz /var/lib/zhipu-talent
 
 ```
 agi_talent_radar/
-  agents/          简历解析、评估链、论文核验
+  agents/          简历解析、评估链、论文核验、JD spec 起草
+  grill/           画像澄清问答（蓝本岗位检索）
   core/            数据模型、LLM 客户端、DB 运行时
   knowledge_agent/ 人才问答 ReAct Agent
   web/             Flask API + SPA 静态服务
@@ -105,4 +110,13 @@ frontend/
   src/features/    问答、简历评估、人才库
   src/components/  UI 组件库（MD3 设计系统）
 deploy/            systemd + nginx
+docs/
+  design/          产品/架构设计稿（含评估维度与数据流）
+  reviews/         审计与复盘（AUDIT.md = 评分体系偏差分析）
+  CONTEXT.md       领域语义约定；HANDOVER.md = 交接手册
+samples/           简历样例数据
+outputs/           评估产物归档（final/ 双轮终版、real/ 真实简历验证）
+tests/             pytest 基线（全绿后方可提交）
 ```
+
+> 文档入口：新接手先读 `docs/HANDOVER.md` 与 `docs/reviews/AUDIT.md`。

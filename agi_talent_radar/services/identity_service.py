@@ -1,6 +1,6 @@
 """入库身份归并（Intake Identity Resolution）服务。
 
-策略（与计划 §阶段 2 + CONTEXT.md 对齐）：
+策略（与计划 §阶段 2 + docs/CONTEXT.md 对齐）：
 
 - **第一层确定性匹配**：邮箱 / ORCID / AMiner ID 等稳定唯一标识精确一致。
   命中单一 person 即可自动归并；命中多个不同 person 则判 CONFLICT。

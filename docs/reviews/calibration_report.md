@@ -51,14 +51,14 @@
 
 ## 数据说明
 
-- 评估输入：`10_ai_phd_resumes.jsonl`（模拟数据，数据库中的旧评估记录已清空）。
-- 历史快照：`outputs/talent_evaluations_v1.json`（旧视觉管线）、`outputs/talent_evaluations_v2_baseline.json`（新管线未调权）、`outputs/talent_evaluations_v3_iter1.json`（调权第 1 轮）、`outputs_final/run1|run2`（最终配置双轮）。
+- 评估输入：`samples/10_ai_phd_resumes.jsonl`（模拟数据，数据库中的旧评估记录已清空）。
+- 历史快照：`outputs/talent_evaluations_v1.json`（旧视觉管线）、`outputs/talent_evaluations_v2_baseline.json`（新管线未调权）、`outputs/talent_evaluations_v3_iter1.json`（调权第 1 轮）、`outputs/final/run1|run2`（最终配置双轮）。
 
 ---
 
 # 真实简历验证（2026-07-22 补充）
 
-模拟数据仅用于流程验证，最终校准改用真实报名简历：`中关村智谱联合实验室-网安模型项目报名简历/`，标签取自文件夹（通过筛选 12 份 / 未通过筛选 13 份），评估脚本 `scripts/run_real_screening.py`（PDF 文本层提取 + 并发 4，结果存 `outputs_real/`，已 gitignore，不写数据库）。
+模拟数据仅用于流程验证，最终校准改用真实报名简历：`中关村智谱联合实验室-网安模型项目报名简历/`，标签取自文件夹（通过筛选 12 份 / 未通过筛选 13 份），评估脚本 `scripts/run_real_screening.py`（PDF 文本层提取 + 并发 4，结果存 `outputs/real/`，已 gitignore，不写数据库）。
 
 ## 最终结果（保留配置）
 

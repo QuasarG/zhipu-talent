@@ -5,7 +5,7 @@
 - Status: Active
 - Last refreshed: 2026-07-30
 - Primary product surfaces: 简历评估工作台、人才知识问答、人才库结构化浏览与关系图。
-- Evidence reviewed: `CONTEXT.md`、`docs/backend_use_case_decisions.md`、`.omx/plans/talent-platform-implementation-plan.md`、`docs/talent_platform_design.md`、`agi_talent_radar/web/templates/workbench.html`、`agi_talent_radar/web/templates/talent_pool.html`、`agi_talent_radar/web/static/workbench.css`、`docs/AGI talent.png`。
+- Evidence reviewed: `docs/CONTEXT.md`、`docs/design/backend_use_case_decisions.md`、`.omx/plans/talent-platform-implementation-plan.md`、`docs/design/talent_platform_design.md`、`agi_talent_radar/web/templates/workbench.html`、`agi_talent_radar/web/templates/talent_pool.html`、`agi_talent_radar/web/static/workbench.css`、`docs/design/AGI talent.png`。
 - Figma target: 三个 1440 x 1024 desktop frames，共享一个组件/变量页；移动版在后续前端实现阶段补充。
 
 ## Brand

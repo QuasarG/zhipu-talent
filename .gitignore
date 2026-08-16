@@ -15,7 +15,7 @@ outputs/*.tmp
 task.md
 我的初步思路.md
 docs/process_review.md
-outputs_real/
+outputs/real/
 flask_*.pid
 
 # ZCode agent 临时目录

@@ -25,7 +25,7 @@ from agi_talent_radar.core.scoring_version import current_scoring_version
 
 RESUME_ROOT = Path("/mnt/c/Users/zexin/Documents/项目/智谱/简历材料/中关村智谱联合实验室-网安模型项目报名简历")
 LABEL_DIRS = {"通过筛选": "passed", "未通过筛选": "failed"}
-OUTPUT_DIR = ROOT / "outputs_real"
+OUTPUT_DIR = ROOT / "outputs" / "real"
 WORKERS = 4
 
 
