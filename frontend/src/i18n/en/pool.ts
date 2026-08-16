@@ -1,4 +1,5 @@
 export default {
+  "松手放到这里": "Drop here",
   "拖动中…": "Dragging…",
   "链接无效或已被撤销": "Link invalid or revoked",
   "该人员没有关联简历档案": "This person has no linked resume",

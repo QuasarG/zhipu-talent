@@ -72,7 +72,11 @@ function PersonRow({
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: p.id, disabled: batchMode });
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: p.id,
+    disabled: batchMode,
+    data: { type: "person-row" },
+  });
   const { t } = useI18n();
   const track = classifyTrack(p);
   const status = p.engagement_status || "newly_admitted";

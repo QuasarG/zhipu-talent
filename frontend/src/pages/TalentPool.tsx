@@ -28,7 +28,11 @@ export default function TalentPool() {
   const [hrFilter, setHrFilter] = useSessionState("talent-pool.hr-filter", "");
   const [view, setView] = useSessionState<"graph" | "deck">("talent-pool.view", "graph");
   const deckApiRef = useRef<{ addToDeck: (id: string) => void } | null>(null);
-  const deckDragApiRef = useRef<{ onDeckDragStart: (e: { active: { id: string | number } }) => void; onDeckDragEnd: (e: { active: { id: string | number }; over?: { id: string | number } | null }) => void } | null>(null);
+  const deckDragApiRef = useRef<{
+    onDeckDragStart: (e: { active: { id: string | number } }) => void;
+    onDeckDragEnd: (e: { active: { id: string | number }; over?: { id: string | number } | null }) => void;
+    onDeckDragMove: (overId: string | null) => void;
+  } | null>(null);
   const [showAddPerson, setShowAddPerson] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
   const [groups, setGroups] = useState<TalentGroup[]>([]);
@@ -143,6 +147,10 @@ export default function TalentPool() {
     deckDragApiRef.current?.onDeckDragStart(e as never);
   };
 
+  const onDragMove = (e: { over?: { id: string | number } | null }) => {
+    deckDragApiRef.current?.onDeckDragMove(e.over ? String(e.over.id) : null);
+  };
+
   const onDragEnd = (e: DragEndEvent) => {
     const personId = String(e.active.id);
     const overId = String(e.over?.id || "");
@@ -158,7 +166,7 @@ export default function TalentPool() {
   };
 
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd}>
     <div className="w-full max-w-full h-[calc(100vh-48px)] min-h-0 min-w-0 overflow-hidden flex flex-col">
       <PageToolbar
         title={t("人才库")}
