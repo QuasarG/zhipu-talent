@@ -60,7 +60,7 @@ function loadCollapsed(): Record<string, boolean> {
 /** 单行人才 */
 function PersonRow({
   p, active, checked, batchMode, confirming,
-  onSelect, onToggle, onConfirmDelete, onCancelDelete, onDragStart,
+  onSelect, onToggle, onConfirmDelete, onCancelDelete,
 }: {
   p: PersonBrief;
   active: boolean;
@@ -71,7 +71,6 @@ function PersonRow({
   onToggle: () => void;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
-  onDragStart: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: p.id, disabled: batchMode });
   const { t } = useI18n();
@@ -96,7 +95,6 @@ function PersonRow({
           else onSelect();
         }
       }}
-      onDragStart={onDragStart}
       role="button"
       tabIndex={0}
       className={cn(
@@ -370,7 +368,6 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
             : async () => setConfirmingId(null)
         }
         onCancelDelete={() => setConfirmingId(null)}
-        onDragStart={() => {}}
       />
     );
   };
