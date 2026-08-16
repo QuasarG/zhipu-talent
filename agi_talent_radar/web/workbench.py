@@ -773,16 +773,33 @@ def create_app() -> Flask:
 
     @app.get("/api/persons/<person_id>/resume")
     def get_person_resume_view(person_id: str):
-        """按 person 取关联候选人完整详情（滑轨对比卡复用评估页的 ResumeContent）。"""
+        """按 person 取关联候选人完整详情（滑轨对比卡数据源）。
+
+        与评估页 /api/candidates/:id 同构：detail + 最新 evaluation + evaluation_run，
+        保证滑轨卡四个 tab 与评估页/完整档案页数据完全一致。
+        """
         try:
-            from agi_talent_radar.core.database import get_session
+            from agi_talent_radar.core.database import (
+                evaluation_run_to_dict,
+                get_candidate_with_latest_evaluation,
+                get_latest_evaluation_run,
+                get_session,
+            )
             from agi_talent_radar.core.db.repository import find_candidate_by_person
 
             with get_session() as session:
                 candidate = find_candidate_by_person(session, person_id)
                 if candidate is None:
                     return jsonify({"detail": "该人员没有关联简历档案"}), 404
-                return jsonify(_orm_to_detail(candidate))
+                data = _orm_to_detail(candidate)
+                _, evaluation = get_candidate_with_latest_evaluation(session, candidate.id)
+                if evaluation:
+                    data["evaluation"] = _orm_to_evaluation(evaluation)
+                    data["latest_evaluation"] = data["evaluation"]
+                latest_run = get_latest_evaluation_run(session, candidate.id)
+                if latest_run is not None and getattr(latest_run, "status", None) in {"running", "completed", "failed"}:
+                    data["evaluation_run"] = evaluation_run_to_dict(latest_run)
+                return jsonify(data)
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
