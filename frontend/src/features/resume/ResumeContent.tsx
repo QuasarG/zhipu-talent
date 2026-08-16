@@ -21,30 +21,35 @@ interface Props {
   detail: CandidateDetail;
   /** 论文人工裁决后的回调：触发上层刷新详情（含核验状态/评估按钮态） */
   onReviewed?: () => void;
+  /** 外层已提供简历/原件 tab（如滑轨卡）时置 true，隐藏内层 Tabs */
+  hideTabs?: boolean;
 }
 
-export default function ResumeContent({ detail, onReviewed }: Props) {
+export default function ResumeContent({ detail, onReviewed, hideTabs }: Props) {
   const [mode, setMode] = useSessionState<"structured" | "raw">(`resume-evaluate.resume-mode.${detail.id}`, "structured");
   const { t } = useI18n();
   const directions = (detail.directions || []).filter(Boolean);
   const academicReport = detail.academic_report || null;
+  const effectiveMode = hideTabs ? "structured" : mode;
   // 导入预览态：分节字段逐字显式，日常查看直接渲染
   const importing = detail.group === "importing";
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <Tabs
-        className="mb-4 shrink-0"
-        items={[
-          { value: "structured", label: t("结构化简历") },
-          { value: "raw", label: t("简历原件") },
-        ]}
-        value={mode}
-        onChange={setMode}
-      />
+      {hideTabs ? null : (
+        <Tabs
+          className="mb-4 shrink-0"
+          items={[
+            { value: "structured", label: t("结构化简历") },
+            { value: "raw", label: t("简历原件") },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
+      )}
 
-      <div className="flex-1 min-h-0">
-        {mode === "raw" ? (
+      <div className={hideTabs ? "flex-1 min-h-0" : "flex-1 min-h-0"}>
+        {effectiveMode === "raw" ? (
           <OriginalPreview candidateId={detail.id} sourceFormat={detail.source_format} fallbackText={detail.raw_text || ""} />
         ) : (
           <div className="h-full min-h-0 overflow-y-auto pr-1">
@@ -150,7 +155,7 @@ function SupplementaryBox({ detail }: { detail: CandidateDetail }) {
 /** 简历原件预览：按 source_format 智能分流渲染。
  *  PDF → iframe；图片 → img；MD → 轻量 markdown 渲染；JSON/TXT → 纯文本。
  *  原件不可用时回退到提取的 raw_text。 */
-function OriginalPreview({ candidateId, sourceFormat, fallbackText }: {
+export function OriginalPreview({ candidateId, sourceFormat, fallbackText }: {
   candidateId: string;
   sourceFormat: string;
   fallbackText: string;

@@ -7,7 +7,7 @@ import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
-import ResumeContent from "@/features/resume/ResumeContent";
+import ResumeContent, { OriginalPreview } from "@/features/resume/ResumeContent";
 import ScoreOverview from "@/features/resume/ScoreOverview";
 import Tabs from "@/components/ui/Tabs";
 import { useI18n } from "@/lib/i18n";
@@ -427,16 +427,18 @@ function MiniDragCard({ name, score, grabOffset }: { name: string; score?: numbe
   );
 }
 
-/** 卡体三视图：简历（ResumeContent） / 评估结果（ScoreOverview） / 运行过程（节点时间线） */
+/** 卡体四视图：结构化简历 / 简历原件 / 评估结果 / 运行过程
+ *  （= 评估页中间卡 + 右侧工作台卡合并，tab 全部拉平） */
 function DeckCardBody({ entry, t }: { entry: DeckEntry; t: (k: string) => string }) {
-  const [tab, setTab] = useState<"resume" | "result" | "process">("resume");
+  const [tab, setTab] = useState<"structured" | "raw" | "result" | "process">("structured");
   const detail = entry.detail!;
   return (
     <>
       <Tabs
         className="px-3 pt-2 shrink-0"
         items={[
-          { value: "resume", label: t("简历") },
+          { value: "structured", label: t("结构化简历") },
+          { value: "raw", label: t("简历原件") },
           { value: "result", label: t("评估结果") },
           { value: "process", label: t("运行过程"), badge: countDone(detail) || undefined },
         ]}
@@ -444,7 +446,10 @@ function DeckCardBody({ entry, t }: { entry: DeckEntry; t: (k: string) => string
         onChange={(v) => setTab(v as typeof tab)}
       />
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
-        {tab === "resume" && <ResumeContent detail={detail} />}
+        {tab === "structured" && <ResumeContent detail={detail} hideTabs />}
+        {tab === "raw" && (
+          <OriginalPreview candidateId={detail.id} sourceFormat={detail.source_format} fallbackText={detail.raw_text || ""} />
+        )}
         {tab === "result" &&
           (detail.evaluation ? (
             <ScoreOverview evaluation={detail.evaluation} academicReport={detail.academic_report} personId={entry.personId} />
