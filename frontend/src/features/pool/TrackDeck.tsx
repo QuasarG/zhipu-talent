@@ -8,6 +8,8 @@ import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import ResumeContent from "@/features/resume/ResumeContent";
+import ScoreOverview from "@/features/resume/ScoreOverview";
+import Tabs from "@/components/ui/Tabs";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 
@@ -361,16 +363,16 @@ function DeckCard({ entry, displayName, dragging, flash, onRemove, t }: {
             </button>
           </span>
         </div>
-        {/* 卡体：结构化简历/原件 Tabs（复用评估页） */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-3" onPointerDown={(e) => e.stopPropagation()}>
+        {/* 卡体：简历 / 评估结果 / 运行过程 三视图 */}
+        <div className="flex-1 min-h-0 flex flex-col" onPointerDown={(e) => e.stopPropagation()}>
           {entry.error ? (
-            <p className="text-body-sm text-error">{entry.error}</p>
+            <p className="text-body-sm text-error p-3">{entry.error}</p>
           ) : !entry.detail ? (
             <div className="flex items-center justify-center py-10">
               <LoadingIndicator size={22} strokeWidth={2.5} />
             </div>
           ) : (
-            <ResumeContent detail={entry.detail} />
+            <DeckCardBody entry={entry} t={t} />
           )}
         </div>
       </div>
@@ -423,4 +425,82 @@ function MiniDragCard({ name, score, grabOffset }: { name: string; score?: numbe
       )}
     </div>
   );
+}
+
+/** 卡体三视图：简历（ResumeContent） / 评估结果（ScoreOverview） / 运行过程（节点时间线） */
+function DeckCardBody({ entry, t }: { entry: DeckEntry; t: (k: string) => string }) {
+  const [tab, setTab] = useState<"resume" | "result" | "process">("resume");
+  const detail = entry.detail!;
+  return (
+    <>
+      <Tabs
+        className="px-3 pt-2 shrink-0"
+        items={[
+          { value: "resume", label: t("简历") },
+          { value: "result", label: t("评估结果") },
+          { value: "process", label: t("运行过程"), badge: countDone(detail) || undefined },
+        ]}
+        value={tab}
+        onChange={(v) => setTab(v as typeof tab)}
+      />
+      <div className="flex-1 min-h-0 overflow-y-auto p-3">
+        {tab === "resume" && <ResumeContent detail={detail} />}
+        {tab === "result" &&
+          (detail.evaluation ? (
+            <ScoreOverview evaluation={detail.evaluation} academicReport={detail.academic_report} personId={entry.personId} />
+          ) : (
+            <p className="text-body-sm text-on-surface-variant">{t("尚无评估结果")}</p>
+          ))}
+        {tab === "process" && <DeckProcess detail={detail} t={t} />}
+      </div>
+    </>
+  );
+}
+
+/** 运行过程轻量视图：评估图的节点按阶段分组打点（复用评估页同款状态色） */
+function DeckProcess({ detail, t }: { detail: CandidateDetail; t: (k: string) => string }) {
+  const runMap = new Map((detail.evaluation_run?.node_runs || []).map((r) => [r.node, r]));
+  const phases = detail.evaluation_graph?.phases || [];
+  const flat = phases.flatMap((ph) => ph.groups.flatMap((g) => g.nodes));
+  if (!detail.evaluation_run && flat.length === 0) {
+    return <p className="text-body-sm text-on-surface-variant">{t("尚无评估结果")}</p>;
+  }
+  return (
+    <ol className="flex flex-col">
+      {phases.map((phase) => (
+        <li key={phase.key} className="mb-3">
+          <p className="text-label font-semibold text-on-surface-variant mb-1">{t(phase.label)}</p>
+          <ul>
+            {phase.groups.flatMap((g) => g.nodes).map((node) => {
+              const run = runMap.get(node.node);
+              const status = run?.status || "pending";
+              return (
+                <li key={node.node} className="flex items-center gap-2 py-1">
+                  <span
+                    className={cn(
+                      "w-1.5 h-1.5 rounded-full shrink-0",
+                      status === "done" ? "bg-success" : status === "error" ? "bg-error" : status === "running" ? "bg-primary" : "bg-outline",
+                    )}
+                  />
+                  <span className={cn("text-body-sm truncate", status === "pending" ? "text-on-surface-variant" : "text-on-surface")}>
+                    {t(node.label)}
+                  </span>
+                  {run?.message && (
+                    <span className="ml-auto text-label text-on-surface-variant truncate max-w-[50%]" title={run.message}>
+                      {run.message}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function countDone(detail: CandidateDetail): number {
+  const runs = detail.evaluation_run?.node_runs || [];
+  return runs.filter((r) => r.status === "done" || r.status === "skipped").length;
 }

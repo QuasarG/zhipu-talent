@@ -1,4 +1,8 @@
 export default {
+  "尚无评估结果": "No evaluation yet",
+  "运行过程": "Process",
+  "评估结果": "Evaluation result",
+"简历": "Resume",
   "松手放到这里": "Drop here",
   "拖动中…": "Dragging…",
   "链接无效或已被撤销": "Link invalid or revoked",
