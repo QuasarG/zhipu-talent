@@ -248,8 +248,8 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
           )}
         >
           {deck.length === 0 ? (
-            /* 空态：容器 grid 居中，内容块只管排字 */
-            <div className="text-center px-6">
+            /* 空态：容器 grid 居中；svg 被 preflight 设为 block，text-center 管不住，用 flex 居中 */
+            <div className="flex flex-col items-center text-center px-6">
               <Icon name="compare" size={32} className="text-on-surface-variant" />
               <p className="mt-2 text-body text-on-surface">{t("轨道为空")}</p>
               <p className="text-body-sm text-on-surface-variant">{t("从左侧列表拖动人才到这里，或点击「加入当前选中」")}</p>
