@@ -266,6 +266,20 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
                   t={t}
                 />
             ))}
+            {/* 新卡落点预告：列表行拖到轨道上方时，末尾长出虚线框（入轨即追加到末尾） */}
+            {listDragId && (
+              <div
+                style={{
+                  width: isOver ? "calc((100vw - 24rem - 4rem) / 2)" : 0,
+                  marginLeft: isOver ? 0 : -12,
+                  opacity: isOver ? 1 : 0,
+                  transition: "width 220ms cubic-bezier(0.2, 0, 0, 1), opacity 180ms ease-out, margin-left 220ms cubic-bezier(0.2, 0, 0, 1)",
+                }}
+                className="h-full shrink-0 rounded-md border-2 border-dashed border-primary/60 bg-primary-container/10 grid place-items-center overflow-hidden pointer-events-none"
+              >
+                <span className="text-label text-primary/70 whitespace-nowrap">{t("松手放到这里")}</span>
+              </div>
+            )}
             </SortableContext>
           </div>
           )}
