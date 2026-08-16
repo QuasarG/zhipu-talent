@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { DragOverlay, useDroppable, type DragStartEvent, type DragEndEvent } from "@dnd-kit/core";
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { api } from "@/lib/api";
 import type { CandidateDetail } from "@/lib/types";
@@ -205,9 +206,16 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
           </div>
           )}
           {/* 拖动动效：浮起卡影跟随指针（真身在原地半透明占位） */}
-          <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2,0,0,1)" }}>
+          <DragOverlay
+            // 跟随是 spring（modifiers 由 dnd-kit 内建约束）
+            modifiers={[restrictToHorizontalAxis]}
+            dropAnimation={{
+              duration: 280,
+              easing: "cubic-bezier(0.2, 0, 0, 1.4)", // 轻微过冲的落位弹
+            }}
+          >
             {draggingId ? (
-              <DeckCardGhost entry={deck.find((e) => e.personId === draggingId)!} t={t} />
+              <DeckCardGhost entry={deck.find((e) => e.personId === draggingId)!} />
             ) : null}
           </DragOverlay>
         </div>
@@ -226,6 +234,10 @@ function DeckCard({ entry, dragging, onRemove, t }: {
     id: entry.personId,
     data: { type: "deck-card" },
   });
+  // 让位动画：spring（弹性位移）替代默认 linear，松手回弹有生命感
+  const springTransition = isSorting
+    ? "transform 260ms cubic-bezier(0.18, 0, 0.2, 1.2)"
+    : transition;
   return (
                 <section
                   ref={setNodeRef}
@@ -233,12 +245,14 @@ function DeckCard({ entry, dragging, onRemove, t }: {
                   {...listeners}
                   style={{
                     width: "calc((100vw - 24rem - 4rem) / 2)",
-                    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-                    transition: isSorting ? transition : undefined,
+                    transform: transform
+                      ? `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${dragging ? 0.98 : 1})`
+                      : undefined,
+                    transition: springTransition,
                   }}
                   className={cn(
                     "relative flex flex-col h-full rounded-md border border-outline-variant bg-surface-lowest overflow-hidden shrink-0 select-none",
-                    dragging ? "opacity-40 ring-2 ring-primary" : "cursor-grab active:cursor-grabbing",
+                    dragging ? "opacity-35 outline-2 outline-dashed outline-primary" : "cursor-grab active:cursor-grabbing",
                   )}
                 >
                   {/* 卡头：名字 + 分数 + 移除 */}
@@ -276,18 +290,30 @@ function DeckCard({ entry, dragging, onRemove, t }: {
 }
 
 /** DragOverlay 的浮起影子卡（只渲染头部骨架，轻量跟随） */
-function DeckCardGhost({ entry, t }: { entry: DeckEntry; t: (k: string) => string }) {
+function DeckCardGhost({ entry }: { entry: DeckEntry }) {
   return (
     <div
-      style={{ width: "calc((100vw - 24rem - 4rem) / 2)" }}
-      className="flex flex-col rounded-md border-2 border-primary bg-surface-lowest overflow-hidden shadow-3 rotate-1"
+      style={{
+        width: "calc((100vw - 24rem - 4rem) / 2)",
+        transform: "rotate(1.2deg) scale(1.03)",
+        boxShadow: "0 18px 48px -12px rgba(0,0,0,0.35), 0 4px 12px rgba(0,0,0,0.12)",
+      }}
+      className="flex flex-col h-full rounded-md border-2 border-primary bg-surface-lowest overflow-hidden"
     >
-      <div className="flex items-center gap-2 px-3 h-10 border-b border-outline-variant bg-surface-low">
+      <div className="flex items-center gap-2 px-3 h-10 shrink-0 border-b border-outline-variant bg-surface-low">
         <Icon name="drag_indicator" size={15} className="text-primary" />
         <span className="text-title truncate">{entry.name}</span>
       </div>
-      <div className="flex-1 grid place-items-center">
-        <span className="text-label text-on-surface-variant">{t("拖动中…")}</span>
+      <div className="flex-1 min-h-0 overflow-hidden opacity-40 pointer-events-none">
+        {entry.error ? (
+          <p className="text-body-sm text-error p-3">{entry.error}</p>
+        ) : entry.detail ? (
+          <ResumeContent detail={entry.detail} />
+        ) : (
+          <div className="grid place-items-center h-full">
+            <LoadingIndicator size={22} strokeWidth={2.5} />
+          </div>
+        )}
       </div>
     </div>
   );
