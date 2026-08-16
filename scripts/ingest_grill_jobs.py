@@ -22,9 +22,7 @@ from agi_talent_radar.grill import jobs_store  # noqa: E402
 
 DATA_DIR = Path(os.getenv("GRILL_JOBS_DATA_DIR", "") or Path(__file__).resolve().parents[1] / "data" / "grill" / "jobs")
 SOURCE_FILES = [
-    "campus_jobs_all.json",  # 权威源，按 id 优先
-    "campus_jobs.json",
-    "campus_jobs_2.json",
+    "zhipu_jobs_all.json",  # 权威源，按 id 优先（Moka 社招+校招全量爬取）
 ]
 UPSERT_BATCH = 64
 

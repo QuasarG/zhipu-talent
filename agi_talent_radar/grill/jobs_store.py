@@ -28,7 +28,7 @@ GRILL_COLLECTION = "grill_jobs"
 _STORE: QdrantVectorStore | None = None
 _FULL_JOBS: dict[str, dict] | None = None
 # 完整 JD 源数据（入库同一来源，只读回补 description/requirement）
-_DEFAULT_FULL = Path(__file__).resolve().parents[2] / "data" / "grill" / "jobs" / "campus_jobs_all.json"
+_DEFAULT_FULL = Path(__file__).resolve().parents[2] / "data" / "grill" / "jobs" / "zhipu_jobs_all.json"
 _FULL_PATH = Path(os.getenv("GRILL_JOBS_FULL_JSON", "") or _DEFAULT_FULL)
 
 
