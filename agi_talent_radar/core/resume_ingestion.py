@@ -135,15 +135,41 @@ def _pixmap_to_jpeg(pixmap) -> bytes:
 
 OCR_PROMPT = "逐行提取图片中的全部文字，保持原始行序，不要添加任何解释。"
 
+# 结构化变体：识别的同时按语义分节（与下游 reorganize 节点同构），命中时下游可跳过重组
+OCR_SECTIONS_PROMPT = """提取图片简历的全部内容并直接组织成 JSON。只输出 JSON 对象，顶层字段必须是 sections，不要任何解释。
+按语义分节，每节 {"name": "节名", "text": "该节完整文字"}；节名从这些里选：基本信息 / 教育 / 经历 / 论文 / 项目 / 技能 / 其他。
+内容只能重组排版，不得增删编造；保持原文顺序。"""
+
+# 模块级缓存：本进程内最近一次结构化 OCR 的分节结果（ocr_pages 只带页码，分节挂这里）
+_last_ocr_sections: list[dict[str, str]] | None = None
+
+
+def take_last_ocr_sections() -> list[dict[str, str]] | None:
+    """取走最近一次云端结构化 OCR 的分节（一次性消费，防串页）。"""
+    global _last_ocr_sections
+    sections, _last_ocr_sections = _last_ocr_sections, None
+    return sections
+
 
 def _recognize_via_cloud(img_bytes: bytes) -> str | None:
-    """智谱 GLM-5V-Turbo 视觉模型 OCR（实测 1-3s/页、限流宽）；失败/未配置返回 None。"""
+    """智谱 GLM-5V-Turbo 视觉模型 OCR（实测 1-3s/页、限流宽）；失败/未配置返回 None。
+
+    单页简历直接走结构化（分节挂全局待取）；多页只首页结构化、其余页纯文本，
+    避免多页 JSON 合并的复杂度——多页重组仍交下游 reorganize。
+    """
     import base64
+    import json as _json
 
     client = _cloud_ocr_client()
     if client is None:
         return None
+    global _last_ocr_sections
+    structured = _last_ocr_sections is None  # 每份简历首页做一次结构化
+    prompt = OCR_SECTIONS_PROMPT if structured else OCR_PROMPT
     try:
+        kwargs: dict = {}
+        if structured:
+            kwargs["response_format"] = {"type": "json_object"}
         resp = client.chat.completions.create(
             model="glm-5v-turbo",
             messages=[
@@ -151,17 +177,33 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
                     "role": "user",
                     "content": [
                         {"type": "image_url", "image_url": {"url": base64.b64encode(img_bytes).decode()}},
-                        {"type": "text", "text": OCR_PROMPT},
+                        {"type": "text", "text": prompt},
                     ],
                 }
             ],
             thinking={"type": "disabled"},
             temperature=0.1,
+            **kwargs,
         )
     except Exception:
         return None  # 静默回退本地 RapidOCR
     text = (resp.choices[0].message.content or "").strip()
-    return text or None
+    if not text:
+        return None
+    if structured:
+        try:
+            sections = _json.loads(text).get("sections") or []
+            if isinstance(sections, list) and sections:
+                _last_ocr_sections = [
+                    {"name": str(s.get("name", "")), "text": str(s.get("text", ""))}
+                    for s in sections
+                    if str(s.get("text", "")).strip()
+                ]
+                # raw_text 用分节拼回（保序全文），下游仍有完整文本
+                return "\n\n".join(f"{s['name']}\n{s['text']}" for s in _last_ocr_sections)
+        except (ValueError, AttributeError):
+            pass  # JSON 失败当纯文本用
+    return text
 
 
 def _recognize_via_local(pixmap) -> str:

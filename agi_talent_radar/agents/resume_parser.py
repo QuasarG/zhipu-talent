@@ -260,6 +260,7 @@ def iter_parse_resume_chunks(
     resume_id: str,
     raw_text: str,
     has_ocr: bool = False,
+    pre_sections: list[dict[str, str]] | None = None,
 ) -> Iterable[tuple[str, str, int, int, object]]:
     """流式解析：先重组分节，再并行结构化，逐节 yield。
 
@@ -270,7 +271,9 @@ def iter_parse_resume_chunks(
     if not raw_text.strip():
         return
     current_date = datetime.now().strftime("%Y-%m-%d")
-    sections = reorganize_resume_text(raw_text)
+    # OCR 层已结构化分节（5V-Turbo 识别时直接输出）时跳过重组节点：省一次 LLM 调用，
+    # 分节质量来自视觉层（版面即语义），错误更少
+    sections = pre_sections if pre_sections else reorganize_resume_text(raw_text)
     if not sections:
         return
     total = len(sections)
@@ -307,10 +310,12 @@ def iter_parse_resume_chunks(
     )
 
 
-def parse_raw_resume(resume_id: str, raw_text: str, has_ocr: bool = False) -> CandidateResume:
+def parse_raw_resume(
+    resume_id: str, raw_text: str, has_ocr: bool = False, pre_sections: list[dict[str, str]] | None = None,
+) -> CandidateResume:
     """同步解析（薄壳）：消费流式生成器，只返回完整结果。"""
     result = CandidateResume(id=resume_id)
-    for kind, _, _, _, payload in iter_parse_resume_chunks(resume_id, raw_text, has_ocr=has_ocr):
+    for kind, _, _, _, payload in iter_parse_resume_chunks(resume_id, raw_text, has_ocr=has_ocr, pre_sections=pre_sections):
         if kind == "complete":
             result = payload
     return result

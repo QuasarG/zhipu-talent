@@ -1366,12 +1366,15 @@ def _stream_import_upload(
             message=f"正在解析 {len(resumes)} 份简历的结构化字段。",
         )
         from agi_talent_radar.agents.resume_parser import iter_parse_resume_chunks
+        from agi_talent_radar.core.resume_ingestion import take_last_ocr_sections
         structured_inputs: list[CandidateResume] = []
         for resume in resumes:
             if resume.raw_text and not _has_structure(resume):
                 merged = resume
+                # OCR 层若已结构化分节（5V-Turbo 识别时输出），跳过下游重组节点
+                pre_sections = take_last_ocr_sections() if resume.ocr_pages else None
                 for kind, section_name, done, total, payload in iter_parse_resume_chunks(
-                    resume.id, resume.raw_text, has_ocr=bool(resume.ocr_pages)
+                    resume.id, resume.raw_text, has_ocr=bool(resume.ocr_pages), pre_sections=pre_sections
                 ):
                     if kind == "section":
                         yield _file_event(
