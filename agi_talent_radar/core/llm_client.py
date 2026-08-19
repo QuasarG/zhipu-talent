@@ -20,15 +20,18 @@ def call_llm_json(
     payload: dict[str, Any],
     temperature: float = 0.1,
     enable_thinking: bool = False,
+    deep: bool = False,
 ) -> dict[str, Any]:
+    """deep=True 走深水模型（OPENAI_MODEL_DEEP，如 glm-5.3 强制思考），
+    用于时效不敏感的判分类节点；未配置深水模型时回落主模型，行为不变。"""
     client = _client()
-    model = _required_env("OPENAI_MODEL")
-    timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
+    model = _deep_model() if deep else _required_env("OPENAI_MODEL")
+    timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "300" if deep else "120"))
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
-    thinking_kwargs = _thinking_kwargs(enable_thinking)
+    thinking_kwargs = _thinking_kwargs_for(model)
 
     # 限流/超时重试(指数退避),避免并发时降级响应压低评分
     import time as _time
@@ -73,7 +76,7 @@ def call_llm_json(
             temperature=0,
             response_format={"type": "json_object"},
             timeout=timeout_seconds,
-            **_thinking_kwargs(False),
+            **_thinking_kwargs_for(model),
         )
         retry_content = retry_response.choices[0].message.content or ""
         try:
@@ -102,7 +105,7 @@ def call_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: fl
         temperature=temperature,
         stream=True,
         timeout=timeout_seconds,
-        extra_body={"thinking": {"type": "disabled"}},
+        **_thinking_kwargs_for(model),
     )
     for chunk in response:
         delta = chunk.choices[0].delta
@@ -116,6 +119,8 @@ def call_llm_tools(
     temperature: float = 0.2,
     on_delta: Callable[[str], None] | None = None,
     max_retries: int = 3,
+    on_reasoning: Callable[[str], None] | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """流式 tool calling：文本 delta 经 on_delta 实时回调，tool_calls 分片累积。
 
@@ -133,9 +138,11 @@ def call_llm_tools(
     last_error: Exception | None = None
     for attempt in range(max(1, max_retries)):
         stream_delta = on_delta if attempt == 0 else None
+        stream_reasoning = on_reasoning if attempt == 0 else None
         try:
             return _call_llm_tools_once(
-                client, model, messages, tools, temperature, timeout_seconds, stream_delta
+                client, model, messages, tools, temperature, timeout_seconds,
+                stream_delta, stream_reasoning, reasoning_effort,
             )
         except Exception as exc:  # noqa: BLE001
             last_error = exc
@@ -152,14 +159,20 @@ def _call_llm_tools_once(
     temperature: float,
     timeout_seconds: float,
     on_delta: Callable[[str], None] | None,
+    on_reasoning: Callable[[str], None] | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
-    """单轮流式调用；任何中途异常都向上抛，由外层整轮重试。"""
+    """单轮流式调用；任何中途异常都向上抛，由外层整轮重试。
+
+    reasoning delta（思考流）经 on_reasoning 回调；effort 不传走 env 默认（low）。
+    """
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "stream": True,
         "timeout": timeout_seconds,
+        **_thinking_kwargs_for(model, reasoning_effort),
     }
     if tools:  # 空列表=无工具收尾调用，不传 tools 参数（部分 API 拒绝空数组）
         kwargs["tools"] = tools
@@ -176,6 +189,9 @@ def _call_llm_tools_once(
         delta = choice.delta
         if delta is None:
             continue
+        reasoning = (delta.model_extra or {}).get("reasoning_content") if hasattr(delta, "model_extra") else None
+        if reasoning and on_reasoning is not None:
+            on_reasoning(str(reasoning))
         if delta.content:
             text_parts.append(delta.content)
             if on_delta is not None:
@@ -216,8 +232,20 @@ def _client() -> OpenAI:
     return _CLIENT
 
 
-def _thinking_kwargs(enable_thinking: bool = False) -> dict[str, Any]:
-    """GLM-5.2 全链路禁用思考：参数保留但恒返回 disabled（提示词工程已足够）。"""
+def _deep_model() -> str:
+    """深水模型（判分类节点用）；未配置时空串→由调用处回落主模型。"""
+    return os.getenv("OPENAI_MODEL_DEEP", "").strip() or _required_env("OPENAI_MODEL")
+
+
+def _thinking_kwargs_for(model: str, effort_override: str | None = None) -> dict[str, Any]:
+    """按模型选思考参数：glm-5.3 不支持 disabled，强制 enabled+effort；其余禁思考。
+
+    effort_override 显式指定（如问答 Agent 用 max 获取可流式展示的思考）；
+    默认走 OPENAI_EFFORT_DEEP（low——实测 low 不产生思考内容，最快）。
+    """
+    if model.startswith("glm-5.3"):
+        effort = (effort_override or os.getenv("OPENAI_EFFORT_DEEP", "low").strip() or "low")
+        return {"reasoning_effort": effort, "extra_body": {"thinking": {"type": "enabled"}}}
     return {"extra_body": {"thinking": {"type": "disabled"}}}
 
 

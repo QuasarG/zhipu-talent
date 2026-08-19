@@ -1,4 +1,6 @@
 export default {
+  "思考过程": "Thinking process",
+"思考中…": "Thinking…",
   "选择目标人物": "Select Target Person",
   "新人物入库确认": "Confirm New Talent Entry",
   "事实冲突裁定": "Fact Conflict Resolution",

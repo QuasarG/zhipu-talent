@@ -422,6 +422,8 @@ export interface ChatMessage {
   id: string;
   conversation_id: string;
   role: "user" | "assistant";
+  /** 流式思考过程（GLM-5.3 max 档）；不落库，刷新后消失 */
+  thinking?: string;
   content: { segments: ChatSegment[] };
   citations: ChatCitation[];
   status: "completed" | "awaiting_action" | "running";
@@ -432,6 +434,7 @@ export interface ChatMessage {
 export type ChatEvent =
   | { type: "meta"; payload: { conversation_id: string; message_id: string } }
   | { type: "answer_delta"; payload: { text: string } }
+  | { type: "thinking_delta"; payload: { text: string } }
   | { type: "tool_start"; payload: { call_id: string; tool: string; label: string; args_summary: string } }
   | { type: "tool_end"; payload: { call_id: string; tool: string; status: "ok" | "error"; summary: string; detail: string } }
   | { type: "action_required"; payload: { action_id: string; kind: ChatActionKind; payload: Record<string, unknown> } }

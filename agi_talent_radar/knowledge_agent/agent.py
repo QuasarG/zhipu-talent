@@ -8,6 +8,7 @@ tool_call 的 tool 响应追加，再继续循环。
 from __future__ import annotations
 
 import copy
+import os
 import json
 import logging
 import time
@@ -175,10 +176,17 @@ def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMess
             last_flush[0] = now
             save_segments()
 
+    def on_reasoning(text: str) -> None:
+        # 思考流只发 SSE 不落库；正文出现后前端收起，纯工具轮由前端在 tool_start 时丢弃
+        emit("thinking_delta", {"text": text})
+
     try:
         exhausted = True
         for _ in range(MAX_ROUNDS):
-            result = call_llm_tools(messages, tools_schema(), on_delta=on_delta)
+            result = call_llm_tools(
+                messages, tools_schema(), on_delta=on_delta, on_reasoning=on_reasoning,
+                reasoning_effort=os.getenv("OPENAI_EFFORT_CHAT", "max"),
+            )
             tool_calls = result.get("tool_calls") or []
             if not tool_calls:
                 exhausted = False
@@ -259,7 +267,10 @@ def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMess
             messages.append(
                 {"role": "user", "content": _sys_text(lang, "budget_exhausted")}
             )
-            call_llm_tools(messages, [], on_delta=on_delta)
+            call_llm_tools(
+                messages, [], on_delta=on_delta, on_reasoning=on_reasoning,
+                reasoning_effort=os.getenv("OPENAI_EFFORT_CHAT", "max"),
+            )
         message_rec.status = "completed"
         save_segments()
         emit("sources", {"items": ctx.sources})

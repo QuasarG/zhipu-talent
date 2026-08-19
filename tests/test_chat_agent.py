@@ -26,7 +26,7 @@ class ScriptedLLM:
         self._scripts = list(scripts)
         self.calls: list[list[dict]] = []
 
-    def __call__(self, messages, tools, temperature=0.2, on_delta=None, max_retries=3):
+    def __call__(self, messages, tools, temperature=0.2, on_delta=None, max_retries=3, on_reasoning=None, reasoning_effort=None):
         self.calls.append(messages)
         script = self._scripts.pop(0)
         if on_delta and script.get("text"):

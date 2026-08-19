@@ -21,6 +21,9 @@ function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
   switch (e.type) {
     case "meta":
       return { ...msg, id: e.payload.message_id };
+    case "thinking_delta":
+      // 思考流：追加到消息 thinking；纯工具轮在 tool_start 时清空（该轮思考不展示）
+      return { ...msg, thinking: (msg.thinking || "") + e.payload.text };
     case "answer_delta": {
       const last = segments[segments.length - 1];
       if (last?.type === "text") {
@@ -31,6 +34,8 @@ function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
       return { ...msg, content: { segments } };
     }
     case "tool_start":
+      // 本轮以工具调用收尾：未兑现的思考不展示，清空
+      if (msg.thinking) return { ...msg, thinking: undefined, content: { segments } };
       segments.push({
         type: "tool",
         call_id: e.payload.call_id,

@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ThinkingOrb } from "thinking-orbs";
 import type { ChatCitation, ChatMessage, ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
+import Icon from "@/components/ui/Icon";
 import ToolCallCard from "./ToolCallCard";
 import ActionCard from "./ActionCard";
 import CitationBadge from "./CitationBadge";
@@ -112,6 +113,10 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
         Z
       </div>
       <div className="flex-1 min-w-0">
+        <ThinkingBlock
+          text={message.thinking}
+          streaming={busy && !message.content.segments.some((s) => s.type === "text")}
+        />
         {message.content.segments.map(renderSegment)}
         {busy && message.status !== "awaiting_action" && (
           <div className="mt-3 flex items-center gap-2">
@@ -127,6 +132,41 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+
+/** 思考过程折叠块：流式时展开跟随，正文出现后自动收起为可展开摘要 */
+function ThinkingBlock({ text, streaming }: { text?: string; streaming: boolean }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(streaming);
+  useEffect(() => {
+    if (!streaming) setOpen(false); // 正文开始（或结束）：自动收起
+  }, [streaming]);
+  if (!text) return null;
+  return (
+    <div className="mb-3 rounded-md border border-outline-variant bg-surface-low overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="state-layer flex items-center gap-2 w-full px-3 h-9 text-left cursor-pointer"
+      >
+        {streaming ? (
+          <ThinkingOrb state="shaping" size={20} aria-label={t("正在思考")} />
+        ) : (
+          <Icon name="psychology" size={15} className="text-on-surface-variant" />
+        )}
+        <span className="text-label font-medium text-on-surface-variant truncate">
+          {streaming ? t("思考中…") : t("思考过程")}
+        </span>
+        <Icon name={open ? "expand_less" : "expand_more"} size={16} className="ml-auto text-on-surface-variant" />
+      </button>
+      {open && (
+        <pre className="px-3 pb-3 text-label leading-5 text-on-surface-variant whitespace-pre-wrap break-words max-h-56 overflow-y-auto select-text">
+          {text}
+        </pre>
+      )}
     </div>
   );
 }
