@@ -21,22 +21,28 @@ function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
   switch (e.type) {
     case "meta":
       return { ...msg, id: e.payload.message_id };
-    case "thinking_delta":
-      // 思考流：追加并标记进行中（新一轮思考重新展开）；纯工具轮在 tool_start 时清空
-      return { ...msg, thinking: (msg.thinking || "") + e.payload.text, thinkingLive: true };
+    case "thinking_delta": {
+      // 思考流：作为 segment 按位置入列（与工具卡同地位）；连续 delta 追加到当前思考段
+      const last = segments[segments.length - 1];
+      if (last?.type === "thinking") {
+        segments[segments.length - 1] = { ...last, text: last.text + e.payload.text };
+      } else {
+        segments.push({ type: "thinking", text: e.payload.text });
+      }
+      return { ...msg, content: { segments } };
+    }
     case "answer_delta": {
-      // 正文开始：思考结束流式态（块自动收起为"思考过程"）
-      const next = { ...msg, thinkingLive: false };
       const last = segments[segments.length - 1];
       if (last?.type === "text") {
         segments[segments.length - 1] = { ...last, text: last.text + e.payload.text };
       } else {
         segments.push({ type: "text", text: e.payload.text });
       }
-      return { ...next, content: { segments } };
+      return { ...msg, content: { segments } };
     }
     case "tool_start":
-      // 本轮以工具调用收尾：未兑现的思考不展示，清空（工具卡照常入列）
+      // 本轮以工具调用收尾：尾部未兑现的思考段移除（该轮思考不展示），工具卡照常入列
+      if (segments[segments.length - 1]?.type === "thinking") segments.pop();
       segments.push({
         type: "tool",
         call_id: e.payload.call_id,
@@ -44,7 +50,7 @@ function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
         label: e.payload.label,
         args_summary: e.payload.args_summary,
       });
-      return { ...msg, thinking: undefined, thinkingLive: false, content: { segments } };
+      return { ...msg, content: { segments } };
     case "tool_end": {
       const idx = segments.findIndex((s) => s.type === "tool" && s.call_id === e.payload.call_id);
       if (idx >= 0) {

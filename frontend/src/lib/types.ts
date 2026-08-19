@@ -400,6 +400,7 @@ export type ChatActionKind = "select_person" | "propose_add_person" | "resolve_f
 
 export type ChatSegment =
   | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
   | {
       type: "tool";
       call_id: string;
@@ -422,10 +423,6 @@ export interface ChatMessage {
   id: string;
   conversation_id: string;
   role: "user" | "assistant";
-  /** 流式思考过程（GLM-5.3 max 档）；不落库，刷新后消失 */
-  thinking?: string;
-  /** 思考流进行中（前端会话态，后端不产生）：驱动思考块展开/收起 */
-  thinkingLive?: boolean;
   content: { segments: ChatSegment[] };
   citations: ChatCitation[];
   status: "completed" | "awaiting_action" | "running";

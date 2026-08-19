@@ -103,6 +103,11 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
         </div>
       );
     }
+    if (seg.type === "thinking") {
+      return (
+        <ThinkingCard key={`think-${i}`} text={seg.text} streaming={busy && i === message.content.segments.length - 1} />
+      );
+    }
     if (seg.type === "tool") return <ToolCallCard key={seg.call_id || i} segment={seg} />;
     return <ActionCard key={seg.action_id || i} segment={seg} busy={busy} onDecide={onDecide} />;
   };
@@ -113,7 +118,6 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
         Z
       </div>
       <div className="flex-1 min-w-0">
-        <ThinkingBlock text={message.thinking} streaming={busy && !!message.thinkingLive} />
         {message.content.segments.map(renderSegment)}
         {busy && message.status !== "awaiting_action" && (
           <div className="mt-3 flex items-center gap-2">
@@ -134,8 +138,8 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
 }
 
 
-/** 思考过程折叠块：流式时展开跟随，正文出现后自动收起为可展开摘要 */
-function ThinkingBlock({ text, streaming }: { text?: string; streaming: boolean }) {
+/** 思考段卡片：消息流内按位置渲染（与工具卡同地位），流式展开跟随、结束收起 */
+function ThinkingCard({ text, streaming }: { text: string; streaming: boolean }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(streaming);
   useEffect(() => {
