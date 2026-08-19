@@ -113,10 +113,7 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
         Z
       </div>
       <div className="flex-1 min-w-0">
-        <ThinkingBlock
-          text={message.thinking}
-          streaming={busy && !message.content.segments.some((s) => s.type === "text")}
-        />
+        <ThinkingBlock text={message.thinking} streaming={busy && !!message.thinkingLive} />
         {message.content.segments.map(renderSegment)}
         {busy && message.status !== "awaiting_action" && (
           <div className="mt-3 flex items-center gap-2">
@@ -142,7 +139,8 @@ function ThinkingBlock({ text, streaming }: { text?: string; streaming: boolean 
   const { t } = useI18n();
   const [open, setOpen] = useState(streaming);
   useEffect(() => {
-    if (!streaming) setOpen(false); // 正文开始（或结束）：自动收起
+    // 思考流进行中展开跟随；正文出现或轮次切换自动收起；新一轮思考重新展开
+    setOpen(streaming);
   }, [streaming]);
   if (!text) return null;
   return (
