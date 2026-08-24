@@ -1,4 +1,4 @@
-"""JD 池 API 契约测试：CRUD / spec 起草 / 激活门禁 / active track 列表。
+"""JD 池 API 契约测试：CRUD / 可选 spec 起草 / 激活 / active JD 列表。
 
 DATABASE_URL 在 setUpClass 才切内存库（不在 import 时改）：模块级改 env 会污染
 按字母序更晚 import 的同类测试模块（它们 import 时捕获的是被我改过的值）。
@@ -63,12 +63,18 @@ class JdApiTest(unittest.TestCase):
         self.assertEqual(resp.get_json()["team"], "智谱多模态大模型团队")
         self.assertEqual(self.client.post("/api/jds/parse", json={"text": ""}).status_code, 400)
 
-    def test_spec_draft_and_activation_gate(self) -> None:
+    def test_raw_jd_can_activate_without_legacy_spec(self) -> None:
         jd_id = self._create()
 
-        # 未起草 spec 不能激活（人批门禁：先有 spec 再激活）
         resp = self.client.post(f"/api/jds/{jd_id}/status", json={"status": "active"})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["status"], "active")
+
+        tracks = self.client.get("/api/tracks/active").get_json()
+        self.assertEqual(tracks, [{"key": jd_id, "label": "多模态生成"}])
+
+    def test_legacy_spec_can_still_be_drafted(self) -> None:
+        jd_id = self._create()
 
         spec = make_spec("multimodal_gen", "多模态生成", keywords=("diffusion", "蒸馏"))
         with patch("agi_talent_radar.agents.jd_spec.draft_track_spec", return_value=spec):
@@ -78,12 +84,7 @@ class JdApiTest(unittest.TestCase):
         self.assertEqual(body["spec"]["key"], "multimodal_gen")
         self.assertEqual(body["spec_version"], 1)
 
-        resp = self.client.post(f"/api/jds/{jd_id}/status", json={"status": "active"})
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json()["status"], "active")
-
-        tracks = self.client.get("/api/tracks/active").get_json()
-        self.assertEqual([t["key"] for t in tracks], ["multimodal_gen"])
+        self.assertEqual(body["track_key"], "multimodal_gen")
 
     def test_edit_raw_text_falls_back_to_draft(self) -> None:
         jd_id = self._create()

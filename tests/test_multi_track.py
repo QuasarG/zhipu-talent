@@ -319,22 +319,12 @@ class MultiTrackTest(unittest.TestCase):
         with mock_llm_json(), patch_active_specs():
             result = run_candidate(resume)
 
-        self.assertGreaterEqual(len(result.track_assignments), 1)
-        self.assertLessEqual(len(result.track_assignments), 3)
-        self.assertAlmostEqual(sum(item.weight for item in result.track_assignments), 1, places=3)
-        self.assertEqual(
-            {item.track for item in result.track_assignments},
-            {item.track for item in result.track_evaluations},
-        )
-        track_score = sum(
-            evaluation.calibrated_score * next(
-                assignment.weight for assignment in result.track_assignments if assignment.track == evaluation.track
-            )
-            for evaluation in result.track_evaluations
-        )
-        self.assertEqual(result.overall_score, round(result.common_score + track_score))
-        self.assertLessEqual(result.common_score, 40)
-        self.assertEqual(result.document_score, 0)
+        self.assertEqual(result.evaluation_mode, "jd_fit_v2")
+        self.assertFalse(result.track_assignments)
+        self.assertFalse(result.track_evaluations)
+        self.assertEqual(len(result.job_fit_assessments), 6)
+        self.assertTrue(all(len(item.dimensions) == 6 for item in result.job_fit_assessments))
+        self.assertEqual(result.overall_score, round(max(item.fit_score for item in result.job_fit_assessments)))
 
     def test_pdf_text_layer_extraction(self) -> None:
         import fitz

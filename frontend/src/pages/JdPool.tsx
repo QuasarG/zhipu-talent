@@ -18,7 +18,7 @@ const STATUS_STYLE: Record<string, { label: string; className: string }> = {
 const inputClass =
   "px-3 py-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface outline-none focus:outline-2 focus:outline-primary";
 
-/** JD 池：激活的 JD 即一个岗位 Track，实时参与后续评估的多 track 打分 */
+/** JD 池：每个激活 JD 都会与每份简历独立产出面试准入结论。 */
 export default function JdPool() {
   const [jds, setJds] = useState<JdEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +63,7 @@ export default function JdPool() {
     <div className="w-full max-w-full min-h-0 flex flex-col gap-4">
       <PageToolbar
         title={t("JD 池")}
-        subtitle={t("激活的 JD 即岗位 Track（共 {count} 个激活），实时参与后续评估", { count: activeCount })}
+        subtitle={t("{count} 个激活 JD 将分别参与后续面试准入评估", { count: activeCount })}
         right={
           <>
             <IconButton icon="refresh" variant="outlined" onClick={load} title={t("刷新")} />
@@ -83,7 +83,7 @@ export default function JdPool() {
           <Icon name="work" size={32} className="text-on-surface-variant" />
           <p className="text-body text-on-surface">{t("JD 池为空")}</p>
           <p className="text-body-sm text-on-surface-variant">
-            {t("添加 JD 并起草、激活 spec 后，评估将按岗位 Track 打分；池为空时只产出通用潜力分")}
+            {t("添加并激活 JD 后，每份简历都会针对各岗位独立判断是否进入面试")}
           </p>
         </Card>
       ) : (
@@ -95,7 +95,6 @@ export default function JdPool() {
               expanded={expandedId === jd.id}
               busy={busyId === jd.id}
               onToggle={() => setExpandedId(expandedId === jd.id ? null : jd.id)}
-              onGenerate={() => act(jd.id, () => api.jds.generateSpec(jd.id))}
               onActivate={() => act(jd.id, () => api.jds.setStatus(jd.id, "active"))}
               onArchive={() => act(jd.id, () => api.jds.setStatus(jd.id, "archived"))}
               onEdit={() => setEditing(jd)}
@@ -119,12 +118,11 @@ export default function JdPool() {
   );
 }
 
-function JdCard({ jd, expanded, busy, onToggle, onGenerate, onActivate, onArchive, onEdit, onDelete, t }: {
+function JdCard({ jd, expanded, busy, onToggle, onActivate, onArchive, onEdit, onDelete, t }: {
   jd: JdEntry;
   expanded: boolean;
   busy: boolean;
   onToggle: () => void;
-  onGenerate: () => void;
   onActivate: () => void;
   onArchive: () => void;
   onEdit: () => void;
@@ -141,16 +139,8 @@ function JdCard({ jd, expanded, busy, onToggle, onGenerate, onActivate, onArchiv
         <span className="text-title text-on-surface truncate">{jd.title}</span>
         {jd.team && <span className="text-body-sm text-on-surface-variant truncate">{jd.team}</span>}
         <span className={cn("text-label px-2 py-0.5 rounded-full shrink-0", status.className)}>{t(status.label)}</span>
-        {jd.spec && (
-          <span className="text-label text-on-surface-variant shrink-0">
-            {jd.spec.label} · v{jd.spec_version} · {t("{count} 维度", { count: jd.spec.dimensions.length })}
-          </span>
-        )}
         <span className="ml-auto flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <Button variant="text" icon="neurology" className="h-8 px-2 text-xs" disabled={busy} onClick={onGenerate}>
-            {busy ? t("起草中…") : jd.spec ? t("重新起草") : t("起草 spec")}
-          </Button>
-          {jd.status !== "active" && jd.spec && (
+          {jd.status !== "active" && (
             <Button variant="tonal" icon="check_circle" className="h-8 px-2 text-xs" disabled={busy} onClick={onActivate}>
               {t("激活")}
             </Button>
@@ -173,7 +163,7 @@ function JdCard({ jd, expanded, busy, onToggle, onGenerate, onActivate, onArchiv
           )}
         </span>
       </div>
-      {/* 展开区：原文 + spec 明细 */}
+      {/* 展开区：JD 原文 + 固定准入语义 */}
       {expanded && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-4 pb-4 border-t border-outline-variant pt-3">
           <div className="min-w-0">
@@ -183,33 +173,11 @@ function JdCard({ jd, expanded, busy, onToggle, onGenerate, onActivate, onArchiv
             </pre>
           </div>
           <div className="min-w-0">
-            <p className="text-label text-on-surface-variant mb-1.5">{t("Track Spec（评估规格）")}</p>
-            {jd.spec ? (
-              <div className="flex flex-col gap-2 text-body-sm">
-                <p className="text-on-surface">
-                  <span className="font-semibold">{jd.spec.label}</span>
-                  <span className="text-on-surface-variant">（{jd.spec.key}）</span>
-                </p>
-                <p className="text-on-surface-variant">{jd.spec.evidence_focus}</p>
-                <p className="text-on-surface-variant">{t("高分规则：")}{jd.spec.high_score_rule}</p>
-                <div className="flex flex-col gap-1">
-                  {jd.spec.dimensions.map((d) => (
-                    <div key={d.key} className="flex items-baseline gap-2 bg-surface-lowest rounded-md px-3 py-2">
-                      <span className="text-on-surface font-medium shrink-0">{d.label}</span>
-                      <span className="text-label text-primary tabular-nums shrink-0">{d.max_points} 分</span>
-                      <span className="text-label text-on-surface-variant truncate">{d.evidence_rule}</span>
-                    </div>
-                  ))}
-                </div>
-                {jd.spec.keywords && jd.spec.keywords.length > 0 && (
-                  <p className="text-label text-on-surface-variant">
-                    {t("路由关键词：")}{jd.spec.keywords.join(" / ")}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p className="text-body-sm text-on-surface-variant">{t("尚未起草 spec——点击「起草 spec」由 LLM 生成，确认无误后激活")}</p>
-            )}
+            <p className="text-label text-on-surface-variant mb-1.5">{t("准入评估方式")}</p>
+            <div className="rounded-md bg-surface-lowest p-3 text-body-sm leading-6 text-on-surface">
+              <p>{t("系统会先逐条核对 JD 硬门槛，再评估直接任务匹配、技术深度、本人贡献、证据质量、工程规模和可迁移性。")}</p>
+              <p className="mt-2 text-on-surface-variant">{t("简历未写明的条件标记为待确认；多个 JD 独立判断，不再合并成一个 Track 总分。")}</p>
+            </div>
           </div>
         </div>
       )}
@@ -250,7 +218,7 @@ function JdEditDialog({ jd, onClose, onSaved }: { jd: JdEntry | null; onClose: (
         setStage("save");
         await api.jds.update(jd.id, form);
       } else {
-        // 新建：标题留空先自动解析补齐，然后建条目 + 直接起草 spec，一气呵成
+        // 新建：标题留空先自动解析补齐，然后保存 JD。
         let title = form.title.trim();
         let team = form.team.trim();
         if (!title) {
@@ -260,9 +228,7 @@ function JdEditDialog({ jd, onClose, onSaved }: { jd: JdEntry | null; onClose: (
           team = team || brief.team;
         }
         setStage("save");
-        const created = await api.jds.create({ title: title || t("未命名 JD"), team, raw_text: form.raw_text.trim() });
-        setStage("draft");
-        await api.jds.generateSpec(created.id);
+        await api.jds.create({ title: title || t("未命名 JD"), team, raw_text: form.raw_text.trim() });
       }
       onSaved();
     } catch (err) {
@@ -272,7 +238,7 @@ function JdEditDialog({ jd, onClose, onSaved }: { jd: JdEntry | null; onClose: (
     }
   };
 
-  const busyText = stage === "parse" ? t("智能解析中…") : stage === "draft" ? t("起草 spec 中…") : t("保存中…");
+  const busyText = stage === "parse" ? t("智能解析中…") : t("保存中…");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/30" onClick={onClose}>
@@ -313,7 +279,7 @@ function JdEditDialog({ jd, onClose, onSaved }: { jd: JdEntry | null; onClose: (
         )}
         {error && <p className="text-label text-error">{error}</p>}
         <Button variant="tonal" icon="save" className="w-full" disabled={!form.raw_text.trim() || stage !== null} onClick={submit}>
-          {stage ? busyText : jd ? t("保存") : t("保存并起草 spec")}
+          {stage ? busyText : jd ? t("保存") : t("保存 JD")}
         </Button>
       </Card>
     </div>

@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 19
+LATEST_SCHEMA_VERSION = 20
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -174,6 +174,25 @@ def ensure_schema(engine) -> None:
             19,
             "phase 19: talent profile read-only share tokens (share_tokens 表)",
         )
+    if current_version < 20:
+        existing = {c["name"] for c in inspect(engine).get_columns("evaluations")}
+        definitions = (
+            ("interview_decision", "VARCHAR(16) DEFAULT ''"),
+            ("best_fit_jd_id", "VARCHAR(36) DEFAULT ''"),
+            ("best_fit_jd_title", "VARCHAR(200) DEFAULT ''"),
+            ("decision_summary", "TEXT"),
+            ("job_fit_assessments", "JSON"),
+        )
+        _add_columns(
+            engine,
+            "evaluations",
+            [definition for name, definition in definitions if name not in existing],
+        )
+        _record_version(
+            engine,
+            20,
+            "phase 20: per-JD interview admission assessments and best-fit decision",
+        )
     _ensure_indexes(engine)
 
 
@@ -211,6 +230,11 @@ def _ensure_legacy_parent_columns(engine) -> None:
             ("academic_report", "JSON"),
             ("publication_score", "FLOAT DEFAULT 0.0"),
             ("safety_net_score", "FLOAT DEFAULT 0.0"),
+            ("interview_decision", "VARCHAR(16) DEFAULT ''"),
+            ("best_fit_jd_id", "VARCHAR(36) DEFAULT ''"),
+            ("best_fit_jd_title", "VARCHAR(200) DEFAULT ''"),
+            ("decision_summary", "TEXT"),
+            ("job_fit_assessments", "JSON"),
         ):
             if name not in evaluation_columns:
                 additions.append(f"{name} {column_type}")

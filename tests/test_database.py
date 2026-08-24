@@ -43,6 +43,8 @@ from agi_talent_radar.core.models import (
     DimensionScore,
     DirectionRecommendation,
     EvidenceItem,
+    JobFitAssessment,
+    JobFitDimension,
     TrackAssignment,
     TrackEvaluation,
 )
@@ -92,6 +94,29 @@ class DatabaseTest(unittest.TestCase):
                 ],
                 "warnings": [],
             }
+            evaluation.interview_decision = "interview"
+            evaluation.best_fit_jd_id = "jd-agent"
+            evaluation.best_fit_jd_title = "Agent 评测"
+            evaluation.decision_summary = "进入面试：核心任务证据充分。"
+            evaluation.job_fit_assessments = [
+                JobFitAssessment(
+                    jd_id="jd-agent",
+                    jd_title="Agent 评测",
+                    decision="interview",
+                    confidence=0.9,
+                    fit_score=82,
+                    dimensions=[
+                        JobFitDimension(
+                            key="direct_task_match",
+                            label="直接任务匹配",
+                            score=4.2,
+                            weight=30,
+                            evidence=["设计工具调用与自动验证闭环"],
+                        )
+                    ],
+                    decision_reason="进入面试：核心任务证据充分。",
+                )
+            ]
             saved = save_evaluation(session, evaluation, evaluation_id=run.id)
 
             self.assertEqual(_count(session, EvaluationORM), 1)
@@ -109,6 +134,9 @@ class DatabaseTest(unittest.TestCase):
             self.assertEqual(payload["dimension_scores"][0]["evidence_ids"], ["e1", "e2"])
             self.assertEqual(payload["node_runs"][0]["node"], "track_router")
             self.assertEqual(payload["academic_report"]["alignments"][0]["verdict"], "mismatch")
+            self.assertEqual(payload["interview_decision"], "interview")
+            self.assertEqual(payload["best_fit_jd_id"], "jd-agent")
+            self.assertEqual(payload["job_fit_assessments"][0]["fit_score"], 82)
             graph_nodes = [
                 node["node"]
                 for phase in payload["evaluation_graph"]["phases"]
@@ -129,10 +157,13 @@ class DatabaseTest(unittest.TestCase):
             # 论文核验前移到导入阶段后，academic_check 不再出现在展示图谱
             self.assertNotIn("academic_check", graph_nodes)
             # 硬编码 6 track 已废弃：图谱只暴露单个 JD 驱动动态节点
-            self.assertIn("dynamic_tracks", graph_nodes)
+            self.assertEqual(
+                graph_nodes,
+                ["candidate_preparer", "jd_fit_assessor", "decision_guard", "result_formatter"],
+            )
             self.assertEqual(
                 [phase["key"] for phase in payload["evaluation_graph"]["phases"]],
-                ["preparation", "routing", "parallel", "aggregation"],
+                ["preparation", "assessment", "decision"],
             )
 
     def test_repeated_evaluations_preserve_history(self) -> None:

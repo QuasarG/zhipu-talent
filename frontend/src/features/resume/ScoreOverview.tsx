@@ -18,6 +18,7 @@ import { resolveTrackWeightPercent, tokenizeEvidenceReferences } from "./scoreOv
 import { api } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/lib/i18n";
+import JobFitOverview from "./JobFitOverview";
 
 interface Props {
   evaluation: Evaluation;
@@ -77,6 +78,17 @@ export default function ScoreOverview({ evaluation, academicReport, personId }: 
       setTimeout(() => setShareState("idle"), 2500);
     }
   };
+
+  if (evaluation.evaluation_mode === "jd_fit_v2" && evaluation.job_fit_assessments?.length) {
+    return (
+      <JobFitOverview
+        evaluation={evaluation}
+        shareState={shareState}
+        canShare={Boolean(personId)}
+        onShare={shareProfile}
+      />
+    );
+  }
 
   return (
     <div>

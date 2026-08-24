@@ -153,6 +153,11 @@ class EvaluationORM(Base):
     evaluation_mode = Column(String(64), default="multi_track_v1")
     publication_score = Column(Float, default=0.0)
     safety_net_score = Column(Float, default=0.0)
+    interview_decision = Column(String(16), default="")
+    best_fit_jd_id = Column(String(36), default="")
+    best_fit_jd_title = Column(String(200), default="")
+    decision_summary = Column(Text, default="")
+    job_fit_assessments = Column(JSON, default=list)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     completed_at = Column(DateTime)
 

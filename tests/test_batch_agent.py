@@ -41,8 +41,10 @@ class BatchAgentTest(unittest.TestCase):
         self.assertFalse(hasattr(result, "decision_method"))
         self.assertTrue(result.recommended_tracks)
         self.assertNotIn("学校/GPA/排名", result.one_liner)
-        self.assertTrue(result.evidence)
-        self.assertTrue(result.dimension_scores)
+        self.assertEqual(result.evaluation_mode, "jd_fit_v2")
+        self.assertEqual(result.interview_decision, "interview")
+        self.assertTrue(result.job_fit_assessments)
+        self.assertTrue(result.job_fit_assessments[0].dimensions)
         self.assertTrue(result.interview_questions)
         self.assertNotIn("985", "\n".join(result.normalized_education))
         self.assertNotIn("GPA 3.82", "\n".join(result.normalized_education))
@@ -141,8 +143,10 @@ class BatchAgentTest(unittest.TestCase):
                 "、".join(resume.skills),
             ]
         )
-        for evidence in result.evidence:
-            self.assertIn(evidence.quote, raw_text)
+        for assessment in result.job_fit_assessments:
+            for finding in assessment.strengths + assessment.risks:
+                for evidence in finding.evidence:
+                    self.assertIn(evidence, raw_text)
 
     def test_critic_does_not_flag_joined_skill_evidence_as_hallucination(self) -> None:
         resume = make_resume_fixtures()[2]

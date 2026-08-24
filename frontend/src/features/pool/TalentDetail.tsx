@@ -96,6 +96,7 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
   };
 
   const tracks = [...(latest?.recommended_tracks || [])].sort((a, b) => b.weight - a.weight).slice(0, 3);
+  const isJobFit = latest?.evaluation_mode === "jd_fit_v2";
 
   return (
     <Card variant="filled" className="w-full max-w-full min-h-0 min-w-0 overflow-hidden flex flex-col">
@@ -156,17 +157,28 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
           {candidateId && <EngagementHistory candidateId={candidateId} refreshKey={historyKey} />}
         </section>
 
-        {/* 能力概览：大分 + 全部维度带进度条，清晰度优先 */}
+        {/* 评估概览 */}
         {latest && (
           <section>
             <h3 className="text-title mb-1.5 flex items-baseline justify-between gap-2">
-              {t("能力概览")}
-              <span className="text-label font-normal text-on-surface-variant">{t("能力描述，不代表录取结论")}</span>
+              {isJobFit ? t("面试准入") : t("能力概览")}
+              <span className="text-label font-normal text-on-surface-variant">
+                {isJobFit ? t("针对最匹配 JD，不代表录用") : t("能力描述，不代表录取结论")}
+              </span>
             </h3>
+            {isJobFit && latest.interview_decision && (
+              <StatusChip
+                tone={latest.interview_decision === "interview" ? "success" : latest.interview_decision === "hold" ? "warning" : "error"}
+                variant="filled"
+              >
+                {latest.interview_decision === "interview" ? t("进入面试") : latest.interview_decision === "hold" ? t("待补信息") : t("不进入面试")}
+              </StatusChip>
+            )}
             <div className="flex items-baseline gap-1">
               <span className="text-headline text-on-surface">{latest.overall_score ?? "—"}</span>
-              <span className="text-body-sm text-on-surface-variant">{t("/100 综合")}</span>
+              <span className="text-body-sm text-on-surface-variant">{isJobFit ? t("/100 岗位匹配") : t("/100 综合")}</span>
             </div>
+            {isJobFit && <p className="mt-0.5 text-body-sm text-on-surface-variant">{latest.best_fit_jd_title}</p>}
             {(latest.publication_score || latest.safety_net_score) ? (
               <p className="text-label text-on-surface-variant mt-0.5 tabular-nums">
                 {t("{n} 通用", { n: Math.round(latest.common_score ?? 0) })}
@@ -194,13 +206,13 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
           </section>
         )}
 
-        {/* 推荐 Track */}
+        {/* 推荐方向 / 各 JD 匹配 */}
         {tracks.length > 0 && (
           <section>
-            <h3 className="text-title mb-1.5">{t("推荐 Track")}</h3>
+            <h3 className="text-title mb-1.5">{isJobFit ? t("各 JD 匹配") : t("推荐 Track")}</h3>
             <div className="flex flex-col gap-1.5">
               {tracks.map((t, i) => {
-                const name = t.track || t.name || "";
+                const name = t.label || t.track || t.name || "";
                 return (
                   <div key={i} className="grid grid-cols-[16px_88px_minmax(0,1fr)_36px] items-center gap-2">
                     <span className="text-label text-on-surface-variant">{i + 1}</span>

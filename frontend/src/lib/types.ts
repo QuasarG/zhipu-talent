@@ -238,7 +238,46 @@ export interface EvaluationGraphPhase {
 }
 
 export interface EvaluationGraph {
+  workflow_version?: string;
   phases: EvaluationGraphPhase[];
+}
+
+export type InterviewDecision = "interview" | "hold" | "reject";
+
+export interface JobRequirementAssessment {
+  requirement: string;
+  status: "met" | "unmet" | "unknown";
+  evidence: string[];
+  rationale: string;
+}
+
+export interface JobFitDimension {
+  key: string;
+  label: string;
+  score: number;
+  weight: number;
+  rationale: string;
+  evidence: string[];
+}
+
+export interface JobFitFinding {
+  summary: string;
+  evidence: string[];
+}
+
+export interface JobFitAssessment {
+  jd_id: string;
+  jd_title: string;
+  decision: InterviewDecision;
+  confidence: number;
+  fit_score: number;
+  hard_requirements: JobRequirementAssessment[];
+  dimensions: JobFitDimension[];
+  strengths: JobFitFinding[];
+  risks: JobFitFinding[];
+  missing_information: string[];
+  interview_questions: string[];
+  decision_reason: string;
 }
 
 export interface Alignment {
@@ -288,6 +327,11 @@ export interface Evaluation {
   academic_report?: AcademicReport;
   evaluation_graph: EvaluationGraph;
   node_runs: EvaluationNodeRun[];
+  interview_decision?: InterviewDecision | "";
+  best_fit_jd_id?: string;
+  best_fit_jd_title?: string;
+  decision_summary?: string;
+  job_fit_assessments?: JobFitAssessment[];
 }
 
 export interface EvidenceItem {

@@ -1006,8 +1006,6 @@ def create_app() -> Flask:
             row = session.get(JdEntryORM, jd_id)
             if row is None:
                 return jsonify({"detail": "JD 不存在"}), 404
-            if status == "active" and not (row.spec or ""):
-                return jsonify({"detail": "尚未起草 spec，不能激活"}), 400
             row.status = status
             session.commit()
             session.refresh(row)
@@ -1029,11 +1027,13 @@ def create_app() -> Flask:
 
     @app.get("/api/tracks/active")
     def list_active_tracks_view():
-        """当前参与评估的岗位 Track（JD 池 active 条目），前端筛选项/展示用。"""
-        from agi_talent_radar.agents.tracks.registry import load_active_specs
+        """当前参与准入评估的 JD，兼容旧的 track 筛选接口。"""
+        from agi_talent_radar.core.db.repository import list_active_jds
+        from agi_talent_radar.core.db.runtime import get_session
 
-        specs = load_active_specs()
-        return jsonify([{"key": spec.key, "label": spec.label} for spec in specs.values()])
+        with get_session() as session:
+            rows = list_active_jds(session)
+            return jsonify([{"key": row.id, "label": row.title} for row in rows])
 
     @app.post("/api/persons/<person_id>/move")
     def move_person(person_id: str):
@@ -1786,6 +1786,14 @@ def _orm_to_detail(row) -> dict[str, Any]:
 
 
 def _dominant_track(evaluation) -> tuple[str, float]:
+    best_fit_jd_id = str(getattr(evaluation, "best_fit_jd_id", "") or "")
+    if best_fit_jd_id:
+        assessments = getattr(evaluation, "job_fit_assessments", None) or []
+        best = next(
+            (item for item in assessments if str(item.get("jd_id", "")) == best_fit_jd_id),
+            {},
+        )
+        return best_fit_jd_id, float(best.get("fit_score", 0) or 0) / 100
     assignments = getattr(evaluation, "track_assignments", None) or []
     if not assignments:
         return "", 0.0

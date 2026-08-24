@@ -1,10 +1,14 @@
 // JD 池页面英文文案（中文文案即 key）
 export default {
   "JD 池": "JD Pool",
+  "{count} 个激活 JD 将分别参与后续面试准入评估":
+    "{count} active JDs will be evaluated independently for interview admission",
   "激活的 JD 即岗位 Track（共 {count} 个激活），实时参与后续评估":
     "Each active JD is a track ({count} active), applied to new evaluations in real time",
   "添加 JD": "Add JD",
   "JD 池为空": "No JDs yet",
+  "添加并激活 JD 后，每份简历都会针对各岗位独立判断是否进入面试":
+    "Add and activate JDs to assess every resume independently for each role",
   "添加 JD 并起草、激活 spec 后，评估将按岗位 Track 打分；池为空时只产出通用潜力分":
     "Add a JD, draft and activate its spec to score candidates per track; while empty, only common-potential scores are produced",
   "草稿": "Draft",
@@ -17,6 +21,11 @@ export default {
   "激活": "Activate",
   "停用": "Archive",
   "JD 原文": "JD Text",
+  "准入评估方式": "Admission evaluation",
+  "系统会先逐条核对 JD 硬门槛，再评估直接任务匹配、技术深度、本人贡献、证据质量、工程规模和可迁移性。":
+    "The system checks hard requirements first, then evaluates direct task fit, technical depth, ownership, evidence quality, engineering scale, and transferability.",
+  "简历未写明的条件标记为待确认；多个 JD 独立判断，不再合并成一个 Track 总分。":
+    "Missing resume facts are marked for confirmation; multiple JDs are assessed independently instead of being merged into one score.",
   "Track Spec（评估规格）": "Track Spec",
   "高分规则：": "High-score rule: ",
   "路由关键词：": "Routing keywords: ",
@@ -40,4 +49,5 @@ export default {
   "岗位标题（留空则保存时自动解析）": "Job title (auto-parsed on save if empty)",
   "未命名 JD": "Untitled JD",
   "保存并起草 spec": "Save & draft spec",
+  "保存 JD": "Save JD",
 };

@@ -54,7 +54,12 @@ def _fake_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: f
     yield json.dumps(response, ensure_ascii=False)
 
 
-def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1) -> dict[str, Any]:
+def _fake_llm_json(
+    system_prompt: str,
+    payload: dict[str, Any],
+    temperature: float = 0.1,
+    **_kwargs: Any,
+) -> dict[str, Any]:
     if "简历解析 Agent" in system_prompt:
         # 从 raw_text 中简单提取第一段作为 name/title 的 fallback
         lines = [line.strip() for line in payload.get("raw_text", "").splitlines() if line.strip()]
@@ -119,6 +124,42 @@ def _fake_llm_json(system_prompt: str, payload: dict[str, Any], temperature: flo
                     "extraction_confidence": 1.0,
                 }
                 for index, (dimension, source, quote) in enumerate(quotes, start=1)
+            ]
+        }
+    if "JD 面试准入评估 Agent" in system_prompt:
+        resume = payload["resume"]
+        projects = resume.get("projects", [])
+        details = projects[0].get("details", []) if projects else []
+        quote = details[0] if details else (resume.get("raw_text", "")[:120] or "简历未提供直接项目证据")
+        return {
+            "assessments": [
+                {
+                    "jd_id": job["id"],
+                    "hard_requirements": [],
+                    "dimensions": [
+                        {
+                            "key": key,
+                            "score": 3.5,
+                            "rationale": "存在可面试验证的岗位相关证据。",
+                            "evidence": [quote],
+                        }
+                        for key in (
+                            "direct_task_match",
+                            "technical_depth",
+                            "ownership",
+                            "evidence_quality",
+                            "engineering_scale",
+                            "transferability",
+                        )
+                    ],
+                    "strengths": [{"summary": "具备岗位相关项目经验", "evidence": [quote]}],
+                    "risks": [{"summary": "需确认本人贡献边界", "evidence": [quote]}],
+                    "missing_information": [],
+                    "interview_questions": [f"请说明“{quote}”中的本人贡献和失败案例。"],
+                    "confidence": 0.82,
+                    "assessment_summary": "岗位相关证据达到面试验证门槛",
+                }
+                for job in payload["jobs"]
             ]
         }
     if "多 Track 路由 Agent" in system_prompt:

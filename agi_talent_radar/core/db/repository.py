@@ -80,7 +80,7 @@ def save_candidate(
 def start_evaluation_run(session, candidate_id: str) -> EvaluationORM:
     if session.get(CandidateORM, candidate_id) is None:
         raise ValueError(f"候选人不存在: {candidate_id}")
-    evaluation = EvaluationORM(candidate_id=candidate_id, status="running", evaluation_mode="multi_track_v1")
+    evaluation = EvaluationORM(candidate_id=candidate_id, status="running", evaluation_mode="jd_fit_v2")
     session.add(evaluation)
     session.commit()
     session.refresh(evaluation)
@@ -164,6 +164,11 @@ def save_evaluation(
     ev.evaluation_mode = evaluation.evaluation_mode
     ev.publication_score = evaluation.publication_score
     ev.safety_net_score = evaluation.safety_net_score
+    ev.interview_decision = evaluation.interview_decision
+    ev.best_fit_jd_id = evaluation.best_fit_jd_id
+    ev.best_fit_jd_title = evaluation.best_fit_jd_title
+    ev.decision_summary = evaluation.decision_summary
+    ev.job_fit_assessments = [item.model_dump() for item in evaluation.job_fit_assessments]
     ev.config_version = current_scoring_version(session)
     ev.person_id = _link_person(session, evaluation).id
     ev.status = "completed"
@@ -344,6 +349,11 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
         "track_evaluations": track_evaluations,
         "routing_confidence": evaluation.routing_confidence or 0,
         "evaluation_mode": evaluation.evaluation_mode or "multi_track_v1",
+        "interview_decision": evaluation.interview_decision or "",
+        "best_fit_jd_id": evaluation.best_fit_jd_id or "",
+        "best_fit_jd_title": evaluation.best_fit_jd_title or "",
+        "decision_summary": evaluation.decision_summary or "",
+        "job_fit_assessments": evaluation.job_fit_assessments or [],
         "status": evaluation.status,
         "error_message": evaluation.error_message or "",
         "created_at": _iso_datetime(evaluation.created_at),
@@ -1141,7 +1151,7 @@ def delete_jd(session, jd_id: str) -> bool:
 def list_active_jds(session) -> list[JdEntryORM]:
     return list(
         session.query(JdEntryORM)
-        .filter(JdEntryORM.status == "active", JdEntryORM.spec != "")
+        .filter(JdEntryORM.status == "active")
         .order_by(JdEntryORM.created_at.asc())
         .all()
     )

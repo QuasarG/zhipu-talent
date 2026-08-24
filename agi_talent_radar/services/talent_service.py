@@ -81,6 +81,9 @@ def evaluate_resume(submission_id: str) -> dict[str, Any]:
     return {
         "evaluation_id": evaluation_run_id,
         "overall_score": evaluation.overall_score,
+        "interview_decision": evaluation.interview_decision,
+        "best_fit_jd_id": evaluation.best_fit_jd_id,
+        "best_fit_jd_title": evaluation.best_fit_jd_title,
         "admit": admit_result,
     }
 

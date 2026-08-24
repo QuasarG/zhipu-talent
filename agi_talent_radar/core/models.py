@@ -347,6 +347,64 @@ class DocumentQualityAssessment(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+RequirementStatus = Literal["met", "unmet", "unknown"]
+InterviewDecision = Literal["interview", "hold", "reject"]
+
+
+class JobDefinition(BaseModel):
+    id: str
+    title: str
+    team: str = ""
+    raw_text: str
+    spec: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobRequirementAssessment(BaseModel):
+    requirement: str
+    status: RequirementStatus
+    evidence: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
+class JobFitDimension(BaseModel):
+    key: str
+    label: str
+    score: float = Field(ge=0, le=5)
+    weight: float = Field(ge=0, le=100)
+    rationale: str = ""
+    evidence: list[str] = Field(default_factory=list)
+
+
+class JobFitFinding(BaseModel):
+    summary: str
+    evidence: list[str] = Field(default_factory=list)
+
+
+class JobFitAssessment(BaseModel):
+    jd_id: str
+    jd_title: str
+    decision: InterviewDecision
+    confidence: float = Field(ge=0, le=1)
+    fit_score: float = Field(ge=0, le=100)
+    hard_requirements: list[JobRequirementAssessment] = Field(default_factory=list)
+    dimensions: list[JobFitDimension] = Field(default_factory=list)
+    strengths: list[JobFitFinding] = Field(default_factory=list)
+    risks: list[JobFitFinding] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    interview_questions: list[str] = Field(default_factory=list)
+    decision_reason: str = ""
+
+
+class CandidateJobFitEvaluation(BaseModel):
+    candidate_id: str
+    candidate_name: str = ""
+    assessments: list[JobFitAssessment]
+    best_fit_jd_id: str = ""
+    best_fit_jd_title: str = ""
+    best_fit_reason: str = ""
+    evaluation_mode: str = "jd_fit_v2"
+
+
 class CandidateEvaluation(BaseModel):
     id: str
     name: str
@@ -377,6 +435,11 @@ class CandidateEvaluation(BaseModel):
     publication_score: float = Field(default=0, ge=0)
     safety_net_score: float = Field(default=0, ge=0, le=5)
     safety_net_bonuses: list[dict[str, Any]] = Field(default_factory=list)
+    interview_decision: InterviewDecision | Literal[""] = ""
+    best_fit_jd_id: str = ""
+    best_fit_jd_title: str = ""
+    decision_summary: str = ""
+    job_fit_assessments: list[JobFitAssessment] = Field(default_factory=list)
 
 
 class ImportClassification(BaseModel):
@@ -405,6 +468,11 @@ class BatchResult(BaseModel):
 
 class TalentState(TypedDict, total=False):
     resume: dict[str, Any]
+    jobs: list[dict[str, Any]]
+    prepared_resume: dict[str, Any]
+    prepared_jobs: list[dict[str, Any]]
+    job_fit_raw: dict[str, Any]
+    job_fit_result: dict[str, Any]
     normalized: dict[str, Any]
     academic_report: dict[str, Any]
     evidence: list[dict[str, Any]]

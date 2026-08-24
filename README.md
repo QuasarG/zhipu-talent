@@ -11,7 +11,7 @@
 - **人才问答**：自然语言提问，AI Agent 自动检索人才库、查论文、查舆情，生成调查报告
 - **简历评估**：导入 PDF/图片简历，自动结构化解析、论文核验、多维度 AI 评分
 - **人才库**：统一档案管理、关系图谱可视化、分组收纳、对比滑轨、版本对比
-- **JD 池**：JD 粘贴即录入（智能解析标题/团队），LLM 起草岗位 Track 评估规格，人批激活后驱动评估
+- **JD 面试准入**：激活一到多个 JD 后，每份简历按 JD 独立输出进入面试、待补信息或不进入面试，并推荐最匹配方向
 - **画像澄清（Grill）**：面向用人部门的需求澄清问答，蓝本岗位检索自 Moka 全量 JD 向量库
 
 ## 技术栈
@@ -20,7 +20,7 @@
 |---|---|
 | 后端 | Flask、SQLAlchemy、LangGraph |
 | 前端 | React 19、TypeScript、Tailwind CSS 4、Vite |
-| LLM | 智谱 GLM-5.2（评估/问答，OpenAI 兼容端点）、智谱 ZAI（OCR/Embedding/Web Search） |
+| LLM | 智谱 GLM-5.3（评估/问答，OpenAI 兼容端点）、智谱 ZAI（OCR/Embedding/Web Search） |
 | 向量库 | Qdrant（人才知识 talent_knowledge / 岗位库 grill_jobs 双集合） |
 | 数据库 | MySQL（生产）/ SQLite（本地可选） |
 
@@ -61,8 +61,9 @@ sudo cp deploy/nginx-talent-radar.conf /etc/nginx/sites-enabled/
 
 | 变量 | 说明 |
 |---|---|
-| `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.2 + Web Search + Embedding + OCR 一把通吃） |
-| `OPENAI_MODEL` / `OPENAI_BASE_URL` | `glm-5.2` / `https://open.bigmodel.cn/api/paas/v4` |
+| `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.3 + Web Search + Embedding + OCR 一把通吃） |
+| `OPENAI_MODEL` / `OPENAI_BASE_URL` | `glm-5.3` / `https://open.bigmodel.cn/api/paas/v4` |
+| `JOB_FIT_MAX_CONCURRENCY` | 面试准入模型请求并发上限，默认 `1`，批量评估时避免触发 429 |
 | `AMINER_API_TOKEN` | AMiner 论文核验/学者检索（可选） |
 | `FLASK_SESSION_SECRET` | 会话密钥（必填，随机长串） |
 | `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址/集合名 |

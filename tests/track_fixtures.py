@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from unittest.mock import patch
 
 from agi_talent_radar.agents.tracks.shared.spec import TrackDimensionSpec, TrackSpec
+from agi_talent_radar.core.models import JobDefinition
 
 
 def make_spec(key: str, label: str = "", keywords: tuple[str, ...] = (), dims: tuple = ()) -> TrackSpec:
@@ -35,9 +36,19 @@ def make_dynamic_specs() -> dict[str, TrackSpec]:
 def patch_active_specs(specs=None):
     """全链路测试用：把三处 load_active_specs 统一替换成动态 spec fixture。"""
     specs = specs if specs is not None else make_dynamic_specs()
+    jobs = [
+        JobDefinition(
+            id=spec.key,
+            title=spec.label,
+            raw_text=spec.evidence_focus,
+            spec=spec.to_dict(),
+        )
+        for spec in specs.values()
+    ]
     with (
         patch("agi_talent_radar.agents.tracks.registry.load_active_specs", return_value=specs),
         patch("agi_talent_radar.agents.routing.track_router.load_active_specs", return_value=specs),
         patch("agi_talent_radar.agents.evidence_extractor.load_active_specs", return_value=specs),
+        patch("agi_talent_radar.core.runner.load_active_job_definitions", return_value=jobs),
     ):
         yield specs

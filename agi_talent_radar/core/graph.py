@@ -2,156 +2,84 @@ from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
-from agi_talent_radar.agents.aggregation import run_global_critic, run_portfolio_aggregator
-from agi_talent_radar.agents.academic.nodes import run_resume_academic_check
-from agi_talent_radar.agents.common_potential import run_common_critic, run_common_scorer
-from agi_talent_radar.agents.evidence_extractor import run_evidence_extractor
-from agi_talent_radar.agents.formatter import run_formatter
-from agi_talent_radar.agents.normalizer import run_normalizer
-from agi_talent_radar.agents.publication_scorer import run_publication_scorer
-from agi_talent_radar.agents.routing import run_route_auditor, run_track_router
-from agi_talent_radar.agents.safety_net import run_safety_net
-from agi_talent_radar.agents.tracks.shared.engine import run_dynamic_tracks
+from agi_talent_radar.agents.job_fit.nodes import (
+    run_candidate_preparer,
+    run_decision_guard,
+    run_jd_fit_assessor,
+    run_job_fit_formatter,
+)
 from agi_talent_radar.core.models import TalentState
 
 
 NODE_LABELS = {
-    "normalizer": "脱敏与标准化",
-    "academic_check": "论文外部核验",
-    "evidence_extractor": "深度证据挖掘",
-    "track_router": "多 Track 路由",
-    "route_auditor": "Track 路由校验",
-    "common_scorer": "通用潜力打分",
-    "common_critic": "通用潜力校准",
-    "dynamic_tracks": "岗位 Track 评估",
-    "portfolio_aggregator": "跨 Track 加权汇总",
-    "global_critic": "全局一致性复核",
-    "publication_scorer": "论文质量加分",
-    "safety_net": "特殊优势兜底",
-    "formatter": "结构化组装",
+    "candidate_preparer": "准备候选人与岗位",
+    "jd_fit_assessor": "逐 JD 证据对照",
+    "decision_guard": "面试准入门禁",
+    "result_formatter": "准入结果组装",
 }
 
 NODE_DESCRIPTIONS = {
-    "normalizer": "统一简历字段、时间与文本格式，生成稳定的评估输入。",
-    "academic_check": "核对论文声明与外部学术数据，输出逐篇核验结论。",
-    "evidence_extractor": "从教育、项目、经历和成果中提取可引用证据。",
-    "track_router": "依据证据选择适合的岗位 Track（来自 JD 池），并分配权重。",
-    "route_auditor": "复核 Track 路由是否完整、一致且有证据支撑。",
-    "common_scorer": "计算所有候选人共享的通用潜力维度。",
-    "common_critic": "校准通用潜力评分并标记证据不足或过度推断。",
-    "dynamic_tracks": "按 JD 池中激活的岗位 Track 逐一评估专业能力。",
-    "portfolio_aggregator": "合并通用评分与各 Track 结果，计算组合评分。",
-    "global_critic": "执行最终一致性复核，检查结论、风险和证据链。",
-    "publication_scorer": "按 CCF 分级与核验状态，为已发表成果额外加分。",
-    "safety_net": "识别分项评分未覆盖的稀缺外部成就（状元/竞赛最高奖等），少量加分。",
-    "formatter": "组装结构化结果、面试问题与培养建议。",
+    "candidate_preparer": "校验一份结构化简历和当前激活的 JD，建立候选人 × JD 评估输入。",
+    "jd_fit_assessor": "一次模型调用分别核对每个 JD 的硬门槛、固定维度和简历原文证据。",
+    "decision_guard": "按确定性规则处理 unmet、unknown 和岗位匹配阈值，模型不能绕过硬门槛。",
+    "result_formatter": "输出每个 JD 的独立准入结论，并推荐最匹配方向，不生成跨 JD 混合总分。",
 }
 
 
 def evaluation_graph_catalog() -> dict:
-    """返回供前端稳定渲染的完整评估图谱。"""
-
-    def nodes(*keys: str) -> list[dict]:
-        return [
-            {
-                "node": key,
-                "label": NODE_LABELS[key],
-                "description": NODE_DESCRIPTIONS[key],
-                "order": list(NODE_LABELS).index(key),
-            }
-            for key in keys
-        ]
+    def node(key: str, order: int) -> dict:
+        return {
+            "node": key,
+            "label": NODE_LABELS[key],
+            "description": NODE_DESCRIPTIONS[key],
+            "order": order,
+        }
 
     return {
+        "workflow_version": "jd_fit_v2",
         "phases": [
             {
                 "key": "preparation",
-                "label": "准备与证据",
-                "description": "整理输入并建立可追溯的证据基础。",
+                "label": "准备",
+                "description": "固定本次评估的简历和 JD 集合。",
                 "groups": [
-                    {
-                        "key": "preparation_chain",
-                        "label": "准备链",
-                        # 论文核验已前移到导入阶段异步完成，评估内不再展示该节点
-                        "nodes": nodes("normalizer", "evidence_extractor"),
-                    }
+                    {"key": "input", "label": "评估输入", "nodes": [node("candidate_preparer", 0)]}
                 ],
             },
             {
-                "key": "routing",
-                "label": "路由决策",
-                "description": "选择专业评估方向并复核分配。",
+                "key": "assessment",
+                "label": "岗位对照",
+                "description": "每个 JD 独立评估，但合并为一次模型请求以降低限流风险。",
                 "groups": [
-                    {
-                        "key": "routing_chain",
-                        "label": "路由链",
-                        "nodes": nodes("track_router", "route_auditor"),
-                    }
+                    {"key": "job_fit", "label": "逐 JD 评估", "nodes": [node("jd_fit_assessor", 1)]}
                 ],
             },
             {
-                "key": "parallel",
-                "label": "并行评估",
-                "description": "通用评分与各专业 Track 并行运行。",
+                "key": "decision",
+                "label": "准入决策",
+                "description": "硬门槛优先，随后判断是否值得投入面试资源。",
                 "groups": [
                     {
-                        "key": "common_track",
-                        "label": "通用评分链",
-                        "nodes": nodes("common_scorer", "common_critic"),
-                    },
-                    {
-                        "key": "specialized_tracks",
-                        "label": "岗位 Track（JD 池驱动）",
-                        "description": "仅路由命中的岗位 Track 参与计算，未命中不评分。",
-                        "collapsible": True,
-                        "nodes": nodes("dynamic_tracks"),
-                    },
-                ],
-            },
-            {
-                "key": "aggregation",
-                "label": "汇总与输出",
-                "description": "聚合多 Track 结果并生成最终评估。",
-                "groups": [
-                    {
-                        "key": "aggregation_chain",
-                        "label": "汇总链",
-                        "nodes": nodes("portfolio_aggregator", "global_critic", "publication_scorer", "safety_net", "formatter"),
+                        "key": "guard_and_output",
+                        "label": "门禁与输出",
+                        "nodes": [node("decision_guard", 2), node("result_formatter", 3)],
                     }
                 ],
             },
-        ]
+        ],
     }
 
 
 def build_graph():
     workflow = StateGraph(TalentState)
-    workflow.add_node("normalizer", run_normalizer)
-    workflow.add_node("academic_check", run_resume_academic_check)
-    workflow.add_node("evidence_extractor", run_evidence_extractor)
-    workflow.add_node("track_router", run_track_router)
-    workflow.add_node("route_auditor", run_route_auditor)
-    workflow.add_node("common_scorer", run_common_scorer)
-    workflow.add_node("common_critic", run_common_critic)
-    workflow.add_node("dynamic_tracks", run_dynamic_tracks)
-    workflow.add_node("portfolio_aggregator", run_portfolio_aggregator)
-    workflow.add_node("global_critic", run_global_critic)
-    workflow.add_node("publication_scorer", run_publication_scorer)
-    workflow.add_node("safety_net", run_safety_net)
-    workflow.add_node("formatter", run_formatter)
+    workflow.add_node("candidate_preparer", run_candidate_preparer)
+    workflow.add_node("jd_fit_assessor", run_jd_fit_assessor)
+    workflow.add_node("decision_guard", run_decision_guard)
+    workflow.add_node("result_formatter", run_job_fit_formatter)
 
-    workflow.set_entry_point("normalizer")
-    workflow.add_edge("normalizer", "academic_check")
-    workflow.add_edge("academic_check", "evidence_extractor")
-    workflow.add_edge("evidence_extractor", "track_router")
-    workflow.add_edge("track_router", "route_auditor")
-    workflow.add_edge("route_auditor", "common_scorer")
-    workflow.add_edge("common_scorer", "common_critic")
-    workflow.add_edge("route_auditor", "dynamic_tracks")
-    workflow.add_edge(["common_critic", "dynamic_tracks"], "portfolio_aggregator")
-    workflow.add_edge("portfolio_aggregator", "global_critic")
-    workflow.add_edge("global_critic", "publication_scorer")
-    workflow.add_edge("publication_scorer", "safety_net")
-    workflow.add_edge("safety_net", "formatter")
-    workflow.add_edge("formatter", END)
+    workflow.set_entry_point("candidate_preparer")
+    workflow.add_edge("candidate_preparer", "jd_fit_assessor")
+    workflow.add_edge("jd_fit_assessor", "decision_guard")
+    workflow.add_edge("decision_guard", "result_formatter")
+    workflow.add_edge("result_formatter", END)
     return workflow.compile()
