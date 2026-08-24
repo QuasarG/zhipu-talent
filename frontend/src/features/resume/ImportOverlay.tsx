@@ -12,7 +12,7 @@ interface Props {
   onClose: () => void;
   /** 每份简历落库（候选人就绪）时回调：用于实时刷新队列，不等整个导入结束 */
   onCandidate?: () => void;
-  /** 结构化分节解析完成时回调：把该节字段透传给详情窗口实时填充 */
+  /** 单次结构化响应流完成一个字段组时回调，立即填入详情预览 */
   onStructure?: (fileName: string, fields: Record<string, unknown>) => void;
 }
 
@@ -79,7 +79,7 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
           prev.map((f) => {
             if (f.name !== e.file_name) return f;
             if (e.type === "structure") {
-              // 分节字段透传给详情窗口实时填充，卡片本身只更新阶段文案
+              // 完整字段组透传给详情窗口实时填充，卡片本身只更新阶段文案
               onStructure?.(f.name, e.fields || {});
               return { ...f, status: "running", stage: t("正在解析结构化字段…") };
             }

@@ -17,7 +17,7 @@ import ImportOverlay from "@/features/resume/ImportOverlay";
 import CandidateMetaDropdown from "@/features/resume/CandidateMetaDropdown";
 import { useI18n } from "@/lib/i18n";
 
-/** 把导入预览的字段增量合并进详情：列表追加去重，单值取首个非空 */
+/** 把单次 LLM 响应流里的完整字段组增量合并进详情 */
 function mergePreviewFields(
   base: CandidateDetail,
   fields: Record<string, unknown>,
@@ -38,7 +38,7 @@ function mergePreviewFields(
     }
   }
   for (const key of ["name", "stage", "role"] as const) {
-    const incoming = fields[key];
+    const incoming = key === "role" ? (fields.target_role ?? fields.role) : fields[key];
     if (typeof incoming === "string" && incoming.trim() && !(next[key] as string)) {
       next[key] = incoming as never;
     }
@@ -198,7 +198,7 @@ export default function ResumeEvaluate() {
     }
   }, [candidates, selected, selectedId, selectCandidate, setSelectedId]);
 
-  /** ImportOverlay 透传的分节增量：合并进预览详情，中栏实时"长出"字段 */
+  /** ImportOverlay 透传的字段组增量：合并进预览详情，中栏实时"长出"字段 */
   const handleStructure = useCallback((fileName: string, fields: Record<string, unknown>) => {
     setImportPreview((prev) => {
       // 首个分节到达且当前没在预览态：用文件名初始化预览

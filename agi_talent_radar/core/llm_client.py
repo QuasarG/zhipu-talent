@@ -91,26 +91,40 @@ def call_llm_json(
 def call_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1):
     """流式调用 LLM，逐 token 返回文本内容。
 
-    用于导入等需要边接收边解析 JSON Lines 的场景。
+    用于导入等需要边接收边解析 JSON Lines 的场景。若请求在产生首个内容前
+    遇到限流/网络错误，最多重试 3 次；已经输出内容后不重试，避免前端收到重复片段。
     """
     client = _client()
     model = _required_env("OPENAI_MODEL")
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-        ],
-        temperature=temperature,
-        stream=True,
-        timeout=timeout_seconds,
-        **_thinking_kwargs_for(model),
-    )
-    for chunk in response:
-        delta = chunk.choices[0].delta
-        if delta.content:
-            yield delta.content
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+    max_retries = 3
+    for attempt in range(max_retries):
+        emitted = False
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                stream=True,
+                timeout=timeout_seconds,
+                **_thinking_kwargs_for(model),
+            )
+            for chunk in response:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    emitted = True
+                    yield delta.content
+            return
+        except Exception:
+            if emitted or attempt + 1 >= max_retries:
+                raise
+            time.sleep(min(8.0, 2.0**attempt))
 
 
 def call_llm_tools(

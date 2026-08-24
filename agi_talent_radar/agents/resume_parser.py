@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
+from json_repair import loads as repair_json_loads
 from pydantic import BaseModel, Field, field_validator
 
 from agi_talent_radar.core import llm_client
@@ -13,8 +14,6 @@ from agi_talent_radar.core.models import CandidateResume, ResumeExperience, Resu
 
 # LLM 自注"标题缺失/不列为论文" = 它自己都知道不是论文，兜底过滤
 _VENUE_SELF_NOTE_RE = re.compile(r"标题缺失|不列为论文|无独立标题|非论文|OCR.*截断|残余.*期刊", re.IGNORECASE)
-_SECTION_MAX_CHARS = 3000
-_SECTION_WORKERS = 4
 
 
 def _looks_like_venue_only(text: str) -> bool:
@@ -99,31 +98,6 @@ def _coerce_to_str_list(
     return items
 
 
-class _ReorganizedSections(BaseModel):
-    sections: list[dict[str, str]] = Field(default_factory=list)
-
-
-REORGANIZE_PROMPT = """
-你是简历文字重组 Agent。只输出 JSON 对象，顶层字段必须是 sections。
-
-任务：把 OCR/PDF 提取的简历原始文字重新组织成逻辑分节。原始文字可能有
-以下缺陷，需要修复：
-1. 同一段落被截断到不同块（如"一区Information Processing&Management（IPM）2025.针对
-   现有信息抽取..."），要把被拆散的句子重新拼回同一节。
-2. 中英文之间粘连（如"一区Information"），按语义补空格。
-3. OCR 错字漏字（0/O、1/l、形近字、断词），结合上下文修正明显错误。
-
-要求：
-1. 按语义把全文分成若干节，每节输出 {{"name": "节名", "text": "该节重组后的文字"}}。
-   节名用：基本信息 / 教育 / 经历 / 论文 / 项目 / 技能 / 其他。
-2. 内容只能重组和修复，不得增删编造；无法辨认的乱码保留原文。
-3. 每节 text 长度不得超过 3000 字符；超长自动拆成多节（如 论文1 / 论文2）。
-4. 保持原文顺序，不要打乱各节先后关系。
-5. 期刊简介段落（介绍某期刊/会议本身的文字，不是候选人成果）单独归入"其他"，
-   不得与"论文"节混在一起。
-""".strip()
-
-
 _EDU_KEY_ALIASES = {
     "学校": "school", "院校": "school", "university": "school", "college": "school", "school": "school",
     "学位": "degree", "学历": "degree", "degree": "degree", "阶段": "degree", "program": "degree",
@@ -163,78 +137,95 @@ def _parse_education_string(text: str) -> dict | None:
     return edu
 
 
-def reorganize_resume_text(raw_text: str) -> list[dict[str, str]]:
-    """第一层：修复 OCR 碎片并重组为逻辑分节，供并行结构化。"""
-    if not raw_text.strip():
-        return []
-    response = llm_client.call_llm_json(
-        REORGANIZE_PROMPT,
-        {"raw_text": raw_text},
-        temperature=0.1,
-    )
-    sections = _ReorganizedSections.model_validate(response).sections
-    return [s for s in sections if str(s.get("text", "")).strip()]
-
-
 RESUME_PARSER_PROMPT = """
-你是简历结构化 Agent。只输出 JSON 对象。
+你是简历一次流式结构化 Agent。一次读取整份简历，一次完成全部字段提取。
 
-当前系统时间：{current_date}
+只输出 JSON Lines（JSONL），禁止 Markdown、代码围栏、数组、说明文字和空行。
+每一行必须是一个完整、单行、可独立解析的 JSON 对象；字符串中的换行必须转义为 \\n。
+必须严格按以下顺序输出 6 行，即使某组没有信息也要输出 fields 为空值的对应行：
+1. {"section":"basic","fields":{"name":"","target_role":"","stage":"","directions":[],"screening_tags":[]}}
+2. {"section":"education","fields":{"education":[]}}
+3. {"section":"experiences","fields":{"experiences":[]}}
+4. {"section":"projects","fields":{"projects":[]}}
+5. {"section":"publications","fields":{"publications":[]}}
+6. {"section":"skills","fields":{"skills":[]}}
 
-任务：
-从简历文本中提取结构化字段。本输入是简历的一个分节（节名：{section_name}），
-只提取这一节中出现的信息，其他字段给空。
+每一行输出前，必须确认该字段组已经从全文中提取完整；一行结束后不得在后续行补写该组。
+不要重复 section，不要把同一条信息放入多个字段组。
 
-输出字段：
-- name: 姓名，如果没有则留空
-- target_role: 目标岗位/求职意向
-- stage: 当前阶段。根据上面的系统时间和简历中的入学/毕业年份，换算成当前实际年级（如「博二」「研一」「博四」）。只有无法推算时才用模糊描述（如「博士在读」）。
-- education: 教育背景列表，**每项必须是 JSON 对象**，禁止输出 "学校:X；专业:Y" 这种合并字符串。
-  字段：{{"school": "院校", "degree": "学历层次", "major": "专业", "period": "起止时间", "year": "毕业年份"}}。
-  正确示例：{{"school": "清华大学", "degree": "本科", "major": "计算机科学", "period": "2018-2022", "year": "2022"}}。
+字段规则：
+- name: 姓名，如果没有则留空。
+- target_role: 目标岗位/求职意向。
+- stage: 根据 current_date 和入学/毕业年份换算当前实际年级，如「博二」「研一」；无法推算才用「博士在读」等模糊描述。
+- directions: 研究方向列表。
+- screening_tags: 筛选用方向、岗位关键词。
+- education: 教育背景列表，每项必须是 JSON 对象，禁止输出 "学校:X；专业:Y" 这种合并字符串。
+  字段：{"school": "院校", "degree": "学历层次", "major": "专业", "period": "起止时间", "year": "毕业年份"}。
+  正确示例：{"school": "清华大学", "degree": "本科", "major": "计算机科学", "period": "2018-2022", "year": "2022"}。
   学历层次必须根据学位/阶段推断：本科/Bachelor/BEng/BS/Undergraduate → 本科；硕士/Master/MPhil/MSc → 硕士；
   博士/PhD/Doctoral → 博士。专业从原文学位名提取。每条教育经历的字段尽量都填，无对应信息留空字符串。
-- directions: 研究方向列表
-- experiences: 实习/工作/产业研究经历列表，每项 {{"organization": "机构", "role": "岗位", "experience_type": "实习/全职/访问研究", "start_date": "", "end_date": "", "period": "", "details": ["职责/成果"]}}
-- projects: 项目/科研经历列表，每项 {{"name": "项目名", "details": ["细节1", "细节2"]}}
+- experiences: 实习/工作/产业研究经历列表，每项 {"organization": "机构", "role": "岗位", "experience_type": "实习/全职/访问研究", "start_date": "", "end_date": "", "period": "", "details": ["职责/成果"]}
+- projects: 项目/科研经历列表，每项 {"name": "项目名", "details": ["细节1", "细节2"]}
 - publications: 代表成果/论文列表。每条必须是**有明确标题的具体论文**；
   期刊名/会议名本身（如 "Information Processing & Management 2025"）不是论文，禁止单独列为成果；
   标题被 OCR 截断或缺失时，宁缺毋滥，不要把残余的期刊/分区信息当成论文
-- skills: 技能关键词列表
-- screening_tags: 筛选用标签，如方向、岗位关键词
+- skills: 技能关键词列表。
 
 规则：
 1. 不要编造不存在的信息。
-2. 如果本分节中确实没有，给空值或空列表。
+2. 对整份 raw_text 做全量解析，不得遗漏任意页面；visual_section_names 仅是版面提示。
 3. 保留原文中的关键动作动词、技术栈和量化结果，不要过度改写。
 4. 如果文本包含多位候选人，只解析当前这一位。
 5. 实习/工作经历不得混入 projects；经历中的具体项目可保留在 details 中。
-6. 本分节不含某个字段时，该字段必须给空值，禁止从分节外脑补。
-7. 期刊简介段落（介绍期刊本身的文字）不是论文，禁止放进 publications。
-{ocr_rule}""".strip()
-
-_OCR_RULE = (
-    "8. 本分节含 OCR 识别结果，可能有错字漏字（0/O、1/l、形近字、断词）。"
-    "请结合上下文修正明显识别错误；无法辨认的乱码不要照抄，宁缺毋滥。"
-)
+6. 期刊简介段落不是论文，禁止放进 publications。
+7. has_ocr 为 true 时结合上下文修正明显 OCR 错字；无法辨认的乱码宁缺毋滥。
+8. 原文段落可能被截断、中英文粘连；先在上下文中还原语义，再提取字段，但不要输出重组过程。
+""".strip()
 
 
-def _extract_section_fields(section: dict[str, str], current_date: str, has_ocr: bool) -> ParsedResume:
-    """第二层：单个分节的结构化提取（并行单元）。"""
-    response = llm_client.call_llm_json(
-        RESUME_PARSER_PROMPT.format(
-            current_date=current_date,
-            section_name=str(section.get("name", "")),
-            ocr_rule=_OCR_RULE if has_ocr else "",
-        ),
-        {"raw_text": str(section.get("text", "")), "current_date": current_date},
-        temperature=0.1,
-    )
-    return ParsedResume.model_validate(response)
+_STREAM_SECTIONS = {
+    "basic": "基本信息",
+    "education": "教育经历",
+    "experiences": "工作经历",
+    "projects": "项目经历",
+    "publications": "论文成果",
+    "skills": "技能",
+}
+_STREAM_SECTION_ALIASES = {
+    **{key: key for key in _STREAM_SECTIONS},
+    "基本信息": "basic",
+    "教育": "education",
+    "教育经历": "education",
+    "经历": "experiences",
+    "工作经历": "experiences",
+    "项目": "projects",
+    "项目经历": "projects",
+    "论文": "publications",
+    "论文成果": "publications",
+    "技能": "skills",
+}
+
+
+def _decode_stream_line(line: str) -> tuple[str, ParsedResume] | None:
+    """解析一条完整 JSONL 字段组；代码围栏行仅作兼容性忽略。"""
+    text = line.strip()
+    if not text or text.startswith("```"):
+        return None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        data = repair_json_loads(text)
+    if not isinstance(data, dict):
+        raise ValueError(f"简历结构化流不是 JSON 对象：{text[:120]}")
+    section = _STREAM_SECTION_ALIASES.get(str(data.get("section", "")).strip())
+    fields = data.get("fields")
+    if section is None or not isinstance(fields, dict):
+        raise ValueError(f"简历结构化流缺少合法 section/fields：{text[:120]}")
+    return section, ParsedResume.model_validate(fields)
 
 
 def _merge_parsed_resumes(parts: list[ParsedResume]) -> ParsedResume:
-    """合并并行分节的解析结果：单值取首个非空，列表按序拼接去重。"""
+    """合并响应流字段组：单值取首个非空，列表按序拼接去重。"""
     merged = ParsedResume()
     for part in parts:
         for field in ("name", "target_role", "stage"):
@@ -262,34 +253,58 @@ def iter_parse_resume_chunks(
     has_ocr: bool = False,
     pre_sections: list[dict[str, str]] | None = None,
 ) -> Iterable[tuple[str, str, int, int, object]]:
-    """流式解析：先重组分节，再并行结构化，逐节 yield。
+    """整份简历只调用一次 LLM，以 JSONL 字段组逐行增量 yield。
 
-    每完成一节 yield ("section", 节名, 已完成数, 总节数, ParsedResume)；
-    全部完成 yield ("complete", "", 总节数, 总节数, CandidateResume)。
-    消费方（导入 SSE 流）可边收边展示，不必等全部解析完。
+    每当一个字段组完整到达就 yield section，前端立即填充；流结束并校验六组
+    齐全后 yield complete。一次简历解析只有一个 GLM 请求，不再按分节并发。
     """
     if not raw_text.strip():
         return
     current_date = datetime.now().strftime("%Y-%m-%d")
-    # OCR 层已结构化分节（5V-Turbo 识别时直接输出）时跳过重组节点：省一次 LLM 调用，
-    # 分节质量来自视觉层（版面即语义），错误更少
-    sections = pre_sections if pre_sections else reorganize_resume_text(raw_text)
-    if not sections:
-        return
-    total = len(sections)
-    parts: list[tuple[int, ParsedResume]] = []
-    with ThreadPoolExecutor(max_workers=_SECTION_WORKERS) as executor:
-        futures = {
-            executor.submit(_extract_section_fields, section, current_date, has_ocr): (index, section)
-            for index, section in enumerate(sections)
-        }
-        for done, future in enumerate(as_completed(futures), start=1):
-            index, section = futures[future]
-            partial = future.result()
-            parts.append((index, partial))
-            yield ("section", str(section.get("name", "")), done, total, partial)
-    parts.sort(key=lambda item: item[0])  # 保持原节序合并，结果稳定
-    merged = _merge_parsed_resumes([partial for _, partial in parts])
+    total = len(_STREAM_SECTIONS)
+    buffer = ""
+    parts: list[ParsedResume] = []
+    seen: set[str] = set()
+    chunks = llm_client.call_llm_stream(
+        RESUME_PARSER_PROMPT,
+        {
+            "raw_text": raw_text,
+            "visual_section_names": [
+                str(section.get("name", "")) for section in (pre_sections or []) if section.get("name")
+            ],
+            "current_date": current_date,
+            "has_ocr": has_ocr,
+        },
+        temperature=0.1,
+    )
+    for chunk in chunks:
+        buffer += chunk
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            decoded = _decode_stream_line(line)
+            if decoded is None:
+                continue
+            section, partial = decoded
+            if section in seen:
+                raise ValueError(f"简历结构化流重复字段组：{_STREAM_SECTIONS[section]}")
+            parts.append(partial)
+            seen.add(section)
+            yield ("section", _STREAM_SECTIONS[section], len(seen), total, partial)
+    decoded = _decode_stream_line(buffer)
+    if decoded is not None:
+        section, partial = decoded
+        if section in seen:
+            raise ValueError(f"简历结构化流重复字段组：{_STREAM_SECTIONS[section]}")
+        parts.append(partial)
+        seen.add(section)
+        yield ("section", _STREAM_SECTIONS[section], len(seen), total, partial)
+
+    missing = [key for key in _STREAM_SECTIONS if key not in seen]
+    if missing:
+        labels = "、".join(_STREAM_SECTIONS[key] for key in missing)
+        raise ValueError(f"简历结构化流不完整，缺少字段组：{labels}")
+
+    merged = _merge_parsed_resumes(parts)
     publications = [p for p in merged.publications if not _looks_like_venue_only(p)]
     yield (
         "complete", "", total, total,

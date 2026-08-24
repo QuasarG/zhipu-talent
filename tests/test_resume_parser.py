@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from unittest.mock import patch
 
@@ -63,53 +64,76 @@ class VenueOnlyFilterTest(unittest.TestCase):
 
 
 class IterParseResumeChunksTest(unittest.TestCase):
-    """流式解析：逐节产出 section 事件，最后产 complete 事件。"""
+    """单次 LLM 流：字段组完整后立即产出，最后合并为 complete。"""
 
-    _SECTIONS = [
-        {"name": "论文", "text": "Paper A. AAAI 2025."},
-        {"name": "教育", "text": "PhD at Fudan"},
-        {"name": "技能", "text": "Python"},
+    _EVENTS = [
+        {
+            "section": "basic",
+            "fields": {
+                "name": "张三",
+                "target_role": "AI 研究员",
+                "stage": "博三",
+                "directions": ["Agent"],
+                "screening_tags": ["LLM"],
+            },
+        },
+        {"section": "education", "fields": {"education": ["PhD"]}},
+        {"section": "experiences", "fields": {"experiences": []}},
+        {"section": "projects", "fields": {"projects": [{"name": "Agent 平台", "details": ["负责架构"]}]}},
+        {
+            "section": "publications",
+            "fields": {
+                "publications": [
+                    "Paper A. AAAI 2025.",
+                    "IPM 2025. (标题缺失，不列为论文)",
+                ]
+            },
+        },
+        {"section": "skills", "fields": {"skills": ["Python"]}},
     ]
 
-    def _mock_extract(self, section, current_date, has_ocr):
-        name = section["name"]
-        if name == "论文":
-            return ParsedResume(publications=["Paper A. AAAI 2025.", "IPM 2025. (标题缺失，不列为论文)"])
-        if name == "教育":
-            return ParsedResume(name="张三", education=["PhD"], stage="博三")
-        return ParsedResume(skills=["Python"])
+    def _stream(self, events=None):
+        text = "\n".join(json.dumps(item, ensure_ascii=False) for item in (events or self._EVENTS))
+        # 刻意切在 JSON 行内部，验证网络 token 分片不会触发过早解析。
+        return iter([text[:37], text[37:119], text[119:271], text[271:]])
 
-    def test_yields_sections_then_complete(self) -> None:
-        with (
-            patch("agi_talent_radar.agents.resume_parser.reorganize_resume_text", return_value=self._SECTIONS),
-            patch("agi_talent_radar.agents.resume_parser._extract_section_fields", side_effect=self._mock_extract),
-        ):
+    def test_uses_one_llm_call_and_yields_six_field_groups(self) -> None:
+        with patch(
+            "agi_talent_radar.agents.resume_parser.llm_client.call_llm_stream",
+            return_value=self._stream(),
+        ) as stream_call:
             chunks = list(iter_parse_resume_chunks("c1", "raw text"))
 
         section_chunks = [c for c in chunks if c[0] == "section"]
         complete_chunks = [c for c in chunks if c[0] == "complete"]
-        self.assertEqual(len(section_chunks), 3)
+        self.assertEqual(len(section_chunks), 6)
         self.assertEqual(len(complete_chunks), 1)
+        stream_call.assert_called_once()
 
-    def test_section_chunk_carries_progress(self) -> None:
-        with (
-            patch("agi_talent_radar.agents.resume_parser.reorganize_resume_text", return_value=self._SECTIONS),
-            patch("agi_talent_radar.agents.resume_parser._extract_section_fields", side_effect=self._mock_extract),
+    def test_field_group_chunk_carries_ordered_progress(self) -> None:
+        with patch(
+            "agi_talent_radar.agents.resume_parser.llm_client.call_llm_stream",
+            return_value=self._stream(),
         ):
             chunks = list(iter_parse_resume_chunks("c1", "raw text"))
 
-        section_names = {c[1] for c in chunks if c[0] == "section"}
-        self.assertEqual(section_names, {"论文", "教育", "技能"})
-        for kind, _, done, total, _ in chunks:
-            if kind == "section":
-                self.assertEqual(total, 3)
-                self.assertGreaterEqual(done, 1)
-                self.assertLessEqual(done, 3)
+        progress = [(c[1], c[2], c[3]) for c in chunks if c[0] == "section"]
+        self.assertEqual(
+            progress,
+            [
+                ("基本信息", 1, 6),
+                ("教育经历", 2, 6),
+                ("工作经历", 3, 6),
+                ("项目经历", 4, 6),
+                ("论文成果", 5, 6),
+                ("技能", 6, 6),
+            ],
+        )
 
     def test_complete_chunk_filters_venue_and_merges(self) -> None:
-        with (
-            patch("agi_talent_radar.agents.resume_parser.reorganize_resume_text", return_value=self._SECTIONS),
-            patch("agi_talent_radar.agents.resume_parser._extract_section_fields", side_effect=self._mock_extract),
+        with patch(
+            "agi_talent_radar.agents.resume_parser.llm_client.call_llm_stream",
+            return_value=self._stream(),
         ):
             complete = [c for c in iter_parse_resume_chunks("c1", "raw text") if c[0] == "complete"][0]
 
@@ -120,13 +144,34 @@ class IterParseResumeChunksTest(unittest.TestCase):
         self.assertEqual(merged.skills, ["Python"])
         self.assertEqual(merged.name, "张三")
 
+    def test_full_raw_text_and_visual_sections_share_the_single_request(self) -> None:
+        visual_sections = [{"name": "基本信息", "text": "张三"}]
+        with patch(
+            "agi_talent_radar.agents.resume_parser.llm_client.call_llm_stream",
+            return_value=self._stream(),
+        ) as stream_call:
+            list(iter_parse_resume_chunks("c1", "第一页\n第二页项目", has_ocr=True, pre_sections=visual_sections))
+
+        payload = stream_call.call_args.args[1]
+        self.assertEqual(payload["raw_text"], "第一页\n第二页项目")
+        self.assertEqual(payload["visual_section_names"], ["基本信息"])
+        self.assertTrue(payload["has_ocr"])
+
+    def test_missing_field_group_fails_instead_of_saving_partial_resume(self) -> None:
+        with patch(
+            "agi_talent_radar.agents.resume_parser.llm_client.call_llm_stream",
+            return_value=self._stream(self._EVENTS[:-1]),
+        ):
+            with self.assertRaisesRegex(ValueError, "缺少字段组：技能"):
+                list(iter_parse_resume_chunks("c1", "raw text"))
+
     def test_empty_text_yields_nothing(self) -> None:
         self.assertEqual(list(iter_parse_resume_chunks("c1", "")), [])
 
     def test_parse_raw_resume_returns_merged_only(self) -> None:
-        with (
-            patch("agi_talent_radar.agents.resume_parser.reorganize_resume_text", return_value=self._SECTIONS),
-            patch("agi_talent_radar.agents.resume_parser._extract_section_fields", side_effect=self._mock_extract),
+        with patch(
+            "agi_talent_radar.agents.resume_parser.llm_client.call_llm_stream",
+            return_value=self._stream(),
         ):
             resume = parse_raw_resume("c1", "raw text")
 

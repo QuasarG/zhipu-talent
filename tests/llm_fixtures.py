@@ -19,6 +19,32 @@ def mock_llm_json():
 
 def _fake_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1):
     """模拟 LLM 流式输出，将原本一次性返回的 JSON 拆成多行 JSON Lines 推送。"""
+    if "简历一次流式结构化 Agent" in system_prompt:
+        lines = [line.strip() for line in payload.get("raw_text", "").splitlines() if line.strip()]
+        first_line = lines[0] if lines else "候选人"
+        events = [
+            {
+                "section": "basic",
+                "fields": {
+                    "name": "候选人",
+                    "target_role": "AI 研究员",
+                    "stage": "博士在读",
+                    "directions": [],
+                    "screening_tags": [],
+                },
+            },
+            {"section": "education", "fields": {"education": []}},
+            {"section": "experiences", "fields": {"experiences": []}},
+            {
+                "section": "projects",
+                "fields": {"projects": [{"name": first_line[:40], "details": ["从文本解析的项目摘要"]}]},
+            },
+            {"section": "publications", "fields": {"publications": []}},
+            {"section": "skills", "fields": {"skills": []}},
+        ]
+        for event in events:
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+        return
     response = _fake_llm_json(system_prompt, payload, temperature)
     if "人才库批量导入 Agent" in system_prompt:
         for candidate in response.get("candidates", []):
