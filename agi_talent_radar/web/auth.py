@@ -218,10 +218,10 @@ def build_auth_blueprint() -> Blueprint:
         dist_dir = Path(current_app.static_folder) / "dist"
         vite_dev = os.getenv("VITE_DEV", "").strip() == "1"
         dist_assets: list[str] = []
-        if not vite_dev and dist_dir.exists():
-            assets_dir = dist_dir / "assets"
-            if assets_dir.exists():
-                dist_assets = [f"assets/{f.name}" for f in assets_dir.iterdir() if f.suffix in (".js", ".css")]
+        if not vite_dev:
+            from agi_talent_radar.web.spa_assets import list_dist_assets
+
+            dist_assets = list_dist_assets(dist_dir)
         return render_template("index.html", vite_dev=vite_dev, dist_assets=dist_assets)
 
     @bp.get("/health")

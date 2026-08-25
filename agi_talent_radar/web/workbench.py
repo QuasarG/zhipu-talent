@@ -31,6 +31,7 @@ from agi_talent_radar.core.resume_ingestion import (
 )
 from agi_talent_radar.core.runner import run_candidate_stream
 from agi_talent_radar.core.scoring_config import DEFAULT as SCORING_CONFIG
+from agi_talent_radar.web.spa_assets import list_dist_assets as _list_dist_assets
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1238,17 +1239,6 @@ def create_app() -> Flask:
         return response
 
     return app
-
-
-def _list_dist_assets(dist_dir: Path) -> list[str]:
-    assets_dir = dist_dir / "assets"
-    if not assets_dir.exists():
-        return []
-    return sorted(
-        f"assets/{path.name}"
-        for path in assets_dir.iterdir()
-        if path.suffix in {".js", ".css"}
-    )
 
 
 def _run_import_worker(
