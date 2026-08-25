@@ -671,17 +671,99 @@ export interface JdTrackSpec {
   keywords?: string[];
 }
 
-export type JdStatus = "draft" | "active" | "archived";
-
 export interface JdEntry {
   id: string;
   title: string;
   team: string;
   raw_text: string;
-  track_key: string;
-  spec: JdTrackSpec | null;
-  spec_version: number;
-  status: JdStatus;
+  supplements: string[];
+  assessment_card: AssessmentCard | null;
+  card_status: "generating" | "ready" | "failed";
+  card_error: string;
+  card_run_trace: WorkflowNodeEvent[];
+  card_model_usage: ModelUsage[];
+  archived: boolean;
   created_at: string;
+  updated_at: string;
+}
+
+export interface AssessmentCardTask {
+  id: string;
+  title: string;
+  description: string;
+  importance: "primary" | "major" | "supporting";
+  evaluation_focus: string;
+  anchors: { level_2: string; level_3: string; level_4: string };
+}
+
+export interface AssessmentCard {
+  role_summary: string;
+  core_tasks: AssessmentCardTask[];
+  background_evidence_guidance: string;
+  excluded_requirements: string[];
+}
+
+export interface ModelUsage {
+  node_id?: string;
+  model: string;
+  fallback_reason: string;
+  started_at: string;
+  completed_at: string;
+}
+
+export interface WorkflowNodeEvent {
+  run_id?: string;
+  node_id: string;
+  parent_id?: string;
+  label?: string;
+  status: string;
+  summary: string;
+  detail?: Record<string, unknown>;
+  error?: string;
+  at?: string;
+}
+
+export interface InterviewAssessmentRun {
+  id: string;
+  batch_id: string;
+  candidate_id: string;
+  jd_id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  current_node: string;
+  run_trace: WorkflowNodeEvent[];
+  model_usage: ModelUsage[];
+  error_message: string;
+  cancellation_requested: boolean;
+}
+
+export interface InterviewAssessmentBatch {
+  id: string;
+  status: string;
+  candidate_ids: string[];
+  jd_ids: string[];
+  total_pairs: number;
+  completed_pairs: number;
+  failed_pairs: number;
+  cancelled_pairs: number;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  runs?: InterviewAssessmentRun[];
+}
+
+export interface InterviewAssessment {
+  id: string;
+  candidate_id: string;
+  jd_id: string;
+  status: string;
+  is_valid: boolean;
+  invalid_reason: string;
+  decision: "interview" | "no_interview";
+  total_score: number;
+  task_assessments: Array<Record<string, unknown>>;
+  review_corrections: Array<Record<string, unknown>>;
+  interview_focus: Array<Record<string, string>>;
+  model_usage: ModelUsage[];
+  run_trace: WorkflowNodeEvent[];
   updated_at: string;
 }

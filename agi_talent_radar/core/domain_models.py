@@ -1,6 +1,6 @@
 """人才研究平台新领域 Pydantic 模型。
 
-按 ``docs/CONTEXT.md`` 和 ``docs/design/backend_use_case_decisions.md`` 收敛的语义形状。
+按 ``docs/CONTEXT.md`` 和 ``docs/rebuild.md`` 收敛的语义形状。
 本模块不挂 SQLAlchemy ORM，仅作为真值形状契约，
 后续阶段（1/2/4/5/6/7）会据此迁移数据库表和 API schema。
 

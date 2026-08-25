@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 import json
-import os
-from threading import BoundedSemaphore
 from typing import Any
 
 from agi_talent_radar.core import llm_client
@@ -32,17 +30,6 @@ INTERVIEW_SCORE = 70.0
 HOLD_SCORE = 55.0
 INTERVIEW_DIRECT_MATCH = 3.0
 HOLD_DIRECT_MATCH = 2.5
-
-def _configured_max_concurrency() -> int:
-    try:
-        return max(1, int(os.getenv("JOB_FIT_MAX_CONCURRENCY", "1")))
-    except ValueError:
-        return 1
-
-
-_MAX_CONCURRENCY = _configured_max_concurrency()
-_REQUEST_LIMITER = BoundedSemaphore(_MAX_CONCURRENCY)
-
 
 JOB_FIT_PROMPT = """
 你是为用人方分配面试资源的【JD 面试准入评估 Agent】。只输出 JSON 对象。
@@ -153,8 +140,7 @@ def _build_evaluation(
 
 
 def _call_llm(system_prompt: str, payload: dict[str, Any]) -> dict[str, Any]:
-    with _REQUEST_LIMITER:
-        return llm_client.call_llm_json(system_prompt, payload, temperature=0.1, deep=True)
+    return llm_client.call_llm_json(system_prompt, payload, temperature=0.1, deep=True)
 
 
 def _normalize_assessment(job: JobDefinition, raw: dict[str, Any], resume_corpus: str) -> JobFitAssessment:

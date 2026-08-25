@@ -6,282 +6,78 @@ import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import Button, { IconButton } from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
+import { StatusChip } from "@/components/ui/Chip";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 
-const STATUS_STYLE: Record<string, { label: string; className: string }> = {
-  draft: { label: "草稿", className: "bg-surface-low text-on-surface-variant" },
-  active: { label: "已激活", className: "bg-primary-container text-on-primary-container" },
-  archived: { label: "已停用", className: "bg-surface-low text-on-surface-variant line-through" },
-};
+const inputClass = "px-3 py-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface outline-none focus:outline-2 focus:outline-primary";
+const importanceLabel = { primary: "首要", major: "主要", supporting: "补充" } as const;
 
-const inputClass =
-  "px-3 py-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface outline-none focus:outline-2 focus:outline-primary";
-
-/** JD 池：每个激活 JD 都会与每份简历独立产出面试准入结论。 */
 export default function JdPool() {
   const [jds, setJds] = useState<JdEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<JdEntry | "new" | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const { t } = useI18n();
-
   const load = useCallback(async () => {
-    try {
-      setJds(await api.jds.list());
-      setError("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("加载失败"));
-    } finally {
-      setLoading(false);
-    }
+    try { setJds(await api.jds.list()); setError(""); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : t("加载失败")); }
+    finally { setLoading(false); }
   }, [t]);
+  useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  return <div className="w-full flex flex-col gap-4">
+    <PageToolbar title={t("JD 池")} subtitle={t("JD 入池即生成岗位评估卡；是否参与评估由每次批次显式选择")} right={<><IconButton icon="refresh" variant="outlined" onClick={load} title={t("刷新")} /><Button variant="filled" icon="add" onClick={() => setEditing("new")}>{t("添加 JD")}</Button></>} />
+    {error && <p className="text-body-sm text-error px-2">{error}</p>}
+    {loading ? <div className="flex justify-center py-20"><LoadingIndicator size={28} /></div> : <div className="flex flex-col gap-3 pb-6">
+      {jds.map((jd) => <JdCard key={jd.id} jd={jd} expanded={expandedId === jd.id} onToggle={() => setExpandedId(expandedId === jd.id ? null : jd.id)} onEdit={() => setEditing(jd)} onArchive={async () => { await api.jds.setArchived(jd.id, !jd.archived); await load(); }} onDelete={async () => { await api.jds.delete(jd.id); await load(); }} />)}
+      {!jds.length && <Card variant="filled" className="py-16 text-center text-on-surface-variant">{t("JD 池为空")}</Card>}
+    </div>}
+    {editing && <JdEditor jd={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />}
+  </div>;
+}
 
-  const act = async (id: string, fn: () => Promise<unknown>) => {
-    if (busyId) return;
-    setBusyId(id);
-    setError("");
-    try {
-      await fn();
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("操作失败"));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const activeCount = jds.filter((j) => j.status === "active").length;
-
-  return (
-    <div className="w-full max-w-full min-h-0 flex flex-col gap-4">
-      <PageToolbar
-        title={t("JD 池")}
-        subtitle={t("{count} 个激活 JD 将分别参与后续面试准入评估", { count: activeCount })}
-        right={
-          <>
-            <IconButton icon="refresh" variant="outlined" onClick={load} title={t("刷新")} />
-            <Button variant="filled" icon="add" onClick={() => setEditing("new")}>
-              {t("添加 JD")}
-            </Button>
-          </>
-        }
-      />
-      {error && <p className="text-body-sm text-error px-2">{error}</p>}
-      {loading ? (
-        <div className="flex justify-center py-20">
-          <LoadingIndicator size={28} />
-        </div>
-      ) : jds.length === 0 ? (
-        <Card variant="filled" className="flex flex-col items-center py-16 gap-2">
-          <Icon name="work" size={32} className="text-on-surface-variant" />
-          <p className="text-body text-on-surface">{t("JD 池为空")}</p>
-          <p className="text-body-sm text-on-surface-variant">
-            {t("添加并激活 JD 后，每份简历都会针对各岗位独立判断是否进入面试")}
-          </p>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-3 pb-6">
-          {jds.map((jd) => (
-            <JdCard
-              key={jd.id}
-              jd={jd}
-              expanded={expandedId === jd.id}
-              busy={busyId === jd.id}
-              onToggle={() => setExpandedId(expandedId === jd.id ? null : jd.id)}
-              onActivate={() => act(jd.id, () => api.jds.setStatus(jd.id, "active"))}
-              onArchive={() => act(jd.id, () => api.jds.setStatus(jd.id, "archived"))}
-              onEdit={() => setEditing(jd)}
-              onDelete={() => act(jd.id, () => api.jds.delete(jd.id))}
-              t={t}
-            />
-          ))}
-        </div>
-      )}
-      {editing && (
-        <JdEditDialog
-          jd={editing === "new" ? null : editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            void load();
-          }}
-        />
-      )}
+function JdCard({ jd, expanded, onToggle, onEdit, onArchive, onDelete }: { jd: JdEntry; expanded: boolean; onToggle: () => void; onEdit: () => void; onArchive: () => void; onDelete: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const card = jd.assessment_card;
+  return <Card variant="filled" className={cn("flex flex-col", jd.archived && "opacity-60")}>
+    <div className="flex items-center gap-3 px-4 min-h-14 cursor-pointer" onClick={onToggle}>
+      <Icon name={expanded ? "expand_less" : "expand_more"} size={18} /><span className="text-title truncate">{jd.title}</span>
+      {jd.team && <span className="text-body-sm text-on-surface-variant truncate">{jd.team}</span>}
+      <StatusChip tone={jd.card_status === "ready" ? "success" : jd.card_status === "failed" ? "error" : "primary"}>{jd.card_status === "ready" ? "评估卡就绪" : jd.card_status === "failed" ? "生成失败" : "生成中"}</StatusChip>
+      {jd.archived && <StatusChip tone="neutral">已归档</StatusChip>}
+      <span className="ml-auto flex gap-1" onClick={(event) => event.stopPropagation()}><IconButton icon="edit" onClick={onEdit} title="编辑并重新生成" /><IconButton icon={jd.archived ? "unarchive" : "archive"} onClick={onArchive} title={jd.archived ? "恢复" : "归档"} />{confirming ? <Button variant="text" className="text-error" onClick={onDelete}>确认删除</Button> : <IconButton icon="delete" onClick={() => setConfirming(true)} title="删除" />}</span>
     </div>
-  );
+    {expanded && <div className="grid grid-cols-1 xl:grid-cols-[0.8fr_1.2fr] gap-4 border-t border-outline-variant p-4">
+      <div><p className="text-label text-on-surface-variant mb-2">JD 原文</p><pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-surface-lowest p-3 text-body-sm">{jd.raw_text}</pre></div>
+      <div><p className="text-label text-on-surface-variant mb-2">当前岗位评估卡</p>{card?.core_tasks?.length ? <div className="flex flex-col gap-2"><p className="text-body-sm">{card.role_summary}</p>{card.core_tasks.map((task) => <details key={task.id} className="rounded-md bg-surface-lowest p-3"><summary className="list-none cursor-pointer flex gap-2 items-center"><StatusChip tone={task.importance === "primary" ? "error" : task.importance === "major" ? "primary" : "neutral"}>{importanceLabel[task.importance]}</StatusChip><span className="text-title">{task.title}</span></summary><p className="text-body-sm mt-2">{task.description}</p><p className="text-label text-on-surface-variant mt-2">评价重点：{task.evaluation_focus}</p><div className="mt-2 grid grid-cols-3 gap-2 text-label"><span>2 · {task.anchors.level_2}</span><span>3 · {task.anchors.level_3}</span><span>4 · {task.anchors.level_4}</span></div></details>)}{!!jd.supplements.length && <p className="text-label text-on-surface-variant">补充要求：{jd.supplements.join("；")}</p>}</div> : <p className="text-body-sm text-error">{jd.card_error || "岗位评估卡尚未生成"}</p>}</div>
+    </div>}
+  </Card>;
 }
 
-function JdCard({ jd, expanded, busy, onToggle, onActivate, onArchive, onEdit, onDelete, t }: {
-  jd: JdEntry;
-  expanded: boolean;
-  busy: boolean;
-  onToggle: () => void;
-  onActivate: () => void;
-  onArchive: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  t: (k: string, p?: Record<string, string | number>) => string;
-}) {
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const status = STATUS_STYLE[jd.status] || STATUS_STYLE.draft;
-  return (
-    <Card variant="filled" className="flex flex-col">
-      {/* 头部行：标题 + 状态 + 操作 */}
-      <div className="flex items-center gap-3 px-4 h-14 cursor-pointer select-none" onClick={onToggle}>
-        <Icon name={expanded ? "expand_less" : "expand_more"} size={18} className="text-on-surface-variant shrink-0" />
-        <span className="text-title text-on-surface truncate">{jd.title}</span>
-        {jd.team && <span className="text-body-sm text-on-surface-variant truncate">{jd.team}</span>}
-        <span className={cn("text-label px-2 py-0.5 rounded-full shrink-0", status.className)}>{t(status.label)}</span>
-        <span className="ml-auto flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          {jd.status !== "active" && (
-            <Button variant="tonal" icon="check_circle" className="h-8 px-2 text-xs" disabled={busy} onClick={onActivate}>
-              {t("激活")}
-            </Button>
-          )}
-          {jd.status === "active" && (
-            <Button variant="text" icon="cancel" className="h-8 px-2 text-xs" disabled={busy} onClick={onArchive}>
-              {t("停用")}
-            </Button>
-          )}
-          <IconButton icon="edit" onClick={onEdit} title={t("编辑")} />
-          {confirmingDelete ? (
-            <>
-              <Button variant="text" className="h-8 px-2 text-xs text-error" disabled={busy} onClick={onDelete}>
-                {t("确认删除")}
-              </Button>
-              <IconButton icon="close" onClick={() => setConfirmingDelete(false)} title={t("取消")} />
-            </>
-          ) : (
-            <IconButton icon="delete" onClick={() => setConfirmingDelete(true)} title={t("删除")} />
-          )}
-        </span>
-      </div>
-      {/* 展开区：JD 原文 + 固定准入语义 */}
-      {expanded && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-4 pb-4 border-t border-outline-variant pt-3">
-          <div className="min-w-0">
-            <p className="text-label text-on-surface-variant mb-1.5">{t("JD 原文")}</p>
-            <pre className="text-body-sm text-on-surface whitespace-pre-wrap break-words max-h-80 overflow-y-auto bg-surface-lowest rounded-md p-3">
-              {jd.raw_text}
-            </pre>
-          </div>
-          <div className="min-w-0">
-            <p className="text-label text-on-surface-variant mb-1.5">{t("准入评估方式")}</p>
-            <div className="rounded-md bg-surface-lowest p-3 text-body-sm leading-6 text-on-surface">
-              <p>{t("系统会先逐条核对 JD 硬门槛，再评估直接任务匹配、技术深度、本人贡献、证据质量、工程规模和可迁移性。")}</p>
-              <p className="mt-2 text-on-surface-variant">{t("简历未写明的条件标记为待确认；多个 JD 独立判断，不再合并成一个 Track 总分。")}</p>
-            </div>
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function JdEditDialog({ jd, onClose, onSaved }: { jd: JdEntry | null; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({
-    title: jd?.title || "",
-    team: jd?.team || "",
-    raw_text: jd?.raw_text || "",
-  });
-  // stage：新建时一键三连（解析→保存→起草）分阶段提示
-  const [stage, setStage] = useState<"parse" | "save" | "draft" | null>(null);
+function JdEditor({ jd, onClose, onSaved }: { jd: JdEntry | null; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ title: jd?.title || "", team: jd?.team || "", raw_text: jd?.raw_text || "" });
+  const [supplements, setSupplements] = useState<string[]>(jd?.supplements || []);
+  const [newSupplement, setNewSupplement] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const { t } = useI18n();
-
-  const parse = async () => {
-    if (!form.raw_text.trim() || stage) return;
-    setStage("parse");
-    setError("");
-    try {
-      const brief = await api.jds.parse(form.raw_text.trim());
-      setForm((p) => ({ ...p, title: brief.title || p.title, team: brief.team || p.team }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("解析失败"));
-    } finally {
-      setStage(null);
-    }
-  };
-
   const submit = async () => {
-    if (!form.raw_text.trim() || stage) return;
-    setError("");
+    if (!form.raw_text.trim() || busy) return;
+    setBusy(true); setError("");
     try {
-      if (jd) {
-        setStage("save");
-        await api.jds.update(jd.id, form);
-      } else {
-        // 新建：标题留空先自动解析补齐，然后保存 JD。
-        let title = form.title.trim();
-        let team = form.team.trim();
-        if (!title) {
-          setStage("parse");
-          const brief = await api.jds.parse(form.raw_text.trim());
-          title = brief.title;
-          team = team || brief.team;
-        }
-        setStage("save");
-        await api.jds.create({ title: title || t("未命名 JD"), team, raw_text: form.raw_text.trim() });
-      }
+      let title = form.title.trim(); let team = form.team.trim();
+      if (!title) { const brief = await api.jds.parse(form.raw_text); title = brief.title || "未命名 JD"; team ||= brief.team; }
+      if (jd) await api.jds.update(jd.id, { title, team, raw_text: form.raw_text, supplements }); else await api.jds.create({ title, team, raw_text: form.raw_text });
       onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("保存失败"));
-    } finally {
-      setStage(null);
-    }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "保存失败"); }
+    finally { setBusy(false); }
   };
-
-  const busyText = stage === "parse" ? t("智能解析中…") : t("保存中…");
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/30" onClick={onClose}>
-      <Card variant="elevated" className="w-[560px] max-h-[85vh] p-5 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <p className="text-title-lg">{jd ? t("编辑 JD") : t("添加 JD")}</p>
-          <IconButton icon="close" onClick={onClose} title={t("关闭")} />
-        </div>
-        <textarea
-          value={form.raw_text}
-          onChange={(e) => setForm((p) => ({ ...p, raw_text: e.target.value }))}
-          placeholder={t("直接粘贴 JD 全文（必填）：团队介绍、工作内容、职位要求、加分项……")}
-          className={cn(inputClass, "min-h-56 resize-y")}
-          autoFocus
-        />
-        <div className="flex items-center gap-2">
-          <Button variant="text" icon="neurology" className="h-8 px-2 text-xs" disabled={!form.raw_text.trim() || stage !== null} onClick={parse}>
-            {stage === "parse" ? t("智能解析中…") : t("智能解析标题/团队")}
-          </Button>
-          <span className="text-label text-on-surface-variant">{t("解析结果可手动修改")}</span>
-        </div>
-        <input
-          type="text"
-          value={form.title}
-          onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-          placeholder={t("岗位标题（留空则保存时自动解析）")}
-          className={cn(inputClass, "h-9")}
-        />
-        <input
-          type="text"
-          value={form.team}
-          onChange={(e) => setForm((p) => ({ ...p, team: e.target.value }))}
-          placeholder={t("团队 / 研究组")}
-          className={cn(inputClass, "h-9")}
-        />
-        {jd && jd.status === "active" && (
-          <p className="text-label text-on-surface-variant">{t("修改原文后 spec 失效，该 JD 将退回草稿待重新起草")}</p>
-        )}
-        {error && <p className="text-label text-error">{error}</p>}
-        <Button variant="tonal" icon="save" className="w-full" disabled={!form.raw_text.trim() || stage !== null} onClick={submit}>
-          {stage ? busyText : jd ? t("保存") : t("保存 JD")}
-        </Button>
-      </Card>
-    </div>
-  );
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/30" onClick={busy ? undefined : onClose}><Card variant="elevated" className="w-[680px] max-h-[88vh] overflow-y-auto p-5 flex flex-col gap-3" onClick={(event) => event.stopPropagation()}>
+    <div className="flex items-center justify-between"><p className="text-title-lg">{jd ? "编辑 JD 并重新生成岗位卡" : "添加 JD"}</p>{!busy && <IconButton icon="close" onClick={onClose} title="关闭" />}</div>
+    <textarea value={form.raw_text} onChange={(event) => setForm({ ...form, raw_text: event.target.value })} className={cn(inputClass, "min-h-56 resize-y")} placeholder="粘贴 JD 全文" />
+    <div className="grid grid-cols-2 gap-2"><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className={inputClass} placeholder="岗位标题" /><input value={form.team} onChange={(event) => setForm({ ...form, team: event.target.value })} className={inputClass} placeholder="团队" /></div>
+    {jd && <div className="rounded-md bg-surface-low p-3"><p className="text-label mb-2">累计补充要求（保存时与 JD 一起重新生成岗位卡）</p><div className="flex flex-wrap gap-2">{supplements.map((item, index) => <button key={`${item}-${index}`} onClick={() => setSupplements(supplements.filter((_, i) => i !== index))} className="rounded-full bg-secondary-container px-3 py-1 text-label cursor-pointer">{item} ×</button>)}</div><div className="flex gap-2 mt-2"><input value={newSupplement} onChange={(event) => setNewSupplement(event.target.value)} className={cn(inputClass, "flex-1")} placeholder="补充一条能力要求" /><Button variant="tonal" onClick={() => { if (newSupplement.trim()) { setSupplements([...supplements, newSupplement.trim()]); setNewSupplement(""); } }}>添加</Button></div></div>}
+    {error && <p className="text-body-sm text-error">{error}</p>}<Button variant="filled" icon="auto_awesome" disabled={busy || !form.raw_text.trim()} onClick={submit}>{busy ? "正在生成并质检岗位卡…" : "保存并生成岗位评估卡"}</Button>
+  </Card></div>;
 }

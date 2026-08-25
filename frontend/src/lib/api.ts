@@ -8,6 +8,8 @@ import type {
   GrillSessionSummary,
   HealthReport,
   JdEntry,
+  InterviewAssessment,
+  InterviewAssessmentBatch,
   PendingPublication,
   PersonBrief,
   PersonDetail,
@@ -164,7 +166,7 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: { title: string; team: string; raw_text: string }) =>
+    update: (id: string, data: { title: string; team: string; raw_text: string; supplements?: string[] }) =>
       fetchJSON<JdEntry>(`/api/jds/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -172,13 +174,44 @@ export const api = {
       }),
     delete: (id: string) =>
       fetchJSON<{ id: string; deleted: boolean }>(`/api/jds/${id}`, { method: "DELETE" }),
-    generateSpec: (id: string) =>
-      fetchJSON<JdEntry>(`/api/jds/${id}/generate-spec`, { method: "POST" }),
-    setStatus: (id: string, status: "draft" | "active" | "archived") =>
+    generateCard: (id: string, supplements: string[]) =>
+      fetchJSON<JdEntry>(`/api/jds/${id}/assessment-card`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ supplements }),
+      }),
+    setArchived: (id: string, archived: boolean) =>
       fetchJSON<JdEntry>(`/api/jds/${id}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status: archived ? "archived" : "draft" }),
+      }),
+  },
+  interviewAssessments: {
+    start: (candidateIds: string[], jdIds: string[], force = false) =>
+      fetchJSON<InterviewAssessmentBatch>("/api/interview-assessment-batches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_ids: candidateIds, jd_ids: jdIds, force }),
+      }),
+    batch: (id: string) =>
+      fetchJSON<InterviewAssessmentBatch>(`/api/interview-assessment-batches/${id}`),
+    cancelBatch: (id: string) =>
+      fetchJSON<{ batch_id: string; cancelled: number }>(`/api/interview-assessment-batches/${id}/cancel`, { method: "POST" }),
+    cancelRun: (id: string) =>
+      fetchJSON<{ run_id: string; cancelled: boolean }>(`/api/interview-assessment-runs/${id}/cancel`, { method: "POST" }),
+    list: (candidateIds?: string[], jdIds?: string[]) => {
+      const query = new URLSearchParams();
+      if (candidateIds?.length) query.set("candidate_ids", candidateIds.join(","));
+      if (jdIds?.length) query.set("jd_ids", jdIds.join(","));
+      return fetchJSON<InterviewAssessment[]>(`/api/interview-assessments?${query}`);
+    },
+    settings: () => fetchJSON<{ can_manage_force_reevaluation: boolean; allow_force_reevaluation: boolean }>("/api/interview-assessment-settings"),
+    updateSettings: (enabled: boolean) =>
+      fetchJSON<{ can_manage_force_reevaluation: boolean; allow_force_reevaluation: boolean }>("/api/interview-assessment-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allow_force_reevaluation: enabled }),
       }),
   },
   tracks: {

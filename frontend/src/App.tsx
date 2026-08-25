@@ -7,6 +7,7 @@ import LoadingIndicator from "./components/ui/LoadingIndicator";
 import Login from "./pages/Login";
 import TalentChat from "./pages/TalentChat";
 import ResumeEvaluate from "./pages/ResumeEvaluate";
+import InterviewAdmission from "./pages/InterviewAdmission";
 import TalentPool from "./pages/TalentPool";
 import TalentProfile from "./pages/TalentProfile";
 import JdPool from "./pages/JdPool";
@@ -49,6 +50,7 @@ function App() {
           <Routes>
             <Route path="/" element={<TalentPool />} />
             <Route path="/resume-evaluate" element={<ResumeEvaluate />} />
+            <Route path="/interview-admission" element={<InterviewAdmission />} />
             <Route path="/chat" element={<TalentChat />} />
             <Route path="/knowledge" element={<Navigate to="/chat" replace />} />
             <Route path="/talent-pool" element={<Navigate to="/" replace />} />

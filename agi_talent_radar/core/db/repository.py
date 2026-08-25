@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import func, exists, or_
 
 from agi_talent_radar.core.db.orm import (
+    CandidateJdAssessmentORM,
     CandidateORM,
     CandidateSourceORM,
     DimensionScoreORM,
@@ -16,6 +17,8 @@ from agi_talent_radar.core.db.orm import (
     EvaluationNodeRunORM,
     EvaluationORM,
     IdentitySuggestionORM,
+    InterviewAssessmentBatchORM,
+    InterviewAssessmentRunORM,
     JdEntryORM,
     MergeAuditORM,
     PersonORM,
@@ -40,6 +43,22 @@ def save_candidate(
     academic_report: dict | None = None,
 ) -> CandidateORM:
     candidate = session.get(CandidateORM, resume.id)
+    previous_payload = None
+    if candidate is not None:
+        previous_payload = (
+            candidate.raw_text or "",
+            candidate.education or "",
+            candidate.experiences or "",
+            candidate.projects or "",
+            candidate.publications or "",
+            candidate.skills or "",
+        )
+        active_run = session.query(InterviewAssessmentRunORM.id).filter(
+            InterviewAssessmentRunORM.candidate_id == resume.id,
+            InterviewAssessmentRunORM.status.in_(("queued", "running")),
+        ).first()
+        if active_run is not None:
+            raise RuntimeError("该候选人正在进行面试准入评估，请先停止相关配对。")
     if candidate is None:
         candidate = CandidateORM(id=resume.id)
         session.add(candidate)
@@ -73,6 +92,22 @@ def save_candidate(
         candidate.import_level = ""
         candidate.import_confidence = classification.confidence
 
+    current_payload = (
+        candidate.raw_text or "",
+        candidate.education or "",
+        candidate.experiences or "",
+        candidate.projects or "",
+        candidate.publications or "",
+        candidate.skills or "",
+    )
+    if previous_payload is not None and previous_payload != current_payload:
+        session.query(CandidateJdAssessmentORM).filter_by(candidate_id=candidate.id, is_valid=True).update(
+            {
+                CandidateJdAssessmentORM.is_valid: False,
+                CandidateJdAssessmentORM.invalid_reason: "候选人简历已更新",
+            },
+            synchronize_session=False,
+        )
     session.commit()
     return candidate
 
@@ -1090,8 +1125,13 @@ def jd_to_dict(row: JdEntryORM) -> dict[str, Any]:
         "raw_text": row.raw_text or "",
         "track_key": row.track_key or "",
         "spec": json.loads(row.spec) if row.spec else None,
-        "spec_version": row.spec_version or 0,
-        "status": row.status or "draft",
+        "supplements": list(row.supplements or []),
+        "assessment_card": dict(row.assessment_card or {}),
+        "card_status": row.card_status or "generating",
+        "card_error": row.card_error or "",
+        "card_run_trace": list(row.card_run_trace or []),
+        "card_model_usage": list(row.card_model_usage or []),
+        "archived": bool(row.archived),
         "created_at": row.created_at.isoformat() if row.created_at else "",
         "updated_at": row.updated_at.isoformat() if row.updated_at else "",
     }
@@ -1100,12 +1140,12 @@ def jd_to_dict(row: JdEntryORM) -> dict[str, Any]:
 def list_jds(session, include_archived: bool = True) -> list[JdEntryORM]:
     query = session.query(JdEntryORM)
     if not include_archived:
-        query = query.filter(JdEntryORM.status != "archived")
+        query = query.filter(JdEntryORM.archived.is_(False))
     return list(query.order_by(JdEntryORM.created_at.desc()).all())
 
 
 def create_jd(session, title: str, team: str, raw_text: str) -> JdEntryORM:
-    row = JdEntryORM(title=title, team=team, raw_text=raw_text)
+    row = JdEntryORM(title=title, team=team, raw_text=raw_text, card_status="generating")
     session.add(row)
     session.commit()
     session.refresh(row)
@@ -1118,9 +1158,9 @@ def update_jd(session, jd_id: str, title: str, team: str, raw_text: str) -> JdEn
         return None
     row.title = title
     row.team = team
-    # 原文变更后旧 spec 失效，回到草稿待重起草
     if raw_text != (row.raw_text or ""):
-        row.status = "draft"
+        row.card_status = "generating"
+        row.card_error = ""
     row.raw_text = raw_text
     session.commit()
     session.refresh(row)
@@ -1139,6 +1179,47 @@ def save_jd_spec(session, jd_id: str, spec_dict: dict[str, Any]) -> JdEntryORM |
     return row
 
 
+def replace_jd_assessment_card(
+    session,
+    jd_id: str,
+    supplements: list[str],
+    card: dict[str, Any],
+    run_trace: list[dict[str, Any]] | None = None,
+    model_usage: list[dict[str, str]] | None = None,
+) -> JdEntryORM | None:
+    """原子替换当前岗位卡，并只失效该 JD 的当前候选人报告。"""
+    row = session.get(JdEntryORM, jd_id)
+    if row is None:
+        return None
+    row.supplements = [str(item).strip() for item in supplements if str(item).strip()]
+    row.assessment_card = card
+    row.card_status = "ready"
+    row.card_error = ""
+    row.card_run_trace = run_trace or []
+    row.card_model_usage = model_usage or []
+    session.query(CandidateJdAssessmentORM).filter_by(jd_id=jd_id, is_valid=True).update(
+        {
+            CandidateJdAssessmentORM.is_valid: False,
+            CandidateJdAssessmentORM.invalid_reason: "岗位评估卡已更新",
+        },
+        synchronize_session=False,
+    )
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def fail_jd_assessment_card(session, jd_id: str, error: Exception | str) -> JdEntryORM | None:
+    row = session.get(JdEntryORM, jd_id)
+    if row is None:
+        return None
+    row.card_status = "failed"
+    row.card_error = str(error)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
 def delete_jd(session, jd_id: str) -> bool:
     row = session.get(JdEntryORM, jd_id)
     if row is None:
@@ -1149,9 +1230,89 @@ def delete_jd(session, jd_id: str) -> bool:
 
 
 def list_active_jds(session) -> list[JdEntryORM]:
+    """旧接口兼容：返回所有可选择且岗位卡可用的 JD，不再读取 active 状态。"""
     return list(
         session.query(JdEntryORM)
-        .filter(JdEntryORM.status == "active")
+        .filter(JdEntryORM.archived.is_(False), JdEntryORM.card_status == "ready")
         .order_by(JdEntryORM.created_at.asc())
         .all()
     )
+
+
+def invalidate_assessments_for_jd(session, jd_id: str, reason: str) -> int:
+    count = (
+        session.query(CandidateJdAssessmentORM)
+        .filter_by(jd_id=jd_id, is_valid=True)
+        .update(
+            {
+                CandidateJdAssessmentORM.is_valid: False,
+                CandidateJdAssessmentORM.invalid_reason: reason,
+            },
+            synchronize_session=False,
+        )
+    )
+    session.commit()
+    return int(count)
+
+
+def invalidate_assessments_for_candidate(session, candidate_id: str, reason: str) -> int:
+    count = (
+        session.query(CandidateJdAssessmentORM)
+        .filter_by(candidate_id=candidate_id, is_valid=True)
+        .update(
+            {
+                CandidateJdAssessmentORM.is_valid: False,
+                CandidateJdAssessmentORM.invalid_reason: reason,
+            },
+            synchronize_session=False,
+        )
+    )
+    session.commit()
+    return int(count)
+
+
+def create_interview_assessment_batch(
+    session,
+    candidate_ids: list[str],
+    jd_ids: list[str],
+    owner_id: str | None = None,
+) -> InterviewAssessmentBatchORM:
+    """创建批次和 N×M 个运行记录，不启动模型调用。"""
+    candidates = list(dict.fromkeys(candidate_ids))
+    jobs = list(dict.fromkeys(jd_ids))
+    if not candidates or not jobs:
+        raise ValueError("候选人和 JD 均不能为空。")
+    existing_candidates = {
+        value for (value,) in session.query(CandidateORM.id).filter(CandidateORM.id.in_(candidates)).all()
+    }
+    existing_jobs = {
+        value
+        for (value,) in session.query(JdEntryORM.id)
+        .filter(
+            JdEntryORM.id.in_(jobs),
+            JdEntryORM.archived.is_(False),
+            JdEntryORM.card_status == "ready",
+        )
+        .all()
+    }
+    if existing_candidates != set(candidates):
+        raise ValueError("批次包含不存在的候选人。")
+    if existing_jobs != set(jobs):
+        raise ValueError("批次包含不存在、已归档或岗位卡未就绪的 JD。")
+
+    batch = InterviewAssessmentBatchORM(
+        owner_id=owner_id,
+        candidate_ids=candidates,
+        jd_ids=jobs,
+        total_pairs=len(candidates) * len(jobs),
+    )
+    session.add(batch)
+    session.flush()
+    session.add_all(
+        InterviewAssessmentRunORM(batch_id=batch.id, candidate_id=candidate_id, jd_id=jd_id)
+        for candidate_id in candidates
+        for jd_id in jobs
+    )
+    session.commit()
+    session.refresh(batch)
+    return batch

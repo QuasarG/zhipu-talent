@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ThinkingOrb } from "thinking-orbs";
 import type { ChatCitation, ChatMessage, ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
-import Icon from "@/components/ui/Icon";
-import ToolCallCard from "./ToolCallCard";
 import ActionCard from "./ActionCard";
 import CitationBadge from "./CitationBadge";
 import { useI18n } from "@/lib/i18n";
@@ -103,12 +101,8 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
         </div>
       );
     }
-    if (seg.type === "thinking") {
-      return (
-        <ThinkingCard key={`think-${i}`} text={seg.text} streaming={busy && i === message.content.segments.length - 1} />
-      );
-    }
-    if (seg.type === "tool") return <ToolCallCard key={seg.call_id || i} segment={seg} />;
+    if (seg.type === "thinking") return null;
+    if (seg.type === "tool") return null;
     return <ActionCard key={seg.action_id || i} segment={seg} busy={busy} onDecide={onDecide} />;
   };
 
@@ -118,8 +112,9 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
         Z
       </div>
       <div className="flex-1 min-w-0">
+        {busy && <CurrentRoundTrace segments={message.content.segments} />}
         {message.content.segments.map(renderSegment)}
-        {busy && message.status !== "awaiting_action" && (
+        {busy && message.status !== "awaiting_action" && !message.content.segments.length && (
           <div className="mt-3 flex items-center gap-2">
             <ThinkingOrb state="shaping" size={20} aria-label={t("正在思考")} />
             <span className="text-body-sm text-on-surface-variant">{t("正在思考…")}</span>
@@ -137,38 +132,23 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
   );
 }
 
-
-/** 思考段卡片：消息流内按位置渲染（与工具卡同地位），流式展开跟随、结束收起 */
-function ThinkingCard({ text, streaming }: { text: string; streaming: boolean }) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(streaming);
-  useEffect(() => {
-    // 思考流进行中展开跟随；正文出现或轮次切换自动收起；新一轮思考重新展开
-    setOpen(streaming);
-  }, [streaming]);
-  if (!text) return null;
-  return (
-    <div className="mb-3 rounded-md border border-outline-variant bg-surface-low overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="state-layer flex items-center gap-2 w-full px-3 h-9 text-left cursor-pointer"
-      >
-        {streaming ? (
-          <ThinkingOrb state="shaping" size={20} aria-label={t("正在思考")} />
-        ) : (
-          <Icon name="psychology" size={15} className="text-on-surface-variant" />
-        )}
-        <span className="text-label font-medium text-on-surface-variant truncate">
-          {streaming ? t("思考中…") : t("思考过程")}
-        </span>
-        <Icon name={open ? "expand_less" : "expand_more"} size={16} className="ml-auto text-on-surface-variant" />
-      </button>
-      {open && (
-        <pre className="px-3 pb-3 text-label leading-5 text-on-surface-variant whitespace-pre-wrap break-words max-h-56 overflow-y-auto select-text">
-          {text}
-        </pre>
-      )}
+function CurrentRoundTrace({ segments }: { segments: ChatSegment[] }) {
+  const tools = segments.filter((segment): segment is Extract<ChatSegment, { type: "tool" }> => segment.type === "tool");
+  const hasAnswer = segments.some((segment) => segment.type === "text" && segment.text.trim());
+  const hasThinking = segments.some((segment) => segment.type === "thinking");
+  return <div className="mb-3 rounded-md border border-outline-variant bg-surface-low p-3">
+    <div className="relative pl-6 flex flex-col gap-2 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-px before:bg-outline-variant">
+      <TraceStep label="理解问题" active={hasThinking && !tools.length && !hasAnswer} done={tools.length > 0 || hasAnswer} />
+      {tools.map((tool) => <TraceStep key={tool.call_id} label={tool.label || tool.tool} active={!tool.status} done={!!tool.status} failed={tool.status === "error"} summary={tool.summary || tool.args_summary} />)}
+      {hasAnswer && <TraceStep label="组织回答" active done={false} />}
     </div>
-  );
+  </div>;
+}
+
+function TraceStep({ label, active, done, failed = false, summary }: { label: string; active: boolean; done: boolean; failed?: boolean; summary?: string }) {
+  return <div className="relative min-h-7">
+    <span className={`absolute -left-6 top-1.5 w-2.5 h-2.5 rounded-full ring-4 ring-surface-low ${failed ? "bg-error" : done ? "bg-success" : "bg-primary"}`} />
+    <div className="flex items-center gap-2"><span className="text-label font-medium">{label}</span>{active && <ThinkingOrb state="shaping" size={20} aria-label="运行中" />}</div>
+    {summary && <p className="text-label text-on-surface-variant truncate">{summary}</p>}
+  </div>;
 }

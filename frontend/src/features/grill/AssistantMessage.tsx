@@ -28,9 +28,8 @@ export default function AssistantMessage({ message, busy, interactive = false, o
         </div>
       );
     }
-    return (
-      <ToolCallCard key={seg.call_id || i} segment={seg} interactive={interactive} onSend={onSend} userReply={userReply} />
-    );
+    if (seg.tool !== "ask_question" && seg.tool !== "search_jobs") return null;
+    return <ToolCallCard key={seg.call_id || i} segment={seg} interactive={interactive} onSend={onSend} userReply={userReply} />;
   };
 
   return (
@@ -39,8 +38,9 @@ export default function AssistantMessage({ message, busy, interactive = false, o
         AI
       </div>
       <div className="flex-1 min-w-0">
+        {busy && <CurrentRoundTrace segments={message.segments} />}
         {message.segments.map(renderSegment)}
-        {busy && (
+        {busy && !message.segments.length && (
           <div className="mt-3 flex items-center gap-2">
             <ThinkingOrb state="shaping" size={20} aria-label={t("正在思考")} />
             <span className="text-body-sm text-on-surface-variant">{t("正在思考…")}</span>
@@ -56,4 +56,21 @@ export default function AssistantMessage({ message, busy, interactive = false, o
       </div>
     </div>
   );
+}
+
+
+function CurrentRoundTrace({ segments }: { segments: ChatSegment[] }) {
+  const tools = segments.filter((segment): segment is Extract<ChatSegment, { type: "tool" }> => segment.type === "tool");
+  const hasText = segments.some((segment) => segment.type === "text" && segment.text.trim());
+  return <div className="mb-3 rounded-md border border-outline-variant bg-surface-low p-3">
+    <div className="relative pl-6 flex flex-col gap-2 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-px before:bg-outline-variant">
+      <TraceStep label="理解当前回答" active={!tools.length && !hasText} done={tools.length > 0 || hasText} />
+      {tools.map((tool) => <TraceStep key={tool.call_id} label={tool.label || tool.tool} active={!tool.status} done={!!tool.status} failed={tool.status === "error"} summary={tool.summary || tool.args_summary} />)}
+      {hasText && <TraceStep label="更新画像并组织追问" active done={false} />}
+    </div>
+  </div>;
+}
+
+function TraceStep({ label, active, done, failed = false, summary }: { label: string; active: boolean; done: boolean; failed?: boolean; summary?: string }) {
+  return <div className="relative min-h-7"><span className={`absolute -left-6 top-1.5 w-2.5 h-2.5 rounded-full ring-4 ring-surface-low ${failed ? "bg-error" : done ? "bg-success" : "bg-primary"}`} /><div className="flex items-center gap-2"><span className="text-label font-medium">{label}</span>{active && <ThinkingOrb state="shaping" size={20} aria-label="运行中" />}</div>{summary && <p className="text-label text-on-surface-variant truncate">{summary}</p>}</div>;
 }

@@ -689,10 +689,10 @@ class TalentGroupORM(Base):
 
 
 class JdEntryORM(Base):
-    """JD 池条目：原文 + LLM 起草的 track spec（人批激活后参与评估）。
+    """JD 池条目及其当前岗位评估卡。
 
-    status: draft（未激活）→ active（参与评估）→ archived（停用保留）。
-    spec 为 TrackSpec.to_dict() 的 JSON；spec_version 每次重起草 +1。
+    ``status/spec`` 暂留作旧数据兼容，新准入流程只读取岗位卡字段；JD 是否参与
+    某次评估由批次显式选择决定，不再由全局 active 状态决定。
     """
 
     __tablename__ = "jd_entries"
@@ -705,8 +705,97 @@ class JdEntryORM(Base):
     spec = Column(Text, default="")
     spec_version = Column(Integer, default=0)
     status = Column(String(16), default="draft", index=True)
+    supplements = Column(JSON, default=list)
+    assessment_card = Column(JSON, default=dict)
+    card_status = Column(String(16), default="generating", nullable=False, index=True)
+    card_error = Column(Text, default="")
+    card_run_trace = Column(JSON, default=list)
+    card_model_usage = Column(JSON, default=list)
+    archived = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class InterviewAssessmentBatchORM(Base):
+    """一次显式选择候选人与 JD 后形成的面试准入评估批次。"""
+
+    __tablename__ = "interview_assessment_batches"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    owner_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    status = Column(String(24), default="queued", nullable=False, index=True)
+    candidate_ids = Column(JSON, default=list)
+    jd_ids = Column(JSON, default=list)
+    total_pairs = Column(Integer, default=0, nullable=False)
+    completed_pairs = Column(Integer, default=0, nullable=False)
+    failed_pairs = Column(Integer, default=0, nullable=False)
+    cancelled_pairs = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+
+
+class CandidateJdAssessmentORM(Base):
+    """候选人–JD 的唯一当前报告；成功重评时原子覆盖。"""
+
+    __tablename__ = "candidate_jd_assessments"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "jd_id", name="uq_candidate_jd_current_assessment"),
+        Index("ix_candidate_jd_valid_decision", "jd_id", "is_valid", "decision"),
+    )
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    candidate_id = Column(
+        String(32), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    jd_id = Column(
+        String(36), ForeignKey("jd_entries.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status = Column(String(24), default="completed", nullable=False, index=True)
+    is_valid = Column(Boolean, default=True, nullable=False, index=True)
+    invalid_reason = Column(Text, default="")
+    decision = Column(String(16), nullable=False)
+    total_score = Column(Float, default=0.0, nullable=False)
+    task_assessments = Column(JSON, default=list)
+    review_corrections = Column(JSON, default=list)
+    interview_focus = Column(JSON, default=list)
+    model_usage = Column(JSON, default=list)
+    run_trace = Column(JSON, default=list)
+    input_fingerprint = Column(String(64), default="", nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class InterviewAssessmentRunORM(Base):
+    """配对的一次运行尝试；运行成功后结果晋升为当前报告。"""
+
+    __tablename__ = "interview_assessment_runs"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "candidate_id", "jd_id", name="uq_batch_candidate_jd_run"),
+        Index("ix_interview_runs_pair_status", "candidate_id", "jd_id", "status"),
+    )
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    batch_id = Column(
+        String(36), ForeignKey("interview_assessment_batches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    candidate_id = Column(
+        String(32), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    jd_id = Column(
+        String(36), ForeignKey("jd_entries.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status = Column(String(24), default="queued", nullable=False, index=True)
+    current_node = Column(String(64), default="")
+    input_fingerprint = Column(String(64), default="", nullable=False)
+    staged_result = Column(JSON, default=dict)
+    run_trace = Column(JSON, default=list)
+    model_usage = Column(JSON, default=list)
+    error_message = Column(Text, default="")
+    cancellation_requested = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
 
 
 class ConversationORM(Base):
@@ -767,6 +856,7 @@ class UserORM(Base):
     password_hash = Column(String(256), nullable=False)
     display_name = Column(String(64), default="")
     is_active = Column(Boolean, default=True)
+    allow_force_reevaluation = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 

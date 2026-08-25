@@ -20,6 +20,7 @@ interface FileState {
   name: string;
   status: "waiting" | "running" | "done" | "error";
   stage: string;
+  trace: string[];
 }
 
 export default function ImportOverlay({ onClose, onCandidate, onStructure }: Props) {
@@ -50,7 +51,7 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
   const handleFiles = async (fileList: FileList) => {
     const list = Array.from(fileList);
     if (!list.length) return;
-    const initial: FileState[] = list.map((f) => ({ name: f.name, status: "waiting", stage: t("等待中") }));
+    const initial: FileState[] = list.map((f) => ({ name: f.name, status: "waiting", stage: t("等待中"), trace: [t("等待调度")] }));
     setFiles(initial);
     setImporting(true);
     let hasError = false;
@@ -81,14 +82,17 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
             if (e.type === "structure") {
               // 完整字段组透传给详情窗口实时填充，卡片本身只更新阶段文案
               onStructure?.(f.name, e.fields || {});
-              return { ...f, status: "running", stage: t("正在解析结构化字段…") };
+              const label = e.section ? t("已解析 {section}", { section: e.section }) : t("结构化字段已返回");
+              return { ...f, status: "running", stage: t("正在解析结构化字段…"), trace: appendTrace(f.trace, label) };
             }
             if (e.type === "stage") {
               // stage 事件只更新进度文案，status 始终 running
-              return { ...f, status: "running", stage: e.message || e.stage || "" };
+              const label = e.message || e.stage || "";
+              return { ...f, status: "running", stage: label, trace: appendTrace(f.trace, label) };
             }
             if (e.type === "error") {
-              return { ...f, status: "error", stage: e.message || t("失败于 {stage}", { stage: e.stage ?? "" }) };
+              const label = e.message || t("失败于 {stage}", { stage: e.stage ?? "" });
+              return { ...f, status: "error", stage: label, trace: appendTrace(f.trace, label) };
             }
             return f;
           })
@@ -102,21 +106,21 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
       setFiles((prev) => prev.map((f) => (
         f.status === "done" || f.status === "error"
           ? f
-          : { ...f, status: "error", stage: message }
+          : { ...f, status: "error", stage: message, trace: appendTrace(f.trace, message) }
       )));
     } finally {
       setImporting(false);
       // 有失败卡片时保留让用户看到；全部成功则直接关闭
-      if (!hasError) setTimeout(onClose, 1200);
+      if (!hasError) setTimeout(onClose, 2000);
     }
   };
 
   return (
-    <div className="fixed bottom-6 left-[calc(72px+20px+16px)] w-[320px] z-[150]">
-      <Card variant="elevated" className="p-4 max-h-[60vh] overflow-y-auto">
+    <div className="shrink-0">
+      <Card variant="outlined" className="p-3 max-h-[42vh] overflow-y-auto border-primary/40">
         <div className="flex items-center justify-between mb-3">
           <span className="text-title">{t("导入简历")}</span>
-          <IconButton icon="close" size={18} onClick={onClose} title={t("关闭")} />
+          {!importing && <IconButton icon="close" size={18} onClick={onClose} title={t("关闭")} />}
         </div>
 
         {files.length === 0 && importing ? (
@@ -162,6 +166,14 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
                   </StatusChip>
                 </div>
                 <p className="text-label text-on-surface-variant">{f.stage}</p>
+                <div className="relative mt-2 pl-4 flex flex-col gap-1 before:absolute before:left-[4px] before:top-1 before:bottom-1 before:w-px before:bg-outline-variant">
+                  {f.trace.slice(-6).map((node, nodeIndex) => (
+                    <div key={`${node}-${nodeIndex}`} className="relative text-label text-on-surface-variant truncate">
+                      <span className={cn("absolute -left-4 top-1.5 w-2 h-2 rounded-full", nodeIndex === f.trace.slice(-6).length - 1 && f.status === "running" ? "bg-primary animate-pulse" : f.status === "error" && nodeIndex === f.trace.slice(-6).length - 1 ? "bg-error" : "bg-success")} />
+                      {node}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -178,4 +190,10 @@ export default function ImportOverlay({ onClose, onCandidate, onStructure }: Pro
       </Card>
     </div>
   );
+}
+
+function appendTrace(trace: string[], label: string): string[] {
+  const clean = label.trim();
+  if (!clean || trace[trace.length - 1] === clean) return trace;
+  return [...trace, clean];
 }

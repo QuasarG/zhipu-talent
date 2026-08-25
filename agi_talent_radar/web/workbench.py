@@ -177,6 +177,7 @@ def create_app() -> Flask:
     )
     from agi_talent_radar.web.config_api import build_config_blueprint
     from agi_talent_radar.web.knowledge_api import build_knowledge_blueprint
+    from agi_talent_radar.web.interview_assessment_api import build_interview_assessment_blueprint
     from agi_talent_radar.scholarship.api import build_scholarship_blueprint
     from agi_talent_radar.grill.api import build_grill_blueprint
 
@@ -198,6 +199,7 @@ def create_app() -> Flask:
     app.register_blueprint(build_auth_blueprint())
     app.register_blueprint(build_config_blueprint())
     app.register_blueprint(build_knowledge_blueprint())
+    app.register_blueprint(build_interview_assessment_blueprint())
     app.register_blueprint(build_scholarship_blueprint())
     app.register_blueprint(build_grill_blueprint())
     install_auth_middleware(app)
@@ -224,6 +226,7 @@ def create_app() -> Flask:
     @app.get("/review")
     @app.get("/settings")
     @app.get("/resume-evaluate")
+    @app.get("/interview-admission")
     def spa_pages() -> str:
         return render_spa()
 
@@ -343,15 +346,26 @@ def create_app() -> Flask:
         content = str(body.get("content", ""))[:4000]
         try:
             from agi_talent_radar.core.database import get_session
-            from agi_talent_radar.core.db.orm import CandidateORM
+            from agi_talent_radar.core.db.orm import CandidateJdAssessmentORM, CandidateORM
+            from agi_talent_radar.services.interview_assessment_service import assert_candidate_editable
 
             with get_session() as session:
                 candidate = session.get(CandidateORM, candidate_id)
                 if not candidate:
                     return jsonify({"detail": "候选人不存在"}), 404
+                assert_candidate_editable(session, candidate_id)
                 candidate.supplementary_info = content
+                session.query(CandidateJdAssessmentORM).filter_by(candidate_id=candidate_id, is_valid=True).update(
+                    {
+                        CandidateJdAssessmentORM.is_valid: False,
+                        CandidateJdAssessmentORM.invalid_reason: "候选人补充信息已更新",
+                    },
+                    synchronize_session=False,
+                )
                 session.commit()
                 return jsonify({"id": candidate_id, "supplementary_info": candidate.supplementary_info})
+        except RuntimeError as exc:
+            return jsonify({"detail": str(exc)}), 409
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
@@ -932,7 +946,8 @@ def create_app() -> Flask:
 
     @app.post("/api/jds")
     def create_jd_view():
-        from agi_talent_radar.core.db.repository import create_jd, jd_to_dict
+        from agi_talent_radar.agents.interview_admission import generate_assessment_card
+        from agi_talent_radar.core.db.repository import create_jd, jd_to_dict, replace_jd_assessment_card
         from agi_talent_radar.core.db.runtime import get_session
 
         body = request.get_json(silent=True) or {}
@@ -940,57 +955,95 @@ def create_app() -> Flask:
         raw_text = str(body.get("raw_text", "")).strip()
         if not title or not raw_text:
             return jsonify({"detail": "title 和 raw_text 不能为空"}), 400
+        trace: list[dict[str, Any]] = []
+        model_usage: list[dict[str, str]] = []
+        try:
+            card = generate_assessment_card(
+                title[:200],
+                str(body.get("team", "")).strip()[:200],
+                raw_text,
+                [],
+                on_event=trace.append,
+                on_call=model_usage.append,
+            )
+        except Exception as exc:
+            return jsonify({"detail": f"岗位评估卡生成失败：{exc}"}), 502
         with get_session() as session:
             row = create_jd(session, title[:200], str(body.get("team", "")).strip()[:200], raw_text)
+            row = replace_jd_assessment_card(
+                session, row.id, [], card.model_dump(), trace, model_usage
+            )
             return jsonify(jd_to_dict(row)), 201
 
     @app.patch("/api/jds/<jd_id>")
     def update_jd_view(jd_id: str):
-        from agi_talent_radar.core.db.repository import jd_to_dict, update_jd
+        from agi_talent_radar.agents.interview_admission import generate_assessment_card
+        from agi_talent_radar.core.db.orm import JdEntryORM
+        from agi_talent_radar.core.db.repository import jd_to_dict, replace_jd_assessment_card
         from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.services.interview_assessment_service import assert_jd_editable
 
         body = request.get_json(silent=True) or {}
-        with get_session() as session:
-            row = update_jd(
-                session, jd_id,
-                str(body.get("title", "")).strip()[:200],
-                str(body.get("team", "")).strip()[:200],
-                str(body.get("raw_text", "")).strip(),
+        title = str(body.get("title", "")).strip()[:200]
+        team = str(body.get("team", "")).strip()[:200]
+        raw_text = str(body.get("raw_text", "")).strip()
+        supplements = body.get("supplements") or []
+        if not title or not raw_text or not isinstance(supplements, list):
+            return jsonify({"detail": "title、raw_text 不能为空，supplements 必须是数组"}), 400
+        trace: list[dict[str, Any]] = []
+        model_usage: list[dict[str, str]] = []
+        try:
+            card = generate_assessment_card(
+                title,
+                team,
+                raw_text,
+                supplements,
+                on_event=trace.append,
+                on_call=model_usage.append,
             )
+        except Exception as exc:
+            return jsonify({"detail": f"岗位评估卡生成失败，原 JD 未修改：{exc}"}), 502
+        with get_session() as session:
+            try:
+                assert_jd_editable(session, jd_id)
+            except RuntimeError as exc:
+                return jsonify({"detail": str(exc)}), 409
+            row = session.get(JdEntryORM, jd_id)
             if row is None:
                 return jsonify({"detail": "JD 不存在"}), 404
+            row.title = title
+            row.team = team
+            row.raw_text = raw_text
+            row = replace_jd_assessment_card(
+                session, jd_id, supplements, card.model_dump(), trace, model_usage
+            )
             return jsonify(jd_to_dict(row))
 
     @app.delete("/api/jds/<jd_id>")
     def delete_jd_view(jd_id: str):
         from agi_talent_radar.core.db.repository import delete_jd
         from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.services.interview_assessment_service import assert_jd_editable
 
         with get_session() as session:
+            try:
+                assert_jd_editable(session, jd_id)
+            except RuntimeError as exc:
+                return jsonify({"detail": str(exc)}), 409
             if not delete_jd(session, jd_id):
                 return jsonify({"detail": "JD 不存在"}), 404
             return jsonify({"id": jd_id, "deleted": True})
 
     @app.post("/api/jds/<jd_id>/generate-spec")
     def generate_jd_spec_view(jd_id: str):
-        """LLM 起草 track spec（仅落草稿，激活走单独端点，人批才生效）。"""
-        from agi_talent_radar.agents.jd_spec import draft_track_spec
-        from agi_talent_radar.core.db.orm import JdEntryORM
-        from agi_talent_radar.core.db.repository import jd_to_dict, save_jd_spec
-        from agi_talent_radar.core.db.runtime import get_session
-
+        """旧端点兼容：改为重新生成当前岗位评估卡。"""
+        from agi_talent_radar.services.interview_assessment_service import generate_and_store_card
+        body = request.get_json(silent=True) or {}
         try:
-            with get_session() as session:
-                row = session.get(JdEntryORM, jd_id)
-                if row is None:
-                    return jsonify({"detail": "JD 不存在"}), 404
-                spec = draft_track_spec(row.title, row.team or "", row.raw_text or "")
-                if not spec.dimensions:
-                    return jsonify({"detail": "LLM 起草失败：未产出有效维度，请重试"}), 502
-                row = save_jd_spec(session, jd_id, spec.to_dict())
-                return jsonify(jd_to_dict(row))
+            return jsonify(generate_and_store_card(jd_id, body.get("supplements") or []))
         except Exception as exc:
-            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+            logger.exception("route error in workbench")
+            return jsonify({"detail": str(exc)}), 409
 
     @app.post("/api/jds/<jd_id>/status")
     def set_jd_status_view(jd_id: str):
@@ -1001,12 +1054,12 @@ def create_app() -> Flask:
         body = request.get_json(silent=True) or {}
         status = str(body.get("status", "")).strip()
         if status not in {"draft", "active", "archived"}:
-            return jsonify({"detail": "status 必须是 draft/active/archived"}), 400
+            return jsonify({"detail": "status 必须是 archived 或恢复可见"}), 400
         with get_session() as session:
             row = session.get(JdEntryORM, jd_id)
             if row is None:
                 return jsonify({"detail": "JD 不存在"}), 404
-            row.status = status
+            row.archived = status == "archived"
             session.commit()
             session.refresh(row)
             return jsonify(jd_to_dict(row))

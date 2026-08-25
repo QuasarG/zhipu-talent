@@ -5,6 +5,8 @@ import os
 import re
 import threading
 import time
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from dotenv import load_dotenv
@@ -15,52 +17,53 @@ from openai import OpenAI
 load_dotenv()
 
 
+@dataclass(frozen=True)
+class LLMCallRecord:
+    model: str
+    fallback_reason: str
+    started_at: str
+    completed_at: str
+
+
+CallObserver = Callable[[dict[str, str]], None]
+
+
 def call_llm_json(
     system_prompt: str,
     payload: dict[str, Any],
     temperature: float = 0.1,
     enable_thinking: bool = False,
     deep: bool = False,
+    model_override: str | None = None,
+    on_call: CallObserver | None = None,
 ) -> dict[str, Any]:
     """deep=True 走深水模型（OPENAI_MODEL_DEEP，如 glm-5.3 强制思考），
     用于时效不敏感的判分类节点；未配置深水模型时回落主模型，行为不变。"""
-    client = _client()
-    model = _deep_model() if deep else _required_env("OPENAI_MODEL")
+    primary_model = model_override or (_deep_model() if deep else _required_env("OPENAI_MODEL"))
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "300" if deep else "120"))
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
-    thinking_kwargs = _thinking_kwargs_for(model)
-
-    # 限流/超时重试(指数退避),避免并发时降级响应压低评分
-    import time as _time
-    max_http_retries = 3
-    response = None
-    for http_attempt in range(max_http_retries):
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                response_format={"type": "json_object"},
-                timeout=timeout_seconds,
-                **thinking_kwargs,
-            )
-            break
-        except Exception as http_err:
-            if http_attempt + 1 < max_http_retries:
-                _time.sleep(min(8.0, 2.0 ** http_attempt))
-                continue
-            raise
+    response = _request_completion(
+        primary_model,
+        {
+            "messages": messages,
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+            "timeout": timeout_seconds,
+        },
+        on_call=on_call,
+    )
 
     content = response.choices[0].message.content or ""
     try:
         return _loads_json(content)
     except ValueError as first_error:
-        retry_response = client.chat.completions.create(
-            model=model,
-            messages=[
+        retry_response = _request_completion(
+            primary_model,
+            {
+                "messages": [
                 *messages,
                 {"role": "assistant", "content": content},
                 {
@@ -72,11 +75,12 @@ def call_llm_json(
                         "不要省略字段，不要输出 Markdown 或解释。"
                     ),
                 },
-            ],
-            temperature=0,
-            response_format={"type": "json_object"},
-            timeout=timeout_seconds,
-            **_thinking_kwargs_for(model),
+                ],
+                "temperature": 0,
+                "response_format": {"type": "json_object"},
+                "timeout": timeout_seconds,
+            },
+            on_call=on_call,
         )
         retry_content = retry_response.choices[0].message.content or ""
         try:
@@ -88,14 +92,19 @@ def call_llm_json(
             ) from retry_error
 
 
-def call_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1):
+def call_llm_stream(
+    system_prompt: str,
+    payload: dict[str, Any],
+    temperature: float = 0.1,
+    model_override: str | None = None,
+    on_call: CallObserver | None = None,
+):
     """流式调用 LLM，逐 token 返回文本内容。
 
     用于导入等需要边接收边解析 JSON Lines 的场景。若请求在产生首个内容前
     遇到限流/网络错误，最多重试 3 次；已经输出内容后不重试，避免前端收到重复片段。
     """
-    client = _client()
-    model = _required_env("OPENAI_MODEL")
+    primary_model = model_override or _required_env("OPENAI_MODEL")
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
     messages = [
         {"role": "system", "content": system_prompt},
@@ -104,24 +113,37 @@ def call_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: fl
     max_retries = 3
     for attempt in range(max_retries):
         emitted = False
+        model, fallback_reason, is_probe = _CIRCUIT.select(primary_model)
+        started_at = _utc_now()
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                stream=True,
-                timeout=timeout_seconds,
-                **_thinking_kwargs_for(model),
-            )
-            for chunk in response:
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta
-                if delta and delta.content:
-                    emitted = True
-                    yield delta.content
+            with _LLM_CONCURRENCY:
+                response = _client().chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    stream=True,
+                    timeout=timeout_seconds,
+                    **_thinking_kwargs_for(model),
+                )
+                for chunk in response:
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta
+                    if delta and delta.content:
+                        emitted = True
+                        yield delta.content
+            _CIRCUIT.succeeded(primary_model, model, is_probe)
+            _observe_call(on_call, model, fallback_reason, started_at)
             return
-        except Exception:
+        except Exception as exc:
+            if _is_rate_limit_error(exc) and model == primary_model:
+                _CIRCUIT.rate_limited(primary_model, is_probe)
+                if not emitted and attempt + 1 < max_retries:
+                    if _fallback_model(primary_model) == primary_model:
+                        time.sleep(min(8.0, 2.0**attempt))
+                    continue
+            elif is_probe:
+                _CIRCUIT.probe_finished()
             if emitted or attempt + 1 >= max_retries:
                 raise
             time.sleep(min(8.0, 2.0**attempt))
@@ -135,6 +157,8 @@ def call_llm_tools(
     max_retries: int = 3,
     on_reasoning: Callable[[str], None] | None = None,
     reasoning_effort: str | None = None,
+    model_override: str | None = None,
+    on_call: CallObserver | None = None,
 ) -> dict[str, Any]:
     """流式 tool calling：文本 delta 经 on_delta 实时回调，tool_calls 分片累积。
 
@@ -145,21 +169,33 @@ def call_llm_tools(
     故重试轮改为静默收集、不再回调（否则用户会看到重复文本），最终通过返回值的
     text 字段给出完整文本。只有整轮流完整结束才算成功，否则整轮作废、指数退避重试。
     """
-    client = _client()
-    model = _required_env("OPENAI_MODEL")
+    primary_model = model_override or _required_env("OPENAI_MODEL")
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
 
     last_error: Exception | None = None
     for attempt in range(max(1, max_retries)):
         stream_delta = on_delta if attempt == 0 else None
         stream_reasoning = on_reasoning if attempt == 0 else None
+        model, fallback_reason, is_probe = _CIRCUIT.select(primary_model)
+        started_at = _utc_now()
         try:
-            return _call_llm_tools_once(
-                client, model, messages, tools, temperature, timeout_seconds,
-                stream_delta, stream_reasoning, reasoning_effort,
-            )
+            with _LLM_CONCURRENCY:
+                result = _call_llm_tools_once(
+                    _client(), model, messages, tools, temperature, timeout_seconds,
+                    stream_delta, stream_reasoning, reasoning_effort,
+                )
+            _CIRCUIT.succeeded(primary_model, model, is_probe)
+            _observe_call(on_call, model, fallback_reason, started_at)
+            return result
         except Exception as exc:  # noqa: BLE001
             last_error = exc
+            if _is_rate_limit_error(exc) and model == primary_model:
+                _CIRCUIT.rate_limited(primary_model, is_probe)
+                if _fallback_model(primary_model) == primary_model and attempt + 1 < max(1, max_retries):
+                    time.sleep(min(8.0, 2.0**attempt))
+                continue
+            if is_probe:
+                _CIRCUIT.probe_finished()
             if attempt + 1 < max(1, max_retries):
                 time.sleep(min(8.0, 2.0**attempt))
     raise RuntimeError(f"call_llm_tools 重试 {max(1, max_retries)} 次后仍失败: {last_error}") from last_error
@@ -232,6 +268,140 @@ def _call_llm_tools_once(
 
 _CLIENT: "OpenAI | None" = None
 _CLIENT_LOCK = threading.Lock()
+_LLM_CONCURRENCY = threading.BoundedSemaphore(max(1, int(os.getenv("LLM_MAX_CONCURRENCY", "5"))))
+
+
+class _RateLimitCircuit:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._open_until = 0.0
+        self._probe_in_flight = False
+
+    def select(self, primary_model: str) -> tuple[str, str, bool]:
+        fallback = _fallback_model(primary_model)
+        if fallback == primary_model:
+            return primary_model, "", False
+        with self._lock:
+            now = time.monotonic()
+            if now < self._open_until:
+                return fallback, "rate_limit_circuit_open", False
+            if self._open_until > 0:
+                if self._probe_in_flight:
+                    return fallback, "recovery_probe_in_progress", False
+                self._probe_in_flight = True
+                return primary_model, "recovery_probe", True
+            return primary_model, "", False
+
+    def rate_limited(self, primary_model: str, was_probe: bool) -> None:
+        if _fallback_model(primary_model) == primary_model:
+            return
+        with self._lock:
+            self._open_until = time.monotonic() + float(os.getenv("LLM_FALLBACK_COOLDOWN_SECONDS", "60"))
+            if was_probe:
+                self._probe_in_flight = False
+
+    def succeeded(self, primary_model: str, actual_model: str, was_probe: bool) -> None:
+        if actual_model != primary_model or not was_probe:
+            return
+        with self._lock:
+            self._open_until = 0.0
+            self._probe_in_flight = False
+
+    def probe_finished(self) -> None:
+        with self._lock:
+            self._probe_in_flight = False
+
+    def reset(self) -> None:
+        with self._lock:
+            self._open_until = 0.0
+            self._probe_in_flight = False
+
+
+_CIRCUIT = _RateLimitCircuit()
+
+
+def _request_completion(
+    primary_model: str,
+    kwargs: dict[str, Any],
+    on_call: CallObserver | None = None,
+    max_retries: int = 3,
+):
+    last_error: Exception | None = None
+    for attempt in range(max(1, max_retries)):
+        model, fallback_reason, is_probe = _CIRCUIT.select(primary_model)
+        started_at = _utc_now()
+        try:
+            with _LLM_CONCURRENCY:
+                response = _client().chat.completions.create(
+                    model=model,
+                    **kwargs,
+                    **_thinking_kwargs_for(model),
+                )
+            _CIRCUIT.succeeded(primary_model, model, is_probe)
+            _observe_call(on_call, model, fallback_reason, started_at)
+            return response
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            if _is_rate_limit_error(exc) and model == primary_model:
+                _CIRCUIT.rate_limited(primary_model, is_probe)
+                if _fallback_model(primary_model) == primary_model and attempt + 1 < max(1, max_retries):
+                    time.sleep(min(8.0, 2.0**attempt))
+                continue
+            if is_probe:
+                _CIRCUIT.probe_finished()
+            if attempt + 1 < max(1, max_retries):
+                time.sleep(min(8.0, 2.0**attempt))
+    assert last_error is not None
+    raise last_error
+
+
+def _fallback_model(primary_model: str) -> str:
+    configured = os.getenv("OPENAI_MODEL_FALLBACK", "").strip()
+    if configured:
+        return configured
+    if primary_model.startswith("glm-5.3"):
+        return "glm-5.2"
+    return primary_model
+
+
+def _is_rate_limit_error(error: Exception) -> bool:
+    status_code = getattr(error, "status_code", None)
+    if status_code == 429:
+        return True
+    response = getattr(error, "response", None)
+    if getattr(response, "status_code", None) == 429:
+        return True
+    body = getattr(error, "body", None)
+    if isinstance(body, dict):
+        detail = body.get("error", body)
+        if isinstance(detail, dict) and str(detail.get("code", "")) == "1302":
+            return True
+    text = str(error)
+    return bool(re.search(r"(?:\b429\b|['\"]?code['\"]?\s*[:=]\s*['\"]?1302\b)", text))
+
+
+def _observe_call(
+    observer: CallObserver | None,
+    model: str,
+    fallback_reason: str,
+    started_at: str,
+) -> None:
+    if observer is None:
+        return
+    observer(
+        asdict(
+            LLMCallRecord(
+                model=model,
+                fallback_reason=fallback_reason,
+                started_at=started_at,
+                completed_at=_utc_now(),
+            )
+        )
+    )
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _client() -> OpenAI:

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useSessionState } from "@/lib/sessionState";
 import type { CandidateBrief } from "@/lib/types";
 import Card from "@/components/ui/Card";
@@ -18,6 +18,7 @@ interface Props {
   onDelete: (id: string, evaluated: boolean) => void | Promise<void>;
   onImport: () => void;
   onEvaluateBatch?: (ids: string[]) => void | Promise<void>;
+  runningCard?: ReactNode;
 }
 
 type Filter = "pending" | "completed" | "all";
@@ -29,7 +30,7 @@ function classifyCandidate(c: CandidateBrief): Filter {
   return "completed";
 }
 
-export default function CandidateQueue({ candidates, selectedId, onSelect, onDelete, onImport, onEvaluateBatch }: Props) {
+export default function CandidateQueue({ candidates, selectedId, onSelect, onDelete, onImport, onEvaluateBatch, runningCard }: Props) {
   const [filter, setFilter] = useSessionState<Filter>("resume-evaluate.queue-filter", "all");
   const [search, setSearch] = useSessionState("resume-evaluate.queue-search", "");
   // 删除二次确认：记录正在确认删除的候选人 id，null = 未进入确认态
@@ -262,6 +263,8 @@ export default function CandidateQueue({ candidates, selectedId, onSelect, onDel
           })
         )}
       </div>
+
+      {runningCard}
 
       {batchMode ? (
         <div className="flex items-center gap-1.5">

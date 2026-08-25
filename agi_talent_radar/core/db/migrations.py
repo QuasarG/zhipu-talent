@@ -10,7 +10,7 @@ from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 20
+LATEST_SCHEMA_VERSION = 22
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -193,7 +193,57 @@ def ensure_schema(engine) -> None:
             20,
             "phase 20: per-JD interview admission assessments and best-fit decision",
         )
+    if current_version < 21:
+        _migrate_interview_assessment_foundation(engine)
+        _record_version(
+            engine,
+            21,
+            "phase 21: JD assessment cards and independent candidate-JD admission workflow",
+        )
+    if current_version < 22:
+        _migrate_interview_assessment_controls(engine)
+        _record_version(
+            engine,
+            22,
+            "phase 22: persistent JD card trace and guozexin force-reevaluation control",
+        )
     _ensure_indexes(engine)
+
+
+def _migrate_interview_assessment_foundation(engine) -> None:
+    """为已有 JD 表补岗位卡字段；三张准入新表由 create_all 建立。"""
+    existing = {column["name"] for column in inspect(engine).get_columns("jd_entries")}
+    definitions = (
+        ("supplements", "JSON"),
+        ("assessment_card", "JSON"),
+        ("card_status", "VARCHAR(16) NOT NULL DEFAULT 'generating'"),
+        ("card_error", "TEXT"),
+        ("archived", "BOOLEAN NOT NULL DEFAULT 0"),
+    )
+    _add_columns(
+        engine,
+        "jd_entries",
+        [f"{name} {definition}" for name, definition in definitions if name not in existing],
+    )
+
+
+def _migrate_interview_assessment_controls(engine) -> None:
+    jd_columns = {column["name"] for column in inspect(engine).get_columns("jd_entries")}
+    _add_columns(
+        engine,
+        "jd_entries",
+        [
+            f"{name} {definition}"
+            for name, definition in (
+                ("card_run_trace", "JSON"),
+                ("card_model_usage", "JSON"),
+            )
+            if name not in jd_columns
+        ],
+    )
+    user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
+    if "allow_force_reevaluation" not in user_columns:
+        _add_columns(engine, "users", ["allow_force_reevaluation BOOLEAN NOT NULL DEFAULT 0"])
 
 
 def _ensure_legacy_parent_columns(engine) -> None:

@@ -1,6 +1,6 @@
 """领域契约测试（阶段 0 子集）。
 
-四条边界契约（与计划 §阶段 0 / docs/CONTEXT.md / docs/design/backend_use_case_decisions.md 对齐）：
+四条边界契约（与 docs/CONTEXT.md / docs/rebuild.md 对齐）：
 
 1. ``test_import_does_not_admit_to_talent_pool`` —
    导入路径不允许在评估成功前把简历推进人才库。

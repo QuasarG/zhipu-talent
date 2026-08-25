@@ -62,8 +62,10 @@ sudo cp deploy/nginx-talent-radar.conf /etc/nginx/sites-enabled/
 | 变量 | 说明 |
 |---|---|
 | `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.3 + Web Search + Embedding + OCR 一把通吃） |
-| `OPENAI_MODEL` / `OPENAI_BASE_URL` | `glm-5.3` / `https://open.bigmodel.cn/api/paas/v4` |
-| `JOB_FIT_MAX_CONCURRENCY` | 面试准入模型请求并发上限，默认 `1`，批量评估时避免触发 429 |
+| `OPENAI_MODEL` / `OPENAI_MODEL_FALLBACK` | 主模型 `glm-5.3` / 限流备用模型 `glm-5.2` |
+| `OPENAI_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` |
+| `LLM_MAX_CONCURRENCY` | 所有 LLM 请求共享的全局并发上限，默认 `5` |
+| `LLM_FALLBACK_COOLDOWN_SECONDS` | 429 / 1302 后整体使用 5.2 的冷却时间，默认 `60` 秒 |
 | `AMINER_API_TOKEN` | AMiner 论文核验/学者检索（可选） |
 | `FLASK_SESSION_SECRET` | 会话密钥（必填，随机长串） |
 | `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址/集合名 |
@@ -112,12 +114,12 @@ frontend/
   src/components/  UI 组件库（MD3 设计系统）
 deploy/            systemd + nginx
 docs/
-  design/          产品/架构设计稿（含评估维度与数据流）
-  reviews/         审计与复盘（AUDIT.md = 评分体系偏差分析）
-  CONTEXT.md       领域语义约定；HANDOVER.md = 交接手册
+  CONTEXT.md       领域语言与功能边界
+  rebuild.md       面试准入评估重建的唯一执行依据
+  design/DESIGN.md 当前界面与 LLM 运行轨迹设计准则
 samples/           简历样例数据
 outputs/           评估产物归档（final/ 双轮终版、real/ 真实简历验证）
 tests/             pytest 基线（全绿后方可提交）
 ```
 
-> 文档入口：新接手先读 `docs/HANDOVER.md` 与 `docs/reviews/AUDIT.md`。
+> 文档入口：新接手先读 `docs/CONTEXT.md`、`docs/rebuild.md` 与 `docs/design/DESIGN.md`。

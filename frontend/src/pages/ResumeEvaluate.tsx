@@ -375,6 +375,14 @@ export default function ResumeEvaluate() {
           onDelete={handleDelete}
           onImport={() => setShowImport(true)}
           onEvaluateBatch={handleEvaluateBatch}
+          runningCard={showImport ? <ImportOverlay onCandidate={loadCandidates} onStructure={handleStructure} onClose={() => {
+            setShowImport(false);
+            setImportPreview(null);
+            loadCandidates();
+            api.candidates.list().then((list) => {
+              if (list.length > 0) selectCandidate(list[0].id);
+            }).catch(() => {});
+          }} /> : null}
         />
 
         {/* 中栏：简历内容（容器不滚，内部模块卡各自滚动） */}
@@ -420,15 +428,6 @@ export default function ResumeEvaluate() {
         </Card>
       </div>
 
-      {showImport && <ImportOverlay onCandidate={loadCandidates} onStructure={handleStructure} onClose={() => {
-        setShowImport(false);
-        setImportPreview(null);
-        loadCandidates();
-        // 导入流程已包含论文核验，核验完关闭后刷新列表并选中最新的
-        api.candidates.list().then((list) => {
-          if (list.length > 0) selectCandidate(list[0].id);
-        }).catch(() => {});
-      }} />}
     </div>
   );
 }

@@ -161,7 +161,7 @@ class TestHealthRouteE2E(unittest.TestCase):
         install_auth_middleware(self.app)
         self.client = self.app.test_client()
 
-    @patch("agi_talent_radar.core.health.run_health_check")
+    @patch("agi_talent_radar.core.health.get_cached_health")
     def test_health_returns_per_service_report(self, mock_health) -> None:
         from agi_talent_radar.core.health import HealthReport, ServiceHealth
 
@@ -180,7 +180,7 @@ class TestHealthRouteE2E(unittest.TestCase):
         self.assertEqual(len(data["services"]), 2)
         self.assertEqual(data["services"][1]["status"], "degraded")
 
-    @patch("agi_talent_radar.core.health.run_health_check")
+    @patch("agi_talent_radar.core.health.get_cached_health")
     def test_health_returns_503_when_mysql_down(self, mock_health) -> None:
         from agi_talent_radar.core.health import HealthReport, ServiceHealth
 
@@ -227,11 +227,22 @@ class TestKnowledgeRouteE2E(unittest.TestCase):
             lambda: self._session_factory(),
         )
         self._db.start()
+        self._user = patch(
+            "agi_talent_radar.web.knowledge_api.current_user",
+            return_value=type("TestUser", (), {"id": "test-user"})(),
+        )
+        self._user.start()
+        with self._session_factory() as session:
+            from agi_talent_radar.core.db.orm import UserORM
+
+            session.add(UserORM(id="test-user", username="test-user", password_hash="test"))
+            session.commit()
         self.client = self.app.test_client()
 
     def tearDown(self) -> None:
         self._auth.stop()
         self._db.stop()
+        self._user.stop()
 
     def _create_conversation(self) -> str:
         rv = self.client.post("/api/conversations", json={})

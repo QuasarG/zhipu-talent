@@ -14,6 +14,7 @@ import logoEnWhiteUrl from "@/assets/zai-logo-en-white.svg";
 const navItems = [
   { to: "/", icon: "groups", label: "人才库" },
   { to: "/resume-evaluate", icon: "description", label: "简历评估" },
+  { to: "/interview-admission", icon: "fact_check", label: "面试准入" },
   { to: "/chat", icon: "forum", label: "人才问答" },
   { to: "/jd-pool", icon: "work", label: "JD 池" },
   { to: "/scholarship", icon: "workspace_premium", label: "奖学金" },
