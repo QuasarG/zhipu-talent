@@ -343,6 +343,190 @@ body {
 }
 .chat-enter { animation: fade-slide-up 250ms var(--ease-emphasized-decelerate); }
 
+/* 面试准入·评估神经树 */
+.admission-graph-canvas {
+  background-color: var(--color-surface-lowest);
+  isolation: isolate;
+}
+
+.admission-graph-edge,
+.admission-preview-edge {
+  fill: none;
+  stroke: var(--color-outline-variant);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.admission-graph-edge {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: admission-edge-grow 560ms var(--ease-emphasized-decelerate) forwards;
+}
+
+.admission-graph-edge-flow {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.045 0.955;
+  vector-effect: non-scaling-stroke;
+  animation: admission-edge-flow 1700ms linear infinite;
+}
+
+.admission-graph-node {
+  z-index: 1;
+  opacity: 0;
+  transform: translateY(-50%) scale(0.84);
+  filter: blur(5px);
+  animation: admission-node-enter 520ms var(--ease-emphasized-decelerate) forwards;
+}
+
+.admission-node-orbit {
+  color: var(--color-on-surface-variant);
+  border: 1.5px solid var(--color-outline);
+  box-shadow: 0 3px 10px rgba(15, 17, 21, 0.06);
+  transition:
+    border-color 220ms var(--ease-emphasized),
+    color 220ms var(--ease-emphasized),
+    box-shadow 220ms var(--ease-emphasized),
+    transform 220ms var(--ease-emphasized);
+}
+
+.admission-graph-node:hover .admission-node-orbit,
+.admission-graph-node.is-selected .admission-node-orbit {
+  color: var(--color-on-surface);
+  border-color: var(--color-primary);
+  transform: scale(1.08);
+  box-shadow: 0 5px 18px rgba(15, 17, 21, 0.11);
+}
+
+.admission-graph-node.kind-source .admission-node-orbit {
+  border-width: 2px;
+  color: var(--color-on-primary-container);
+  background: var(--color-primary-container);
+}
+
+.admission-graph-node.kind-task .admission-node-orbit,
+.admission-graph-node.kind-repair .admission-node-orbit {
+  box-shadow: none;
+}
+
+.admission-graph-node.kind-repair .admission-node-orbit {
+  border-style: dashed;
+}
+
+.admission-graph-node.kind-decision .admission-node-orbit {
+  border-width: 2px;
+}
+
+.admission-graph-node.is-running .admission-node-orbit {
+  color: var(--color-on-surface);
+  border-color: var(--color-primary);
+  animation: admission-node-breathe 1800ms var(--ease-emphasized) infinite;
+}
+
+.admission-graph-node.is-running .admission-node-orbit::before,
+.admission-graph-node.is-selected .admission-node-orbit::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border: 1px solid var(--color-primary);
+  border-radius: 999px;
+  opacity: 0.22;
+}
+
+.admission-graph-node.is-running .admission-node-orbit::before {
+  animation: admission-node-ripple 1800ms var(--ease-emphasized-decelerate) infinite;
+}
+
+.admission-graph-node.is-failed .admission-node-orbit {
+  color: var(--color-error);
+  border-color: var(--color-error);
+  background: var(--color-error-container);
+}
+
+.admission-node-status-dot {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  display: flex;
+  width: 15px;
+  height: 15px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-surface-lowest);
+  border-radius: 999px;
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+}
+
+.admission-preview-empty-node,
+.admission-preview-hub {
+  border: 1px solid var(--color-outline-variant);
+  box-shadow: 0 5px 18px rgba(15, 17, 21, 0.08);
+}
+
+.admission-preview-hub {
+  animation: admission-preview-breathe 3200ms var(--ease-emphasized) infinite;
+}
+
+.admission-run-row-flow {
+  animation: admission-running-slide 1250ms var(--ease-emphasized) infinite;
+}
+
+.admission-panel-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-outline-variant) transparent;
+}
+
+.admission-panel-scrollbar::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.admission-panel-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--color-outline);
+  background-clip: padding-box;
+}
+
+.admission-panel-scrollbar::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes admission-edge-grow {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes admission-edge-flow {
+  to { stroke-dashoffset: -1; }
+}
+
+@keyframes admission-node-enter {
+  0% { opacity: 0; transform: translateY(-68%) scale(0.84); filter: blur(5px); }
+  64% { opacity: 1; transform: translateY(-48%) scale(1.04); filter: blur(0); }
+  100% { opacity: 1; transform: translateY(-50%) scale(1); filter: blur(0); }
+}
+
+@keyframes admission-node-breathe {
+  0%, 100% { box-shadow: 0 3px 10px rgba(15, 17, 21, 0.08); }
+  50% { box-shadow: 0 8px 24px rgba(15, 17, 21, 0.16); }
+}
+
+@keyframes admission-node-ripple {
+  0% { opacity: 0.28; transform: scale(0.88); }
+  70%, 100% { opacity: 0; transform: scale(1.34); }
+}
+
+@keyframes admission-preview-breathe {
+  0%, 100% { box-shadow: 0 5px 18px rgba(15, 17, 21, 0.06); }
+  50% { box-shadow: 0 8px 24px rgba(15, 17, 21, 0.12); }
+}
+
+@keyframes admission-running-slide {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(420%); }
+}
+
 /* ---- 问答正文 markdown（无 typography 插件，手工 typescale 对齐） ---- */
 .chat-markdown { font-size: 14px; line-height: 22px; }
 .chat-markdown p { margin: 0 0 8px; }
