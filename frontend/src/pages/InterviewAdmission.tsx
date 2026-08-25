@@ -716,13 +716,6 @@ function PairingPreviewGraph({ candidates, jds }: { candidates: CandidateBrief[]
               <span className="mt-1 block truncate text-label text-on-surface-variant">{jd.title}</span>
             </div>
           ))}
-          <div className="absolute left-1/2 top-1/2 w-40 -translate-x-1/2 -translate-y-1/2 text-center">
-            <span className="admission-preview-hub mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-surface-lowest">
-              <Icon name="target" size={24} />
-            </span>
-            <span className="mt-2 block text-title">{t("岗位核心任务")}</span>
-            <span className="mt-0.5 block text-label text-on-surface-variant">{t("逐项证据评分")}</span>
-          </div>
           {candidates.length > visibleCandidates.length && <span className="absolute bottom-4 left-[12%] -translate-x-1/2 text-label text-on-surface-variant">{t("另有 {n} 人", { n: candidates.length - visibleCandidates.length })}</span>}
           {jds.length > visibleJds.length && <span className="absolute bottom-4 left-[88%] -translate-x-1/2 text-label text-on-surface-variant">{t("另有 {n} 个岗位", { n: jds.length - visibleJds.length })}</span>}
         </div>
