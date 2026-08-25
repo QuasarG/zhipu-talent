@@ -193,7 +193,7 @@ export default function InterviewAdmission() {
   }, [setSelectedNodeId]);
 
   return (
-    <div className="w-full max-w-full h-[calc(100vh-48px)] min-h-0 min-w-0 overflow-hidden flex flex-col">
+    <div className="w-full max-w-full h-screen -mb-6 min-h-0 min-w-0 overflow-hidden flex flex-col">
       <PageToolbar
         title={t("面试准入评估")}
         subtitle={t("围绕岗位核心任务，用可追溯证据决定是否投入面试资源")}
