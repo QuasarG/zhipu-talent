@@ -36,7 +36,15 @@
   font-display: swap;
   src: url("./assets/fonts/MiSans-Bold.woff2") format("woff2");
 }
-/* Montserrat：西文标题与正文统一使用可变字重 */
+/* Bebas Neue：英文模式标题字体（单字重、无小写） */
+@font-face {
+  font-family: "Bebas Neue";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/BebasNeue-Regular.ttf") format("truetype");
+}
+/* Montserrat：英文模式正文字体（可变字重 wght 100-900） */
 @font-face {
   font-family: "Montserrat";
   font-style: normal;
@@ -44,9 +52,26 @@
   font-display: swap;
   src: url("./assets/fonts/Montserrat-VariableFont_wght.ttf") format("truetype");
 }
-/* 英文导航保持单行；字体与正文统一 */
+/* 英文标题使用展示字体，正文继续使用全局 Montserrat */
+html[lang="en"] .text-display,
+html[lang="en"] .text-headline,
+html[lang="en"] .text-title-lg,
+html[lang="en"] .text-title,
+html[lang="en"] .chat-markdown h1,
+html[lang="en"] .chat-markdown h2,
+html[lang="en"] .chat-markdown h3,
+html[lang="en"] .chat-markdown h4 {
+  font-family: "Bebas Neue", "MiSans", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+/* 导航标签使用同一展示字体并保持单行 */
 html[lang="en"] .nav-rail-label {
+  font-family: "Bebas Neue", "MiSans", sans-serif;
   font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
