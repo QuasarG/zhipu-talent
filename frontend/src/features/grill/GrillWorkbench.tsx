@@ -335,7 +335,7 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-24px)]">
+    <div>
       <PageToolbar
         title={t("画像澄清")}
         subtitle={t("面向用人部门 leader · 把模糊画像逼问清楚")}
@@ -363,7 +363,7 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
         }
       />
 
-      <div className="flex gap-6 flex-1 min-h-0">
+      <div className="app-workspace-frame flex gap-6 min-h-0">
         {/* 侧栏：历史会话 */}
         <SessionSidebar
           sessions={sessions}

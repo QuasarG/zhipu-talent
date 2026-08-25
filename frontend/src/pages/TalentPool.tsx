@@ -174,7 +174,7 @@ export default function TalentPool() {
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-    <div className="w-full max-w-full h-[calc(100vh-48px)] min-h-0 min-w-0 overflow-hidden flex flex-col">
+    <div className="w-full max-w-full min-w-0">
       <PageToolbar
         title={t("人才库")}
         subtitle={t("统一档案、来源追踪与关系发现")}
@@ -201,6 +201,7 @@ export default function TalentPool() {
         }
       />
 
+      <div className="app-workspace-frame flex min-h-0 flex-col">
       <div className="flex items-center gap-2 mb-4 flex-wrap px-2">
         <SegmentedButtons
           options={[
@@ -251,13 +252,13 @@ export default function TalentPool() {
       </div>
 
       {view === "graph" ? (
-        <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
+        <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden">
           <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} showBatchEvaluate />
           <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
           <TalentDetail person={selected} personId={selectedId} onUpdated={handlePersonUpdated} />
         </div>
       ) : (
-        <div className="flex w-full max-w-full gap-4 flex-1 min-h-0 min-w-0 overflow-hidden pb-1">
+        <div className="flex w-full max-w-full gap-4 flex-1 min-h-0 min-w-0 overflow-hidden">
           <div className="min-w-0 max-w-[24rem] flex-1 h-full min-h-0 flex">
             <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} />
           </div>
@@ -269,6 +270,7 @@ export default function TalentPool() {
           />
         </div>
       )}
+      </div>
 
       {showAddPerson && (
         <AddPersonDialog onClose={() => setShowAddPerson(false)} onAdded={load} />

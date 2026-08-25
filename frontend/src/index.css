@@ -566,6 +566,11 @@ body {
 .chat-markdown hr { margin: 12px 0; border-color: var(--color-outline-variant); }
 
 /* ---- Scrollbar ---- */
+.app-workspace-frame {
+  height: calc(100vh - 56px - 60px);
+  min-height: 500px;
+}
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-outline-variant); border-radius: 9999px; }

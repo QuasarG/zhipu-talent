@@ -366,7 +366,7 @@ export default function ResumeEvaluate() {
         }
       />
 
-      <div className="grid grid-cols-[280px_minmax(0,1fr)_minmax(0,1.2fr)] gap-4 h-[calc(100vh-56px-60px)] min-h-[500px]">
+      <div className="app-workspace-frame grid grid-cols-[280px_minmax(0,1fr)_minmax(0,1.2fr)] gap-4">
         {/* 左栏：候选人队列 */}
         <CandidateQueue
           candidates={candidates}

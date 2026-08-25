@@ -328,7 +328,7 @@ export default function TalentChat() {
   const awaitingAction = lastAssistant?.status === "awaiting_action";
 
   return (
-    <div className="flex flex-col h-[calc(100vh-24px)]">
+    <div>
       <PageToolbar
         title={t("人才问答")}
         subtitle={t("库内优先 · 必要时联网调查")}
@@ -344,7 +344,7 @@ export default function TalentChat() {
         }
       />
 
-      <div className="flex gap-6 flex-1 min-h-0">
+      <div className="app-workspace-frame flex gap-6 min-h-0">
         <ChatSidebar
           conversations={conversations}
           currentId={currentId}

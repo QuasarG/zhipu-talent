@@ -58,6 +58,39 @@ interface TaskAssessmentView {
   risks?: string[];
 }
 
+function assessmentToRun(assessment: InterviewAssessment): InterviewAssessmentRun {
+  return {
+    id: assessment.id,
+    batch_id: "saved-reports",
+    candidate_id: assessment.candidate_id,
+    jd_id: assessment.jd_id,
+    status: "completed",
+    current_node: assessment.run_trace.at(-1)?.node_id || "admission_decision",
+    run_trace: assessment.run_trace,
+    model_usage: assessment.model_usage,
+    error_message: "",
+    cancellation_requested: false,
+  };
+}
+
+function assessmentsToBatch(assessments: InterviewAssessment[]): InterviewAssessmentBatch {
+  const updatedAt = assessments[0]?.updated_at || new Date().toISOString();
+  return {
+    id: "saved-reports",
+    status: "completed",
+    candidate_ids: [...new Set(assessments.map((item) => item.candidate_id))],
+    jd_ids: [...new Set(assessments.map((item) => item.jd_id))],
+    total_pairs: assessments.length,
+    completed_pairs: assessments.length,
+    failed_pairs: 0,
+    cancelled_pairs: 0,
+    created_at: updatedAt,
+    started_at: updatedAt,
+    completed_at: updatedAt,
+    runs: assessments.map(assessmentToRun),
+  };
+}
+
 export default function InterviewAdmission() {
   const [candidates, setCandidates] = useState<CandidateBrief[]>([]);
   const [jds, setJds] = useState<JdEntry[]>([]);
@@ -67,6 +100,7 @@ export default function InterviewAdmission() {
   const [jdSearch, setJdSearch] = useSessionState("interview-admission.jd-search", "");
   const [batchId, setBatchId] = useSessionState<string | null>("interview-admission.batch-id", null);
   const [activeRunId, setActiveRunId] = useSessionState<string | null>("interview-admission.active-run-id", null);
+  const [reportAssessmentId, setReportAssessmentId] = useSessionState<string | null>("interview-admission.report-id", null);
   const [selectedNodeId, setSelectedNodeId] = useSessionState<string | null>("interview-admission.node-id", null);
   const [force, setForce] = useSessionState("interview-admission.force", false);
   const [batch, setBatch] = useState<InterviewAssessmentBatch | null>(null);
@@ -80,19 +114,27 @@ export default function InterviewAdmission() {
 
   const candidateIds = useMemo(() => new Set(candidateIdList), [candidateIdList]);
   const jdIds = useMemo(() => new Set(jdIdList), [jdIdList]);
+  const selectedExistingAssessments = useMemo(() => assessments.filter((item) => (
+    item.is_valid && candidateIds.has(item.candidate_id) && jdIds.has(item.jd_id)
+  )), [assessments, candidateIds, jdIds]);
+  const reportAssessment = assessments.find((item) => item.id === reportAssessmentId);
+  const reportBatch = useMemo(() => assessmentsToBatch(assessments), [assessments]);
+  const reportRun = reportAssessment ? assessmentToRun(reportAssessment) : undefined;
 
   const updateCandidateIds = useCallback((next: Set<string>) => setCandidateIdList([...next]), [setCandidateIdList]);
   const updateJdIds = useCallback((next: Set<string>) => setJdIdList([...next]), [setJdIdList]);
 
   const loadInputs = useCallback(async () => {
-    const [candidateRows, jdRows, settings] = await Promise.all([
+    const [candidateRows, jdRows, settings, assessmentRows] = await Promise.all([
       api.candidates.list(),
       api.jds.list(),
       api.interviewAssessments.settings(),
+      api.interviewAssessments.list(),
     ]);
     const readyJds = jdRows.filter((jd) => !jd.archived && jd.card_status === "ready");
     setCandidates(candidateRows);
     setJds(readyJds);
+    setAssessments(assessmentRows);
     setForceAllowed(settings.can_manage_force_reevaluation && settings.allow_force_reevaluation);
     setCandidateIdList((current) => current.filter((id) => candidateRows.some((candidate) => candidate.id === id)));
     setJdIdList((current) => current.filter((id) => readyJds.some((jd) => jd.id === id)));
@@ -104,7 +146,7 @@ export default function InterviewAdmission() {
       setBatch(next);
       setActiveRunId((current) => current && next.runs?.some((run) => run.id === current) ? current : next.runs?.[0]?.id || null);
       if (TERMINAL_BATCH_STATUSES.has(next.status)) {
-        setAssessments(await api.interviewAssessments.list(next.candidate_ids, next.jd_ids));
+        setAssessments(await api.interviewAssessments.list());
       }
       setError("");
       return next;
@@ -155,9 +197,15 @@ export default function InterviewAdmission() {
 
   const start = async () => {
     if (!candidateIds.size || !jdIds.size || starting) return;
+    if (!force && selectedExistingAssessments.length) {
+      setReportAssessmentId(selectedExistingAssessments[0].id);
+      setSelectedNode(null);
+      setSelectedNodeId(null);
+      setError("");
+      return;
+    }
     setStarting(true);
     setError("");
-    setAssessments([]);
     try {
       const next = await api.interviewAssessments.start([...candidateIds], [...jdIds], force);
       setBatch(next);
@@ -178,12 +226,13 @@ export default function InterviewAdmission() {
     setActiveRunId(null);
     setSelectedNodeId(null);
     setSelectedNode(null);
-    setAssessments([]);
     setError("");
   };
 
   const activeRun = batch?.runs?.find((run) => run.id === activeRunId) ?? batch?.runs?.[0];
-  const activeAssessment = assessments.find((item) => item.candidate_id === activeRun?.candidate_id && item.jd_id === activeRun?.jd_id);
+  const activeAssessment = activeRun?.status === "completed"
+    ? assessments.find((item) => item.candidate_id === activeRun.candidate_id && item.jd_id === activeRun.jd_id)
+    : undefined;
   const running = !!batch && !TERMINAL_BATCH_STATUSES.has(batch.status);
   const pairCount = candidateIds.size * jdIds.size;
 
@@ -192,12 +241,27 @@ export default function InterviewAdmission() {
     setSelectedNodeId(node.id);
   }, [setSelectedNodeId]);
 
+  const openReport = useCallback((id: string) => {
+    setReportAssessmentId(id);
+    setSelectedNode(null);
+    setSelectedNodeId(null);
+    setError("");
+  }, [setReportAssessmentId, setSelectedNodeId]);
+
+  const closeReport = useCallback(() => {
+    setReportAssessmentId(null);
+    setSelectedNode(null);
+    setSelectedNodeId(null);
+  }, [setReportAssessmentId, setSelectedNodeId]);
+
   return (
-    <div className="w-full max-w-full h-screen -mb-6 min-h-0 min-w-0 overflow-hidden flex flex-col">
+    <div className="w-full max-w-full min-w-0">
       <PageToolbar
         title={t("面试准入评估")}
         subtitle={t("围绕岗位核心任务，用可追溯证据决定是否投入面试资源")}
-        center={batch ? (
+        center={reportAssessment ? (
+          <ReportSummary assessments={assessments} />
+        ) : batch ? (
           <BatchSummary batch={batch} />
         ) : (
           <div className="hidden xl:flex items-center gap-3 text-label text-on-surface-variant">
@@ -208,7 +272,9 @@ export default function InterviewAdmission() {
             <span>{pairCount} 个评估配对</span>
           </div>
         )}
-        right={batch ? (
+        right={reportAssessment ? (
+          <Button variant="tonal" icon="arrow_back" onClick={closeReport}>{t("返回配对选择")}</Button>
+        ) : batch ? (
           running ? (
             <Button
               variant="tonal"
@@ -224,9 +290,25 @@ export default function InterviewAdmission() {
             <Button variant="tonal" icon="add" onClick={resetBatch}>{t("新建评估批次")}</Button>
           )
         ) : (
-          <Button variant="filled" icon="play_arrow" disabled={!pairCount || starting} onClick={start}>
-            {starting ? t("启动中…") : t("开始 {n} 个配对", { n: pairCount })}
-          </Button>
+          <>
+            {!!assessments.length && (
+              <Button variant="outlined" icon="description" onClick={() => openReport(assessments[0].id)}>
+                {t("已有报告 {n}", { n: assessments.length })}
+              </Button>
+            )}
+            <Button
+              variant="filled"
+              icon={selectedExistingAssessments.length && !force ? "description" : "play_arrow"}
+              disabled={!pairCount || starting}
+              onClick={selectedExistingAssessments.length && !force ? () => openReport(selectedExistingAssessments[0].id) : start}
+            >
+              {starting
+                ? t("启动中…")
+                : selectedExistingAssessments.length && !force
+                  ? t("查看已有报告 {n}", { n: selectedExistingAssessments.length })
+                  : t("开始 {n} 个配对", { n: pairCount })}
+            </Button>
+          </>
         )}
       />
 
@@ -245,6 +327,22 @@ export default function InterviewAdmission() {
           <LoadingIndicator size={28} />
           <p className="text-body-sm">正在恢复评估现场…</p>
         </div>
+      ) : reportAssessment && reportRun ? (
+        <RunWorkspace
+          mode="reports"
+          batch={reportBatch}
+          activeRun={reportRun}
+          activeRunId={reportAssessment.id}
+          candidates={candidates}
+          jds={jds}
+          selectedNode={selectedNode}
+          selectedNodeId={selectedNodeId}
+          assessment={reportAssessment}
+          reportAssessments={assessments}
+          onSelectRun={openReport}
+          onSelectNode={selectGraphNode}
+          onCancelRun={() => {}}
+        />
       ) : batch ? (
         <RunWorkspace
           batch={batch}
@@ -276,11 +374,13 @@ export default function InterviewAdmission() {
           jdSearch={jdSearch}
           forceAllowed={forceAllowed}
           force={force}
+          assessments={assessments}
           onCandidateSearch={setCandidateSearch}
           onJdSearch={setJdSearch}
           onCandidateIds={updateCandidateIds}
           onJdIds={updateJdIds}
           onForce={setForce}
+          onOpenReport={openReport}
           onStart={start}
           starting={starting}
         />
@@ -300,6 +400,23 @@ function BatchSummary({ batch }: { batch: InterviewAssessmentBatch }) {
   );
 }
 
+function ReportSummary({ assessments }: { assessments: InterviewAssessment[] }) {
+  const valid = assessments.filter((item) => item.is_valid).length;
+  return (
+    <div className="hidden lg:flex items-center gap-3 text-label text-on-surface-variant">
+      <span>{assessments.length} 份已有报告</span>
+      <span className="w-6 border-t border-outline-variant" />
+      <span>{valid} 份有效</span>
+      {!!(assessments.length - valid) && (
+        <>
+          <span className="w-6 border-t border-outline-variant" />
+          <span className="text-warning">{assessments.length - valid} 份需重评</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SelectionWorkspace({
   candidates,
   jds,
@@ -309,11 +426,13 @@ function SelectionWorkspace({
   jdSearch,
   forceAllowed,
   force,
+  assessments,
   onCandidateSearch,
   onJdSearch,
   onCandidateIds,
   onJdIds,
   onForce,
+  onOpenReport,
   onStart,
   starting,
 }: {
@@ -325,11 +444,13 @@ function SelectionWorkspace({
   jdSearch: string;
   forceAllowed: boolean;
   force: boolean;
+  assessments: InterviewAssessment[];
   onCandidateSearch: (value: string) => void;
   onJdSearch: (value: string) => void;
   onCandidateIds: (value: Set<string>) => void;
   onJdIds: (value: Set<string>) => void;
   onForce: (value: boolean) => void;
+  onOpenReport: (id: string) => void;
   onStart: () => void;
   starting: boolean;
 }) {
@@ -348,16 +469,20 @@ function SelectionWorkspace({
 
   const toggle = (current: Set<string>, id: string, onChange: (value: Set<string>) => void) => {
     const next = new Set(current);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     onChange(next);
   };
 
   const selectedCandidates = candidates.filter((candidate) => candidateIds.has(candidate.id));
   const selectedJds = jds.filter((jd) => jdIds.has(jd.id));
   const pairCount = candidateIds.size * jdIds.size;
+  const selectedExistingAssessments = assessments.filter((item) => (
+    item.is_valid && candidateIds.has(item.candidate_id) && jdIds.has(item.jd_id)
+  ));
 
   return (
-    <div className="grid w-full max-w-full grid-cols-1 xl:grid-cols-[minmax(270px,0.9fr)_minmax(430px,1.55fr)_minmax(300px,1fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-y-auto xl:overflow-hidden pb-1">
+    <div className="app-workspace-frame grid w-full max-w-full grid-cols-1 xl:grid-cols-[minmax(270px,0.9fr)_minmax(430px,1.55fr)_minmax(300px,1fr)] gap-4 min-w-0 overflow-y-auto xl:overflow-hidden">
       <SelectionPanel
         title="候选人"
         count={candidates.length}
@@ -408,14 +533,41 @@ function SelectionWorkspace({
         </div>
         <PairingPreviewGraph candidates={selectedCandidates} jds={selectedJds} />
         <div className="border-t border-outline-variant px-4 py-3">
+          {!!selectedExistingAssessments.length && !force && (
+            <button
+              type="button"
+              onClick={() => onOpenReport(selectedExistingAssessments[0].id)}
+              className="mb-3 flex w-full cursor-pointer items-center gap-3 rounded-md border border-outline-variant bg-surface-lowest px-3 py-2.5 text-left transition-colors hover:bg-surface-low"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                <Icon name="description" size={17} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-body-sm font-medium">已有 {selectedExistingAssessments.length} 份有效报告</span>
+                <span className="mt-0.5 block text-label text-on-surface-variant">直接打开查看，不再重复评估</span>
+              </span>
+              <Icon name="arrow_forward" size={17} className="text-on-surface-variant" />
+            </button>
+          )}
           {forceAllowed && (
             <label className="mb-3 flex items-center gap-2 text-label text-on-surface-variant cursor-pointer">
               <input type="checkbox" checked={force} onChange={(event) => onForce(event.target.checked)} />
               <span>覆盖仍然有效的当前报告（仅管理员）</span>
             </label>
           )}
-          <Button className="w-full" icon="play_arrow" disabled={!pairCount || starting} onClick={onStart}>
-            {starting ? "正在创建评估批次…" : pairCount ? `开始评估 ${pairCount} 个配对` : "先从两侧完成选择"}
+          <Button
+            className="w-full"
+            icon={selectedExistingAssessments.length && !force ? "description" : "play_arrow"}
+            disabled={!pairCount || starting}
+            onClick={selectedExistingAssessments.length && !force ? () => onOpenReport(selectedExistingAssessments[0].id) : onStart}
+          >
+            {starting
+              ? "正在创建评估批次…"
+              : selectedExistingAssessments.length && !force
+                ? `查看 ${selectedExistingAssessments.length} 份已有报告`
+                : pairCount
+                  ? `开始评估 ${pairCount} 个配对`
+                  : "先从两侧完成选择"}
           </Button>
         </div>
       </Card>
@@ -574,6 +726,7 @@ function PairingPreviewGraph({ candidates, jds }: { candidates: CandidateBrief[]
 }
 
 function RunWorkspace({
+  mode = "run",
   batch,
   activeRun,
   activeRunId,
@@ -582,10 +735,12 @@ function RunWorkspace({
   selectedNode,
   selectedNodeId,
   assessment,
+  reportAssessments = [],
   onSelectRun,
   onSelectNode,
   onCancelRun,
 }: {
+  mode?: "run" | "reports";
   batch: InterviewAssessmentBatch;
   activeRun?: InterviewAssessmentRun;
   activeRunId: string | null;
@@ -594,6 +749,7 @@ function RunWorkspace({
   selectedNode: AdmissionGraphNode | null;
   selectedNodeId: string | null;
   assessment?: InterviewAssessment;
+  reportAssessments?: InterviewAssessment[];
   onSelectRun: (id: string) => void;
   onSelectNode: (node: AdmissionGraphNode) => void;
   onCancelRun: (id: string) => void;
@@ -601,14 +757,18 @@ function RunWorkspace({
   const candidate = candidates.find((item) => item.id === activeRun?.candidate_id);
   const jd = jds.find((item) => item.id === activeRun?.jd_id);
   return (
-    <div className="grid w-full max-w-full grid-cols-1 xl:grid-cols-[minmax(250px,0.78fr)_minmax(560px,1.75fr)_minmax(300px,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-y-auto xl:overflow-hidden pb-1">
+    <div className="app-workspace-frame grid w-full max-w-full grid-cols-1 xl:grid-cols-[minmax(250px,0.78fr)_minmax(560px,1.75fr)_minmax(300px,0.95fr)] gap-4 min-w-0 overflow-y-auto xl:overflow-hidden">
       <Card variant="filled" className="min-h-[300px] xl:min-h-0 overflow-hidden flex flex-col">
         <div className="border-b border-outline-variant px-3 py-3">
           <div className="flex items-center justify-between">
-            <p className="text-title">配对队列</p>
-            <StatusChip tone={TERMINAL_BATCH_STATUSES.has(batch.status) ? "success" : "primary"}>{batch.completed_pairs}/{batch.total_pairs}</StatusChip>
+            <p className="text-title">{mode === "reports" ? "已有报告" : "配对队列"}</p>
+            <StatusChip tone={TERMINAL_BATCH_STATUSES.has(batch.status) ? "success" : "primary"}>
+              {mode === "reports" ? batch.total_pairs : `${batch.completed_pairs}/${batch.total_pairs}`}
+            </StatusChip>
           </div>
-          <p className="mt-1 text-label text-on-surface-variant">全局最多并行评估 5 个配对</p>
+          <p className="mt-1 text-label text-on-surface-variant">
+            {mode === "reports" ? "点击候选人 × 岗位查看完整报告" : "全局最多并行评估 5 个配对"}
+          </p>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-1.5 admission-panel-scrollbar">
           {(batch.runs || []).map((run) => (
@@ -617,6 +777,7 @@ function RunWorkspace({
               run={run}
               candidate={candidates.find((item) => item.id === run.candidate_id)}
               jd={jds.find((item) => item.id === run.jd_id)}
+              assessment={reportAssessments.find((item) => item.id === run.id)}
               active={run.id === activeRunId || (!activeRunId && run.id === activeRun?.id)}
               onClick={() => onSelectRun(run.id)}
             />
@@ -628,7 +789,9 @@ function RunWorkspace({
         <div className="flex items-center gap-3 border-b border-outline-variant px-4 py-3 shrink-0">
           <div className="min-w-0">
             <p className="truncate text-title">{candidate?.name || "候选人"} × {jd?.title || "岗位"}</p>
-            <p className="mt-0.5 truncate text-label text-on-surface-variant">节点按真实调用顺序从上到下生长</p>
+            <p className="mt-0.5 truncate text-label text-on-surface-variant">
+              {mode === "reports" ? "报告生成时的真实调用链" : "节点按真实调用顺序从上到下生长"}
+            </p>
           </div>
           <div className="ml-auto flex items-center gap-3 text-[11px] text-on-surface-variant">
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" />运行</span>
@@ -675,10 +838,11 @@ function RunWorkspace({
   );
 }
 
-function RunRow({ run, candidate, jd, active, onClick }: {
+function RunRow({ run, candidate, jd, assessment, active, onClick }: {
   run: InterviewAssessmentRun;
   candidate?: CandidateBrief;
   jd?: JdEntry;
+  assessment?: InterviewAssessment;
   active: boolean;
   onClick: () => void;
 }) {
@@ -693,8 +857,15 @@ function RunRow({ run, candidate, jd, active, onClick }: {
     >
       <span className="flex items-center gap-2">
         <span className="truncate text-body font-medium">{candidate?.name || run.candidate_id}</span>
-        <StatusChip tone={RUN_STATUS_TONE[run.status] || "neutral"} className="ml-auto shrink-0">
-          {RUN_STATUS_LABEL[run.status] || run.status}
+        <StatusChip
+          tone={assessment ? (assessment.is_valid ? (assessment.decision === "interview" ? "success" : "error") : "warning") : (RUN_STATUS_TONE[run.status] || "neutral")}
+          className="ml-auto shrink-0"
+        >
+          {assessment
+            ? assessment.is_valid
+              ? assessment.decision === "interview" ? "进入面试" : "不进入面试"
+              : "需重评"
+            : RUN_STATUS_LABEL[run.status] || run.status}
         </StatusChip>
       </span>
       <span className="mt-1 block truncate text-label text-on-surface-variant">{jd?.title || run.jd_id}</span>
