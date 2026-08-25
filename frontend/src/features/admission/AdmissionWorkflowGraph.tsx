@@ -7,6 +7,7 @@ import type {
   WorkflowNodeEvent,
 } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 type NodeStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 type NodeKind = "source" | "phase" | "task" | "repair" | "decision";
@@ -46,9 +47,11 @@ const PHASE_META: Record<string, { icon: string; kind: NodeKind }> = {
   capability_mapping: { icon: "account_tree", kind: "phase" },
   task_scoring: { icon: "target", kind: "phase" },
   evidence_validation: { icon: "fact_check", kind: "phase" },
-  overall_review: { icon: "balance", kind: "phase" },
-  admission_decision: { icon: "how_to_reg", kind: "decision" },
+  overall_review: { icon: "list_checks", kind: "phase" },
+  admission_decision: { icon: "badge_check", kind: "decision" },
 };
+
+type Translate = ReturnType<typeof useI18n>["t"];
 
 function normalizeStatus(status: string): NodeStatus {
   if (status === "completed" || status === "failed" || status === "cancelled" || status === "running") return status;
@@ -70,14 +73,14 @@ function taskLevel(event?: WorkflowNodeEvent): number | null {
   return typeof value === "number" ? value : null;
 }
 
-function buildNodes(run: InterviewAssessmentRun, candidate?: CandidateBrief, jd?: JdEntry): AdmissionGraphNode[] {
+function buildNodes(run: InterviewAssessmentRun, candidate: CandidateBrief | undefined, jd: JdEntry | undefined, t: Translate): AdmissionGraphNode[] {
   const events = latestEvents(run.run_trace || []);
   const byId = new Map(events.map((event) => [event.node_id, event]));
   const nodes: AdmissionGraphNode[] = [
     {
       id: "source:candidate",
-      label: candidate?.name || "候选人",
-      summary: candidate?.role || candidate?.stage || "候选人简历",
+      label: candidate?.name || t("候选人"),
+      summary: candidate?.role || candidate?.stage || t("候选人简历"),
       status: "completed",
       kind: "source",
       x: 365,
@@ -87,8 +90,8 @@ function buildNodes(run: InterviewAssessmentRun, candidate?: CandidateBrief, jd?
     },
     {
       id: "source:jd",
-      label: jd?.title || "岗位 JD",
-      summary: jd?.assessment_card?.role_summary || jd?.team || "岗位评估卡",
+      label: jd?.title || t("岗位 JD"),
+      summary: jd?.assessment_card?.role_summary || jd?.team || t("岗位评估卡"),
       status: "completed",
       kind: "source",
       x: 635,
@@ -102,8 +105,8 @@ function buildNodes(run: InterviewAssessmentRun, candidate?: CandidateBrief, jd?
   if (!events.length) {
     nodes.push({
       id: "queue",
-      label: run.status === "queued" ? "等待调度" : "准备运行",
-      summary: "正在等待可用评估槽位",
+      label: run.status === "queued" ? t("等待调度") : t("准备运行"),
+      summary: t("正在等待可用评估槽位"),
       status: run.status === "failed" ? "failed" : "running",
       kind: "phase",
       x: 500,
@@ -124,8 +127,8 @@ function buildNodes(run: InterviewAssessmentRun, candidate?: CandidateBrief, jd?
     const meta = PHASE_META[id];
     nodes.push({
       id,
-      label: event.label || id,
-      summary: event.summary,
+      label: event.label ? t(event.label) : id,
+      summary: t(event.summary),
       status: normalizeStatus(event.status),
       kind: meta.kind,
       x: 500,
@@ -147,8 +150,8 @@ function buildNodes(run: InterviewAssessmentRun, candidate?: CandidateBrief, jd?
     taskEvents.forEach((event, index) => {
       nodes.push({
         id: event.node_id,
-        label: event.label || "核心任务",
-        summary: event.summary,
+        label: event.label ? t(event.label) : t("核心任务"),
+        summary: t(event.summary),
         status: normalizeStatus(event.status),
         kind: "task",
         x: taskEvents.length === 1 ? 500 : start + step * index,
@@ -166,8 +169,8 @@ function buildNodes(run: InterviewAssessmentRun, candidate?: CandidateBrief, jd?
   if (evidenceEvent) {
     nodes.push({
       id: evidenceEvent.node_id,
-      label: evidenceEvent.label || "证据校验",
-      summary: evidenceEvent.summary,
+      label: evidenceEvent.label ? t(evidenceEvent.label) : t("证据校验"),
+      summary: t(evidenceEvent.summary),
       status: normalizeStatus(evidenceEvent.status),
       kind: "phase",
       x: 500,
@@ -189,8 +192,8 @@ function buildNodes(run: InterviewAssessmentRun, candidate?: CandidateBrief, jd?
     repairEvents.forEach((event, index) => {
       nodes.push({
         id: event.node_id,
-        label: event.label || "证据修正",
-        summary: event.summary,
+        label: event.label ? t(event.label) : t("证据修正"),
+        summary: t(event.summary),
         status: normalizeStatus(event.status),
         kind: "repair",
         x: repairEvents.length === 1 ? 500 : start + step * index,
@@ -211,8 +214,8 @@ function buildNodes(run: InterviewAssessmentRun, candidate?: CandidateBrief, jd?
     const meta = PHASE_META[id];
     nodes.push({
       id,
-      label: event.label || id,
-      summary: event.summary,
+      label: event.label ? t(event.label) : id,
+      summary: t(event.summary),
       status: normalizeStatus(event.status),
       kind: meta.kind,
       x: 500,
@@ -252,7 +255,8 @@ function buildEdges(nodes: AdmissionGraphNode[]): GraphEdge[] {
 }
 
 export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNodeId, onSelectNode }: Props) {
-  const nodes = useMemo(() => buildNodes(run, candidate, jd), [run, candidate, jd]);
+  const { t } = useI18n();
+  const nodes = useMemo(() => buildNodes(run, candidate, jd, t), [run, candidate, jd, t]);
   const edges = useMemo(() => buildEdges(nodes), [nodes]);
   const height = Math.max(520, Math.max(...nodes.map((node) => node.y)) + 108);
 
@@ -317,7 +321,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
               style={{ width: node.radius * 2, height: node.radius * 2 }}
             >
               {node.kind === "source" && !node.icon ? (
-                <span className="text-title">{(candidate?.name || "候").slice(0, 1)}</span>
+                <span className="text-title">{(candidate?.name || t("候选人")).slice(0, 1)}</span>
               ) : level !== null ? (
                 <span className="font-mono text-title tabular-nums">{level}</span>
               ) : (
@@ -341,4 +345,3 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
     </div>
   );
 }
-

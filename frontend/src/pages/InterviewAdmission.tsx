@@ -58,6 +58,8 @@ interface TaskAssessmentView {
   risks?: string[];
 }
 
+type Translate = ReturnType<typeof useI18n>["t"];
+
 function assessmentToRun(assessment: InterviewAssessment): InterviewAssessmentRun {
   return {
     id: assessment.id,
@@ -265,11 +267,11 @@ export default function InterviewAdmission() {
           <BatchSummary batch={batch} />
         ) : (
           <div className="hidden xl:flex items-center gap-3 text-label text-on-surface-variant">
-            <span>{candidateIds.size} 位候选人</span>
+            <span>{t("{n} 位候选人", { n: candidateIds.size })}</span>
             <span className="w-6 border-t border-outline-variant" />
-            <span>{jdIds.size} 个岗位</span>
+            <span>{t("{n} 个岗位", { n: jdIds.size })}</span>
             <span className="w-6 border-t border-outline-variant" />
-            <span>{pairCount} 个评估配对</span>
+            <span>{t("{n} 个评估配对", { n: pairCount })}</span>
           </div>
         )}
         right={reportAssessment ? (
@@ -316,7 +318,7 @@ export default function InterviewAdmission() {
         <div className="mx-2 mb-3 flex items-center gap-2 rounded-md bg-error-container px-4 py-2 text-body-sm text-on-error-container">
           <Icon name="error" size={17} />
           <span>{error}</span>
-          <button type="button" className="ml-auto cursor-pointer" onClick={() => setError("")} aria-label="关闭错误提示">
+          <button type="button" className="ml-auto cursor-pointer" onClick={() => setError("")} aria-label={t("关闭错误提示")}>
             <Icon name="close" size={16} />
           </button>
         </div>
@@ -325,7 +327,7 @@ export default function InterviewAdmission() {
       {restoring ? (
         <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 text-on-surface-variant">
           <LoadingIndicator size={28} />
-          <p className="text-body-sm">正在恢复评估现场…</p>
+          <p className="text-body-sm">{t("正在恢复评估现场…")}</p>
         </div>
       ) : reportAssessment && reportRun ? (
         <RunWorkspace
@@ -401,16 +403,17 @@ function BatchSummary({ batch }: { batch: InterviewAssessmentBatch }) {
 }
 
 function ReportSummary({ assessments }: { assessments: InterviewAssessment[] }) {
+  const { t } = useI18n();
   const valid = assessments.filter((item) => item.is_valid).length;
   return (
     <div className="hidden lg:flex items-center gap-3 text-label text-on-surface-variant">
-      <span>{assessments.length} 份已有报告</span>
+      <span>{t("{n} 份已有报告", { n: assessments.length })}</span>
       <span className="w-6 border-t border-outline-variant" />
-      <span>{valid} 份有效</span>
+      <span>{t("{n} 份有效", { n: valid })}</span>
       {!!(assessments.length - valid) && (
         <>
           <span className="w-6 border-t border-outline-variant" />
-          <span className="text-warning">{assessments.length - valid} 份需重评</span>
+          <span className="text-warning">{t("{n} 份需重评", { n: assessments.length - valid })}</span>
         </>
       )}
     </div>
@@ -454,6 +457,7 @@ function SelectionWorkspace({
   onStart: () => void;
   starting: boolean;
 }) {
+  const { t } = useI18n();
   const filteredCandidates = useMemo(() => {
     const query = candidateSearch.trim().toLowerCase();
     if (!query) return candidates;
@@ -484,11 +488,11 @@ function SelectionWorkspace({
   return (
     <div className="app-workspace-frame grid w-full max-w-full grid-cols-1 xl:grid-cols-[minmax(270px,0.9fr)_minmax(430px,1.55fr)_minmax(300px,1fr)] gap-4 min-w-0 overflow-y-auto xl:overflow-hidden">
       <SelectionPanel
-        title="候选人"
+        title={t("候选人")}
         count={candidates.length}
         selectedCount={candidateIds.size}
         search={candidateSearch}
-        searchPlaceholder="搜索姓名、方向或阶段"
+        searchPlaceholder={t("搜索姓名、方向或阶段")}
         onSearch={onCandidateSearch}
         onSelectVisible={() => onCandidateIds(new Set(filteredCandidates.map((candidate) => candidate.id)))}
         onClear={() => onCandidateIds(new Set())}
@@ -512,24 +516,24 @@ function SelectionWorkspace({
                 {selected ? <Icon name="check" size={17} /> : (candidate.name || "?").slice(0, 1)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-body font-medium">{candidate.name || "未命名"}</span>
+                <span className="block truncate text-body font-medium">{candidate.name || t("未命名")}</span>
                 <span className="mt-0.5 block truncate text-body-sm text-on-surface-variant">
-                  {[candidate.role, candidate.stage].filter(Boolean).join(" · ") || "尚未标注方向"}
+                  {[candidate.role, candidate.stage].filter(Boolean).join(" · ") || t("尚未标注方向")}
                 </span>
               </span>
             </button>
           );
         })}
-        {!filteredCandidates.length && <PanelEmpty icon="person_search" text="没有匹配的候选人" />}
+        {!filteredCandidates.length && <PanelEmpty icon="person_search" text={t("没有匹配的候选人")} />}
       </SelectionPanel>
 
       <Card variant="filled" className="relative min-h-[480px] xl:min-h-0 overflow-hidden flex flex-col">
         <div className="flex items-center justify-between border-b border-outline-variant px-4 py-3">
           <div>
-            <p className="text-title">配对关系预览</p>
-            <p className="mt-0.5 text-label text-on-surface-variant">每位候选人将分别对照每张岗位评估卡</p>
+            <p className="text-title">{t("配对关系预览")}</p>
+            <p className="mt-0.5 text-label text-on-surface-variant">{t("每位候选人将分别对照每张岗位评估卡")}</p>
           </div>
-          <StatusChip tone={pairCount ? "primary" : "neutral"}>{pairCount} 个配对</StatusChip>
+          <StatusChip tone={pairCount ? "primary" : "neutral"}>{t("{n} 个配对", { n: pairCount })}</StatusChip>
         </div>
         <PairingPreviewGraph candidates={selectedCandidates} jds={selectedJds} />
         <div className="border-t border-outline-variant px-4 py-3">
@@ -543,8 +547,8 @@ function SelectionWorkspace({
                 <Icon name="description" size={17} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-body-sm font-medium">已有 {selectedExistingAssessments.length} 份有效报告</span>
-                <span className="mt-0.5 block text-label text-on-surface-variant">直接打开查看，不再重复评估</span>
+                <span className="block text-body-sm font-medium">{t("已有 {n} 份有效报告", { n: selectedExistingAssessments.length })}</span>
+                <span className="mt-0.5 block text-label text-on-surface-variant">{t("直接打开查看，不再重复评估")}</span>
               </span>
               <Icon name="arrow_forward" size={17} className="text-on-surface-variant" />
             </button>
@@ -552,7 +556,7 @@ function SelectionWorkspace({
           {forceAllowed && (
             <label className="mb-3 flex items-center gap-2 text-label text-on-surface-variant cursor-pointer">
               <input type="checkbox" checked={force} onChange={(event) => onForce(event.target.checked)} />
-              <span>覆盖仍然有效的当前报告（仅管理员）</span>
+              <span>{t("覆盖仍然有效的当前报告（仅管理员）")}</span>
             </label>
           )}
           <Button
@@ -562,22 +566,22 @@ function SelectionWorkspace({
             onClick={selectedExistingAssessments.length && !force ? () => onOpenReport(selectedExistingAssessments[0].id) : onStart}
           >
             {starting
-              ? "正在创建评估批次…"
+              ? t("正在创建评估批次…")
               : selectedExistingAssessments.length && !force
-                ? `查看 ${selectedExistingAssessments.length} 份已有报告`
+                ? t("查看 {n} 份已有报告", { n: selectedExistingAssessments.length })
                 : pairCount
-                  ? `开始评估 ${pairCount} 个配对`
-                  : "先从两侧完成选择"}
+                  ? t("开始评估 {n} 个配对", { n: pairCount })
+                  : t("先从两侧完成选择")}
           </Button>
         </div>
       </Card>
 
       <SelectionPanel
-        title="岗位 JD"
+        title={t("岗位 JD")}
         count={jds.length}
         selectedCount={jdIds.size}
         search={jdSearch}
-        searchPlaceholder="搜索岗位或团队"
+        searchPlaceholder={t("搜索岗位或团队")}
         onSearch={onJdSearch}
         onSelectVisible={() => onJdIds(new Set(filteredJds.map((jd) => jd.id)))}
         onClear={() => onJdIds(new Set())}
@@ -603,16 +607,16 @@ function SelectionWorkspace({
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-body font-medium">{jd.title}</span>
                 <span className="mt-0.5 block line-clamp-2 text-body-sm text-on-surface-variant">
-                  {jd.assessment_card?.role_summary || jd.team || "岗位评估卡已就绪"}
+                  {jd.assessment_card?.role_summary || jd.team || t("岗位评估卡已就绪")}
                 </span>
                 <span className="mt-1.5 block text-label text-on-surface-variant">
-                  {jd.assessment_card?.core_tasks.length || 0} 项核心任务
+                  {t("{n} 项核心任务", { n: jd.assessment_card?.core_tasks.length || 0 })}
                 </span>
               </span>
             </button>
           );
         })}
-        {!filteredJds.length && <PanelEmpty icon="work_off" text="没有匹配且已就绪的岗位" />}
+        {!filteredJds.length && <PanelEmpty icon="work_off" text={t("没有匹配且已就绪的岗位")} />}
       </SelectionPanel>
     </div>
   );
@@ -639,18 +643,19 @@ function SelectionPanel({
   onClear: () => void;
   children: React.ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <Card variant="filled" className="min-h-[420px] xl:min-h-0 min-w-0 overflow-hidden flex flex-col">
       <div className="border-b border-outline-variant px-3 py-3">
         <div className="mb-2.5 flex items-center gap-2">
           <p className="text-title">{title}</p>
           <span className="text-label text-on-surface-variant">{count}</span>
-          <span className="ml-auto text-label text-on-surface-variant">已选 {selectedCount}</span>
+          <span className="ml-auto text-label text-on-surface-variant">{t("已选 {n}", { n: selectedCount })}</span>
         </div>
         <SearchField value={search} onChange={(event) => onSearch(event.target.value)} placeholder={searchPlaceholder} className="w-full h-9" />
         <div className="mt-2 flex items-center gap-3 text-label">
-          <button type="button" onClick={onSelectVisible} className="cursor-pointer text-on-surface hover:underline underline-offset-4">选择当前结果</button>
-          {!!selectedCount && <button type="button" onClick={onClear} className="cursor-pointer text-on-surface-variant hover:text-on-surface">清空</button>}
+          <button type="button" onClick={onSelectVisible} className="cursor-pointer text-on-surface hover:underline underline-offset-4">{t("选择当前结果")}</button>
+          {!!selectedCount && <button type="button" onClick={onClear} className="cursor-pointer text-on-surface-variant hover:text-on-surface">{t("清空")}</button>}
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5 admission-panel-scrollbar">{children}</div>
@@ -668,6 +673,7 @@ function PanelEmpty({ icon, text }: { icon: string; text: string }) {
 }
 
 function PairingPreviewGraph({ candidates, jds }: { candidates: CandidateBrief[]; jds: JdEntry[] }) {
+  const { t } = useI18n();
   const visibleCandidates = candidates.slice(0, 5);
   const visibleJds = jds.slice(0, 5);
   const candidateY = (index: number) => 74 + index * 74;
@@ -680,8 +686,8 @@ function PairingPreviewGraph({ candidates, jds }: { candidates: CandidateBrief[]
           <span className="admission-preview-empty-node flex h-14 w-14 items-center justify-center rounded-full bg-surface-lowest">
             <Icon name="account_tree" size={23} />
           </span>
-          <p className="mt-4 text-body font-medium text-on-surface">从两侧选择评估对象</p>
-          <p className="mt-1 max-w-64 text-body-sm">候选人与岗位会在这里建立显式配对，不再受全局激活状态影响</p>
+          <p className="mt-4 text-body font-medium text-on-surface">{t("从两侧选择评估对象")}</p>
+          <p className="mt-1 max-w-64 text-body-sm">{t("候选人与岗位会在这里建立显式配对，不再受全局激活状态影响")}</p>
         </div>
       ) : (
         <div className="relative min-w-[420px]" style={{ height }}>
@@ -699,7 +705,7 @@ function PairingPreviewGraph({ candidates, jds }: { candidates: CandidateBrief[]
               <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border-2 border-outline bg-primary-container text-title text-on-primary-container">
                 {(candidate.name || "?").slice(0, 1)}
               </span>
-              <span className="mt-1 block truncate text-label text-on-surface-variant">{candidate.name || "未命名"}</span>
+              <span className="mt-1 block truncate text-label text-on-surface-variant">{candidate.name || t("未命名")}</span>
             </div>
           ))}
           {visibleJds.map((jd, index) => (
@@ -714,11 +720,11 @@ function PairingPreviewGraph({ candidates, jds }: { candidates: CandidateBrief[]
             <span className="admission-preview-hub mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-surface-lowest">
               <Icon name="target" size={24} />
             </span>
-            <span className="mt-2 block text-title">岗位核心任务</span>
-            <span className="mt-0.5 block text-label text-on-surface-variant">逐项证据评分</span>
+            <span className="mt-2 block text-title">{t("岗位核心任务")}</span>
+            <span className="mt-0.5 block text-label text-on-surface-variant">{t("逐项证据评分")}</span>
           </div>
-          {candidates.length > visibleCandidates.length && <span className="absolute bottom-4 left-[12%] -translate-x-1/2 text-label text-on-surface-variant">另有 {candidates.length - visibleCandidates.length} 人</span>}
-          {jds.length > visibleJds.length && <span className="absolute bottom-4 left-[88%] -translate-x-1/2 text-label text-on-surface-variant">另有 {jds.length - visibleJds.length} 个岗位</span>}
+          {candidates.length > visibleCandidates.length && <span className="absolute bottom-4 left-[12%] -translate-x-1/2 text-label text-on-surface-variant">{t("另有 {n} 人", { n: candidates.length - visibleCandidates.length })}</span>}
+          {jds.length > visibleJds.length && <span className="absolute bottom-4 left-[88%] -translate-x-1/2 text-label text-on-surface-variant">{t("另有 {n} 个岗位", { n: jds.length - visibleJds.length })}</span>}
         </div>
       )}
     </div>
@@ -754,6 +760,7 @@ function RunWorkspace({
   onSelectNode: (node: AdmissionGraphNode) => void;
   onCancelRun: (id: string) => void;
 }) {
+  const { t } = useI18n();
   const candidate = candidates.find((item) => item.id === activeRun?.candidate_id);
   const jd = jds.find((item) => item.id === activeRun?.jd_id);
   return (
@@ -761,13 +768,13 @@ function RunWorkspace({
       <Card variant="filled" className="min-h-[300px] xl:min-h-0 overflow-hidden flex flex-col">
         <div className="border-b border-outline-variant px-3 py-3">
           <div className="flex items-center justify-between">
-            <p className="text-title">{mode === "reports" ? "已有报告" : "配对队列"}</p>
+            <p className="text-title">{mode === "reports" ? t("已有报告") : t("配对队列")}</p>
             <StatusChip tone={TERMINAL_BATCH_STATUSES.has(batch.status) ? "success" : "primary"}>
               {mode === "reports" ? batch.total_pairs : `${batch.completed_pairs}/${batch.total_pairs}`}
             </StatusChip>
           </div>
           <p className="mt-1 text-label text-on-surface-variant">
-            {mode === "reports" ? "点击候选人 × 岗位查看完整报告" : "全局最多并行评估 5 个配对"}
+            {mode === "reports" ? t("点击候选人 × 岗位查看完整报告") : t("全局最多并行评估 5 个配对")}
           </p>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-1.5 admission-panel-scrollbar">
@@ -788,18 +795,18 @@ function RunWorkspace({
       <Card variant="filled" className="relative min-h-[600px] xl:min-h-0 overflow-hidden flex flex-col">
         <div className="flex items-center gap-3 border-b border-outline-variant px-4 py-3 shrink-0">
           <div className="min-w-0">
-            <p className="truncate text-title">{candidate?.name || "候选人"} × {jd?.title || "岗位"}</p>
+            <p className="truncate text-title">{candidate?.name || t("候选人")} × {jd?.title || t("岗位")}</p>
             <p className="mt-0.5 truncate text-label text-on-surface-variant">
-              {mode === "reports" ? "报告生成时的真实调用链" : "节点按真实调用顺序从上到下生长"}
+              {mode === "reports" ? t("报告生成时的真实调用链") : t("节点按真实调用顺序从上到下生长")}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-3 text-[11px] text-on-surface-variant">
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" />运行</span>
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-outline" />完成</span>
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-error" />异常</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" />{t("运行")}</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-outline" />{t("完成")}</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-error" />{t("异常")}</span>
           </div>
           {activeRun && !TERMINAL_RUN_STATUSES.has(activeRun.status) && (
-            <IconButton icon="stop_circle" onClick={() => onCancelRun(activeRun.id)} title="停止此配对" />
+            <IconButton icon="stop_circle" onClick={() => onCancelRun(activeRun.id)} title={t("停止此配对")} />
           )}
         </div>
         <div className="flex-1 min-h-0 overflow-auto admission-panel-scrollbar">
@@ -812,15 +819,15 @@ function RunWorkspace({
               onSelectNode={onSelectNode}
             />
           ) : (
-            <PanelEmpty icon="account_tree" text="等待运行信息" />
+            <PanelEmpty icon="account_tree" text={t("等待运行信息")} />
           )}
         </div>
       </Card>
 
       <Card variant="filled" className="min-h-[420px] xl:min-h-0 overflow-hidden flex flex-col">
         <div className="border-b border-outline-variant px-4 py-3 shrink-0">
-          <p className="text-title">{assessment ? "评估结论与证据" : "节点详情"}</p>
-          <p className="mt-0.5 text-label text-on-surface-variant">点击图中节点查看当前产物</p>
+          <p className="text-title">{assessment ? t("评估结论与证据") : t("节点详情")}</p>
+          <p className="mt-0.5 text-label text-on-surface-variant">{t("点击图中节点查看当前产物")}</p>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-4 admission-panel-scrollbar">
           {assessment && <AssessmentPanel assessment={assessment} run={activeRun} jd={jd} />}
@@ -828,7 +835,7 @@ function RunWorkspace({
           <NodeInspector node={selectedNode} />
           {activeRun?.error_message && (
             <div className="mt-4 rounded-md bg-error-container p-3 text-body-sm text-on-error-container">
-              <p className="font-medium">运行失败</p>
+              <p className="font-medium">{t("运行失败")}</p>
               <p className="mt-1">{activeRun.error_message}</p>
             </div>
           )}
@@ -846,6 +853,7 @@ function RunRow({ run, candidate, jd, assessment, active, onClick }: {
   active: boolean;
   onClick: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <button
       type="button"
@@ -863,9 +871,9 @@ function RunRow({ run, candidate, jd, assessment, active, onClick }: {
         >
           {assessment
             ? assessment.is_valid
-              ? assessment.decision === "interview" ? "进入面试" : "不进入面试"
-              : "需重评"
-            : RUN_STATUS_LABEL[run.status] || run.status}
+              ? assessment.decision === "interview" ? t("进入面试") : t("不进入面试")
+              : t("需重评")
+            : t(RUN_STATUS_LABEL[run.status] || run.status)}
         </StatusChip>
       </span>
       <span className="mt-1 block truncate text-label text-on-surface-variant">{jd?.title || run.jd_id}</span>
@@ -883,19 +891,20 @@ function AssessmentPanel({ assessment, run, jd }: {
   run?: InterviewAssessmentRun;
   jd?: JdEntry;
 }) {
+  const { t } = useI18n();
   const tasks = assessment.task_assessments as TaskAssessmentView[];
   const decisionReason = [...(run?.run_trace || [])].reverse().find((event) => event.node_id === "admission_decision")?.summary;
   return (
     <section>
       <div className="flex items-center gap-2">
         <StatusChip tone={assessment.decision === "interview" ? "success" : "error"} variant="filled">
-          {assessment.decision === "interview" ? "进入面试" : "不进入面试"}
+          {assessment.decision === "interview" ? t("进入面试") : t("不进入面试")}
         </StatusChip>
-        {!assessment.is_valid && <StatusChip tone="warning">需重评</StatusChip>}
+        {!assessment.is_valid && <StatusChip tone="warning">{t("需重评")}</StatusChip>}
       </div>
       <div className="mt-3 flex items-baseline gap-1">
         <span className="text-headline tabular-nums">{assessment.total_score.toFixed(1)}</span>
-        <span className="text-body-sm text-on-surface-variant">/100 核心任务</span>
+        <span className="text-body-sm text-on-surface-variant">{t("/100 核心任务")}</span>
       </div>
       {decisionReason && <p className="mt-2 text-body-sm text-on-surface-variant">{decisionReason}</p>}
       <div className="mt-4 flex flex-col gap-2">
@@ -906,9 +915,9 @@ function AssessmentPanel({ assessment, run, jd }: {
               <summary className="flex cursor-pointer list-none items-center gap-2">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-outline-variant font-mono text-label tabular-nums">{task.level ?? 0}</span>
                 <span className="min-w-0 flex-1 truncate text-body-sm font-medium">{cardTask?.title || task.task_id}</span>
-                <span className="text-label text-on-surface-variant">{confidenceLabel(task.confidence)}</span>
+                <span className="text-label text-on-surface-variant">{confidenceLabel(task.confidence, t)}</span>
               </summary>
-              <p className="mt-2 text-body-sm text-on-surface-variant">{task.reasoning_summary || "暂无推理摘要"}</p>
+              <p className="mt-2 text-body-sm text-on-surface-variant">{task.reasoning_summary || t("暂无推理摘要")}</p>
               {!!task.evidence?.length && (
                 <div className="mt-2 flex flex-col gap-1.5">
                   {task.evidence.map((evidence, index) => <EvidenceQuote key={`${evidence.quote}-${index}`} evidence={evidence} />)}
@@ -925,13 +934,13 @@ function AssessmentPanel({ assessment, run, jd }: {
       </div>
       {!!assessment.review_corrections.length && (
         <div className="mt-4 border-t border-outline-variant pt-3">
-          <p className="text-label font-semibold">总审纠错记录</p>
+          <p className="text-label font-semibold">{t("总审纠错记录")}</p>
           <div className="mt-2 flex flex-col gap-2">
             {assessment.review_corrections.map((correction, index) => {
               const item = correction as Record<string, unknown>;
               return (
                 <div key={index} className="text-label text-on-surface-variant">
-                  <span className="font-medium text-on-surface">{String(item.task_id || "任务")}</span>
+                  <span className="font-medium text-on-surface">{String(item.task_id || t("任务"))}</span>
                   <span className="mx-1 tabular-nums">{String(item.original_level ?? "—")} → {String(item.revised_level ?? "—")}</span>
                   <span>{String(item.reason || "")}</span>
                 </div>
@@ -945,22 +954,24 @@ function AssessmentPanel({ assessment, run, jd }: {
 }
 
 function EvidenceQuote({ evidence }: { evidence: EvidenceView }) {
+  const { t } = useI18n();
   const meta = {
-    direct: { label: "直接证据", className: "bg-primary text-on-primary" },
-    transferable: { label: "可迁移证据", className: "border border-outline text-on-surface" },
-    background: { label: "背景证据", className: "bg-surface-high text-on-surface-variant" },
+    direct: { label: t("直接证据"), className: "bg-primary text-on-primary" },
+    transferable: { label: t("可迁移证据"), className: "border border-outline text-on-surface" },
+    background: { label: t("背景证据"), className: "bg-surface-high text-on-surface-variant" },
   }[evidence.evidence_type || "background"];
   return (
     <div className="rounded-md bg-surface-low px-2.5 py-2">
       <span className={cn("inline-flex h-5 items-center rounded-full px-2 text-[10px] font-medium", meta.className)}>{meta.label}</span>
-      <q className="mt-1.5 block text-label text-on-surface">{evidence.quote || "未提供引用"}</q>
+      <q className="mt-1.5 block text-label text-on-surface">{evidence.quote || t("未提供引用")}</q>
       {evidence.relevance && <p className="mt-1 text-[11px] leading-4 text-on-surface-variant">{evidence.relevance}</p>}
     </div>
   );
 }
 
 function NodeInspector({ node }: { node: AdmissionGraphNode | null }) {
-  if (!node) return <PanelEmpty icon="touch_app" text="选择一个节点查看详情" />;
+  const { t } = useI18n();
+  if (!node) return <PanelEmpty icon="touch_app" text={t("选择一个节点查看详情")} />;
   const detail = node.event?.detail || {};
   const taskDetail = detail as Record<string, unknown>;
   const evidence = Array.isArray(taskDetail.evidence) ? taskDetail.evidence as EvidenceView[] : [];
@@ -973,34 +984,36 @@ function NodeInspector({ node }: { node: AdmissionGraphNode | null }) {
           node.status === "failed" ? "bg-error" : node.status === "running" ? "bg-primary animate-pulse" : "border border-outline",
         )} />
         <p className="text-title">{node.label}</p>
-        <span className="ml-auto text-label text-on-surface-variant">{RUN_STATUS_LABEL[node.status] || node.status}</span>
+        <span className="ml-auto text-label text-on-surface-variant">{t(RUN_STATUS_LABEL[node.status] || node.status)}</span>
       </div>
       <p className="mt-2 text-body-sm text-on-surface-variant">{node.summary}</p>
 
       {typeof taskDetail.level === "number" && (
         <div className="mt-4 flex items-end gap-2">
           <span className="text-headline font-mono tabular-nums">{taskDetail.level as number}</span>
-          <span className="pb-1 text-label text-on-surface-variant">/4 能力等级 · {confidenceLabel(taskDetail.confidence as TaskAssessmentView["confidence"])}</span>
+          <span className="pb-1 text-label text-on-surface-variant">
+            {t("/4 能力等级 · {confidence}", { confidence: confidenceLabel(taskDetail.confidence as TaskAssessmentView["confidence"], t) })}
+          </span>
         </div>
       )}
       {typeof taskDetail.reasoning_summary === "string" && (
         <div className="mt-3">
-          <p className="text-label font-semibold">判断依据</p>
+          <p className="text-label font-semibold">{t("判断依据")}</p>
           <p className="mt-1 text-body-sm text-on-surface-variant">{taskDetail.reasoning_summary}</p>
         </div>
       )}
       {!!evidence.length && (
         <div className="mt-3 flex flex-col gap-2">
-          <p className="text-label font-semibold">引用证据</p>
+          <p className="text-label font-semibold">{t("引用证据")}</p>
           {evidence.map((item, index) => <EvidenceQuote key={`${item.quote}-${index}`} evidence={item} />)}
         </div>
       )}
       {!!mappings.length && (
         <div className="mt-3 flex flex-col gap-2">
-          <p className="text-label font-semibold">能力映射</p>
+          <p className="text-label font-semibold">{t("能力映射")}</p>
           {mappings.map((mapping, index) => (
             <div key={index} className="border-t border-outline-variant pt-2">
-              <p className="text-body-sm font-medium">{String(mapping.task_id || `任务 ${index + 1}`)}</p>
+              <p className="text-body-sm font-medium">{String(mapping.task_id || t("任务 {n}", { n: index + 1 }))}</p>
               {Array.isArray(mapping.candidate_evidence) && <p className="mt-1 text-label text-on-surface-variant">{mapping.candidate_evidence.map(String).join("；")}</p>}
               {typeof mapping.mapping_reason === "string" && <p className="mt-1 text-body-sm text-on-surface-variant">{mapping.mapping_reason}</p>}
             </div>
@@ -1009,12 +1022,12 @@ function NodeInspector({ node }: { node: AdmissionGraphNode | null }) {
       )}
       {node.event?.error && <p className="mt-3 rounded-md bg-error-container p-3 text-body-sm text-on-error-container">{node.event.error}</p>}
       {!Object.keys(detail).length && node.kind !== "source" && (
-        <p className="mt-4 text-label text-on-surface-variant">该节点当前没有额外产物。</p>
+        <p className="mt-4 text-label text-on-surface-variant">{t("该节点当前没有额外产物。")}</p>
       )}
     </section>
   );
 }
 
-function confidenceLabel(value?: string) {
-  return value === "high" ? "高置信" : value === "medium" ? "中置信" : value === "low" ? "低置信" : "—";
+function confidenceLabel(value: string | undefined, t: Translate) {
+  return value === "high" ? t("高置信") : value === "medium" ? t("中置信") : value === "low" ? t("低置信") : "—";
 }
