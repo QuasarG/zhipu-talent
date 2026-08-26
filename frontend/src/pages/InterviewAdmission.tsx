@@ -374,7 +374,6 @@ export default function InterviewAdmission() {
           jdIds={jdIds}
           candidateSearch={candidateSearch}
           jdSearch={jdSearch}
-          forceAllowed={forceAllowed}
           force={force}
           assessments={assessments}
           onCandidateSearch={setCandidateSearch}
@@ -426,7 +425,6 @@ function SelectionWorkspace({
   jdIds,
   candidateSearch,
   jdSearch,
-  forceAllowed,
   force,
   assessments,
   onCandidateSearch,
@@ -443,7 +441,6 @@ function SelectionWorkspace({
   jdIds: Set<string>;
   candidateSearch: string;
   jdSearch: string;
-  forceAllowed: boolean;
   force: boolean;
   assessments: InterviewAssessment[];
   onCandidateSearch: (value: string) => void;
@@ -549,21 +546,6 @@ function SelectionWorkspace({
               </span>
               <Icon name="arrow_forward" size={17} className="text-on-surface-variant" />
             </button>
-          )}
-          {forceAllowed && (
-            <div className="mb-3 flex items-center gap-3 rounded-md border border-outline-variant bg-surface-low px-3 py-2.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-lowest text-on-surface">
-                <Icon name="find_replace" size={17} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-body-sm font-medium">{t("替换现有有效报告")}</span>
-                <span className="mt-0.5 block text-label text-on-surface-variant">{t("已在设置中启用，此处不可更改")}</span>
-              </span>
-              <span className="flex shrink-0 items-center gap-1 text-label font-medium text-on-surface-variant">
-                <Icon name="lock" size={14} />
-                {t("设置锁定")}
-              </span>
-            </div>
           )}
           <Button
             className="w-full"
