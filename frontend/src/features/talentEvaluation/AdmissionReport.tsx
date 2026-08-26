@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowGraph";
 import { computeScoreBreakdown } from "@/features/talentEvaluation/talentEvaluationModel";
 import type { InterviewAssessment, InterviewAssessmentRun, JdEntry } from "@/lib/types";
@@ -84,9 +85,16 @@ export default function AdmissionReport({
       item.focus,
     ]),
   );
+  const taskKeys = tasks.map((task, index) => task.task_id || `task-${index}`);
+  const firstTaskKey = taskKeys.find((_, index) => (tasks[index]?.level || 0) < 2) || taskKeys[0] || null;
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(firstTaskKey);
+
+  useEffect(() => {
+    setExpandedTaskId(firstTaskKey);
+  }, [assessment.id, firstTaskKey]);
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-5">
       {!assessment.is_valid && (
         <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/40 px-3 py-2.5 text-body-sm text-on-surface">
           <Icon name="history" size={17} className="mt-0.5 shrink-0 text-warning" />
@@ -99,119 +107,92 @@ export default function AdmissionReport({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        <StatusChip tone={assessment.decision === "interview" ? "success" : "error"} variant="filled" icon={assessment.decision === "interview" ? "check_circle" : "error"}>
-          {assessment.decision === "interview" ? t("进入面试") : t("不进入面试")}
-        </StatusChip>
-        <span className="text-label text-on-surface-variant">
-          {assessment.candidate_name || t("候选人")} × {assessment.jd_title || jd?.title || t("岗位")}
-        </span>
+      <div className="admission-decision-summary rounded-md border border-outline-variant bg-surface-lowest px-4 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <StatusChip tone={assessment.decision === "interview" ? "success" : "error"} variant="filled" icon={assessment.decision === "interview" ? "check_circle" : "error"}>
+              {assessment.decision === "interview" ? t("进入面试") : t("不进入面试")}
+            </StatusChip>
+            <p className="mt-3 max-w-2xl text-body-sm text-on-surface-variant">
+              {decisionReason || t("根据核心任务能力与简历证据生成准入判断")}
+            </p>
+          </div>
+          <div className="shrink-0 text-left sm:text-right">
+            <div className="flex items-baseline gap-1.5 sm:justify-end">
+              <span className="text-headline tabular-nums">{assessment.total_score.toFixed(1)}</span>
+              <span className="text-body-sm text-on-surface-variant">{t("/100 加权总分")}</span>
+            </div>
+            <p className="mt-1 text-label text-on-surface-variant">
+              {t("{n}/{total} 条件满足", {
+                n: [breakdown.primaryThresholdMet, breakdown.scoreThresholdMet].filter(Boolean).length,
+                total: 2,
+              })}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-outline-variant pt-3 text-label">
+          <ThresholdItem met={breakdown.primaryThresholdMet} label={t("首要任务等级 ≥ 2")} />
+          <ThresholdItem met={breakdown.scoreThresholdMet} label={t("加权总分 ≥ 50")} />
+        </div>
       </div>
 
-      <div>
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-title-lg tabular-nums">{assessment.total_score.toFixed(1)}</span>
-          <span className="text-body-sm text-on-surface-variant">{t("/100 加权总分")}</span>
-        </div>
-        {decisionReason && <p className="mt-1.5 text-body-sm text-on-surface-variant">{decisionReason}</p>}
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-label">
-          <span className={cn("inline-flex items-center gap-1", breakdown.primaryThresholdMet ? "text-success" : "text-error")}>
-            <Icon name={breakdown.primaryThresholdMet ? "check" : "close"} size={14} />
-            {t("首要任务等级 ≥ 2")}
-          </span>
-          <span className={cn("inline-flex items-center gap-1", breakdown.scoreThresholdMet ? "text-success" : "text-error")}>
-            <Icon name={breakdown.scoreThresholdMet ? "check" : "close"} size={14} />
-            {t("加权总分 ≥ 50")}
-          </span>
-        </div>
-      </div>
-
-      <div className="border-t border-outline-variant pt-3">
-        <p className="text-label font-semibold">{t("总分计算明细")}</p>
-        <div className="mt-2 flex flex-col gap-1">
+      <details className="admission-score-breakdown rounded-md border border-outline-variant bg-surface-lowest">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-3 text-body-sm">
+          <Icon name="list_checks" size={17} className="text-on-surface-variant" />
+          <span className="font-medium">{t("评分构成")}</span>
+          <span className="text-label text-on-surface-variant">{t("{n} 项核心任务加权汇总", { n: breakdown.rows.length })}</span>
+          <Icon name="chevron_down" size={16} className="ml-auto text-on-surface-variant" />
+        </summary>
+        <div className="grid grid-cols-1 gap-x-5 gap-y-1.5 border-t border-outline-variant px-3.5 py-3 sm:grid-cols-2">
           {breakdown.rows.map((row) => (
-            <div key={row.taskId} className="flex items-baseline gap-2 text-label text-on-surface-variant">
-              <span className="w-9 shrink-0 text-center font-mono text-on-surface">L{row.level}</span>
+            <div key={row.taskId} className="flex min-w-0 items-baseline gap-2 text-label text-on-surface-variant">
+              <span className="w-7 shrink-0 font-mono text-on-surface">L{row.level}</span>
               <span className="min-w-0 flex-1 truncate">{row.title}</span>
-              <span className="shrink-0 tabular-nums">
-                {(row.level / 4).toFixed(2)}×100×{row.coefficient}
-                <span className="text-on-surface"> = {Math.round(row.weighted)}</span>
-              </span>
+              <span className="shrink-0 tabular-nums">{row.coefficient}×{Math.round(row.weighted)}</span>
             </div>
           ))}
-          <div className="flex items-baseline gap-2 border-t border-outline-variant pt-1 text-label">
-            <span className="w-9 shrink-0" />
-            <span className="flex-1">{t("Σ(单项 × 系数) ÷ Σ系数")}</span>
+          <div className="flex items-baseline gap-2 border-t border-outline-variant pt-1.5 text-label sm:col-span-2">
+            <span className="w-7 shrink-0" />
+            <span className="flex-1">{t("加权总分")}</span>
             <span className="shrink-0 font-medium tabular-nums text-on-surface">{breakdown.total.toFixed(1)}</span>
           </div>
         </div>
-      </div>
+      </details>
 
-      <div className="flex flex-col gap-3">
-        {tasks.map((task) => {
-          const cardTaskMeta = cardTask(task.task_id);
-          return (
-            <details key={task.task_id} className="border-t border-outline-variant pt-3" open={(task.level || 0) < 2}>
-              <summary className="flex cursor-pointer list-none items-center gap-2.5">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-outline-variant font-mono text-body-sm tabular-nums">{task.level ?? 0}</span>
-                <span className="min-w-0 flex-1 truncate text-body font-medium">{cardTaskMeta?.title || task.task_id}</span>
-                {cardTaskMeta && (
-                  <span className="shrink-0 text-[11px] text-on-surface-variant">
-                    {t(IMPORTANCE_LABEL[cardTaskMeta.importance] || cardTaskMeta.importance)}
-                  </span>
-                )}
-                <span className="shrink-0 text-label text-on-surface-variant">{confidenceLabel(task.confidence, t)}</span>
-              </summary>
-              <div className="pl-1">
-                <p className="mt-2.5 text-body-sm text-on-surface-variant">{task.reasoning_summary || t("暂无推理摘要")}</p>
-                {task.transfer_boundary && (
-                  <p className="mt-2 rounded-md bg-surface-low px-3 py-2 text-body-sm text-on-surface-variant">
-                    <span className="font-medium text-on-surface">{t("迁移边界")}</span>{task.transfer_boundary}
-                  </p>
-                )}
-                {!!task.evidence?.length && (
-                  <div className="mt-2.5 flex flex-col gap-2">
-                    {task.evidence.map((evidence, index) => (
-                      <EvidenceQuote key={`${evidence.quote}-${index}`} evidence={evidence} />
-                    ))}
-                  </div>
-                )}
-                {!!task.risks?.length && (
-                  <div className="mt-2.5">
-                    <p className="text-label font-semibold">{t("能力缺口")}</p>
-                    <ul className="mt-1.5 list-disc space-y-1 pl-4 text-body-sm text-on-surface-variant">
-                      {task.risks.map((risk) => <li key={risk}>{risk}</li>)}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </details>
-          );
-        })}
-      </div>
-
-      {!!assessment.review_corrections.length && (
-        <div className="border-t border-outline-variant pt-3">
-          <p className="text-label font-semibold">{t("总审纠错记录")}</p>
-          <div className="mt-2 flex flex-col gap-2">
-            {(assessment.review_corrections as Array<Record<string, unknown>>).map((correction, index) => (
-              <div key={index} className="text-label text-on-surface-variant">
-                <span className="font-medium text-on-surface">
-                  {cardTask(String(correction.task_id || ""))?.title || String(correction.task_id || t("任务"))}
-                </span>
-                <span className="mx-1 tabular-nums">{String(correction.original_level ?? "—")} → {String(correction.revised_level ?? "—")}</span>
-                <span>{String(correction.reason || "")}</span>
-              </div>
-            ))}
-          </div>
+      <section>
+        <div className="mb-3 flex items-baseline gap-2">
+          <h3 className="text-title">{t("核心任务评分")}</h3>
+          <span className="text-label text-on-surface-variant">{t("先看等级，再按需展开证据")}</span>
         </div>
-      )}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {tasks.map((task, index) => {
+            const taskKey = taskKeys[index];
+            const cardTaskMeta = cardTask(task.task_id);
+            const isOpen = taskKey === expandedTaskId;
+            return (
+              <div key={taskKey} className={isOpen ? "md:col-span-2" : undefined}>
+                <TaskAssessmentCard
+                  task={task}
+                  title={cardTaskMeta?.title || task.task_id || t("核心任务 {n}", { n: index + 1 })}
+                  importance={cardTaskMeta?.importance}
+                  open={isOpen}
+                  onToggle={() => setExpandedTaskId(isOpen ? null : taskKey)}
+                  t={t}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {assessment.decision === "interview" && !!focusByTask.size && (
-        <div className="border-t border-outline-variant pt-3">
-          <p className="text-label font-semibold">{t("针对性面试重点")}</p>
-          <ul className="mt-2 list-disc space-y-1 pl-4 text-label text-on-surface-variant">
-            {[...focusByTask.entries()].map(([taskId, focus]) => (
+        <div className="rounded-md border border-outline-variant bg-surface-low px-3.5 py-3">
+          <div className="flex items-center gap-2">
+            <Icon name="target" size={17} className="text-success" />
+            <p className="text-body-sm font-medium">{t("针对性面试重点")}</p>
+          </div>
+          <ul className="mt-2 space-y-1.5 pl-6 text-label text-on-surface-variant">
+            {[...focusByTask.entries()].slice(0, 3).map(([taskId, focus]) => (
               <li key={taskId}>
                 <span className="font-medium text-on-surface">{cardTask(taskId)?.title || taskId}</span>
                 {focus ? `：${focus}` : ""}
@@ -221,22 +202,142 @@ export default function AdmissionReport({
         </div>
       )}
 
-      <div className="border-t border-outline-variant pt-3">
-        <p className="text-label font-semibold">{t("模型与降级")}</p>
-        <p className="mt-1 text-label text-on-surface-variant">
-          {models.join(" · ") || "—"}
-          {!!degradedCount && (
-            <span className="ml-2 inline-flex items-center gap-1 text-warning">
-              <Icon name="alert-triangle" size={13} />
-              {t("{n} 次节点降级", { n: degradedCount })}
-            </span>
+      <details className="rounded-md border border-outline-variant bg-surface-lowest">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-3 text-label">
+          <Icon name="history" size={16} className="text-on-surface-variant" />
+          <span className="font-medium">{t("模型与审计")}</span>
+          <span className="min-w-0 flex-1 truncate text-on-surface-variant">
+            {models.join(" · ") || "—"}
+            {!!degradedCount && (
+              <span className="ml-2 inline-flex items-center gap-1 text-warning">
+                <Icon name="alert-triangle" size={13} />
+                {t("{n} 次降级", { n: degradedCount })}
+              </span>
+            )}
+          </span>
+          <Icon name="chevron_down" size={16} className="text-on-surface-variant" />
+        </summary>
+        <div className="border-t border-outline-variant px-3.5 py-3">
+          {!!assessment.review_corrections.length && (
+            <div>
+              <p className="text-label font-semibold">{t("总审纠错记录")}</p>
+              <div className="mt-2 flex flex-col gap-2">
+                {(assessment.review_corrections as Array<Record<string, unknown>>).map((correction, index) => (
+                  <div key={index} className="text-label text-on-surface-variant">
+                    <span className="font-medium text-on-surface">
+                      {cardTask(String(correction.task_id || ""))?.title || String(correction.task_id || t("任务"))}
+                    </span>
+                    <span className="mx-1 tabular-nums">{String(correction.original_level ?? "—")} → {String(correction.revised_level ?? "—")}</span>
+                    <span>{String(correction.reason || "")}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
-        </p>
-        {run?.error_message && (
-          <p className="mt-2 rounded-md bg-error-container p-3 text-body-sm text-on-error-container">{run.error_message}</p>
-        )}
-      </div>
+          {run?.error_message && (
+            <p className="mt-3 rounded-md bg-error-container p-3 text-body-sm text-on-error-container">{run.error_message}</p>
+          )}
+          {!assessment.review_corrections.length && !run?.error_message && (
+            <p className="text-label text-on-surface-variant">{t("本次运行没有额外审计事项")}</p>
+          )}
+        </div>
+      </details>
     </section>
+  );
+}
+
+function ThresholdItem({ met, label }: { met: boolean; label: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-1.5", met ? "text-success" : "text-error")}>
+      <Icon name={met ? "check_circle" : "close"} size={15} />
+      {label}
+    </span>
+  );
+}
+
+function TaskAssessmentCard({
+  task,
+  title,
+  importance,
+  open,
+  onToggle,
+  t,
+}: {
+  task: TaskAssessmentView;
+  title: string;
+  importance?: string;
+  open: boolean;
+  onToggle: () => void;
+  t: Translate;
+}) {
+  const evidence = task.evidence || [];
+  const level = task.level ?? 0;
+  const importanceLabel = importance ? t(IMPORTANCE_LABEL[importance] || importance) : undefined;
+  return (
+    <div className={cn(
+      "admission-task-card overflow-hidden rounded-md border bg-surface-lowest transition-[border-color,box-shadow,background-color]",
+      open ? "border-outline bg-surface-lowest shadow-[var(--shadow-1)]" : "border-outline-variant hover:border-outline",
+    )}>
+      <button
+        type="button"
+        className="flex w-full cursor-pointer items-start gap-3 px-3 py-3 text-left"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border font-mono text-body-sm font-medium tabular-nums",
+          level >= 2 ? "border-success/40 bg-success-container text-success" : "border-warning/40 bg-warning-container text-warning",
+        )}>
+          {level}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-start gap-2">
+            <span className="line-clamp-2 text-body-sm font-medium text-on-surface">{title}</span>
+            {importanceLabel && (
+              <span className="shrink-0 rounded-sm bg-surface-low px-1.5 py-0.5 text-[10px] text-on-surface-variant">{importanceLabel}</span>
+            )}
+          </span>
+          <span className="mt-1 block line-clamp-2 text-label leading-4 text-on-surface-variant">
+            {task.reasoning_summary || t("暂无推理摘要")}
+          </span>
+          <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-on-surface-variant">
+            <span>{t("{n}/4 能力等级", { n: level })}</span>
+            <span>{confidenceLabel(task.confidence, t)}</span>
+            {!!evidence.length && <span>{t("{n} 条证据", { n: evidence.length })}</span>}
+          </span>
+        </span>
+        <Icon name={open ? "chevron_up" : "chevron_down"} size={17} className="mt-0.5 shrink-0 text-on-surface-variant" />
+      </button>
+
+      {open && (
+        <div className="border-t border-outline-variant px-3 pb-3 pt-3">
+          {task.transfer_boundary && (
+            <p className="rounded-sm bg-surface-low px-2.5 py-2 text-label leading-4 text-on-surface-variant">
+              <span className="font-medium text-on-surface">{t("迁移边界")}</span>{task.transfer_boundary}
+            </p>
+          )}
+          {!!evidence.length && (
+            <div className="mt-3 flex flex-col gap-2">
+              <p className="text-label font-semibold">{t("关键证据")}</p>
+              {evidence.slice(0, 3).map((item, index) => (
+                <EvidenceQuote key={`${item.quote}-${index}`} evidence={item} />
+              ))}
+            </div>
+          )}
+          {!!task.risks?.length && (
+            <div className="mt-3">
+              <p className="text-label font-semibold">{t("能力缺口")}</p>
+              <ul className="mt-1.5 list-disc space-y-1 pl-4 text-label text-on-surface-variant">
+                {task.risks.slice(0, 3).map((risk) => <li key={risk}>{risk}</li>)}
+              </ul>
+            </div>
+          )}
+          {!task.transfer_boundary && !evidence.length && !task.risks?.length && (
+            <p className="text-label text-on-surface-variant">{t("该任务没有额外展开信息")}</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
