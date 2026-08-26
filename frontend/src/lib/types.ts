@@ -727,7 +727,9 @@ export interface InterviewAssessmentRun {
   id: string;
   batch_id: string;
   candidate_id: string;
+  candidate_name: string;
   jd_id: string;
+  jd_title: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   current_node: string;
   run_trace: WorkflowNodeEvent[];
@@ -754,7 +756,9 @@ export interface InterviewAssessmentBatch {
 export interface InterviewAssessment {
   id: string;
   candidate_id: string;
+  candidate_name: string;
   jd_id: string;
+  jd_title: string;
   status: string;
   is_valid: boolean;
   invalid_reason: string;

@@ -17,7 +17,7 @@ const STEPS: TourStep[] = [
   {
     selector: '[data-tour="nav"]',
     title: "导航栏",
-    desc: "这是主要功能入口，包含人才问答、简历评估、人才库和设置。下面逐一介绍每个模块。",
+    desc: "这是主要功能入口，包含人才评估、人才问答、人才库和设置。下面逐一介绍每个模块。",
     placement: "right",
   },
   {
@@ -28,10 +28,10 @@ const STEPS: TourStep[] = [
     placement: "right",
   },
   {
-    selector: '[data-tour="nav-resume"]',
-    route: "/resume-evaluate",
-    title: "简历评估",
-    desc: "导入 PDF/图片简历，自动结构化解析、论文核验、AI 多维度评估打分。左侧导入，中间看简历，右侧看评估进度和结果。",
+    selector: '[data-tour="nav-talent-evaluation"]',
+    route: "/talent-evaluation/admission",
+    title: "人才评估",
+    desc: "统一评估入口：左侧是候选人文件夹，可导入简历；面试准入按候选人–岗位配对输出进入/不进入面试的报告；能力评估子界面正在重构，当前展示结构化简历。",
     placement: "right",
   },
   {

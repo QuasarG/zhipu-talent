@@ -305,10 +305,10 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
     try {
       const resp = await api.persons.batchEvaluate(evaluatableIds);
       onChanged?.();
-      // 评估在后端跑起来了：跳简历评估页并聚焦第一个，页面有 running 轮询
+      // 评估在后端跑起来了：跳人才评估统一外壳并聚焦第一个候选人
       const started = resp.results.filter((r) => r.status === "started" && r.candidate_id);
       if (started.length > 0) {
-        navigate(`/resume-evaluate?focus=${started[0].candidate_id}`);
+        navigate(`/talent-evaluation/capability?focus=${started[0].candidate_id}`);
       } else {
         // 全部跳过时的原因汇总，不再静默
         const labels: Record<string, string> = {

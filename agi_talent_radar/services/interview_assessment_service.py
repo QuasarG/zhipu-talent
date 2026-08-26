@@ -126,11 +126,22 @@ def get_batch(batch_id: str) -> dict[str, Any] | None:
             .order_by(InterviewAssessmentRunORM.created_at, InterviewAssessmentRunORM.id)
             .all()
         )
-        return {**batch_to_dict(batch), "runs": [run_to_dict(row) for row in runs]}
+        names, titles = _candidate_jd_labels(
+            session,
+            {row.candidate_id for row in runs},
+            {row.jd_id for row in runs},
+        )
+        return {
+            **batch_to_dict(batch),
+            "runs": [
+                run_to_dict(row, candidate_name=names.get(row.candidate_id, ""), jd_title=titles.get(row.jd_id, ""))
+                for row in runs
+            ],
+        }
 
 
 def list_active_runs() -> list[dict[str, Any]]:
-    """返回全局活动配对，供所有用户同步互斥状态。"""
+    """返回全局活动配对（含候选人姓名与 JD 标题），供所有用户同步互斥状态。"""
     with get_session() as session:
         rows = (
             session.query(InterviewAssessmentRunORM)
@@ -138,7 +149,15 @@ def list_active_runs() -> list[dict[str, Any]]:
             .order_by(InterviewAssessmentRunORM.created_at, InterviewAssessmentRunORM.id)
             .all()
         )
-        return [run_to_dict(row) for row in rows]
+        names, titles = _candidate_jd_labels(
+            session,
+            {row.candidate_id for row in rows},
+            {row.jd_id for row in rows},
+        )
+        return [
+            run_to_dict(row, candidate_name=names.get(row.candidate_id, ""), jd_title=titles.get(row.jd_id, ""))
+            for row in rows
+        ]
 
 
 def cancel_run(run_id: str) -> bool:
@@ -198,7 +217,19 @@ def list_current_assessments(
             CandidateJdAssessmentORM.decision.asc(),
             CandidateJdAssessmentORM.total_score.desc(),
         ).all()
-        return [assessment_to_dict(row) for row in rows]
+        names, titles = _candidate_jd_labels(
+            session,
+            {row.candidate_id for row in rows},
+            {row.jd_id for row in rows},
+        )
+        return [
+            assessment_to_dict(
+                row,
+                candidate_name=names.get(row.candidate_id, ""),
+                jd_title=titles.get(row.jd_id, ""),
+            )
+            for row in rows
+        ]
 
 
 def assert_candidate_editable(session, candidate_id: str) -> None:
@@ -398,12 +429,19 @@ def batch_to_dict(row: InterviewAssessmentBatchORM) -> dict[str, Any]:
     }
 
 
-def run_to_dict(row: InterviewAssessmentRunORM) -> dict[str, Any]:
+def run_to_dict(
+    row: InterviewAssessmentRunORM,
+    *,
+    candidate_name: str = "",
+    jd_title: str = "",
+) -> dict[str, Any]:
     return {
         "id": row.id,
         "batch_id": row.batch_id,
         "candidate_id": row.candidate_id,
+        "candidate_name": candidate_name,
         "jd_id": row.jd_id,
+        "jd_title": jd_title,
         "status": row.status,
         "current_node": row.current_node or "",
         "run_trace": list(row.run_trace or []),
@@ -413,11 +451,18 @@ def run_to_dict(row: InterviewAssessmentRunORM) -> dict[str, Any]:
     }
 
 
-def assessment_to_dict(row: CandidateJdAssessmentORM) -> dict[str, Any]:
+def assessment_to_dict(
+    row: CandidateJdAssessmentORM,
+    *,
+    candidate_name: str = "",
+    jd_title: str = "",
+) -> dict[str, Any]:
     return {
         "id": row.id,
         "candidate_id": row.candidate_id,
+        "candidate_name": candidate_name,
         "jd_id": row.jd_id,
+        "jd_title": jd_title,
         "status": row.status,
         "is_valid": bool(row.is_valid),
         "invalid_reason": row.invalid_reason or "",
@@ -430,6 +475,27 @@ def assessment_to_dict(row: CandidateJdAssessmentORM) -> dict[str, Any]:
         "run_trace": list(row.run_trace or []),
         "updated_at": _iso(row.updated_at),
     }
+
+
+def _candidate_jd_labels(session, candidate_ids: set[str], jd_ids: set[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """按 id 批量取候选人姓名与 JD 标题；报告接口直接返回展示名，前端不再回退到内部 ID。"""
+    names: dict[str, str] = {}
+    titles: dict[str, str] = {}
+    if candidate_ids:
+        for row in (
+            session.query(CandidateORM.id, CandidateORM.name)
+            .filter(CandidateORM.id.in_(candidate_ids))
+            .all()
+        ):
+            names[row.id] = row.name or ""
+    if jd_ids:
+        for row in (
+            session.query(JdEntryORM.id, JdEntryORM.title)
+            .filter(JdEntryORM.id.in_(jd_ids))
+            .all()
+        ):
+            titles[row.id] = row.title or ""
+    return names, titles
 
 
 def _run_lock(run_id: str) -> threading.Lock:

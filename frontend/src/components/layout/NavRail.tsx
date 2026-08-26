@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -11,10 +11,17 @@ import logoWhiteUrl from "@/assets/zhipu-logo-white.svg";
 import logoEnUrl from "@/assets/zai-logo-en.svg";
 import logoEnWhiteUrl from "@/assets/zai-logo-en-white.svg";
 
-const navItems = [
+interface NavItem {
+  to: string;
+  icon: string;
+  label: string;
+  /** 高亮匹配前缀（用于一个入口覆盖多个子路由，如人才评估的 admission/capability） */
+  matchPrefix?: string;
+}
+
+const navItems: NavItem[] = [
   { to: "/", icon: "groups", label: "人才库" },
-  { to: "/resume-evaluate", icon: "description", label: "简历评估" },
-  { to: "/interview-admission", icon: "fact_check", label: "面试准入" },
+  { to: "/talent-evaluation/admission", icon: "fact_check", label: "人才评估", matchPrefix: "/talent-evaluation" },
   { to: "/chat", icon: "forum", label: "人才问答" },
   { to: "/jd-pool", icon: "work", label: "JD 池" },
   { to: "/scholarship", icon: "workspace_premium", label: "奖学金" },
@@ -25,6 +32,7 @@ const navItems = [
 export default function NavRail({ username }: { username?: string }) {
   const { t, lang } = useI18n();
   const { resolved } = useTheme();
+  const location = useLocation();
   const logoSrc =
     lang === "en"
       ? resolved === "dark"
@@ -45,8 +53,8 @@ export default function NavRail({ username }: { username?: string }) {
 
       {/* 导航项 */}
       <ul className="flex flex-col gap-3 flex-1 w-full items-center">
-        {navItems.map(({ to, icon, label }) => {
-          const tourKey = to === "/" ? "nav-pool" : to === "/resume-evaluate" ? "nav-resume" : to === "/chat" ? "nav-chat" : to === "/scholarship" ? "nav-scholarship" : "nav-settings";
+        {navItems.map(({ to, icon, label, matchPrefix }) => {
+          const tourKey = to === "/" ? "nav-pool" : to === "/talent-evaluation/admission" ? "nav-talent-evaluation" : to === "/chat" ? "nav-chat" : to === "/scholarship" ? "nav-scholarship" : "nav-settings";
           return (
           <li key={to} className="w-full flex justify-center">
             <NavLink
@@ -55,28 +63,31 @@ export default function NavRail({ username }: { username?: string }) {
               data-tour={tourKey}
               className="flex flex-col items-center gap-1.5 w-20 no-underline group"
             >
-              {({ isActive }) => (
+              {({ isActive }) => {
+                const active = isActive || (matchPrefix ? location.pathname.startsWith(matchPrefix) : false);
+                return (
                 <>
                   <span
                     className={cn(
                       "state-layer flex items-center justify-center w-16 h-9 rounded-full transition-colors duration-150",
-                      isActive
+                      active
                         ? "bg-secondary-container text-on-secondary-container"
                         : "text-on-surface-variant group-hover:text-on-surface"
                     )}
                   >
-                    <Icon name={icon} size={24} fill={isActive} />
+                    <Icon name={icon} size={24} fill={active} />
                   </span>
                   <span
                     className={cn(
                       "text-label nav-rail-label",
-                      isActive ? "text-on-surface font-semibold" : "text-on-surface-variant"
+                      active ? "text-on-surface font-semibold" : "text-on-surface-variant"
                     )}
                   >
                     {t(label)}
                   </span>
                 </>
-              )}
+                );
+              }}
             </NavLink>
           </li>
           );

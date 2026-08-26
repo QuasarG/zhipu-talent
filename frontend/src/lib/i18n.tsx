@@ -16,6 +16,7 @@ import scholarshipEn from "@/i18n/en/scholarship";
 import settingsEn from "@/i18n/en/settings";
 import miscEn from "@/i18n/en/misc";
 import admissionEn from "@/i18n/en/admission";
+import talentEvaluationEn from "@/i18n/en/talentEvaluation";
 
 export type Lang = "zh" | "en";
 
@@ -30,7 +31,8 @@ const enDict: Record<string, string> = Object.assign(
   scholarshipEn,
   settingsEn,
   miscEn,
-  admissionEn
+  admissionEn,
+  talentEvaluationEn
 );
 
 const STORAGE_KEY = "talent-radar-lang";

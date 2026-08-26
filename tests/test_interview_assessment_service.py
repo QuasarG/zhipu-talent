@@ -103,6 +103,30 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
         with self.Session() as session:
             self.assertEqual(session.query(InterviewAssessmentPairLockORM).count(), 0)
 
+    def test_reports_return_candidate_name_and_jd_title(self) -> None:
+        with self.Session() as session:
+            session.add(
+                CandidateJdAssessmentORM(
+                    candidate_id="candidate-1",
+                    jd_id="jd-1",
+                    decision="interview",
+                    total_score=80,
+                )
+            )
+            session.commit()
+
+        with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
+            service.start_batch(["candidate-1"], ["jd-1"], None)
+            reports = service.list_current_assessments()
+            active = service.list_active_runs()
+
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0]["candidate_name"], "候选人")
+        self.assertEqual(reports[0]["jd_title"], "Agent 研发")
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0]["candidate_name"], "候选人")
+        self.assertEqual(active[0]["jd_title"], "Agent 研发")
+
     def test_cancelled_run_discards_trace_and_staging(self) -> None:
         with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
             batch = service.start_batch(["candidate-1"], ["jd-1"], None)

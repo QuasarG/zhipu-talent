@@ -1,0 +1,283 @@
+import { useMemo } from "react";
+import type {
+  CandidateBrief,
+  CandidateDetail,
+  InterviewAssessment,
+  InterviewAssessmentBatch,
+  InterviewAssessmentRun,
+  JdEntry,
+} from "@/lib/types";
+import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowGraph";
+import AdmissionWorkflowGraph from "@/features/admission/AdmissionWorkflowGraph";
+import AdmissionReport, { NodeInspector } from "./AdmissionReport";
+import { BatchRunView, NewBatchPanel } from "./BatchViews";
+import CandidateSummary, { EmptyState } from "./CandidateSummary";
+import Card from "@/components/ui/Card";
+import { useI18n } from "@/lib/i18n";
+
+const TERMINAL_BATCH_STATUSES = new Set(["completed", "failed", "cancelled"]);
+
+/**
+ * 面试准入子界面的内容区（docs/rebuild.md §3）。
+ * 优先级：运行中的批次 → 新建批次临时模式 → 配对报告 → 候选人档案摘要 → 空态。
+ */
+export default function AdmissionPane({
+  creating,
+  batch,
+  candidates,
+  allJds,
+  assessments,
+  activeRuns,
+  selectedCandidateId,
+  selectedJdId,
+  candidateDetail,
+  candidateDetailLoading,
+  selectedNode,
+  selectedNodeId,
+  activeRunId,
+  draftCandidateIds,
+  draftJdIds,
+  draftCandidateSearch,
+  draftJdSearch,
+  starting,
+  onDraftCandidateIds,
+  onDraftJdIds,
+  onDraftCandidateSearch,
+  onDraftJdSearch,
+  onSelectNode,
+  onSelectRun,
+  onCancelRun,
+  onCancelBatch,
+  onExitCreate,
+  onStartBatch,
+}: {
+  creating: boolean;
+  batch: InterviewAssessmentBatch | null;
+  candidates: CandidateBrief[];
+  allJds: JdEntry[];
+  assessments: InterviewAssessment[];
+  activeRuns: InterviewAssessmentRun[];
+  selectedCandidateId: string | null;
+  selectedJdId: string | null;
+  candidateDetail: CandidateDetail | null;
+  candidateDetailLoading: boolean;
+  selectedNode: AdmissionGraphNode | null;
+  selectedNodeId: string | null;
+  activeRunId: string | null;
+  draftCandidateIds: Set<string>;
+  draftJdIds: Set<string>;
+  draftCandidateSearch: string;
+  draftJdSearch: string;
+  starting: boolean;
+  onDraftCandidateIds: (value: Set<string>) => void;
+  onDraftJdIds: (value: Set<string>) => void;
+  onDraftCandidateSearch: (value: string) => void;
+  onDraftJdSearch: (value: string) => void;
+  onSelectNode: (node: AdmissionGraphNode) => void;
+  onSelectRun: (runId: string) => void;
+  onCancelRun: (runId: string) => void;
+  onCancelBatch: () => void;
+  onExitCreate: () => void;
+  onStartBatch: (candidateIds: string[], jdIds: string[]) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const readyJds = useMemo(
+    () => allJds.filter((jd) => !jd.archived && jd.card_status === "ready"),
+    [allJds],
+  );
+
+  if (batch && !TERMINAL_BATCH_STATUSES.has(batch.status)) {
+    return (
+      <BatchRunView
+        batch={batch}
+        activeRunId={activeRunId}
+        candidates={candidates}
+        jds={allJds}
+        assessments={assessments}
+        selectedNode={selectedNode}
+        selectedNodeId={selectedNodeId}
+        onSelectRun={onSelectRun}
+        onSelectNode={onSelectNode}
+        onCancelRun={onCancelRun}
+        onCancelBatch={onCancelBatch}
+      />
+    );
+  }
+
+  if (creating) {
+    return (
+      <NewBatchPanel
+        candidates={candidates}
+        jds={readyJds}
+        activeRuns={activeRuns}
+        candidateIds={draftCandidateIds}
+        jdIds={draftJdIds}
+        candidateSearch={draftCandidateSearch}
+        jdSearch={draftJdSearch}
+        onCandidateSearch={onDraftCandidateSearch}
+        onJdSearch={onDraftJdSearch}
+        onCandidateIds={onDraftCandidateIds}
+        onJdIds={onDraftJdIds}
+        starting={starting}
+        onStart={() => onStartBatch([...draftCandidateIds], [...draftJdIds])}
+        onExit={onExitCreate}
+      />
+    );
+  }
+
+  if (selectedCandidateId && selectedJdId) {
+    return (
+      <PairReportView
+        assessments={assessments}
+        allJds={allJds}
+        candidates={candidates}
+        candidateId={selectedCandidateId}
+        jdId={selectedJdId}
+        selectedNode={selectedNode}
+        selectedNodeId={selectedNodeId}
+        onSelectNode={onSelectNode}
+      />
+    );
+  }
+
+  if (selectedCandidateId) {
+    return <CandidateSummary detail={candidateDetail} loading={candidateDetailLoading} />;
+  }
+
+  return (
+    <Card variant="filled" className="min-h-0 overflow-hidden">
+      <EmptyState
+        icon="fact_check"
+        title={t("选择左侧文件夹中的岗位子项")}
+        hint={t("每个岗位子项对应一次候选人–JD 准入评估，进入或不进入面试都保留完整报告")}
+      />
+    </Card>
+  );
+}
+
+/** 候选人–JD 配对的当前报告视图：真实运行图 + 完整报告与节点详情 */
+function PairReportView({
+  assessments,
+  allJds,
+  candidates,
+  candidateId,
+  jdId,
+  selectedNode,
+  selectedNodeId,
+  onSelectNode,
+}: {
+  assessments: InterviewAssessment[];
+  allJds: JdEntry[];
+  candidates: CandidateBrief[];
+  candidateId: string;
+  jdId: string;
+  selectedNode: AdmissionGraphNode | null;
+  selectedNodeId: string | null;
+  onSelectNode: (node: AdmissionGraphNode) => void;
+}) {
+  const { t } = useI18n();
+  const assessment = assessments.find(
+    (item) => item.candidate_id === candidateId && item.jd_id === jdId,
+  );
+  const jd = allJds.find((item) => item.id === jdId);
+  const candidate = candidates.find((item) => item.id === candidateId);
+
+  if (!assessment) {
+    return (
+      <Card variant="filled" className="min-h-0 overflow-hidden">
+        <EmptyState
+          icon="fact_check"
+          title={t("该配对还没有当前报告")}
+          hint={t("可以在此配对上发起准入评估，或等待正在运行的评估完成")}
+        />
+      </Card>
+    );
+  }
+
+  // 已保存报告的运行轨迹回放为只读运行图
+  const reportRun = {
+    id: assessment.id,
+    batch_id: "saved-reports",
+    candidate_id: assessment.candidate_id,
+    candidate_name: assessment.candidate_name,
+    jd_id: assessment.jd_id,
+    jd_title: assessment.jd_title,
+    status: "completed" as const,
+    current_node: assessment.run_trace.at(-1)?.node_id || "admission_decision",
+    run_trace: assessment.run_trace,
+    model_usage: assessment.model_usage,
+    error_message: "",
+    cancellation_requested: false,
+  };
+
+  const graphCandidate = candidate
+    ?? (assessment.candidate_name
+      ? ({
+          id: assessment.candidate_id,
+          name: assessment.candidate_name,
+          role: "",
+          stage: "",
+          group: "",
+          level: "",
+          category: "",
+          engagement_status: "",
+          admitted_at: null,
+        } as CandidateBrief)
+      : undefined);
+  const graphJd = jd
+    ?? (assessment.jd_title
+      ? ({
+          id: assessment.jd_id,
+          title: assessment.jd_title,
+          team: "",
+          raw_text: "",
+          supplements: [],
+          assessment_card: null,
+          card_status: "ready",
+          card_error: "",
+          card_run_trace: [],
+          card_model_usage: [],
+          archived: false,
+          created_at: "",
+          updated_at: "",
+        } as JdEntry)
+      : undefined);
+
+  return (
+    <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(440px,1.25fr)_minmax(360px,1fr)]">
+      <Card variant="filled" className="relative min-h-[420px] overflow-hidden flex flex-col">
+        <div className="flex items-center gap-3 border-b border-outline-variant px-4 py-3 shrink-0">
+          <div className="min-w-0">
+            <p className="truncate text-title">
+              {assessment.candidate_name || t("候选人")} × {assessment.jd_title || jd?.title || t("岗位")}
+            </p>
+            <p className="mt-0.5 truncate text-label text-on-surface-variant">
+              {t("报告生成时的真实调用链")}
+            </p>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-auto admission-panel-scrollbar">
+          <AdmissionWorkflowGraph
+            run={reportRun}
+            candidate={graphCandidate}
+            jd={graphJd}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={onSelectNode}
+          />
+        </div>
+      </Card>
+
+      <Card variant="filled" className="min-h-[360px] overflow-hidden flex flex-col">
+        <div className="border-b border-outline-variant px-4 py-3 shrink-0">
+          <p className="text-title">{t("评估结论与证据")}</p>
+          <p className="mt-0.5 text-label text-on-surface-variant">{t("点击图中节点查看当前产物")}</p>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 admission-panel-scrollbar">
+          <AdmissionReport assessment={assessment} jd={jd} />
+          <div className="my-4 border-t border-outline-variant" />
+          <NodeInspector node={selectedNode} />
+        </div>
+      </Card>
+    </div>
+  );
+}
