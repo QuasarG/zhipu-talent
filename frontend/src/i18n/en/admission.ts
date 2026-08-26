@@ -102,6 +102,7 @@ export default {
   "核心任务评分": "Core Task Scoring",
   "先看等级，再按需展开证据": "Scan levels first, then expand evidence as needed",
   "先看指标重要性，再看契合度；选择卡片查看证据": "Start with criterion importance, then fit; select a card to inspect evidence",
+  "按重要性逐项查看，点击任务展开证据": "Review tasks by importance; select a task to expand its evidence",
   "首要指标": "Primary criterion",
   "主要指标": "Major criterion",
   "补充指标": "Supporting criterion",

@@ -401,7 +401,7 @@ body {
 }
 
 .admission-disclosure-content,
-.admission-task-detail-collapse {
+.admission-task-drawer-content {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
@@ -411,14 +411,14 @@ body {
 }
 
 .admission-disclosure[data-open="true"] .admission-disclosure-content,
-.admission-task-detail-collapse[data-open="true"] {
+.admission-task-card[data-open="true"] .admission-task-drawer-content {
   grid-template-rows: 1fr;
   opacity: 1;
   transition-timing-function: var(--ease-emphasized-decelerate);
 }
 
 .admission-disclosure-content > div,
-.admission-task-detail-collapse > div {
+.admission-task-drawer-content > div {
   min-height: 0;
   overflow: hidden;
 }
@@ -434,21 +434,7 @@ body {
   transform: rotate(180deg);
 }
 
-.admission-task-detail-collapse {
-  margin-top: 0;
-  transition-property: grid-template-rows, opacity, margin-top;
-  transition-duration: 300ms, 180ms, 300ms;
-  transition-timing-function: var(--ease-emphasized), var(--ease-emphasized-accelerate), var(--ease-emphasized);
-}
-
-.admission-task-detail-collapse[data-open="true"] {
-  margin-top: 12px;
-  transition-timing-function: var(--ease-emphasized-decelerate), var(--ease-emphasized-decelerate), var(--ease-emphasized-decelerate);
-}
-
-.admission-task-detail-shell {
-  --task-accent: var(--color-tertiary);
-  --task-accent-container: var(--color-tertiary-container);
+.admission-task-drawer-body {
   opacity: 0;
   transform: translateY(-6px);
   transition:
@@ -456,10 +442,10 @@ body {
     transform 260ms var(--ease-emphasized);
 }
 
-.admission-task-detail-collapse[data-open="true"] .admission-task-detail-shell {
+.admission-task-card[data-open="true"] .admission-task-drawer-body {
   opacity: 1;
   transform: translateY(0);
-  transition-delay: 70ms;
+  transition-delay: 60ms;
   transition-timing-function: var(--ease-emphasized-decelerate);
 }
 
@@ -488,20 +474,17 @@ body {
   opacity: 1;
 }
 
-.admission-task-card.importance-primary,
-.admission-task-detail-shell.importance-primary {
+.admission-task-card.importance-primary {
   --task-accent: var(--color-primary);
   --task-accent-container: var(--color-primary-container);
 }
 
-.admission-task-card.importance-major,
-.admission-task-detail-shell.importance-major {
+.admission-task-card.importance-major {
   --task-accent: var(--color-secondary);
   --task-accent-container: var(--color-secondary-container);
 }
 
-.admission-task-card.importance-supporting,
-.admission-task-detail-shell.importance-supporting {
+.admission-task-card.importance-supporting {
   --task-accent: var(--color-tertiary);
   --task-accent-container: var(--color-tertiary-container);
 }

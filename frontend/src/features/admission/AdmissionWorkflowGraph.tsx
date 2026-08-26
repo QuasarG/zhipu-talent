@@ -533,7 +533,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
   return (
     <div
       ref={wrapRef}
-      className="admission-graph-canvas relative h-[clamp(620px,72vh,900px)] w-full min-w-0 touch-none select-none overflow-hidden"
+      className="admission-graph-canvas relative h-full min-h-[clamp(620px,72vh,900px)] w-full min-w-0 touch-none select-none overflow-hidden"
       onPointerDown={(event) => beginPointer(event, "pan")}
       onPointerMove={movePointer}
       onPointerUp={endPointer}
