@@ -89,7 +89,7 @@ export function NewBatchPanel({
 
   return (
     <Card variant="filled" className="min-h-0 overflow-hidden flex flex-col">
-      <div className="flex items-center justify-between border-b border-outline-variant px-4 py-3 shrink-0">
+      <div className="flex items-center justify-between border-b border-outline-variant px-3 py-3 shrink-0">
         <div>
           <p className="text-title">{t("新建准入评估")}</p>
           <p className="mt-0.5 text-label text-on-surface-variant">
@@ -143,6 +143,7 @@ export function NewBatchPanel({
         </SelectionList>
 
         <SelectionList
+          className="border-t border-outline-variant lg:border-t-0 lg:border-l"
           title={t("岗位 JD")}
           count={jds.length}
           selectedCount={jdIds.size}
@@ -190,7 +191,7 @@ export function NewBatchPanel({
         </SelectionList>
       </div>
 
-      <div className="border-t border-outline-variant px-4 py-3 shrink-0">
+      <div className="border-t border-outline-variant px-3 py-3 shrink-0">
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-body-sm text-on-surface-variant tabular-nums">
             {t("{n} 位候选人", { n: candidateIds.size })}
@@ -226,6 +227,7 @@ export function NewBatchPanel({
 }
 
 function SelectionList({
+  className,
   title,
   count,
   selectedCount,
@@ -236,6 +238,7 @@ function SelectionList({
   onClear,
   children,
 }: {
+  className?: string;
   title: string;
   count: number;
   selectedCount: number;
@@ -248,8 +251,8 @@ function SelectionList({
 }) {
   const { t } = useI18n();
   return (
-    <div className="flex min-h-[280px] min-w-0 flex-col overflow-hidden lg:border-l lg:border-outline-variant">
-      <div className="border-b border-outline-variant px-3 py-3 lg:border-b-0 lg:pb-2">
+    <div className={cn("flex min-h-[280px] min-w-0 flex-col overflow-hidden", className)}>
+      <div className="border-b border-outline-variant px-3 py-2.5">
         <div className="mb-2 flex items-center gap-2">
           <p className="text-title">{title}</p>
           <span className="text-label text-on-surface-variant">{count}</span>
@@ -261,7 +264,7 @@ function SelectionList({
           {!!selectedCount && <button type="button" onClick={onClear} className="cursor-pointer text-on-surface-variant hover:text-on-surface">{t("清空")}</button>}
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-1.5 admission-panel-scrollbar lg:border-t lg:border-outline-variant">{children}</div>
+      <div className="flex-1 min-h-0 overflow-y-auto p-1.5 admission-panel-scrollbar">{children}</div>
     </div>
   );
 }

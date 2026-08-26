@@ -11,8 +11,10 @@ import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowG
 import AdmissionWorkflowGraph from "@/features/admission/AdmissionWorkflowGraph";
 import AdmissionReport, { NodeInspector } from "./AdmissionReport";
 import { BatchRunView, NewBatchPanel } from "./BatchViews";
-import CandidateSummary, { EmptyState } from "./CandidateSummary";
+import EmptyState from "./EmptyState";
+import ResumeContent from "@/features/resume/ResumeContent";
 import Card from "@/components/ui/Card";
+import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { useI18n } from "@/lib/i18n";
 
 const TERMINAL_BATCH_STATUSES = new Set(["completed", "failed", "cancelled"]);
@@ -40,6 +42,7 @@ export default function AdmissionPane({
   draftCandidateSearch,
   draftJdSearch,
   starting,
+  onCandidateReviewed,
   onDraftCandidateIds,
   onDraftJdIds,
   onDraftCandidateSearch,
@@ -69,6 +72,8 @@ export default function AdmissionPane({
   draftCandidateSearch: string;
   draftJdSearch: string;
   starting: boolean;
+  /** 简历卡片内的人工裁决等操作完成后，静默刷新候选人详情 */
+  onCandidateReviewed: () => void;
   onDraftCandidateIds: (value: Set<string>) => void;
   onDraftJdIds: (value: Set<string>) => void;
   onDraftCandidateSearch: (value: string) => void;
@@ -141,7 +146,24 @@ export default function AdmissionPane({
   }
 
   if (selectedCandidateId) {
-    return <CandidateSummary detail={candidateDetail} loading={candidateDetailLoading} />;
+    // 候选人根节点：直接展示"结构化简历 / 简历原件"卡片，不再跳转人才档案
+    return (
+      <Card variant="filled" className="min-h-0 flex-1 overflow-hidden p-5">
+        {candidateDetailLoading && !candidateDetail ? (
+          <div className="flex h-full items-center justify-center">
+            <LoadingIndicator size={32} label={t("加载中…")} />
+          </div>
+        ) : candidateDetail ? (
+          <ResumeContent key={candidateDetail.id} detail={candidateDetail} onReviewed={onCandidateReviewed} />
+        ) : (
+          <EmptyState
+            icon="person"
+            title={t("从左侧选择一个候选人")}
+            hint={t("选中候选人根节点查看简历；选择岗位子项查看该配对的准入报告")}
+          />
+        )}
+      </Card>
+    );
   }
 
   return (

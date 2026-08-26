@@ -30,7 +30,7 @@ export default {
 
   // 候选人档案摘要
   "从左侧选择一个候选人": "Select a candidate on the left",
-  "选中候选人根节点查看档案摘要；选择岗位子项查看该配对的准入报告": "Select a candidate folder for the profile summary, or a role item for its admission report",
+  "选中候选人根节点查看简历；选择岗位子项查看该配对的准入报告": "Select a candidate folder to view the resume, or a role item for its admission report",
   "未核验": "Not verified",
   "方向": "Direction",
   "教育经历": "Education",

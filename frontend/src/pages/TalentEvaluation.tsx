@@ -223,6 +223,19 @@ export default function TalentEvaluation() {
       });
   }, [selectedCandidateId]);
 
+  // 简历卡片内的人工裁决后静默刷新详情（不整页 loading）
+  const refreshDetail = useCallback(() => {
+    const id = detailIdRef.current;
+    if (!id) return;
+    api.candidates.get(id)
+      .then((detail) => {
+        if (detailIdRef.current === detail.id) setCandidateDetail(detail);
+      })
+      .catch(() => {
+        /* 静默失败 */
+      });
+  }, []);
+
   // 选择失效时清理（候选人被物理删除等）
   useEffect(() => {
     if (!selectedCandidateId) return;
@@ -498,6 +511,10 @@ export default function TalentEvaluation() {
               draftCandidateSearch={draftCandidateSearch}
               draftJdSearch={draftJdSearch}
               starting={starting}
+              onCandidateReviewed={() => {
+                refreshDetail();
+                void loadShell();
+              }}
               onDraftCandidateIds={(value) => setDraftCandidateIds([...value])}
               onDraftJdIds={(value) => setDraftJdIds([...value])}
               onDraftCandidateSearch={setDraftCandidateSearch}
@@ -513,7 +530,10 @@ export default function TalentEvaluation() {
             <CapabilityWorkspace
               detail={candidateDetail}
               loading={candidateDetailLoading}
-              onReviewed={() => void loadShell()}
+              onReviewed={() => {
+                refreshDetail();
+                void loadShell();
+              }}
             />
           )}
         </div>

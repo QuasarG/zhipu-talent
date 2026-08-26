@@ -3,7 +3,7 @@ import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import ResumeContent from "@/features/resume/ResumeContent";
-import { EmptyState } from "./CandidateSummary";
+import EmptyState from "./EmptyState";
 import { useI18n } from "@/lib/i18n";
 
 /**
