@@ -173,7 +173,7 @@ function CandidateFolderNode({
       </div>
 
       {open && (
-        <div className="ml-[26px] mt-0.5 flex flex-col border-l border-outline-variant pl-2">
+        <div className="mt-0.5 flex flex-col">
           {folder.children.map((child) => (
             <FolderChildRow
               key={child.key}
