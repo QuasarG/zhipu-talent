@@ -160,9 +160,9 @@ function CandidateFolderNode({
         </button>
       </div>
 
-      {/* 子项分组容器：浅色圆角分组表达"文件夹包含评估对象"，而不是与父行并列 */}
+      {/* 树形层级：竖线从头像下方引出，子项缩进到头像正下方（对齐即包含，不悬浮留白） */}
       {open && (
-        <div className="mx-1.5 mt-1 mb-1.5 flex flex-col gap-0.5 rounded-lg bg-surface-low p-1">
+        <div className="ml-[32px] mt-0.5 mb-1 flex flex-col border-l border-outline-variant">
           {folder.children.map((child) => (
             <FolderChildRow
               key={child.key}
@@ -201,14 +201,16 @@ function FolderChildRow({
       type="button"
       onClick={() => onSelectPair(candidateId, child.jdId)}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
-        selected ? "bg-secondary-container" : "hover:bg-surface-highest",
+        "relative flex w-full cursor-pointer items-center gap-2 rounded-md py-1.5 pl-3.5 pr-2 text-left transition-colors",
+        selected ? "bg-secondary-container" : "hover:bg-surface-low",
       )}
     >
-      <Icon
-        name="work"
-        size={14}
-        className={cn("shrink-0", selected ? "text-on-secondary-container" : "text-on-surface-variant")}
+      {/* 横向短线：从竖线引到文字，明确"挂在父文件夹下" */}
+      <span
+        className={cn(
+          "absolute left-0 top-1/2 h-px w-2.5",
+          selected ? "bg-on-secondary-container/40" : "bg-outline-variant",
+        )}
       />
       <span className="min-w-0 flex-1 truncate text-body-sm">
         {child.jdTitle || t("未命名岗位")}
