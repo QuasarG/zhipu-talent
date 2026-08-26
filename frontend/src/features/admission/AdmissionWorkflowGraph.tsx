@@ -318,6 +318,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
   const sizeRef = useRef({ width: 0, height: 0 });
   const viewRef = useRef<GraphView>({ width: 0, height: 0, scale: 1, offsetX: 0, offsetY: 0 });
   const fitViewRef = useRef<() => void>(() => {});
+  const returnFramesRef = useRef(new Map<string, number>());
   const [, setLayoutTick] = useState(0);
   const [view, setView] = useState<GraphView>(viewRef.current);
 
@@ -385,6 +386,11 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
     if (active) onSelectNode(active);
   }, [nodes, onSelectNode, selectedNodeId]);
 
+  useEffect(() => () => {
+    returnFramesRef.current.forEach((frameId) => cancelAnimationFrame(frameId));
+    returnFramesRef.current.clear();
+  }, []);
+
   const viewportWidth = view.width || 640;
   const viewportHeight = view.height || 680;
   const screenNodes = useMemo<ScreenNode[]>(() => positionedNodes.map((node) => {
@@ -422,9 +428,50 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
     });
   };
 
+  const cancelNodeReturn = (nodeId: string) => {
+    const frameId = returnFramesRef.current.get(nodeId);
+    if (frameId !== undefined) cancelAnimationFrame(frameId);
+    returnFramesRef.current.delete(nodeId);
+  };
+
+  const returnNodeHome = (nodeId: string) => {
+    cancelNodeReturn(nodeId);
+    const target = nodes.find((node) => node.id === nodeId);
+    const start = positionsRef.current.get(nodeId);
+    if (!target || !start) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion || Math.hypot(start.x - target.x, start.y - target.y) < 0.5) {
+      positionsRef.current.set(nodeId, { x: target.x, y: target.y });
+      setLayoutTick((value) => value + 1);
+      return;
+    }
+
+    const duration = 420;
+    const startedAt = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const shifted = progress - 1;
+      const eased = 1 + 2.25 * shifted ** 3 + 1.25 * shifted ** 2;
+      positionsRef.current.set(nodeId, {
+        x: start.x + (target.x - start.x) * eased,
+        y: start.y + (target.y - start.y) * eased,
+      });
+      setLayoutTick((value) => value + 1);
+      if (progress < 1) {
+        returnFramesRef.current.set(nodeId, requestAnimationFrame(tick));
+        return;
+      }
+      positionsRef.current.set(nodeId, { x: target.x, y: target.y });
+      returnFramesRef.current.delete(nodeId);
+      setLayoutTick((value) => value + 1);
+    };
+    returnFramesRef.current.set(nodeId, requestAnimationFrame(tick));
+  };
+
   const beginPointer = (event: ReactPointerEvent<HTMLDivElement>, mode: "node" | "pan", nodeId?: string) => {
     event.preventDefault();
     event.stopPropagation();
+    if (nodeId) cancelNodeReturn(nodeId);
     const node = nodeId ? positionsRef.current.get(nodeId) : undefined;
     const current = viewRef.current;
     pointerRef.current = {
@@ -468,9 +515,12 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
   const endPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
     const active = pointerRef.current;
     if (!active || active.pointerId !== event.pointerId) return;
-    if (active.mode === "node" && active.nodeId && !active.moved) {
-      const node = positionedNodes.find((item) => item.id === active.nodeId);
-      if (node) onSelectNode(node);
+    if (active.mode === "node" && active.nodeId) {
+      if (!active.moved) {
+        const node = positionedNodes.find((item) => item.id === active.nodeId);
+        if (node) onSelectNode(node);
+      }
+      returnNodeHome(active.nodeId);
     }
     pointerRef.current = null;
   };
@@ -597,7 +647,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
 
       <div className="pointer-events-none absolute inset-x-3 bottom-3 flex items-end justify-between gap-3">
         <p className="rounded-sm bg-surface-lowest/90 px-2 py-1 text-[11px] text-on-surface-variant shadow-[var(--shadow-1)]">
-          {t("节点可轻微拖动 · 滚轮缩放 · 空白处平移")}
+          {t("节点松手回弹 · 滚轮缩放 · 空白处平移")}
         </p>
         <div
           className="pointer-events-auto flex items-center rounded-full border border-outline-variant bg-surface-lowest/95 shadow-[var(--shadow-1)]"

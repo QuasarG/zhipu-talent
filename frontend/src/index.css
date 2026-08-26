@@ -400,6 +400,121 @@ body {
   display: none;
 }
 
+.admission-disclosure-content,
+.admission-task-detail-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 280ms var(--ease-emphasized),
+    opacity 180ms var(--ease-emphasized-accelerate);
+}
+
+.admission-disclosure[data-open="true"] .admission-disclosure-content,
+.admission-task-detail-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition-timing-function: var(--ease-emphasized-decelerate);
+}
+
+.admission-disclosure-content > div,
+.admission-task-detail-collapse > div {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admission-disclosure-chevron,
+.admission-task-chevron {
+  transform: rotate(0deg);
+  transition: transform 240ms var(--ease-emphasized);
+}
+
+.admission-disclosure[data-open="true"] .admission-disclosure-chevron,
+.admission-task-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.admission-task-detail-collapse {
+  margin-top: 0;
+  transition-property: grid-template-rows, opacity, margin-top;
+  transition-duration: 300ms, 180ms, 300ms;
+  transition-timing-function: var(--ease-emphasized), var(--ease-emphasized-accelerate), var(--ease-emphasized);
+}
+
+.admission-task-detail-collapse[data-open="true"] {
+  margin-top: 12px;
+  transition-timing-function: var(--ease-emphasized-decelerate), var(--ease-emphasized-decelerate), var(--ease-emphasized-decelerate);
+}
+
+.admission-task-detail-shell {
+  --task-accent: var(--color-tertiary);
+  --task-accent-container: var(--color-tertiary-container);
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity 180ms var(--ease-emphasized-accelerate),
+    transform 260ms var(--ease-emphasized);
+}
+
+.admission-task-detail-collapse[data-open="true"] .admission-task-detail-shell {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 70ms;
+  transition-timing-function: var(--ease-emphasized-decelerate);
+}
+
+.admission-task-card {
+  --task-accent: var(--color-tertiary);
+  --task-accent-container: var(--color-tertiary-container);
+  transition:
+    border-color 180ms var(--ease-emphasized),
+    box-shadow 180ms var(--ease-emphasized),
+    background-color 180ms var(--ease-emphasized);
+}
+
+.admission-task-card::before {
+  content: "";
+  position: absolute;
+  inset: 10px auto 10px 0;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: var(--task-accent);
+  opacity: 0.58;
+  transition: opacity 180ms var(--ease-emphasized), inset 180ms var(--ease-emphasized);
+}
+
+.admission-task-card.is-selected::before {
+  inset-block: 6px;
+  opacity: 1;
+}
+
+.admission-task-card.importance-primary,
+.admission-task-detail-shell.importance-primary {
+  --task-accent: var(--color-primary);
+  --task-accent-container: var(--color-primary-container);
+}
+
+.admission-task-card.importance-major,
+.admission-task-detail-shell.importance-major {
+  --task-accent: var(--color-secondary);
+  --task-accent-container: var(--color-secondary-container);
+}
+
+.admission-task-card.importance-supporting,
+.admission-task-detail-shell.importance-supporting {
+  --task-accent: var(--color-tertiary);
+  --task-accent-container: var(--color-tertiary-container);
+}
+
+.admission-task-importance-icon {
+  color: var(--task-accent);
+  background: var(--task-accent-container);
+}
+
+.admission-task-importance-label {
+  color: var(--task-accent);
+}
+
 .admission-node-orbit {
   color: var(--color-on-surface-variant);
   border: 1.5px solid var(--color-outline);

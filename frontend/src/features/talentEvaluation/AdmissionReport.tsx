@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowGraph";
 import { computeScoreBreakdown } from "@/features/talentEvaluation/talentEvaluationModel";
 import type { InterviewAssessment, InterviewAssessmentRun, JdEntry } from "@/lib/types";
@@ -48,10 +48,10 @@ export function confidenceLabel(value: string | undefined, t: Translate) {
   return value === "high" ? t("高置信") : value === "medium" ? t("中置信") : value === "low" ? t("低置信") : "—";
 }
 
-const IMPORTANCE_LABEL: Record<string, string> = {
-  primary: "首要",
-  major: "主要",
-  supporting: "补充",
+const IMPORTANCE_META: Record<string, { label: string; icon: string; className: string }> = {
+  primary: { label: "首要指标", icon: "grade", className: "importance-primary" },
+  major: { label: "主要指标", icon: "trending_up", className: "importance-major" },
+  supporting: { label: "补充指标", icon: "badge", className: "importance-supporting" },
 };
 
 /**
@@ -87,10 +87,20 @@ export default function AdmissionReport({
   );
   const taskKeys = tasks.map((task, index) => task.task_id || `task-${index}`);
   const firstTaskKey = taskKeys.find((_, index) => (tasks[index]?.level || 0) < 2) || taskKeys[0] || null;
+  const taskDetailId = useId();
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(firstTaskKey);
+  const [renderedTaskId, setRenderedTaskId] = useState<string | null>(firstTaskKey);
+  const [scoreBreakdownOpen, setScoreBreakdownOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const renderedTaskIndex = renderedTaskId ? taskKeys.indexOf(renderedTaskId) : -1;
+  const renderedTask = renderedTaskIndex >= 0 ? tasks[renderedTaskIndex] : null;
+  const renderedTaskMeta = renderedTask ? cardTask(renderedTask.task_id) : undefined;
 
   useEffect(() => {
     setExpandedTaskId(firstTaskKey);
+    setRenderedTaskId(firstTaskKey);
+    setScoreBreakdownOpen(false);
+    setAuditOpen(false);
   }, [assessment.id, firstTaskKey]);
 
   return (
@@ -136,14 +146,14 @@ export default function AdmissionReport({
         </div>
       </div>
 
-      <details className="admission-score-breakdown rounded-md border border-outline-variant bg-surface-lowest">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-3 text-body-sm">
-          <Icon name="list_checks" size={17} className="text-on-surface-variant" />
-          <span className="font-medium">{t("评分构成")}</span>
-          <span className="text-label text-on-surface-variant">{t("{n} 项核心任务加权汇总", { n: breakdown.rows.length })}</span>
-          <Icon name="chevron_down" size={16} className="ml-auto text-on-surface-variant" />
-        </summary>
-        <div className="grid grid-cols-1 gap-x-5 gap-y-1.5 border-t border-outline-variant px-3.5 py-3 sm:grid-cols-2">
+      <AnimatedDisclosure
+        icon="list_checks"
+        title={t("评分构成")}
+        summary={t("{n} 项核心任务加权汇总", { n: breakdown.rows.length })}
+        open={scoreBreakdownOpen}
+        onToggle={() => setScoreBreakdownOpen((value) => !value)}
+      >
+        <div className="grid grid-cols-1 gap-x-5 gap-y-1.5 px-3.5 py-3 sm:grid-cols-2">
           {breakdown.rows.map((row) => (
             <div key={row.taskId} className="flex min-w-0 items-baseline gap-2 text-label text-on-surface-variant">
               <span className="w-7 shrink-0 font-mono text-on-surface">L{row.level}</span>
@@ -157,12 +167,12 @@ export default function AdmissionReport({
             <span className="shrink-0 font-medium tabular-nums text-on-surface">{breakdown.total.toFixed(1)}</span>
           </div>
         </div>
-      </details>
+      </AnimatedDisclosure>
 
       <section>
-        <div className="mb-3 flex items-baseline gap-2">
+        <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <h3 className="text-title">{t("核心任务评分")}</h3>
-          <span className="text-label text-on-surface-variant">{t("先看等级，再按需展开证据")}</span>
+          <span className="text-label text-on-surface-variant">{t("先看指标重要性，再看契合度；选择卡片查看证据")}</span>
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {tasks.map((task, index) => {
@@ -170,18 +180,39 @@ export default function AdmissionReport({
             const cardTaskMeta = cardTask(task.task_id);
             const isOpen = taskKey === expandedTaskId;
             return (
-              <div key={taskKey} className={isOpen ? "md:col-span-2" : undefined}>
-                <TaskAssessmentCard
-                  task={task}
-                  title={cardTaskMeta?.title || task.task_id || t("核心任务 {n}", { n: index + 1 })}
-                  importance={cardTaskMeta?.importance}
-                  open={isOpen}
-                  onToggle={() => setExpandedTaskId(isOpen ? null : taskKey)}
-                  t={t}
-                />
-              </div>
+              <TaskAssessmentCard
+                key={taskKey}
+                task={task}
+                title={cardTaskMeta?.title || task.task_id || t("核心任务 {n}", { n: index + 1 })}
+                importance={cardTaskMeta?.importance}
+                open={isOpen}
+                detailId={taskDetailId}
+                onToggle={() => {
+                  if (isOpen) {
+                    setExpandedTaskId(null);
+                    return;
+                  }
+                  setRenderedTaskId(taskKey);
+                  setExpandedTaskId(taskKey);
+                }}
+                t={t}
+              />
             );
           })}
+        </div>
+        <div className="admission-task-detail-collapse" data-open={Boolean(expandedTaskId)}>
+          <div>
+            {renderedTask && (
+              <TaskAssessmentDetail
+                key={renderedTaskId}
+                id={taskDetailId}
+                task={renderedTask}
+                title={renderedTaskMeta?.title || renderedTask.task_id || t("核心任务")}
+                importance={renderedTaskMeta?.importance}
+                t={t}
+              />
+            )}
+          </div>
         </div>
       </section>
 
@@ -202,11 +233,11 @@ export default function AdmissionReport({
         </div>
       )}
 
-      <details className="rounded-md border border-outline-variant bg-surface-lowest">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-3 text-label">
-          <Icon name="history" size={16} className="text-on-surface-variant" />
-          <span className="font-medium">{t("模型与审计")}</span>
-          <span className="min-w-0 flex-1 truncate text-on-surface-variant">
+      <AnimatedDisclosure
+        icon="history"
+        title={t("模型与审计")}
+        summary={(
+          <span className="min-w-0 truncate text-on-surface-variant">
             {models.join(" · ") || "—"}
             {!!degradedCount && (
               <span className="ml-2 inline-flex items-center gap-1 text-warning">
@@ -215,9 +246,12 @@ export default function AdmissionReport({
               </span>
             )}
           </span>
-          <Icon name="chevron_down" size={16} className="text-on-surface-variant" />
-        </summary>
-        <div className="border-t border-outline-variant px-3.5 py-3">
+        )}
+        open={auditOpen}
+        onToggle={() => setAuditOpen((value) => !value)}
+        compact
+      >
+        <div className="px-3.5 py-3">
           {!!assessment.review_corrections.length && (
             <div>
               <p className="text-label font-semibold">{t("总审纠错记录")}</p>
@@ -241,7 +275,7 @@ export default function AdmissionReport({
             <p className="text-label text-on-surface-variant">{t("本次运行没有额外审计事项")}</p>
           )}
         </div>
-      </details>
+      </AnimatedDisclosure>
     </section>
   );
 }
@@ -255,11 +289,60 @@ function ThresholdItem({ met, label }: { met: boolean; label: string }) {
   );
 }
 
+function AnimatedDisclosure({
+  icon,
+  title,
+  summary,
+  open,
+  onToggle,
+  compact = false,
+  children,
+}: {
+  icon: string;
+  title: string;
+  summary?: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  compact?: boolean;
+  children: ReactNode;
+}) {
+  const contentId = useId();
+  return (
+    <section className="admission-disclosure rounded-md border border-outline-variant bg-surface-lowest" data-open={open}>
+      <button
+        type="button"
+        className={cn(
+          "flex w-full cursor-pointer items-center gap-2 px-3.5 py-3 text-left",
+          compact ? "text-label" : "text-body-sm",
+        )}
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={onToggle}
+      >
+        <Icon name={icon} size={compact ? 16 : 17} className="shrink-0 text-on-surface-variant" />
+        <span className="shrink-0 font-medium">{title}</span>
+        {summary && <span className="min-w-0 flex-1 truncate text-label text-on-surface-variant">{summary}</span>}
+        <Icon
+          name="expand_more"
+          size={16}
+          className="admission-disclosure-chevron ml-auto shrink-0 text-on-surface-variant"
+        />
+      </button>
+      <div id={contentId} className="admission-disclosure-content">
+        <div>
+          <div className="border-t border-outline-variant">{children}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function TaskAssessmentCard({
   task,
   title,
   importance,
   open,
+  detailId,
   onToggle,
   t,
 }: {
@@ -267,77 +350,128 @@ function TaskAssessmentCard({
   title: string;
   importance?: string;
   open: boolean;
+  detailId: string;
   onToggle: () => void;
   t: Translate;
 }) {
   const evidence = task.evidence || [];
   const level = task.level ?? 0;
-  const importanceLabel = importance ? t(IMPORTANCE_LABEL[importance] || importance) : undefined;
+  const importanceMeta = IMPORTANCE_META[importance || ""] || {
+    label: "评价指标",
+    icon: "badge",
+    className: "importance-supporting",
+  };
   return (
     <div className={cn(
-      "admission-task-card overflow-hidden rounded-md border bg-surface-lowest transition-[border-color,box-shadow,background-color]",
-      open ? "border-outline bg-surface-lowest shadow-[var(--shadow-1)]" : "border-outline-variant hover:border-outline",
+      "admission-task-card relative h-full overflow-hidden rounded-md border bg-surface-lowest",
+      importanceMeta.className,
+      open ? "is-selected border-outline bg-surface-lowest shadow-[var(--shadow-1)]" : "border-outline-variant hover:border-outline",
     )}>
       <button
         type="button"
-        className="flex w-full cursor-pointer items-start gap-3 px-3 py-3 text-left"
+        className="flex min-h-[132px] w-full cursor-pointer items-start gap-3 px-3.5 py-3.5 text-left"
         aria-expanded={open}
+        aria-controls={detailId}
         onClick={onToggle}
       >
-        <span className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border font-mono text-body-sm font-medium tabular-nums",
-          level >= 2 ? "border-success/40 bg-success-container text-success" : "border-warning/40 bg-warning-container text-warning",
-        )}>
-          {level}
+        <span className="admission-task-importance-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-md">
+          <Icon name={importanceMeta.icon} size={18} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="flex items-start gap-2">
-            <span className="line-clamp-2 text-body-sm font-medium text-on-surface">{title}</span>
-            {importanceLabel && (
-              <span className="shrink-0 rounded-sm bg-surface-low px-1.5 py-0.5 text-[10px] text-on-surface-variant">{importanceLabel}</span>
-            )}
+          <span className="admission-task-importance-label block text-[11px] font-semibold tracking-[0.06em]">
+            {t(importanceMeta.label)}
           </span>
+          <span className="mt-1 block line-clamp-2 text-body-sm font-medium text-on-surface">{title}</span>
           <span className="mt-1 block line-clamp-2 text-label leading-4 text-on-surface-variant">
             {task.reasoning_summary || t("暂无推理摘要")}
           </span>
           <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-on-surface-variant">
-            <span>{t("{n}/4 能力等级", { n: level })}</span>
             <span>{confidenceLabel(task.confidence, t)}</span>
             {!!evidence.length && <span>{t("{n} 条证据", { n: evidence.length })}</span>}
           </span>
         </span>
-        <Icon name={open ? "chevron_up" : "chevron_down"} size={17} className="mt-0.5 shrink-0 text-on-surface-variant" />
+        <span className="flex shrink-0 flex-col items-end">
+          <span className="text-[10px] text-on-surface-variant">{t("契合度")}</span>
+          <span className={cn(
+            "mt-1 rounded-sm px-2 py-1 font-mono text-label font-medium tabular-nums",
+            level >= 2 ? "bg-success-container text-success" : "bg-warning-container text-warning",
+          )}>
+            L{level}<span className="ml-0.5 opacity-70">/4</span>
+          </span>
+          <Icon
+            name="expand_more"
+            size={17}
+            className={cn("admission-task-chevron mt-3 text-on-surface-variant", open && "is-open")}
+          />
+        </span>
       </button>
-
-      {open && (
-        <div className="border-t border-outline-variant px-3 pb-3 pt-3">
-          {task.transfer_boundary && (
-            <p className="rounded-sm bg-surface-low px-2.5 py-2 text-label leading-4 text-on-surface-variant">
-              <span className="font-medium text-on-surface">{t("迁移边界")}</span>{task.transfer_boundary}
-            </p>
-          )}
-          {!!evidence.length && (
-            <div className="mt-3 flex flex-col gap-2">
-              <p className="text-label font-semibold">{t("关键证据")}</p>
-              {evidence.slice(0, 3).map((item, index) => (
-                <EvidenceQuote key={`${item.quote}-${index}`} evidence={item} />
-              ))}
-            </div>
-          )}
-          {!!task.risks?.length && (
-            <div className="mt-3">
-              <p className="text-label font-semibold">{t("能力缺口")}</p>
-              <ul className="mt-1.5 list-disc space-y-1 pl-4 text-label text-on-surface-variant">
-                {task.risks.slice(0, 3).map((risk) => <li key={risk}>{risk}</li>)}
-              </ul>
-            </div>
-          )}
-          {!task.transfer_boundary && !evidence.length && !task.risks?.length && (
-            <p className="text-label text-on-surface-variant">{t("该任务没有额外展开信息")}</p>
-          )}
-        </div>
-      )}
     </div>
+  );
+}
+
+function TaskAssessmentDetail({
+  id,
+  task,
+  title,
+  importance,
+  t,
+}: {
+  id: string;
+  task: TaskAssessmentView;
+  title: string;
+  importance?: string;
+  t: Translate;
+}) {
+  const evidence = task.evidence || [];
+  const level = task.level ?? 0;
+  const importanceMeta = IMPORTANCE_META[importance || ""] || {
+    label: "评价指标",
+    icon: "badge",
+    className: "importance-supporting",
+  };
+  return (
+    <section id={id} className={cn("admission-task-detail-shell rounded-md border border-outline-variant bg-surface-lowest", importanceMeta.className)}>
+      <div className="flex flex-wrap items-start gap-3 border-b border-outline-variant px-4 py-3.5">
+        <span className="admission-task-importance-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-md">
+          <Icon name={importanceMeta.icon} size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="admission-task-importance-label text-[11px] font-semibold tracking-[0.06em]">{t(importanceMeta.label)}</p>
+          <h4 className="mt-1 text-body-sm font-medium text-on-surface">{title}</h4>
+          {task.reasoning_summary && <p className="mt-1 text-label leading-4 text-on-surface-variant">{task.reasoning_summary}</p>}
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-[10px] text-on-surface-variant">{t("契合度")}</p>
+          <p className="mt-0.5 font-mono text-body-sm font-medium tabular-nums">L{level}<span className="ml-0.5 text-label text-on-surface-variant">/4</span></p>
+        </div>
+      </div>
+      <div className="px-4 py-4">
+        {task.transfer_boundary && (
+          <p className="rounded-sm bg-surface-low px-2.5 py-2 text-label leading-4 text-on-surface-variant">
+            <span className="font-medium text-on-surface">{t("迁移边界")}：</span>{task.transfer_boundary}
+          </p>
+        )}
+        {!!evidence.length && (
+          <div className="mt-3 flex flex-col gap-2">
+            <p className="text-label font-semibold">{t("关键证据")}</p>
+            {evidence.slice(0, 3).map((item, index) => (
+              <EvidenceQuote key={`${item.quote}-${index}`} evidence={item} />
+            ))}
+          </div>
+        )}
+        {!!task.risks?.length && (
+          <div className="mt-3">
+            <p className="text-label font-semibold">{t("能力缺口")}</p>
+            <ul className="mt-1.5 list-disc space-y-1 pl-4 text-label text-on-surface-variant">
+              {task.risks.slice(0, 3).map((risk) => <li key={risk}>{risk}</li>)}
+            </ul>
+          </div>
+        )}
+        {!task.transfer_boundary && !evidence.length && !task.risks?.length && (
+          <p className="text-label text-on-surface-variant">{t("该任务没有额外展开信息")}</p>
+        )}
+      </div>
+    </section>
   );
 }
 
