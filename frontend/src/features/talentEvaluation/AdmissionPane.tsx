@@ -266,13 +266,27 @@ function PairReportView({
       : undefined);
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(440px,1.25fr)_minmax(360px,1fr)]">
-      <Card variant="filled" className="relative min-h-[420px] overflow-hidden flex flex-col">
+    <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(560px,1.7fr)_minmax(360px,1fr)]">
+      {/* 报告是交付物：占主列 */}
+      <Card variant="filled" className="min-h-[420px] overflow-hidden flex flex-col">
+        <div className="border-b border-outline-variant px-4 py-3 shrink-0">
+          <p className="text-title">
+            {assessment.candidate_name || t("候选人")} × {assessment.jd_title || jd?.title || t("岗位")}
+          </p>
+          <p className="mt-0.5 text-label text-on-surface-variant">{t("评估结论与证据")}</p>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 admission-panel-scrollbar">
+          <AdmissionReport assessment={assessment} jd={jd} />
+          <div className="my-5 border-t border-outline-variant" />
+          <NodeInspector node={selectedNode} />
+        </div>
+      </Card>
+
+      {/* 报告生成时的真实调用链：佐证材料，占辅列 */}
+      <Card variant="filled" className="relative min-h-[360px] overflow-hidden flex flex-col">
         <div className="flex items-center gap-3 border-b border-outline-variant px-4 py-3 shrink-0">
           <div className="min-w-0">
-            <p className="truncate text-title">
-              {assessment.candidate_name || t("候选人")} × {assessment.jd_title || jd?.title || t("岗位")}
-            </p>
+            <p className="truncate text-title">{t("运行过程")}</p>
             <p className="mt-0.5 truncate text-label text-on-surface-variant">
               {t("报告生成时的真实调用链")}
             </p>
@@ -286,18 +300,6 @@ function PairReportView({
             selectedNodeId={selectedNodeId}
             onSelectNode={onSelectNode}
           />
-        </div>
-      </Card>
-
-      <Card variant="filled" className="min-h-[360px] overflow-hidden flex flex-col">
-        <div className="border-b border-outline-variant px-4 py-3 shrink-0">
-          <p className="text-title">{t("评估结论与证据")}</p>
-          <p className="mt-0.5 text-label text-on-surface-variant">{t("点击图中节点查看当前产物")}</p>
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 admission-panel-scrollbar">
-          <AdmissionReport assessment={assessment} jd={jd} />
-          <div className="my-4 border-t border-outline-variant" />
-          <NodeInspector node={selectedNode} />
         </div>
       </Card>
     </div>

@@ -33,6 +33,7 @@ export default {
   "该配对还没有当前报告": "No current report for this pair",
   "可以在此配对上发起准入评估，或等待正在运行的评估完成": "Start an admission assessment for this pair, or wait for the running one to finish",
   "报告与节点": "Report & Nodes",
+  "运行过程": "Run Trace",
 
   // 新建批次（临时选择模式）
   "选择一批候选人和岗位，提交前确认配对数量；这是临时选择模式，不改变左侧文件夹": "Pick a set of candidates and roles, confirm the pair count before submitting. This temporary mode does not change the folder layout",

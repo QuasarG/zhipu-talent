@@ -109,8 +109,8 @@ export default function AdmissionReport({
       </div>
 
       <div>
-        <div className="flex items-baseline gap-1">
-          <span className="text-headline tabular-nums">{assessment.total_score.toFixed(1)}</span>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-title-lg tabular-nums">{assessment.total_score.toFixed(1)}</span>
           <span className="text-body-sm text-on-surface-variant">{t("/100 加权总分")}</span>
         </div>
         {decisionReason && <p className="mt-1.5 text-body-sm text-on-surface-variant">{decisionReason}</p>}
@@ -147,14 +147,14 @@ export default function AdmissionReport({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         {tasks.map((task) => {
           const cardTaskMeta = cardTask(task.task_id);
           return (
-            <details key={task.task_id} className="border-t border-outline-variant pt-2" open={(task.level || 0) < 2}>
-              <summary className="flex cursor-pointer list-none items-center gap-2">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-outline-variant font-mono text-label tabular-nums">{task.level ?? 0}</span>
-                <span className="min-w-0 flex-1 truncate text-body-sm font-medium">{cardTaskMeta?.title || task.task_id}</span>
+            <details key={task.task_id} className="border-t border-outline-variant pt-3" open={(task.level || 0) < 2}>
+              <summary className="flex cursor-pointer list-none items-center gap-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-outline-variant font-mono text-body-sm tabular-nums">{task.level ?? 0}</span>
+                <span className="min-w-0 flex-1 truncate text-body font-medium">{cardTaskMeta?.title || task.task_id}</span>
                 {cardTaskMeta && (
                   <span className="shrink-0 text-[11px] text-on-surface-variant">
                     {t(IMPORTANCE_LABEL[cardTaskMeta.importance] || cardTaskMeta.importance)}
@@ -162,27 +162,29 @@ export default function AdmissionReport({
                 )}
                 <span className="shrink-0 text-label text-on-surface-variant">{confidenceLabel(task.confidence, t)}</span>
               </summary>
-              <p className="mt-2 text-body-sm text-on-surface-variant">{task.reasoning_summary || t("暂无推理摘要")}</p>
-              {task.transfer_boundary && (
-                <p className="mt-1.5 rounded-md bg-surface-low px-2.5 py-1.5 text-label text-on-surface-variant">
-                  <span className="font-medium text-on-surface">{t("迁移边界")}</span>{task.transfer_boundary}
-                </p>
-              )}
-              {!!task.evidence?.length && (
-                <div className="mt-2 flex flex-col gap-1.5">
-                  {task.evidence.map((evidence, index) => (
-                    <EvidenceQuote key={`${evidence.quote}-${index}`} evidence={evidence} />
-                  ))}
-                </div>
-              )}
-              {!!task.risks?.length && (
-                <div className="mt-2">
-                  <p className="text-label font-semibold">{t("能力缺口")}</p>
-                  <ul className="mt-1 list-disc space-y-1 pl-4 text-label text-on-surface-variant">
-                    {task.risks.map((risk) => <li key={risk}>{risk}</li>)}
-                  </ul>
-                </div>
-              )}
+              <div className="pl-1">
+                <p className="mt-2.5 text-body-sm text-on-surface-variant">{task.reasoning_summary || t("暂无推理摘要")}</p>
+                {task.transfer_boundary && (
+                  <p className="mt-2 rounded-md bg-surface-low px-3 py-2 text-body-sm text-on-surface-variant">
+                    <span className="font-medium text-on-surface">{t("迁移边界")}</span>{task.transfer_boundary}
+                  </p>
+                )}
+                {!!task.evidence?.length && (
+                  <div className="mt-2.5 flex flex-col gap-2">
+                    {task.evidence.map((evidence, index) => (
+                      <EvidenceQuote key={`${evidence.quote}-${index}`} evidence={evidence} />
+                    ))}
+                  </div>
+                )}
+                {!!task.risks?.length && (
+                  <div className="mt-2.5">
+                    <p className="text-label font-semibold">{t("能力缺口")}</p>
+                    <ul className="mt-1.5 list-disc space-y-1 pl-4 text-body-sm text-on-surface-variant">
+                      {task.risks.map((risk) => <li key={risk}>{risk}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </details>
           );
         })}
@@ -246,10 +248,10 @@ export function EvidenceQuote({ evidence }: { evidence: EvidenceView }) {
     background: { label: t("背景证据"), className: "bg-surface-high text-on-surface-variant" },
   }[evidence.evidence_type || "background"];
   return (
-    <div className="rounded-md bg-surface-low px-2.5 py-2">
+    <div className="rounded-md bg-surface-low px-3 py-2.5">
       <span className={cn("inline-flex h-5 items-center rounded-full px-2 text-[10px] font-medium", meta.className)}>{meta.label}</span>
-      <q className="mt-1.5 block text-label text-on-surface">{evidence.quote || t("未提供引用")}</q>
-      {evidence.relevance && <p className="mt-1 text-[11px] leading-4 text-on-surface-variant">{evidence.relevance}</p>}
+      <q className="mt-2 block text-body-sm leading-relaxed text-on-surface">{evidence.quote || t("未提供引用")}</q>
+      {evidence.relevance && <p className="mt-1.5 text-label leading-4 text-on-surface-variant">{evidence.relevance}</p>}
     </div>
   );
 }
