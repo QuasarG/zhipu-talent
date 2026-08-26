@@ -594,8 +594,10 @@ function SelectionWorkspace({
               key={jd.id}
               onClick={() => toggle(jdIds, jd.id, onJdIds)}
               className={cn(
-                "group flex w-full items-start gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors cursor-pointer",
-                selected ? "bg-secondary-container" : "hover:bg-surface-low",
+                "group mb-1 flex w-full items-start gap-3 rounded-md border px-2.5 py-2.5 text-left transition-[background-color,border-color,box-shadow] cursor-pointer last:mb-0",
+                selected
+                  ? "border-outline bg-secondary-container shadow-[0_1px_2px_rgba(15,17,21,0.06)]"
+                  : "border-transparent bg-surface-lowest hover:border-outline-variant hover:bg-surface-low",
               )}
             >
               <span className={cn(
