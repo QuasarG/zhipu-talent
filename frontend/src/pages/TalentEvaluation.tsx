@@ -412,28 +412,31 @@ export default function TalentEvaluation() {
         subtitle={sub === "admission"
           ? t("面试准入：判断候选人是否值得进入某个岗位的面试")
           : t("能力评估：梳理候选人自身的稳定能力结构")}
-        center={
-          <SegmentedButtons
-            options={[
-              { value: "admission", label: t("面试准入"), icon: "fact_check" },
-              { value: "capability", label: t("能力评估"), icon: "psychology" },
-            ]}
-            value={sub}
-            onChange={(value) => navigate(`/talent-evaluation/${value}`)}
-          />
+        right={
+          <>
+            {sub === "admission" && (
+              batchRunning ? (
+                <div className="hidden lg:flex w-[240px] items-center gap-3">
+                  <Progress value={batch!.total_pairs ? (batchDone / batch!.total_pairs) * 100 : 0} className="flex-1" />
+                  <span className="text-label tabular-nums text-on-surface-variant">{batchDone} / {batch!.total_pairs}</span>
+                </div>
+              ) : batch ? (
+                <Button variant="tonal" icon="add" onClick={resetBatch}>{t("返回浏览")}</Button>
+              ) : !creating ? (
+                <Button variant="filled" icon="add" onClick={() => setCreating(true)}>{t("新建准入评估")}</Button>
+              ) : null
+            )}
+            {/* 子界面切换胶囊固定在最右端：左侧操作按钮出现/消失不影响其位置 */}
+            <SegmentedButtons
+              options={[
+                { value: "admission", label: t("面试准入"), icon: "fact_check" },
+                { value: "capability", label: t("能力评估"), icon: "psychology" },
+              ]}
+              value={sub}
+              onChange={(value) => navigate(`/talent-evaluation/${value}`)}
+            />
+          </>
         }
-        right={sub === "admission" && (
-          batchRunning ? (
-            <div className="hidden lg:flex w-[240px] items-center gap-3">
-              <Progress value={batch!.total_pairs ? (batchDone / batch!.total_pairs) * 100 : 0} className="flex-1" />
-              <span className="text-label tabular-nums text-on-surface-variant">{batchDone} / {batch!.total_pairs}</span>
-            </div>
-          ) : batch ? (
-            <Button variant="tonal" icon="add" onClick={resetBatch}>{t("返回浏览")}</Button>
-          ) : !creating ? (
-            <Button variant="filled" icon="add" onClick={() => setCreating(true)}>{t("新建准入评估")}</Button>
-          ) : null
-        )}
       />
 
       {error && (
