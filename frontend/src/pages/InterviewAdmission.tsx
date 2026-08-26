@@ -104,7 +104,6 @@ export default function InterviewAdmission() {
   const [activeRunId, setActiveRunId] = useSessionState<string | null>("interview-admission.active-run-id", null);
   const [reportAssessmentId, setReportAssessmentId] = useSessionState<string | null>("interview-admission.report-id", null);
   const [selectedNodeId, setSelectedNodeId] = useSessionState<string | null>("interview-admission.node-id", null);
-  const [force, setForce] = useSessionState("interview-admission.force", false);
   const [batch, setBatch] = useState<InterviewAssessmentBatch | null>(null);
   const [assessments, setAssessments] = useState<InterviewAssessment[]>([]);
   const [selectedNode, setSelectedNode] = useState<AdmissionGraphNode | null>(null);
@@ -113,6 +112,7 @@ export default function InterviewAdmission() {
   const [starting, setStarting] = useState(false);
   const [restoring, setRestoring] = useState(!!batchId);
   const { t } = useI18n();
+  const force = forceAllowed;
 
   const candidateIds = useMemo(() => new Set(candidateIdList), [candidateIdList]);
   const jdIds = useMemo(() => new Set(jdIdList), [jdIdList]);
@@ -381,7 +381,6 @@ export default function InterviewAdmission() {
           onJdSearch={setJdSearch}
           onCandidateIds={updateCandidateIds}
           onJdIds={updateJdIds}
-          onForce={setForce}
           onOpenReport={openReport}
           onStart={start}
           starting={starting}
@@ -434,7 +433,6 @@ function SelectionWorkspace({
   onJdSearch,
   onCandidateIds,
   onJdIds,
-  onForce,
   onOpenReport,
   onStart,
   starting,
@@ -452,7 +450,6 @@ function SelectionWorkspace({
   onJdSearch: (value: string) => void;
   onCandidateIds: (value: Set<string>) => void;
   onJdIds: (value: Set<string>) => void;
-  onForce: (value: boolean) => void;
   onOpenReport: (id: string) => void;
   onStart: () => void;
   starting: boolean;
@@ -554,10 +551,19 @@ function SelectionWorkspace({
             </button>
           )}
           {forceAllowed && (
-            <label className="mb-3 flex items-center gap-2 text-label text-on-surface-variant cursor-pointer">
-              <input type="checkbox" checked={force} onChange={(event) => onForce(event.target.checked)} />
-              <span>{t("覆盖仍然有效的当前报告（仅管理员）")}</span>
-            </label>
+            <div className="mb-3 flex items-center gap-3 rounded-md border border-outline-variant bg-surface-low px-3 py-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-lowest text-on-surface">
+                <Icon name="find_replace" size={17} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-body-sm font-medium">{t("替换现有有效报告")}</span>
+                <span className="mt-0.5 block text-label text-on-surface-variant">{t("已在设置中启用，此处不可更改")}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1 text-label font-medium text-on-surface-variant">
+                <Icon name="lock" size={14} />
+                {t("设置锁定")}
+              </span>
+            </div>
           )}
           <Button
             className="w-full"
