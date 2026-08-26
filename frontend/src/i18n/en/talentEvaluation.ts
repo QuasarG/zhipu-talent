@@ -17,7 +17,6 @@ export default {
   "导入简历后，每个候选人会作为一个文件夹出现在这里": "After import, each candidate appears here as a folder",
   "折叠": "Collapse",
   "展开": "Expand",
-  "已移出队列": "Removed from queue",
   "未命名岗位": "Unnamed role",
   "未评估": "Not assessed",
   "重构中": "Rebuilding",

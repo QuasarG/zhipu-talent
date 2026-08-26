@@ -158,9 +158,6 @@ function CandidateFolderNode({
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
               <span className="truncate text-body font-medium">{folder.name || t("未命名")}</span>
-              {!folder.inQueue && (
-                <span className="shrink-0 text-[10px] text-on-surface-variant">{t("已移出队列")}</span>
-              )}
               {!!folder.activeCount && (
                 <Icon name="lock" size={13} className="shrink-0 text-primary" />
               )}
