@@ -15,7 +15,7 @@ import logging
 
 from werkzeug.exceptions import HTTPException
 
-from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import Flask, Response, abort, jsonify, render_template, request, stream_with_context
 
 logger = logging.getLogger(__name__)
 
@@ -235,14 +235,13 @@ def create_app() -> Flask:
     def index() -> str:
         return render_spa()
 
-    @app.get("/knowledge")
-    @app.get("/talent-pool")
-    @app.get("/talent-pool/<path:person_path>")
-    @app.get("/review")
-    @app.get("/settings")
-    @app.get("/resume-evaluate")
-    @app.get("/interview-admission")
-    def spa_pages() -> str:
+    # SPA 历史路由兜底：除 API 与静态资源外的任意 GET 页面路径都返回 SPA shell，
+    # 由 React Router 接管（刷新 / 直链 /talent-evaluation/... 不再 404）。
+    # 更具体的路由（/api/*、/static/*、/share/<token> 等）总是优先匹配。
+    @app.get("/<path:page>")
+    def spa_fallback(page: str):
+        if page.startswith(("api/", "static/")):
+            abort(404)
         return render_spa()
 
     @app.get("/api/candidates")

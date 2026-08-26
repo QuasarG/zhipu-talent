@@ -47,6 +47,26 @@ class WorkbenchTest(unittest.TestCase):
         html = response.get_data(as_text=True)
         self.assertIn("root", html)
 
+    def test_spa_fallback_serves_deep_links(self) -> None:
+        """SPA 历史路由兜底：刷新 / 直链任意页面路径都返回 SPA shell，不再 404。"""
+        for path in (
+            "/talent-evaluation/admission",
+            "/talent-evaluation",
+            "/chat",
+            "/jd-pool",
+            "/scholarship/1",
+            "/settings",
+        ):
+            response = self.app.get(path)
+            self.assertEqual(response.status_code, 200, path)
+            self.assertIn("root", response.get_data(as_text=True))
+
+    def test_spa_fallback_keeps_api_404(self) -> None:
+        """未知 API 路径不落入 SPA 兜底，保持 JSON 404。"""
+        response = self.app.get("/api/not-a-real-endpoint")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("detail", response.get_json())
+
     @patch(
         "agi_talent_radar.web.workbench._list_dist_assets",
         side_effect=[["assets/index-old.js"], ["assets/index-current.js"]],
