@@ -16,11 +16,9 @@ interface Props {
   openFolderIds: string[];
   onToggleFolder: (candidateId: string) => void;
   selectedCandidateId: string | null;
-  /** 当前选中的子项：null = 候选人根节点；"capability" = 能力评估；"jd:<id>" = 配对报告 */
+  /** 当前选中的 JD 子项："jd:<id>"；null = 候选人根节点选中 */
   selectedChildKey: string | null;
-  activeSub: "admission" | "capability";
   onSelectCandidate: (candidateId: string) => void;
-  onSelectCapability: (candidateId: string) => void;
   onSelectPair: (candidateId: string, jdId: string) => void;
   /** 导入运行卡（插入列表底部，运行期间不可关闭） */
   runningCard?: ReactNode;
@@ -37,7 +35,8 @@ const CHILD_STATUS_META: Record<FolderChildStatus, { tone: "primary" | "success"
 
 /**
  * 统一人才评估外壳的共用左侧：候选人文件夹 + JD 子项 + 导入简历动作。
- * 文件夹标题始终使用姓名（空时显示"未命名"），绝不展示内部 ID。
+ * 文件夹标题始终使用姓名（空时显示"未命名"），绝不展示内部 ID；
+ * 子项收在浅色分组容器中，表达"文件夹包含评估对象"的层级关系。
  */
 export default function CandidateFolderTree({
   folders,
@@ -47,9 +46,7 @@ export default function CandidateFolderTree({
   onToggleFolder,
   selectedCandidateId,
   selectedChildKey,
-  activeSub,
   onSelectCandidate,
-  onSelectCapability,
   onSelectPair,
   runningCard,
   onImport,
@@ -82,9 +79,7 @@ export default function CandidateFolderTree({
             onToggle={() => onToggleFolder(folder.candidateId)}
             selectedCandidateId={selectedCandidateId}
             selectedChildKey={selectedChildKey}
-            activeSub={activeSub}
             onSelectCandidate={onSelectCandidate}
-            onSelectCapability={onSelectCapability}
             onSelectPair={onSelectPair}
           />
         ))}
@@ -114,9 +109,7 @@ function CandidateFolderNode({
   onToggle,
   selectedCandidateId,
   selectedChildKey,
-  activeSub,
   onSelectCandidate,
-  onSelectCapability,
   onSelectPair,
 }: {
   folder: CandidateFolder;
@@ -124,9 +117,7 @@ function CandidateFolderNode({
   onToggle: () => void;
   selectedCandidateId: string | null;
   selectedChildKey: string | null;
-  activeSub: "admission" | "capability";
   onSelectCandidate: (candidateId: string) => void;
-  onSelectCapability: (candidateId: string) => void;
   onSelectPair: (candidateId: string, jdId: string) => void;
 }) {
   const { t } = useI18n();
@@ -169,22 +160,23 @@ function CandidateFolderNode({
         </button>
       </div>
 
+      {/* 子项分组容器：浅色圆角分组表达"文件夹包含评估对象"，而不是与父行并列 */}
       {open && (
-        <div className="mt-0.5 flex flex-col">
+        <div className="mx-1.5 mt-1 mb-1.5 flex flex-col gap-0.5 rounded-lg bg-surface-low p-1">
           {folder.children.map((child) => (
             <FolderChildRow
               key={child.key}
               child={child}
               candidateId={folder.candidateId}
               selected={
-                selectedCandidateId === folder.candidateId
-                && selectedChildKey === child.key
-                && (child.kind === "capability" ? activeSub === "capability" : activeSub === "admission")
+                selectedCandidateId === folder.candidateId && selectedChildKey === child.key
               }
-              onSelectCapability={onSelectCapability}
               onSelectPair={onSelectPair}
             />
           ))}
+          {!folder.children.length && (
+            <p className="px-2.5 py-1.5 text-label text-on-surface-variant">{t("暂无岗位评估")}</p>
+          )}
         </div>
       )}
     </div>
@@ -195,52 +187,42 @@ function FolderChildRow({
   child,
   candidateId,
   selected,
-  onSelectCapability,
   onSelectPair,
 }: {
   child: FolderChild;
   candidateId: string;
   selected: boolean;
-  onSelectCapability: (candidateId: string) => void;
   onSelectPair: (candidateId: string, jdId: string) => void;
 }) {
   const { t } = useI18n();
   const meta = CHILD_STATUS_META[child.status];
-  const isCapability = child.kind === "capability";
   return (
     <button
       type="button"
-      onClick={() => {
-        if (isCapability) onSelectCapability(candidateId);
-        else if (child.jdId) onSelectPair(candidateId, child.jdId);
-      }}
+      onClick={() => onSelectPair(candidateId, child.jdId)}
       className={cn(
         "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
-        selected ? "bg-secondary-container" : "hover:bg-surface-low",
+        selected ? "bg-secondary-container" : "hover:bg-surface-highest",
       )}
     >
       <Icon
-        name={isCapability ? "psychology" : "work"}
-        size={15}
+        name="work"
+        size={14}
         className={cn("shrink-0", selected ? "text-on-secondary-container" : "text-on-surface-variant")}
       />
       <span className="min-w-0 flex-1 truncate text-body-sm">
-        {isCapability ? t("能力评估") : child.jdTitle || t("未命名岗位")}
+        {child.jdTitle || t("未命名岗位")}
       </span>
-      {isCapability ? (
-        <span className="shrink-0 text-[10px] text-warning">{t("重构中")}</span>
-      ) : (
-        <StatusChip tone={meta.tone} className="shrink-0">
-          {child.status === "running" ? (
-            <span className="inline-flex items-center gap-0.5">
-              <Icon name="lock" size={11} />
-              {t(meta.label)}
-            </span>
-          ) : (
-            t(meta.label)
-          )}
-        </StatusChip>
-      )}
+      <StatusChip tone={meta.tone} className="shrink-0">
+        {child.status === "running" ? (
+          <span className="inline-flex items-center gap-0.5">
+            <Icon name="lock" size={11} />
+            {t(meta.label)}
+          </span>
+        ) : (
+          t(meta.label)
+        )}
+      </StatusChip>
     </button>
   );
 }

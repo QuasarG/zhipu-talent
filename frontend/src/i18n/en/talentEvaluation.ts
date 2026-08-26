@@ -1,11 +1,9 @@
 // 统一"人才评估"外壳（/talent-evaluation）文案。中文即 key，这里提供英文翻译。
 export default {
-  // 导航与子界面
+  // 外壳与工具栏
   "人才评估": "Talent Evaluation",
   "面试准入": "Interview Admission",
-  "能力评估": "Capability",
   "面试准入：判断候选人是否值得进入某个岗位的面试": "Admission: decide whether a candidate is worth interviewing for a specific role",
-  "能力评估：梳理候选人自身的稳定能力结构": "Capability: map a candidate's own stable capability structure",
   "新建准入评估": "New Admission Assessment",
   "返回浏览": "Back to Browsing",
   "停止失败": "Failed to stop",
@@ -17,9 +15,9 @@ export default {
   "导入简历后，每个候选人会作为一个文件夹出现在这里": "After import, each candidate appears here as a folder",
   "折叠": "Collapse",
   "展开": "Expand",
+  "暂无岗位评估": "No role assessments yet",
   "未命名岗位": "Unnamed role",
   "未评估": "Not assessed",
-  "重构中": "Rebuilding",
 
   // 导入运行恢复提示
   "上次导入可能仍在后台进行": "A previous import may still be running in the background",
@@ -27,25 +25,9 @@ export default {
   "刷新列表": "Refresh list",
   "知道了": "Got it",
 
-  // 候选人档案摘要
+  // 面试准入内容区
   "从左侧选择一个候选人": "Select a candidate on the left",
   "选中候选人根节点查看简历；选择岗位子项查看该配对的准入报告": "Select a candidate folder to view the resume, or a role item for its admission report",
-  "未核验": "Not verified",
-  "方向": "Direction",
-  "教育经历": "Education",
-  "技能关键词": "Skills",
-  "暂无教育信息": "No education recorded",
-  "暂无技能信息": "No skills recorded",
-  "论文（候选人自述）": "Publications (as claimed)",
-  "论文状态为候选人陈述，以核验结果为准": "Publication status is the candidate's claim; refer to verification results",
-  "HR 补充信息": "HR Supplementary Notes",
-
-  // 能力评估过渡期
-  "能力评估正在重构": "Capability assessment is being rebuilt",
-  "能力维度、证据契约与评分规则确认前，这里只展示候选人的结构化简历和已确认事实，不提供能力总分；旧简历评估结果已退出主线，不会在此展示。": "Until capability dimensions, evidence contracts, and scoring rules are confirmed, only the structured resume and confirmed facts are shown here. No capability score is provided; legacy resume evaluation results are retired from the main flow.",
-  "能力评估重构完成后，这里将呈现候选人的能力结构、边界与证据": "Once the rebuild is done, a candidate's capability structure, boundaries, and evidence will appear here",
-
-  // 面试准入内容区
   "选择左侧文件夹中的岗位子项": "Select a role item in a candidate folder",
   "每个岗位子项对应一次候选人–JD 准入评估，进入或不进入面试都保留完整报告": "Each role item is one candidate–JD admission assessment; full reports are kept whether or not the candidate advances",
   "该配对还没有当前报告": "No current report for this pair",

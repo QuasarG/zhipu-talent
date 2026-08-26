@@ -11,7 +11,7 @@ import type {
  * 规则（docs/rebuild.md §2.1）：
  * - 候选人列表与人才库同源（导入即入库），每个候选人是一个文件夹；
  *   标题始终使用姓名，姓名为空时由展示层退回"未命名"，绝不回退到内部 ID；
- * - 文件夹下挂该候选人的评估对象：能力评估入口 + 每个候选人–JD 配对的当前准入评估；
+ * - 文件夹下挂该候选人的评估对象：每个候选人–JD 配对的当前准入评估；
  * - 进入 / 不进入面试的结果都保留入口；失效报告显示"需重评"，不隐藏；
  * - 正在运行的配对显示"评估中"（锁），运行状态优先于历史报告状态。
  */
@@ -24,10 +24,9 @@ export type FolderChildStatus =
   | "unevaluated";
 
 export interface FolderChild {
-  /** "capability" 或 "jd:<jd_id>" */
+  /** "jd:<jd_id>" */
   key: string;
-  kind: "capability" | "jd";
-  jdId: string | null;
+  jdId: string;
   jdTitle: string;
   status: FolderChildStatus;
   updatedAt: string | null;
@@ -38,7 +37,7 @@ export interface CandidateFolder {
   name: string;
   role: string;
   stage: string;
-  /** 能力评估入口固定在首位，其后按 JD 标题排序 */
+  /** JD 子项按标题排序 */
   children: FolderChild[];
   /** 正在评估中的配对数 */
   activeCount: number;
@@ -76,16 +75,15 @@ export function buildCandidateFolders(
     const ownAssessments = assessments.filter(
       (item) => item.candidate_id === folder.candidateId,
     );
-    const jdChildren: FolderChild[] = [];
+    const children: FolderChild[] = [];
 
     for (const assessment of ownAssessments) {
       const hasActiveRun = activePairKeys.has(
         `${assessment.candidate_id}::${assessment.jd_id}`,
       );
       if (hasActiveRun) folder.activeCount += 1;
-      jdChildren.push({
+      children.push({
         key: `jd:${assessment.jd_id}`,
-        kind: "jd",
         jdId: assessment.jd_id,
         jdTitle: assessment.jd_title || "",
         status: pairChildStatus(assessment, hasActiveRun),
@@ -98,9 +96,8 @@ export function buildCandidateFolders(
       if (run.candidate_id !== folder.candidateId) continue;
       if (ownAssessments.some((item) => item.jd_id === run.jd_id)) continue;
       folder.activeCount += 1;
-      jdChildren.push({
+      children.push({
         key: `jd:${run.jd_id}`,
-        kind: "jd",
         jdId: run.jd_id,
         jdTitle: run.jd_title || "",
         status: "running",
@@ -108,19 +105,8 @@ export function buildCandidateFolders(
       });
     }
 
-    jdChildren.sort((a, b) => a.jdTitle.localeCompare(b.jdTitle, "zh-Hans-CN"));
-
-    folder.children = [
-      {
-        key: "capability",
-        kind: "capability",
-        jdId: null,
-        jdTitle: "",
-        status: "unevaluated",
-        updatedAt: null,
-      },
-      ...jdChildren,
-    ];
+    children.sort((a, b) => a.jdTitle.localeCompare(b.jdTitle, "zh-Hans-CN"));
+    folder.children = children;
     return folder;
   });
 }

@@ -57,7 +57,7 @@ const run = (candidateId, jdId, extra = {}) => ({
   ...extra,
 });
 
-test("folders always lead with the capability child, then JD items by title", () => {
+test("folder children are JD items sorted by title (no extra entries)", () => {
   const folders = buildCandidateFolders(
     [brief("c1", "张三")],
     [
@@ -67,8 +67,7 @@ test("folders always lead with the capability child, then JD items by title", ()
     [],
   );
   assert.equal(folders.length, 1);
-  assert.equal(folders[0].children[0].kind, "capability");
-  const jdTitles = folders[0].children.slice(1).map((child) => child.jdTitle);
+  const jdTitles = folders[0].children.map((child) => child.jdTitle);
   assert.deepEqual(jdTitles, ["Agent Evaluation", "Data Pipeline"]);
 });
 
@@ -94,7 +93,7 @@ test("folders come from the candidate directory only; stray assessments are igno
   );
   assert.equal(folders.length, 1);
   assert.equal(folders[0].candidateId, "c1");
-  assert.equal(folders[0].children.length, 2);
+  assert.equal(folders[0].children.length, 1);
 });
 
 test("both admission outcomes stay visible; invalid reports show stale status", () => {
@@ -107,7 +106,7 @@ test("both admission outcomes stay visible; invalid reports show stale status", 
     ],
     [],
   );
-  const statuses = folders[0].children.slice(1).map((child) => child.status);
+  const statuses = folders[0].children.map((child) => child.status);
   assert.deepEqual(statuses, ["interview", "no_interview", "stale"]);
 });
 

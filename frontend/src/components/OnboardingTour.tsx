@@ -31,7 +31,7 @@ const STEPS: TourStep[] = [
     selector: '[data-tour="nav-talent-evaluation"]',
     route: "/talent-evaluation/admission",
     title: "人才评估",
-    desc: "统一评估入口：左侧是候选人文件夹，可导入简历；面试准入按候选人–岗位配对输出进入/不进入面试的报告；能力评估子界面正在重构，当前展示结构化简历。",
+    desc: "统一评估入口：左侧是候选人文件夹，可导入简历；选中文件夹查看简历，展开岗位子项查看该配对的面试准入报告与运行过程。",
     placement: "right",
   },
   {

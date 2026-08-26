@@ -16,14 +16,11 @@ import Settings from "./pages/Settings";
 import SharedProfile from "./pages/SharedProfile";
 import OnboardingTour from "./components/OnboardingTour";
 
-/** 旧"简历评估"入口只做迁移兼容：保留 ?focus= 跳转参数，重定向到统一外壳的能力评估子界面 */
-function ResumeEvaluateRedirect() {
+/** 旧入口迁移兼容：保留 ?focus= 跳转参数，统一回到面试准入子界面（能力评估入口暂时移除） */
+function EvaluationRedirect({ to }: { to: string }) {
   const [params] = useSearchParams();
   const focus = params.get("focus");
-  const to = focus
-    ? `/talent-evaluation/capability?focus=${encodeURIComponent(focus)}`
-    : "/talent-evaluation/capability";
-  return <Navigate to={to} replace />;
+  return <Navigate to={focus ? `${to}?focus=${encodeURIComponent(focus)}` : to} replace />;
 }
 
 function App() {
@@ -58,10 +55,11 @@ function App() {
         <main className="flex-1 min-w-0 px-6 pb-6">
           <Routes>
             <Route path="/" element={<TalentPool />} />
-            {/* 统一"人才评估"外壳：子界面由路径决定（面试准入 / 能力评估） */}
+            {/* 统一"人才评估"外壳：当前只承载面试准入 */}
             <Route path="/talent-evaluation/*" element={<TalentEvaluation />} />
-            {/* 迁移兼容入口：不再单独发展 */}
-            <Route path="/resume-evaluate" element={<ResumeEvaluateRedirect />} />
+            {/* 能力评估入口暂时移除：旧地址与迁移兼容入口统一回到面试准入 */}
+            <Route path="/talent-evaluation/capability" element={<EvaluationRedirect to="/talent-evaluation/admission" />} />
+            <Route path="/resume-evaluate" element={<EvaluationRedirect to="/talent-evaluation/admission" />} />
             <Route path="/interview-admission" element={<Navigate to="/talent-evaluation/admission" replace />} />
             <Route path="/chat" element={<TalentChat />} />
             <Route path="/knowledge" element={<Navigate to="/chat" replace />} />

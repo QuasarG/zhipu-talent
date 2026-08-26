@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import type {
   CandidateBrief,
@@ -15,11 +15,9 @@ import Icon from "@/components/ui/Icon";
 import Card from "@/components/ui/Card";
 import Progress from "@/components/ui/Progress";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
-import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowGraph";
 import CandidateFolderTree from "@/features/talentEvaluation/CandidateFolderTree";
 import AdmissionPane from "@/features/talentEvaluation/AdmissionPane";
-import CapabilityWorkspace from "@/features/talentEvaluation/CapabilityWorkspace";
 import ImportOverlay from "@/features/resume/ImportOverlay";
 import { buildCandidateFolders } from "@/features/talentEvaluation/talentEvaluationModel";
 import { useSessionState } from "@/lib/sessionState";
@@ -31,17 +29,11 @@ const IMPORT_FLAG = "talent-evaluation.import-in-flight";
 
 /**
  * 统一"人才评估"外壳（docs/rebuild.md §2）。
- * 两个子界面（面试准入 / 能力评估）共享候选人文件夹、导入、运行状态与持久化现场；
- * 子界面由 URL 路径决定，切换不卸载外壳，运行中的工作流以服务端记录为准恢复。
+ * 当前只承载面试准入子界面；能力评估入口暂时移除（维度确认前不提供占位），
+ * /talent-evaluation/capability 由路由重定向回 admission。
  */
 export default function TalentEvaluation() {
-  const location = useLocation();
-  const navigate = useNavigate();
   const { t } = useI18n();
-  const sub = useMemo<"admission" | "capability">(
-    () => (location.pathname.includes("/capability") ? "capability" : "admission"),
-    [location.pathname],
-  );
 
   // ---- 数据 ----
   const [candidates, setCandidates] = useState<CandidateBrief[]>([]);
@@ -331,19 +323,11 @@ export default function TalentEvaluation() {
     clearNode();
   }, [clearNode, setSelectedCandidateId, setSelectedJdId]);
 
-  const selectCapability = useCallback((candidateId: string) => {
-    setSelectedCandidateId(candidateId);
-    setSelectedJdId(null);
-    clearNode();
-    if (sub !== "capability") navigate("/talent-evaluation/capability");
-  }, [clearNode, navigate, setSelectedCandidateId, setSelectedJdId, sub]);
-
   const selectPair = useCallback((candidateId: string, jdId: string) => {
     setSelectedCandidateId(candidateId);
     setSelectedJdId(jdId);
     clearNode();
-    if (sub !== "admission") navigate("/talent-evaluation/admission");
-  }, [clearNode, navigate, setSelectedCandidateId, setSelectedJdId, sub]);
+  }, [clearNode, setSelectedCandidateId, setSelectedJdId]);
 
   const selectGraphNode = useCallback((node: AdmissionGraphNode) => {
     setSelectedNode(node);
@@ -409,11 +393,7 @@ export default function TalentEvaluation() {
     </div>
   ) : null;
 
-  const selectedChildKey = sub === "capability"
-    ? "capability"
-    : selectedJdId
-      ? `jd:${selectedJdId}`
-      : null;
+  const selectedChildKey = selectedJdId ? `jd:${selectedJdId}` : null;
 
   const batchDone = batch && TERMINAL_BATCH_STATUSES.has(batch.status)
     ? batch.completed_pairs + batch.failed_pairs + batch.cancelled_pairs
@@ -423,32 +403,19 @@ export default function TalentEvaluation() {
     <div className="w-full max-w-full min-w-0">
       <PageToolbar
         title={t("人才评估")}
-        subtitle={sub === "admission"
-          ? t("面试准入：判断候选人是否值得进入某个岗位的面试")
-          : t("能力评估：梳理候选人自身的稳定能力结构")}
+        subtitle={t("面试准入：判断候选人是否值得进入某个岗位的面试")}
         right={
           <>
-            {sub === "admission" && (
-              batchRunning ? (
-                <div className="hidden lg:flex w-[240px] items-center gap-3">
-                  <Progress value={batch!.total_pairs ? (batchDone / batch!.total_pairs) * 100 : 0} className="flex-1" />
-                  <span className="text-label tabular-nums text-on-surface-variant">{batchDone} / {batch!.total_pairs}</span>
-                </div>
-              ) : batch ? (
-                <Button variant="tonal" icon="add" onClick={resetBatch}>{t("返回浏览")}</Button>
-              ) : !creating ? (
-                <Button variant="filled" icon="add" onClick={() => setCreating(true)}>{t("新建准入评估")}</Button>
-              ) : null
-            )}
-            {/* 子界面切换胶囊固定在最右端：左侧操作按钮出现/消失不影响其位置 */}
-            <SegmentedButtons
-              options={[
-                { value: "admission", label: t("面试准入"), icon: "fact_check" },
-                { value: "capability", label: t("能力评估"), icon: "psychology" },
-              ]}
-              value={sub}
-              onChange={(value) => navigate(`/talent-evaluation/${value}`)}
-            />
+            {batchRunning ? (
+              <div className="hidden lg:flex w-[240px] items-center gap-3">
+                <Progress value={batch!.total_pairs ? (batchDone / batch!.total_pairs) * 100 : 0} className="flex-1" />
+                <span className="text-label tabular-nums text-on-surface-variant">{batchDone} / {batch!.total_pairs}</span>
+              </div>
+            ) : batch ? (
+              <Button variant="tonal" icon="add" onClick={resetBatch}>{t("返回浏览")}</Button>
+            ) : !creating ? (
+              <Button variant="filled" icon="add" onClick={() => setCreating(true)}>{t("新建准入评估")}</Button>
+            ) : null}
           </>
         }
       />
@@ -476,23 +443,21 @@ export default function TalentEvaluation() {
           ))}
           selectedCandidateId={selectedCandidateId}
           selectedChildKey={selectedChildKey}
-          activeSub={sub}
           onSelectCandidate={selectCandidateRoot}
-          onSelectCapability={selectCapability}
           onSelectPair={selectPair}
           runningCard={runningCard}
           onImport={openImport}
         />
 
         <div className="min-w-0 min-h-0 flex flex-col">
-          {restoring && sub === "admission" && !batch ? (
+          {restoring && !batch ? (
             <Card variant="filled" className="min-h-0 flex-1 items-center justify-center">
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-on-surface-variant">
                 <LoadingIndicator size={28} />
                 <p className="text-body-sm">{t("正在恢复评估现场…")}</p>
               </div>
             </Card>
-          ) : sub === "admission" ? (
+          ) : (
             <AdmissionPane
               creating={creating}
               batch={batch}
@@ -526,15 +491,6 @@ export default function TalentEvaluation() {
               onCancelBatch={() => void cancelBatch()}
               onExitCreate={() => setCreating(false)}
               onStartBatch={startBatch}
-            />
-          ) : (
-            <CapabilityWorkspace
-              detail={candidateDetail}
-              loading={candidateDetailLoading}
-              onReviewed={() => {
-                refreshDetail();
-                void loadShell();
-              }}
             />
           )}
         </div>
