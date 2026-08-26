@@ -16,6 +16,7 @@ from agi_talent_radar.core.db.orm import (
     CandidateJdAssessmentORM,
     CandidateORM,
     InterviewAssessmentBatchORM,
+    InterviewAssessmentPairLockORM,
     InterviewAssessmentRunORM,
     JdEntryORM,
 )
@@ -89,22 +90,8 @@ def start_batch(
     candidate_ids: list[str],
     jd_ids: list[str],
     owner_id: str | None,
-    force: bool = False,
 ) -> dict[str, Any]:
     with get_session() as session:
-        if not force:
-            existing = (
-                session.query(CandidateJdAssessmentORM)
-                .filter(
-                    CandidateJdAssessmentORM.candidate_id.in_(candidate_ids),
-                    CandidateJdAssessmentORM.jd_id.in_(jd_ids),
-                    CandidateJdAssessmentORM.is_valid.is_(True),
-                )
-                .all()
-            )
-            if existing:
-                pairs = "、".join(f"{row.candidate_id}×{row.jd_id}" for row in existing[:5])
-                raise ValueError(f"以下配对已有有效报告，不能重复评估：{pairs}")
         running = (
             session.query(InterviewAssessmentRunORM)
             .filter(
@@ -115,7 +102,7 @@ def start_batch(
             .first()
         )
         if running is not None:
-            raise ValueError("所选范围内已有配对正在评估。")
+            raise ValueError("所选候选人–JD 配对正在评估，请等待当前运行结束。")
         batch = create_interview_assessment_batch(session, candidate_ids, jd_ids, owner_id)
         batch.status = "running"
         batch.started_at = _now()
@@ -142,6 +129,18 @@ def get_batch(batch_id: str) -> dict[str, Any] | None:
         return {**batch_to_dict(batch), "runs": [run_to_dict(row) for row in runs]}
 
 
+def list_active_runs() -> list[dict[str, Any]]:
+    """返回全局活动配对，供所有用户同步互斥状态。"""
+    with get_session() as session:
+        rows = (
+            session.query(InterviewAssessmentRunORM)
+            .filter(InterviewAssessmentRunORM.status.in_(("queued", "running")))
+            .order_by(InterviewAssessmentRunORM.created_at, InterviewAssessmentRunORM.id)
+            .all()
+        )
+        return [run_to_dict(row) for row in rows]
+
+
 def cancel_run(run_id: str) -> bool:
     with get_session() as session:
         run = session.get(InterviewAssessmentRunORM, run_id)
@@ -154,6 +153,7 @@ def cancel_run(run_id: str) -> bool:
             run.run_trace = []
             run.model_usage = []
             run.completed_at = _now()
+            _release_pair_lock(session, run)
         session.commit()
         _refresh_batch(session, run.batch_id)
         return True
@@ -177,6 +177,7 @@ def cancel_batch(batch_id: str) -> int:
                 run.run_trace = []
                 run.model_usage = []
                 run.completed_at = _now()
+                _release_pair_lock(session, run)
         session.commit()
         _refresh_batch(session, batch_id)
         return len(runs)
@@ -271,6 +272,7 @@ def _run_pair(run_id: str) -> None:
                 run.error_message = str(exc)
                 run.staged_result = {}
                 run.completed_at = _now()
+                _release_pair_lock(session, run)
                 session.commit()
                 _refresh_batch(session, run.batch_id)
 
@@ -311,6 +313,7 @@ def _promote_result(session, run: InterviewAssessmentRunORM, result: dict[str, A
     run.run_trace = result["run_trace"]
     run.staged_result = {}
     run.completed_at = _now()
+    _release_pair_lock(session, run)
     session.commit()
     _refresh_batch(session, run.batch_id)
 
@@ -323,6 +326,7 @@ def _discard_cancelled_run(session, run: InterviewAssessmentRunORM) -> None:
     run.model_usage = []
     run.error_message = ""
     run.completed_at = _now()
+    _release_pair_lock(session, run)
     session.commit()
     _refresh_batch(session, run.batch_id)
 
@@ -431,6 +435,12 @@ def assessment_to_dict(row: CandidateJdAssessmentORM) -> dict[str, Any]:
 def _run_lock(run_id: str) -> threading.Lock:
     with _RUN_LOCKS_GUARD:
         return _RUN_LOCKS.setdefault(run_id, threading.Lock())
+
+
+def _release_pair_lock(session, run: InterviewAssessmentRunORM) -> None:
+    session.query(InterviewAssessmentPairLockORM).filter_by(run_id=run.id).delete(
+        synchronize_session=False
+    )
 
 
 def _load_json(value: Any) -> Any:

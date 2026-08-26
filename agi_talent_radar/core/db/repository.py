@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, exists, or_
+from sqlalchemy.exc import IntegrityError
 
 from agi_talent_radar.core.db.orm import (
     CandidateJdAssessmentORM,
@@ -18,6 +19,7 @@ from agi_talent_radar.core.db.orm import (
     EvaluationORM,
     IdentitySuggestionORM,
     InterviewAssessmentBatchORM,
+    InterviewAssessmentPairLockORM,
     InterviewAssessmentRunORM,
     JdEntryORM,
     MergeAuditORM,
@@ -1308,11 +1310,25 @@ def create_interview_assessment_batch(
     )
     session.add(batch)
     session.flush()
-    session.add_all(
+    runs = [
         InterviewAssessmentRunORM(batch_id=batch.id, candidate_id=candidate_id, jd_id=jd_id)
         for candidate_id in candidates
         for jd_id in jobs
+    ]
+    session.add_all(runs)
+    session.flush()
+    session.add_all(
+        InterviewAssessmentPairLockORM(
+            candidate_id=run.candidate_id,
+            jd_id=run.jd_id,
+            run_id=run.id,
+        )
+        for run in runs
     )
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ValueError("部分候选人–JD 配对正在评估，请等待当前运行结束。") from exc
     session.refresh(batch)
     return batch

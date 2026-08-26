@@ -6,11 +6,17 @@ from typing import Any
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import sessionmaker
 
-from agi_talent_radar.core.db.orm import Base, EvaluationORM, SchemaVersionORM
+from agi_talent_radar.core.db.orm import (
+    Base,
+    EvaluationORM,
+    InterviewAssessmentPairLockORM,
+    InterviewAssessmentRunORM,
+    SchemaVersionORM,
+)
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 22
+LATEST_SCHEMA_VERSION = 23
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -205,7 +211,14 @@ def ensure_schema(engine) -> None:
         _record_version(
             engine,
             22,
-            "phase 22: persistent JD card trace and guozexin force-reevaluation control",
+            "phase 22: persistent JD card trace",
+        )
+    if current_version < 23:
+        _backfill_interview_assessment_pair_locks(engine)
+        _record_version(
+            engine,
+            23,
+            "phase 23: cross-user candidate-JD assessment run locks",
         )
     _ensure_indexes(engine)
 
@@ -241,9 +254,29 @@ def _migrate_interview_assessment_controls(engine) -> None:
             if name not in jd_columns
         ],
     )
-    user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
-    if "allow_force_reevaluation" not in user_columns:
-        _add_columns(engine, "users", ["allow_force_reevaluation BOOLEAN NOT NULL DEFAULT 0"])
+
+
+def _backfill_interview_assessment_pair_locks(engine) -> None:
+    """为升级时仍在运行的配对补锁；重复的历史脏运行保留最早一条。"""
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        runs = (
+            session.query(InterviewAssessmentRunORM)
+            .filter(InterviewAssessmentRunORM.status.in_(("queued", "running")))
+            .order_by(InterviewAssessmentRunORM.created_at, InterviewAssessmentRunORM.id)
+            .all()
+        )
+        for run in runs:
+            key = (run.candidate_id, run.jd_id)
+            if session.get(InterviewAssessmentPairLockORM, key) is None:
+                session.add(
+                    InterviewAssessmentPairLockORM(
+                        candidate_id=run.candidate_id,
+                        jd_id=run.jd_id,
+                        run_id=run.id,
+                    )
+                )
+        session.commit()
 
 
 def _ensure_legacy_parent_columns(engine) -> None:

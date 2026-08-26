@@ -106,19 +106,18 @@ export default function InterviewAdmission() {
   const [selectedNodeId, setSelectedNodeId] = useSessionState<string | null>("interview-admission.node-id", null);
   const [batch, setBatch] = useState<InterviewAssessmentBatch | null>(null);
   const [assessments, setAssessments] = useState<InterviewAssessment[]>([]);
+  const [activeRuns, setActiveRuns] = useState<InterviewAssessmentRun[]>([]);
   const [selectedNode, setSelectedNode] = useState<AdmissionGraphNode | null>(null);
-  const [forceAllowed, setForceAllowed] = useState(false);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
   const [restoring, setRestoring] = useState(!!batchId);
   const { t } = useI18n();
-  const force = forceAllowed;
 
   const candidateIds = useMemo(() => new Set(candidateIdList), [candidateIdList]);
   const jdIds = useMemo(() => new Set(jdIdList), [jdIdList]);
-  const selectedExistingAssessments = useMemo(() => assessments.filter((item) => (
-    item.is_valid && candidateIds.has(item.candidate_id) && jdIds.has(item.jd_id)
-  )), [assessments, candidateIds, jdIds]);
+  const selectedActiveRuns = useMemo(() => activeRuns.filter((item) => (
+    candidateIds.has(item.candidate_id) && jdIds.has(item.jd_id)
+  )), [activeRuns, candidateIds, jdIds]);
   const reportAssessment = assessments.find((item) => item.id === reportAssessmentId);
   const reportBatch = useMemo(() => assessmentsToBatch(assessments), [assessments]);
   const reportRun = reportAssessment ? assessmentToRun(reportAssessment) : undefined;
@@ -127,20 +126,24 @@ export default function InterviewAdmission() {
   const updateJdIds = useCallback((next: Set<string>) => setJdIdList([...next]), [setJdIdList]);
 
   const loadInputs = useCallback(async () => {
-    const [candidateRows, jdRows, settings, assessmentRows] = await Promise.all([
+    const [candidateRows, jdRows, assessmentRows, activeRows] = await Promise.all([
       api.candidates.list(),
       api.jds.list(),
-      api.interviewAssessments.settings(),
       api.interviewAssessments.list(),
+      api.interviewAssessments.active(),
     ]);
     const readyJds = jdRows.filter((jd) => !jd.archived && jd.card_status === "ready");
     setCandidates(candidateRows);
     setJds(readyJds);
     setAssessments(assessmentRows);
-    setForceAllowed(settings.can_manage_force_reevaluation && settings.allow_force_reevaluation);
+    setActiveRuns(activeRows);
     setCandidateIdList((current) => current.filter((id) => candidateRows.some((candidate) => candidate.id === id)));
     setJdIdList((current) => current.filter((id) => readyJds.some((jd) => jd.id === id)));
   }, [setCandidateIdList, setJdIdList]);
+
+  const refreshActiveRuns = useCallback(async () => {
+    setActiveRuns(await api.interviewAssessments.active());
+  }, []);
 
   const hydrateBatch = useCallback(async (id: string) => {
     try {
@@ -171,6 +174,20 @@ export default function InterviewAdmission() {
   }, [loadInputs, t]);
 
   useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void refreshActiveRuns();
+    };
+    const timer = window.setInterval(refresh, 1200);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [refreshActiveRuns]);
+
+  useEffect(() => {
     if (!batchId) {
       setRestoring(false);
       return;
@@ -198,18 +215,11 @@ export default function InterviewAdmission() {
   }, [batchId, hydrateBatch]);
 
   const start = async () => {
-    if (!candidateIds.size || !jdIds.size || starting) return;
-    if (!force && selectedExistingAssessments.length) {
-      setReportAssessmentId(selectedExistingAssessments[0].id);
-      setSelectedNode(null);
-      setSelectedNodeId(null);
-      setError("");
-      return;
-    }
+    if (!candidateIds.size || !jdIds.size || starting || selectedActiveRuns.length) return;
     setStarting(true);
     setError("");
     try {
-      const next = await api.interviewAssessments.start([...candidateIds], [...jdIds], force);
+      const next = await api.interviewAssessments.start([...candidateIds], [...jdIds]);
       setBatch(next);
       setBatchId(next.id);
       setActiveRunId(next.runs?.[0]?.id || null);
@@ -217,6 +227,7 @@ export default function InterviewAdmission() {
       setSelectedNode(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("启动失败"));
+      void refreshActiveRuns();
     } finally {
       setStarting(false);
     }
@@ -300,14 +311,14 @@ export default function InterviewAdmission() {
             )}
             <Button
               variant="filled"
-              icon={selectedExistingAssessments.length && !force ? "description" : "play_arrow"}
-              disabled={!pairCount || starting}
-              onClick={selectedExistingAssessments.length && !force ? () => openReport(selectedExistingAssessments[0].id) : start}
+              icon={selectedActiveRuns.length ? "lock" : "play_arrow"}
+              disabled={!pairCount || starting || !!selectedActiveRuns.length}
+              onClick={start}
             >
               {starting
                 ? t("启动中…")
-                : selectedExistingAssessments.length && !force
-                  ? t("查看已有报告 {n}", { n: selectedExistingAssessments.length })
+                : selectedActiveRuns.length
+                  ? t("{n} 个配对评估中", { n: selectedActiveRuns.length })
                   : t("开始 {n} 个配对", { n: pairCount })}
             </Button>
           </>
@@ -374,13 +385,11 @@ export default function InterviewAdmission() {
           jdIds={jdIds}
           candidateSearch={candidateSearch}
           jdSearch={jdSearch}
-          force={force}
-          assessments={assessments}
+          activeRuns={activeRuns}
           onCandidateSearch={setCandidateSearch}
           onJdSearch={setJdSearch}
           onCandidateIds={updateCandidateIds}
           onJdIds={updateJdIds}
-          onOpenReport={openReport}
           onStart={start}
           starting={starting}
         />
@@ -425,13 +434,11 @@ function SelectionWorkspace({
   jdIds,
   candidateSearch,
   jdSearch,
-  force,
-  assessments,
+  activeRuns,
   onCandidateSearch,
   onJdSearch,
   onCandidateIds,
   onJdIds,
-  onOpenReport,
   onStart,
   starting,
 }: {
@@ -441,13 +448,11 @@ function SelectionWorkspace({
   jdIds: Set<string>;
   candidateSearch: string;
   jdSearch: string;
-  force: boolean;
-  assessments: InterviewAssessment[];
+  activeRuns: InterviewAssessmentRun[];
   onCandidateSearch: (value: string) => void;
   onJdSearch: (value: string) => void;
   onCandidateIds: (value: Set<string>) => void;
   onJdIds: (value: Set<string>) => void;
-  onOpenReport: (id: string) => void;
   onStart: () => void;
   starting: boolean;
 }) {
@@ -475,8 +480,8 @@ function SelectionWorkspace({
   const selectedCandidates = candidates.filter((candidate) => candidateIds.has(candidate.id));
   const selectedJds = jds.filter((jd) => jdIds.has(jd.id));
   const pairCount = candidateIds.size * jdIds.size;
-  const selectedExistingAssessments = assessments.filter((item) => (
-    item.is_valid && candidateIds.has(item.candidate_id) && jdIds.has(item.jd_id)
+  const selectedActiveRuns = activeRuns.filter((item) => (
+    candidateIds.has(item.candidate_id) && jdIds.has(item.jd_id)
   ));
 
   return (
@@ -493,6 +498,7 @@ function SelectionWorkspace({
       >
         {filteredCandidates.map((candidate) => {
           const selected = candidateIds.has(candidate.id);
+          const activeCount = activeRuns.filter((run) => run.candidate_id === candidate.id).length;
           return (
             <button
               type="button"
@@ -514,6 +520,12 @@ function SelectionWorkspace({
                 <span className="mt-0.5 block truncate text-body-sm text-on-surface-variant">
                   {[candidate.role, candidate.stage].filter(Boolean).join(" · ") || t("尚未标注方向")}
                 </span>
+                {!!activeCount && (
+                  <span className="mt-1 flex items-center gap-1 text-label text-on-surface-variant">
+                    <Icon name="lock" size={13} />
+                    {t("{n} 个配对评估中", { n: activeCount })}
+                  </span>
+                )}
               </span>
             </button>
           );
@@ -531,32 +543,22 @@ function SelectionWorkspace({
         </div>
         <PairingPreviewGraph candidates={selectedCandidates} jds={selectedJds} />
         <div className="border-t border-outline-variant px-4 py-3">
-          {!!selectedExistingAssessments.length && !force && (
-            <button
-              type="button"
-              onClick={() => onOpenReport(selectedExistingAssessments[0].id)}
-              className="mb-3 flex w-full cursor-pointer items-center gap-3 rounded-md border border-outline-variant bg-surface-lowest px-3 py-2.5 text-left transition-colors hover:bg-surface-low"
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
-                <Icon name="description" size={17} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-body-sm font-medium">{t("已有 {n} 份有效报告", { n: selectedExistingAssessments.length })}</span>
-                <span className="mt-0.5 block text-label text-on-surface-variant">{t("直接打开查看，不再重复评估")}</span>
-              </span>
-              <Icon name="arrow_forward" size={17} className="text-on-surface-variant" />
-            </button>
+          {!!selectedActiveRuns.length && (
+            <div className="mb-3 flex items-center gap-2 rounded-md border border-outline-variant bg-surface-low px-3 py-2.5 text-body-sm text-on-surface-variant">
+              <Icon name="lock" size={16} className="shrink-0" />
+              <span>{t("所选配对正在由其他用户评估，完成或停止后可重新评估")}</span>
+            </div>
           )}
           <Button
             className="w-full"
-            icon={selectedExistingAssessments.length && !force ? "description" : "play_arrow"}
-            disabled={!pairCount || starting}
-            onClick={selectedExistingAssessments.length && !force ? () => onOpenReport(selectedExistingAssessments[0].id) : onStart}
+            icon={selectedActiveRuns.length ? "lock" : "play_arrow"}
+            disabled={!pairCount || starting || !!selectedActiveRuns.length}
+            onClick={onStart}
           >
             {starting
               ? t("正在创建评估批次…")
-              : selectedExistingAssessments.length && !force
-                ? t("查看 {n} 份已有报告", { n: selectedExistingAssessments.length })
+              : selectedActiveRuns.length
+                ? t("{n} 个配对评估中", { n: selectedActiveRuns.length })
                 : pairCount
                   ? t("开始评估 {n} 个配对", { n: pairCount })
                   : t("先从两侧完成选择")}
@@ -576,6 +578,7 @@ function SelectionWorkspace({
       >
         {filteredJds.map((jd) => {
           const selected = jdIds.has(jd.id);
+          const activeCount = activeRuns.filter((run) => run.jd_id === jd.id).length;
           return (
             <button
               type="button"
@@ -602,6 +605,12 @@ function SelectionWorkspace({
                 <span className="mt-1.5 block text-label text-on-surface-variant">
                   {t("{n} 项核心任务", { n: jd.assessment_card?.core_tasks.length || 0 })}
                 </span>
+                {!!activeCount && (
+                  <span className="mt-1 flex items-center gap-1 text-label text-on-surface-variant">
+                    <Icon name="lock" size={13} />
+                    {t("{n} 个配对评估中", { n: activeCount })}
+                  </span>
+                )}
               </span>
             </button>
           );

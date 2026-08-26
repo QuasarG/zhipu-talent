@@ -16,6 +16,8 @@ export default {
   "启动中…": "Starting…",
   "查看已有报告 {n}": "View {n} reports",
   "开始 {n} 个配对": "Start {n} pairs",
+  "{n} 个配对评估中": "{n} pairs in progress",
+  "所选配对正在由其他用户评估，完成或停止后可重新评估": "Selected pairs are being assessed by another user. Reassessment will be available when they finish or stop.",
   "关闭错误提示": "Dismiss error",
   "正在恢复评估现场…": "Restoring assessment workspace…",
   "恢复评估批次失败": "Failed to restore assessment batch",

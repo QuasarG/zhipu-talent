@@ -28,7 +28,7 @@ class InterviewAssessmentStorageTests(unittest.TestCase):
         self.Session = sessionmaker(bind=self.engine)
 
     def test_schema_contains_independent_current_report_tables(self) -> None:
-        self.assertEqual(LATEST_SCHEMA_VERSION, 22)
+        self.assertEqual(LATEST_SCHEMA_VERSION, 23)
         with self.Session() as session:
             session.add_all(
                 [

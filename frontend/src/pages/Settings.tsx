@@ -68,14 +68,12 @@ export default function Settings() {
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [assessmentSettings, setAssessmentSettings] = useState<{ can_manage_force_reevaluation: boolean; allow_force_reevaluation: boolean } | null>(null);
 
   const load = useCallback(async () => {
     // 两个请求独立失败互不拖累；页面骨架先行，结果逐项填充
     // /health 已是后端缓存优先（秒回上次结果 + 后台刷新），切页不再重复探测
     api.health().then(setHealth).catch(() => setHealth(null));
     api.config.get().then((c) => setConfig(c as Record<string, ConfigValue>)).catch(() => setConfig({}));
-    api.interviewAssessments.settings().then(setAssessmentSettings).catch(() => setAssessmentSettings(null));
   }, []);
 
   const recheck = useCallback(async () => {
@@ -158,25 +156,6 @@ export default function Settings() {
               />
             </Card>
           </section>
-
-          {/* 服务状态 */}
-          {assessmentSettings?.can_manage_force_reevaluation && (
-            <section>
-              <h2 className="text-title-lg mb-3">{t("面试准入评估")}</h2>
-              <Card variant="outlined" className="flex items-center justify-between gap-4 p-4">
-                <div><p className="text-title">{t("允许强制重评")}</p><p className="text-body-sm text-on-surface-variant">{t("开启后可覆盖仍然有效的候选人–JD 当前报告；失败时保留旧报告")}</p></div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={assessmentSettings.allow_force_reevaluation}
-                  onClick={async () => setAssessmentSettings(await api.interviewAssessments.updateSettings(!assessmentSettings.allow_force_reevaluation))}
-                  className={`relative w-12 h-7 rounded-full transition-colors cursor-pointer ${assessmentSettings.allow_force_reevaluation ? "bg-primary" : "bg-surface-highest"}`}
-                >
-                  <span className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${assessmentSettings.allow_force_reevaluation ? "translate-x-1" : "-translate-x-5"}`} />
-                </button>
-              </Card>
-            </section>
-          )}
 
           {/* 服务状态 */}
           <section>

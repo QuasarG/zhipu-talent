@@ -10,6 +10,7 @@ import type {
   JdEntry,
   InterviewAssessment,
   InterviewAssessmentBatch,
+  InterviewAssessmentRun,
   PendingPublication,
   PersonBrief,
   PersonDetail,
@@ -188,11 +189,11 @@ export const api = {
       }),
   },
   interviewAssessments: {
-    start: (candidateIds: string[], jdIds: string[], force = false) =>
+    start: (candidateIds: string[], jdIds: string[]) =>
       fetchJSON<InterviewAssessmentBatch>("/api/interview-assessment-batches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidate_ids: candidateIds, jd_ids: jdIds, force }),
+        body: JSON.stringify({ candidate_ids: candidateIds, jd_ids: jdIds }),
       }),
     batch: (id: string) =>
       fetchJSON<InterviewAssessmentBatch>(`/api/interview-assessment-batches/${id}`),
@@ -200,19 +201,13 @@ export const api = {
       fetchJSON<{ batch_id: string; cancelled: number }>(`/api/interview-assessment-batches/${id}/cancel`, { method: "POST" }),
     cancelRun: (id: string) =>
       fetchJSON<{ run_id: string; cancelled: boolean }>(`/api/interview-assessment-runs/${id}/cancel`, { method: "POST" }),
+    active: () => fetchJSON<InterviewAssessmentRun[]>("/api/interview-assessment-runs/active"),
     list: (candidateIds?: string[], jdIds?: string[]) => {
       const query = new URLSearchParams();
       if (candidateIds?.length) query.set("candidate_ids", candidateIds.join(","));
       if (jdIds?.length) query.set("jd_ids", jdIds.join(","));
       return fetchJSON<InterviewAssessment[]>(`/api/interview-assessments?${query}`);
     },
-    settings: () => fetchJSON<{ can_manage_force_reevaluation: boolean; allow_force_reevaluation: boolean }>("/api/interview-assessment-settings"),
-    updateSettings: (enabled: boolean) =>
-      fetchJSON<{ can_manage_force_reevaluation: boolean; allow_force_reevaluation: boolean }>("/api/interview-assessment-settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ allow_force_reevaluation: enabled }),
-      }),
   },
   tracks: {
     active: () => fetchJSON<{ key: string; label: string }[]>("/api/tracks/active"),

@@ -11,6 +11,7 @@ from agi_talent_radar.core.db.orm import (
     Base,
     CandidateJdAssessmentORM,
     CandidateORM,
+    InterviewAssessmentPairLockORM,
     InterviewAssessmentRunORM,
     JdEntryORM,
 )
@@ -42,7 +43,7 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
             )
             session.commit()
 
-    def test_valid_current_report_blocks_normal_rerun_but_force_stages_new_run(self) -> None:
+    def test_valid_current_report_is_replaced_without_a_permission_flag(self) -> None:
         with self.Session() as session:
             session.add(
                 CandidateJdAssessmentORM(
@@ -55,10 +56,8 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
             session.commit()
 
         with patch.object(service, "get_session", self.session_scope):
-            with self.assertRaisesRegex(ValueError, "已有有效报告"):
-                service.start_batch(["candidate-1"], ["jd-1"], None)
             with patch.object(service._PAIR_EXECUTOR, "submit") as submit:
-                batch = service.start_batch(["candidate-1"], ["jd-1"], None, force=True)
+                batch = service.start_batch(["candidate-1"], ["jd-1"], None)
 
         self.assertEqual(batch["total_pairs"], 1)
         submit.assert_called_once()
@@ -75,7 +74,7 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
             session.commit()
 
         with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
-            batch = service.start_batch(["candidate-1"], ["jd-1"], None, force=True)
+            batch = service.start_batch(["candidate-1"], ["jd-1"], None)
             with self.Session() as session:
                 run_id = session.query(InterviewAssessmentRunORM.id).filter_by(batch_id=batch["id"]).scalar()
             with patch.object(service, "evaluate_candidate_for_job", side_effect=RuntimeError("模型失败")):
@@ -88,6 +87,21 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
             self.assertTrue(current.is_valid)
             self.assertEqual(run.status, "failed")
             self.assertEqual(run.staged_result, {})
+            self.assertEqual(session.query(InterviewAssessmentPairLockORM).count(), 0)
+
+    def test_active_pair_is_locked_until_the_run_reaches_a_terminal_state(self) -> None:
+        with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
+            batch = service.start_batch(["candidate-1"], ["jd-1"], None)
+            with self.assertRaisesRegex(ValueError, "正在评估"):
+                service.start_batch(["candidate-1"], ["jd-1"], None)
+            with self.Session() as session:
+                run = session.query(InterviewAssessmentRunORM).filter_by(batch_id=batch["id"]).one()
+                self.assertEqual(session.query(InterviewAssessmentPairLockORM).count(), 1)
+                run_id = run.id
+            self.assertTrue(service.cancel_run(run_id))
+
+        with self.Session() as session:
+            self.assertEqual(session.query(InterviewAssessmentPairLockORM).count(), 0)
 
     def test_cancelled_run_discards_trace_and_staging(self) -> None:
         with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):

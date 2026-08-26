@@ -798,6 +798,23 @@ class InterviewAssessmentRunORM(Base):
     completed_at = Column(DateTime)
 
 
+class InterviewAssessmentPairLockORM(Base):
+    """候选人–JD 的跨用户运行锁；终态运行必须释放。"""
+
+    __tablename__ = "interview_assessment_pair_locks"
+
+    candidate_id = Column(
+        String(32), ForeignKey("candidates.id", ondelete="CASCADE"), primary_key=True
+    )
+    jd_id = Column(
+        String(36), ForeignKey("jd_entries.id", ondelete="CASCADE"), primary_key=True
+    )
+    run_id = Column(
+        String(36), ForeignKey("interview_assessment_runs.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    acquired_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
 class ConversationORM(Base):
     """一段人才问答会话（按 owner 隔离，只有聊天记录分用户）。"""
 
@@ -856,7 +873,6 @@ class UserORM(Base):
     password_hash = Column(String(256), nullable=False)
     display_name = Column(String(64), default="")
     is_active = Column(Boolean, default=True)
-    allow_force_reevaluation = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 
