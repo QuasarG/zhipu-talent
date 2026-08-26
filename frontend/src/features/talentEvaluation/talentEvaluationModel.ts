@@ -37,6 +37,8 @@ export interface CandidateFolder {
   name: string;
   role: string;
   stage: string;
+  /** 是否已有任何岗位评估（报告或运行中），用于列表区分已评估/未评估 */
+  evaluated: boolean;
   /** JD 子项按标题排序 */
   children: FolderChild[];
   /** 正在评估中的配对数 */
@@ -69,6 +71,7 @@ export function buildCandidateFolders(
       name: brief.name || "",
       role: brief.role || "",
       stage: brief.stage || "",
+      evaluated: false,
       children: [],
       activeCount: 0,
     };
@@ -107,6 +110,7 @@ export function buildCandidateFolders(
 
     children.sort((a, b) => a.jdTitle.localeCompare(b.jdTitle, "zh-Hans-CN"));
     folder.children = children;
+    folder.evaluated = children.length > 0;
     return folder;
   });
 }

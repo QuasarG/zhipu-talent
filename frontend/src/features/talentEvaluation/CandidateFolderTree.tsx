@@ -123,7 +123,8 @@ function CandidateFolderNode({
   const { t } = useI18n();
   const rootActive = selectedCandidateId === folder.candidateId && selectedChildKey === null;
   return (
-    <div className="mb-1">
+    <div className="mb-0.5">
+      {/* 父行设计语言与人才库列表同步：无边框纯色头像 + 状态胶囊副行 */}
       <div
         className={cn(
           "flex items-center gap-1 rounded-md transition-colors",
@@ -141,9 +142,9 @@ function CandidateFolderNode({
         <button
           type="button"
           onClick={() => onSelectCandidate(folder.candidateId)}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 py-1.5 pr-2.5 text-left"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 py-2 pr-2.5 text-left"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-outline bg-primary-container text-title text-on-primary-container">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-container text-title text-on-primary-container">
             {(folder.name || "?").slice(0, 1)}
           </span>
           <span className="min-w-0 flex-1">
@@ -153,8 +154,13 @@ function CandidateFolderNode({
                 <Icon name="lock" size={13} className="shrink-0 text-primary" />
               )}
             </span>
-            <span className="mt-0.5 block truncate text-label text-on-surface-variant">
-              {[folder.role, folder.stage].filter(Boolean).join(" · ") || t("尚未标注方向")}
+            <span className="mt-0.5 flex items-center gap-1.5">
+              <StatusChip tone={folder.evaluated ? "primary" : "neutral"} className="shrink-0">
+                {folder.evaluated ? t("已评估") : t("未评估")}
+              </StatusChip>
+              <span className="truncate text-body-sm text-on-surface-variant">
+                {[folder.role, folder.stage].filter(Boolean).join(" · ") || t("尚未标注方向")}
+              </span>
             </span>
           </span>
         </button>

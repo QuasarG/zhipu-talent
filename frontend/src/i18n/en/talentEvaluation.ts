@@ -17,6 +17,7 @@ export default {
   "展开": "Expand",
   "暂无岗位评估": "No role assessments yet",
   "未命名岗位": "Unnamed role",
+  "已评估": "Assessed",
   "未评估": "Not assessed",
 
   // 导入运行恢复提示

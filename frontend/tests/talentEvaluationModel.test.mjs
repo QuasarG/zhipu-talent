@@ -96,6 +96,20 @@ test("folders come from the candidate directory only; stray assessments are igno
   assert.equal(folders[0].children.length, 1);
 });
 
+test("folders with any report or active run count as evaluated", () => {
+  const folders = buildCandidateFolders(
+    [brief("c1", "张三"), brief("c2", "李四")],
+    [assessment("c1", "jd-1", { jd_title: "A" })],
+    [run("c2", "jd-2", { jd_title: "B" })],
+  );
+  assert.equal(folders[0].evaluated, true);
+  assert.equal(folders[1].evaluated, true);
+
+  const untouched = buildCandidateFolders([brief("c3", "王五")], [], []);
+  assert.equal(untouched[0].evaluated, false);
+  assert.deepEqual(untouched[0].children, []);
+});
+
 test("both admission outcomes stay visible; invalid reports show stale status", () => {
   const folders = buildCandidateFolders(
     [brief("c1", "张三")],
