@@ -71,18 +71,38 @@ export default function CandidateFolderTree({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5 admission-panel-scrollbar">
-        {visible.map((folder) => (
-          <CandidateFolderNode
-            key={folder.candidateId}
-            folder={folder}
-            open={openSet.has(folder.candidateId)}
-            onToggle={() => onToggleFolder(folder.candidateId)}
-            selectedCandidateId={selectedCandidateId}
-            selectedChildKey={selectedChildKey}
-            onSelectCandidate={onSelectCandidate}
-            onSelectPair={onSelectPair}
-          />
-        ))}
+        {visible.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {[
+              { key: "evaluated", label: t("已评估"), icon: "check_circle", folders: visible.filter((folder) => folder.evaluated) },
+              { key: "unevaluated", label: t("未评估"), icon: "radio_button_unchecked", folders: visible.filter((folder) => !folder.evaluated) },
+            ].map((group) => group.folders.length > 0 && (
+              <section key={group.key} aria-labelledby={`candidate-group-${group.key}`}>
+                <div className="flex items-center gap-2 px-2 pb-1 pt-1">
+                  <Icon name={group.icon} size={14} className="text-on-surface-variant" />
+                  <h3 id={`candidate-group-${group.key}`} className="text-label font-semibold text-on-surface-variant">
+                    {group.label}
+                  </h3>
+                  <span className="text-[11px] tabular-nums text-on-surface-variant">{group.folders.length}</span>
+                </div>
+                <div>
+                  {group.folders.map((folder) => (
+                    <CandidateFolderNode
+                      key={folder.candidateId}
+                      folder={folder}
+                      open={openSet.has(folder.candidateId)}
+                      onToggle={() => onToggleFolder(folder.candidateId)}
+                      selectedCandidateId={selectedCandidateId}
+                      selectedChildKey={selectedChildKey}
+                      onSelectCandidate={onSelectCandidate}
+                      onSelectPair={onSelectPair}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
         {!visible.length && (
           <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 px-4 text-center text-on-surface-variant">
             <Icon name="user-search" size={28} />
@@ -154,13 +174,8 @@ function CandidateFolderNode({
                 <Icon name="lock" size={13} className="shrink-0 text-primary" />
               )}
             </span>
-            <span className="mt-0.5 flex items-center gap-1.5">
-              <StatusChip tone={folder.evaluated ? "primary" : "neutral"} className="shrink-0">
-                {folder.evaluated ? t("已评估") : t("未评估")}
-              </StatusChip>
-              <span className="truncate text-body-sm text-on-surface-variant">
-                {[folder.role, folder.stage].filter(Boolean).join(" · ") || t("尚未标注方向")}
-              </span>
+            <span className="mt-0.5 block truncate text-body-sm text-on-surface-variant">
+              {[folder.role, folder.stage].filter(Boolean).join(" · ") || t("尚未标注方向")}
             </span>
           </span>
         </button>

@@ -458,22 +458,6 @@ body {
     background-color 180ms var(--ease-emphasized);
 }
 
-.admission-task-card::before {
-  content: "";
-  position: absolute;
-  inset: 10px auto 10px 0;
-  width: 3px;
-  border-radius: 0 999px 999px 0;
-  background: var(--task-accent);
-  opacity: 0.58;
-  transition: opacity 180ms var(--ease-emphasized), inset 180ms var(--ease-emphasized);
-}
-
-.admission-task-card.is-selected::before {
-  inset-block: 6px;
-  opacity: 1;
-}
-
 .admission-task-card.importance-primary {
   --task-accent: var(--color-primary);
   --task-accent-container: var(--color-primary-container);
