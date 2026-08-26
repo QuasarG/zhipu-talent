@@ -251,6 +251,25 @@ def create_app() -> Flask:
         except Exception as exc:
             return jsonify([]), 500
 
+    @app.get("/api/evaluation-candidates")
+    def evaluation_candidates():
+        """统一人才评估外壳的候选人目录：队列 ∪ 有准入报告的候选人（docs/rebuild.md §2.1）。"""
+        try:
+            from agi_talent_radar.core.database import get_session
+            from agi_talent_radar.core.db.repository import list_evaluation_directory_rows
+
+            with get_session() as session:
+                rows = list_evaluation_directory_rows(session)
+                briefs = []
+                for row in rows:
+                    brief = _orm_to_brief(row)
+                    # 姓名为空返回空串，前端显示"未命名"，不回退内部 ID（rebuild.md §5.3）
+                    brief["name"] = row.name or ""
+                    briefs.append(brief)
+            return jsonify(briefs)
+        except Exception as exc:
+            return jsonify([]), 500
+
     @app.get("/api/candidates/<candidate_id>")
     def get_candidate(candidate_id: str):
         try:

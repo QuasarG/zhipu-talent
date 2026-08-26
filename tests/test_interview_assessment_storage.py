@@ -17,6 +17,7 @@ from agi_talent_radar.core.db.repository import (
     invalidate_assessments_for_candidate,
     invalidate_assessments_for_jd,
     list_active_jds,
+    list_evaluation_directory_rows,
     replace_jd_assessment_card,
 )
 
@@ -144,6 +145,30 @@ class InterviewAssessmentStorageTests(unittest.TestCase):
             assessment = session.query(CandidateJdAssessmentORM).one()
             self.assertFalse(assessment.is_valid)
             self.assertEqual(assessment.invalid_reason, "岗位评估卡已更新")
+
+    def test_evaluation_directory_merges_queue_and_report_owners(self) -> None:
+        """目录 = 队列 ∪ 有准入报告者：dismissed 但有报告的保留入口，无报告的不出现。"""
+        with self.Session() as session:
+            session.add_all(
+                [
+                    CandidateORM(id="in-queue", name="队列中", group="pending"),
+                    CandidateORM(id="dismissed-with-report", name="有报告", group="dismissed"),
+                    CandidateORM(id="dismissed-no-report", name="无报告", group="dismissed"),
+                    JdEntryORM(id="jd-1", title="Agent 评测", raw_text="构建 Agent benchmark"),
+                ]
+            )
+            session.flush()
+            session.add(_assessment("dismissed-with-report", "jd-1"))
+            session.commit()
+
+            rows = list_evaluation_directory_rows(session)
+            ids = [row.id for row in rows]
+
+        self.assertIn("in-queue", ids)
+        self.assertIn("dismissed-with-report", ids)
+        self.assertNotIn("dismissed-no-report", ids)
+        # 队列在前，仅因报告恢复的候选人在后
+        self.assertLess(ids.index("in-queue"), ids.index("dismissed-with-report"))
 
 
 def _assessment(candidate_id: str, jd_id: str) -> CandidateJdAssessmentORM:

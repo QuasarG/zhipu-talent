@@ -37,6 +37,8 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   candidates: {
     list: () => fetchJSON<CandidateBrief[]>("/api/candidates"),
+    /** 人才评估目录：队列 ∪ 有准入报告的候选人（含已过队列保留期/已软移出但报告仍在的人） */
+    evaluationDirectory: () => fetchJSON<CandidateBrief[]>("/api/evaluation-candidates"),
     get: (id: string) => fetchJSON<CandidateDetail>(`/api/candidates/${id}`),
     delete: (id: string) =>
       fetchJSON<{ id: string; deleted: boolean }>(`/api/candidates/${id}`, { method: "DELETE" }),

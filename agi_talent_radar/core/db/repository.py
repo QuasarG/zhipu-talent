@@ -494,6 +494,31 @@ def list_candidates_for_queue(session):
     return result
 
 
+def list_evaluation_directory_rows(session):
+    """统一人才评估目录：待评估队列 ∪ 拥有准入报告的候选人（docs/rebuild.md §2.1）。
+
+    队列视图对旧链路已评估超过保留期、或 group=dismissed 的候选人不返回；
+    但其中拥有面试准入报告的必须继续出现在评估入口并显示姓名。
+    返回顺序：队列在前（内部已按 created_at desc），仅因报告恢复的候选人随后。
+    """
+    rows = list_candidates_for_queue(session)
+    seen = {row.id for row in rows}
+    report_candidate_ids = {
+        value
+        for (value,) in session.query(CandidateJdAssessmentORM.candidate_id).distinct().all()
+    }
+    extra_ids = [value for value in sorted(report_candidate_ids) if value not in seen]
+    if not extra_ids:
+        return rows
+    extras = (
+        session.query(CandidateORM)
+        .filter(CandidateORM.id.in_(extra_ids))
+        .order_by(CandidateORM.created_at.desc())
+        .all()
+    )
+    return [*rows, *extras]
+
+
 def list_candidates_by_group(session, group: str):
     return (
         session.query(CandidateORM)
