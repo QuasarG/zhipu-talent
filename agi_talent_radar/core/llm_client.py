@@ -36,10 +36,12 @@ def call_llm_json(
     deep: bool = False,
     model_override: str | None = None,
     on_call: CallObserver | None = None,
+    conversation: bool = False,
 ) -> dict[str, Any]:
-    """deep=True 走深水模型（OPENAI_MODEL_DEEP，如 glm-5.3 强制思考），
-    用于时效不敏感的判分类节点；未配置深水模型时回落主模型，行为不变。"""
-    primary_model = model_override or (_deep_model() if deep else _required_env("OPENAI_MODEL"))
+    """调用 JSON 模型；对话调用显式传 conversation=True，其他调用统一走 5.2。"""
+    primary_model = model_override or (
+        _conversation_model() if conversation else (_deep_model() if deep else _non_conversation_model())
+    )
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "300" if deep else "120"))
     messages = [
         {"role": "system", "content": system_prompt},
@@ -104,7 +106,7 @@ def call_llm_stream(
     用于导入等需要边接收边解析 JSON Lines 的场景。若请求在产生首个内容前
     遇到限流/网络错误，最多重试 3 次；已经输出内容后不重试，避免前端收到重复片段。
     """
-    primary_model = model_override or _required_env("OPENAI_MODEL")
+    primary_model = model_override or _non_conversation_model()
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
     messages = [
         {"role": "system", "content": system_prompt},
@@ -417,8 +419,18 @@ def _client() -> OpenAI:
 
 
 def _deep_model() -> str:
-    """深水模型（判分类节点用）；未配置时空串→由调用处回落主模型。"""
-    return os.getenv("OPENAI_MODEL_DEEP", "").strip() or _required_env("OPENAI_MODEL")
+    """非对话深度节点也固定使用 5.2，避免与对话模型争用 5.3 配额。"""
+    return _non_conversation_model()
+
+
+def _non_conversation_model() -> str:
+    """所有非对话 LLM 节点的模型；默认固定为 GLM-5.2。"""
+    return os.getenv("OPENAI_MODEL_NON_CONVERSATION", "").strip() or "glm-5.2"
+
+
+def _conversation_model() -> str:
+    """对话 Agent 使用的主模型，沿用 OPENAI_MODEL（生产环境为 GLM-5.3）。"""
+    return _required_env("OPENAI_MODEL")
 
 
 def _thinking_kwargs_for(model: str, effort_override: str | None = None) -> dict[str, Any]:

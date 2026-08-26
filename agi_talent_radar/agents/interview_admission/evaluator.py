@@ -44,8 +44,12 @@ TASK_SCORING_PROMPT = """
 每个非零等级必须有简历可追溯短原文。证据类型只能是 direct / transferable / background，
 置信度只能是 high / medium / low。背景证据不能单独支撑 2 分以上；可迁移证据必须说明迁移边界。
 
+其中 reasoning_summary 是列表卡片上的一行概述，必须极简：只写一句中文，建议 20–36 个汉字，
+最多 45 个汉字；采用“结论 + 最关键事实”的结构，只保留最能解释等级的一项事实。禁止列举多个
+项目、工具或数字，禁止换行、分号、括号和重复 evidence。详细证据放在 evidence，不要塞进摘要。
+
 输出：{"task_id":"...", "level":0到4, "confidence":"high|medium|low",
-"reasoning_summary":"展示给用人方的结构化推理摘要", "transfer_boundary":"...",
+"reasoning_summary":"20–36字的一句话卡片摘要，最多45字", "transfer_boundary":"...",
 "evidence":[{"quote":"简历短原文", "evidence_type":"direct|transferable|background",
 "confidence":"high|medium|low", "relevance":"它如何支撑本任务"}], "risks":["..."]}。
 """.strip()

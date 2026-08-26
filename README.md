@@ -64,7 +64,9 @@ sudo cp deploy/nginx-talent-radar.conf /etc/nginx/sites-enabled/
 | 变量 | 说明 |
 |---|---|
 | `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.3 + Web Search + Embedding + OCR 一把通吃） |
-| `OPENAI_MODEL` / `OPENAI_MODEL_FALLBACK` | 主模型 `glm-5.3` / 限流备用模型 `glm-5.2` |
+| `OPENAI_MODEL` | 对话 Agent 主模型（默认 `glm-5.3`） |
+| `OPENAI_MODEL_NON_CONVERSATION` | 非对话节点统一模型（默认 `glm-5.2`） |
+| `OPENAI_MODEL_FALLBACK` | 5.2 限流时的备用模型（可选） |
 | `OPENAI_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` |
 | `LLM_MAX_CONCURRENCY` | 所有 LLM 请求共享的全局并发上限，默认 `5` |
 | `LLM_FALLBACK_COOLDOWN_SECONDS` | 429 / 1302 后整体使用 5.2 的冷却时间，默认 `60` 秒 |

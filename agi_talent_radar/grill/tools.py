@@ -316,6 +316,7 @@ def generate_deliverables(sess: dict) -> dict:
             "reference_jds": reference_jds,
         },
         temperature=0.3,
+        conversation=True,
     )
     return {
         "persona_profile": str(data.get("persona_profile") or ""),

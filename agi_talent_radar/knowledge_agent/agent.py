@@ -361,6 +361,7 @@ def _maybe_generate_title(conv: ConversationORM, user_text: str, lang: str = "zh
         data = call_llm_json(
             _sys_text(lang, "title_prompt"),
             {"question": user_text},
+            conversation=True,
         )
         title = str(data.get("title") or "").strip()
     except Exception:  # noqa: BLE001
