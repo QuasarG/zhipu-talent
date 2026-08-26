@@ -9,10 +9,10 @@ import type {
  * 人才评估统一外壳的左侧"候选人文件夹"组装逻辑（纯函数，node:test 覆盖）。
  *
  * 规则（docs/rebuild.md §2.1）：
- * - 每个候选人是一个文件夹，标题始终使用姓名；姓名为空时由展示层退回"未命名"，绝不回退到内部 ID；
+ * - 候选人列表与人才库同源（导入即入库），每个候选人是一个文件夹；
+ *   标题始终使用姓名，姓名为空时由展示层退回"未命名"，绝不回退到内部 ID；
  * - 文件夹下挂该候选人的评估对象：能力评估入口 + 每个候选人–JD 配对的当前准入评估；
  * - 进入 / 不进入面试的结果都保留入口；失效报告显示"需重评"，不隐藏；
- * - 移出待评估队列的候选人，已有报告仍出现在文件夹列表并继续显示姓名；
  * - 正在运行的配对显示"评估中"（锁），运行状态优先于历史报告状态。
  */
 
@@ -38,8 +38,6 @@ export interface CandidateFolder {
   name: string;
   role: string;
   stage: string;
-  /** 是否仍在待评估队列（false = 已移出，仅因历史报告保留入口） */
-  inQueue: boolean;
   /** 能力评估入口固定在首位，其后按 JD 标题排序 */
   children: FolderChild[];
   /** 正在评估中的配对数 */
@@ -62,44 +60,19 @@ export function buildCandidateFolders(
   assessments: InterviewAssessment[],
   activeRuns: InterviewAssessmentRun[],
 ): CandidateFolder[] {
-  const folders: CandidateFolder[] = [];
-  const byId = new Map<string, CandidateFolder>();
+  const activePairKeys = new Set(
+    activeRuns.map((run) => `${run.candidate_id}::${run.jd_id}`),
+  );
 
-  for (const brief of candidates) {
+  return candidates.map((brief) => {
     const folder: CandidateFolder = {
       candidateId: brief.id,
       name: brief.name || "",
       role: brief.role || "",
       stage: brief.stage || "",
-      inQueue: true,
       children: [],
       activeCount: 0,
     };
-    folders.push(folder);
-    byId.set(brief.id, folder);
-  }
-
-  // 已移出队列但仍有报告的候选人：从报告接口自带的姓名恢复文件夹
-  for (const assessment of assessments) {
-    if (byId.has(assessment.candidate_id)) continue;
-    const folder: CandidateFolder = {
-      candidateId: assessment.candidate_id,
-      name: assessment.candidate_name || "",
-      role: "",
-      stage: "",
-      inQueue: false,
-      children: [],
-      activeCount: 0,
-    };
-    folders.push(folder);
-    byId.set(assessment.candidate_id, folder);
-  }
-
-  const activePairKeys = new Set(
-    activeRuns.map((run) => `${run.candidate_id}::${run.jd_id}`),
-  );
-
-  for (const folder of folders) {
     const ownAssessments = assessments.filter(
       (item) => item.candidate_id === folder.candidateId,
     );
@@ -148,9 +121,8 @@ export function buildCandidateFolders(
       },
       ...jdChildren,
     ];
-  }
-
-  return folders;
+    return folder;
+  });
 }
 
 /** 文件夹搜索：匹配姓名 / 方向 / 阶段 / JD 子项标题（小写包含） */

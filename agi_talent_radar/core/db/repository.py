@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, exists, or_
@@ -434,116 +434,24 @@ def evaluation_run_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
     }
 
 
-def list_candidates(session):
-    return session.query(CandidateORM).order_by(CandidateORM.created_at.desc()).all()
+def list_evaluation_directory_rows(session):
+    """统一人才目录：已入库（关联 person）或拥有准入报告的候选人。
 
-
-# 已评估候选人展示 N 天后自动从队列移除（数据保留，仅不入列表）
-EVALUATED_QUEUE_RETENTION_DAYS = 3
-
-
-def list_candidates_for_queue(session):
-    """简历评估队列专用列表：
-
-    - 已评估（存在 evaluations 记录）且评估完成超过
-      ``EVALUATED_QUEUE_RETENTION_DAYS`` 天的候选人不再返回；
-      其人物档案已进入人才库（persons），评估留痕仍在 evaluations，
-      故此处只做查询时过滤，不物理删除。
-    - 未评估的候选人全部返回（需人工处理）。
-    每行额外挂一个 ``evaluated`` 布尔，供前端区分删除/移出语义。
+    队列语义已移除（docs/rebuild.md §2.1）：导入即入库，列表不再区分
+    待评估队列与人才库；旧队列时代的 group=dismissed 软移出标记不再过滤，
+    移出人才库请删除对应人物主档。
     """
-    retention_cutoff = datetime.now(timezone.utc) - timedelta(days=EVALUATED_QUEUE_RETENTION_DAYS)
-    # 子查询：每个候选人最近一次评估完成时间（completed_at）
-    latest_eval_subq = (
-        session.query(
-            EvaluationORM.candidate_id.label("cid"),
-            func.max(EvaluationORM.completed_at).label("latest"),
-        )
-        .group_by(EvaluationORM.candidate_id)
-        .subquery()
-    )
-    has_eval_subq = (
-        session.query(EvaluationORM.candidate_id)
-        .filter(EvaluationORM.candidate_id == CandidateORM.id)
+    has_report = (
+        session.query(CandidateJdAssessmentORM.candidate_id)
+        .filter(CandidateJdAssessmentORM.candidate_id == CandidateORM.id)
         .exists()
     )
-    rows = (
-        session.query(CandidateORM, latest_eval_subq.c.latest, has_eval_subq.label("evaluated"))
-        .outerjoin(latest_eval_subq, latest_eval_subq.c.cid == CandidateORM.id)
-        .filter(CandidateORM.group != "dismissed")
-        .order_by(CandidateORM.created_at.desc())
-        .all()
-    )
-    result = []
-    for candidate, latest_completed, evaluated in rows:
-        latest_run = get_latest_evaluation_run(session, candidate.id)
-        run_active = bool(latest_run and latest_run.status == "running")
-        # 已评估但完成时间超过保留期 → 跳过（UTC vs naive 兼容比较）；
-        # 但人才库批量重新评估正在进行时（run 活跃）必须保留在队列里
-        if evaluated and latest_completed is not None and not run_active:
-            comp = latest_completed
-            if comp.tzinfo is None:
-                comp = comp.replace(tzinfo=timezone.utc)
-            if comp < retention_cutoff:
-                continue
-        # 用 setattr 挂载临时字段，避免改动 ORM 模型
-        candidate.evaluated = bool(evaluated)  # type: ignore[attr-defined]
-        candidate.evaluation_status = latest_run.status if latest_run else "idle"  # type: ignore[attr-defined]
-        candidate.evaluation_run_id = latest_run.id if latest_run else None  # type: ignore[attr-defined]
-        result.append(candidate)
-    return result
-
-
-def list_evaluation_directory_rows(session):
-    """统一人才评估目录：待评估队列 ∪ 拥有准入报告的候选人（docs/rebuild.md §2.1）。
-
-    队列视图对旧链路已评估超过保留期、或 group=dismissed 的候选人不返回；
-    但其中拥有面试准入报告的必须继续出现在评估入口并显示姓名。
-    返回顺序：队列在前（内部已按 created_at desc），仅因报告恢复的候选人随后。
-    """
-    rows = list_candidates_for_queue(session)
-    seen = {row.id for row in rows}
-    report_candidate_ids = {
-        value
-        for (value,) in session.query(CandidateJdAssessmentORM.candidate_id).distinct().all()
-    }
-    extra_ids = [value for value in sorted(report_candidate_ids) if value not in seen]
-    if not extra_ids:
-        return rows
-    extras = (
-        session.query(CandidateORM)
-        .filter(CandidateORM.id.in_(extra_ids))
-        .order_by(CandidateORM.created_at.desc())
-        .all()
-    )
-    return [*rows, *extras]
-
-
-def list_candidates_by_group(session, group: str):
     return (
         session.query(CandidateORM)
-        .filter_by(group=group)
+        .filter(or_(CandidateORM.person_id.isnot(None), has_report))
         .order_by(CandidateORM.created_at.desc())
         .all()
     )
-
-
-def move_candidate_group(session, candidate_id: str, group: str) -> CandidateORM | None:
-    candidate = session.get(CandidateORM, candidate_id)
-    if candidate is None:
-        return None
-    candidate.group = group
-    session.commit()
-    return candidate
-
-
-def delete_candidate(session, candidate_id: str) -> CandidateORM | None:
-    candidate = session.get(CandidateORM, candidate_id)
-    if candidate is None:
-        return None
-    session.delete(candidate)
-    session.commit()
-    return candidate
 
 
 def delete_person(session, person_id: str) -> PersonORM | None:

@@ -436,7 +436,7 @@ class TaskORM(Base):
 # ---------------------------------------------------------------------------
 
 
-CANDIDATE_SOURCE_KINDS = ("resume_evaluation", "person_investigation")
+CANDIDATE_SOURCE_KINDS = ("resume_import", "resume_evaluation", "person_investigation")
 
 
 class ResumeSubmissionORM(Base):

@@ -149,6 +149,40 @@ def retry_publication_verification(
         }
 
 
+def admit_candidate_from_import(session, candidate: CandidateORM, direction: str = "") -> str | None:
+    """导入即入库：为刚落库的候选人建立/关联人物主档并追加 ``resume_import`` 来源。
+
+    人才库与评估列表合并后的入库动作（docs/rebuild.md §2.1）：简历导入完成即
+    进入人才库，不再等待旧简历评估。候选人已有关联人物时只补记来源（幂等）。
+
+    事务由调用方管理；``append_candidate_source`` 内部会即时 commit。
+    返回 person_id；候选人行缺失时返回 None。
+    """
+    from agi_talent_radar.core.persons import get_or_create_person
+
+    if candidate is None:
+        return None
+    person_id = candidate.person_id
+    if not person_id:
+        person = get_or_create_person(
+            session,
+            candidate.name or "",
+            "",
+            direction,
+        )
+        person_id = person.id
+        candidate.person_id = person_id
+        candidate.admitted_at = candidate.admitted_at or datetime.now(timezone.utc).replace(tzinfo=None)
+    repository.append_candidate_source(
+        session,
+        candidate_id=candidate.id,
+        source_kind="resume_import",
+        source_record_id=str(candidate.current_resume_version_id or ""),
+        created_by="system:resume_import",
+    )
+    return person_id
+
+
 def admit_candidate_after_evaluation(evaluation_id: int) -> dict[str, Any]:
     """评估成功后将候选人关联或创建到人才库。
 

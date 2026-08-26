@@ -8,6 +8,8 @@ from sqlalchemy.orm import sessionmaker
 
 from agi_talent_radar.core.db.orm import (
     Base,
+    CandidateORM,
+    CandidateSourceORM,
     EvaluationORM,
     InterviewAssessmentPairLockORM,
     InterviewAssessmentRunORM,
@@ -16,7 +18,7 @@ from agi_talent_radar.core.db.orm import (
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 23
+LATEST_SCHEMA_VERSION = 24
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -220,6 +222,13 @@ def ensure_schema(engine) -> None:
             23,
             "phase 23: cross-user candidate-JD assessment run locks",
         )
+    if current_version < 24:
+        _backfill_import_admission(engine)
+        _record_version(
+            engine,
+            24,
+            "phase 24: import-time pool admission backfill",
+        )
     _ensure_indexes(engine)
 
 
@@ -278,6 +287,74 @@ def _backfill_interview_assessment_pair_locks(engine) -> None:
                 )
         session.commit()
 
+
+def _backfill_import_admission(engine) -> None:
+    """v24 导入即入库回填：为未关联人物主档的非 dismissed 候选人补建 person 并入库。
+
+    人才库与评估列表合并（docs/rebuild.md §2.1）后，导入简历即进入人才库；
+    dismissed 是旧队列时代的软移出标记，回填时跳过（数据保留，不入列表）。
+    兼容遗留极简 schema：只查询实际存在的列，缺失的 name/directions 视为空。
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import inspect as sa_inspect
+
+    from agi_talent_radar.core.persons import get_or_create_person
+
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        existing = {column["name"] for column in sa_inspect(engine).get_columns("candidates")}
+        if "person_id" not in existing:
+            return
+        cols = [CandidateORM.id, CandidateORM.person_id, CandidateORM.group]
+        if "name" in existing:
+            cols.append(CandidateORM.name)
+        if "directions" in existing:
+            cols.append(CandidateORM.directions)
+        rows = (
+            session.query(*cols)
+            .filter(CandidateORM.person_id.is_(None), CandidateORM.group != "dismissed")
+            .order_by(CandidateORM.id)
+            .all()
+        )
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        for row in rows:
+            values = row._mapping
+            name = str(values.get("name") or "") if "name" in existing else ""
+            direction = ""
+            if "directions" in existing:
+                raw = values.get("directions") or "[]"
+                try:
+                    parsed = json.loads(raw) if isinstance(raw, str) else raw
+                    if isinstance(parsed, list) and parsed and str(parsed[0]).strip():
+                        direction = str(parsed[0])
+                except (ValueError, TypeError):
+                    direction = ""
+            person = get_or_create_person(session, name, "", direction)
+            # 裸 SQL 只更新需要的两列：ORM UPDATE 会附带 onupdate 的
+            # updated_at，遗留极简表可能没有该列
+            session.execute(
+                text(
+                    "UPDATE candidates SET person_id = :pid, admitted_at = :ts WHERE id = :cid"
+                ),
+                {"pid": person.id, "ts": now, "cid": row.id},
+            )
+            already = (
+                session.query(CandidateSourceORM)
+                .filter_by(candidate_id=row.id, source_kind="resume_import")
+                .first()
+            )
+            if already is None:
+                session.add(
+                    CandidateSourceORM(
+                        candidate_id=row.id,
+                        source_kind="resume_import",
+                        source_record_id="",
+                        note="v24 导入即入库回填",
+                        created_by="system:migration",
+                    )
+                )
+        session.commit()
 
 def _ensure_legacy_parent_columns(engine) -> None:
     inspector = inspect(engine)

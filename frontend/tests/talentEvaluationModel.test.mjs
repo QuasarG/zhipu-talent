@@ -82,19 +82,19 @@ test("candidate folders never fall back to internal ids for names", () => {
   assert.equal(folders[0].name, "");
 });
 
-test("removed candidates with reports keep a folder showing the report-side name", () => {
+test("folders come from the candidate directory only; stray assessments are ignored", () => {
+  // 目录接口保证"有报告的人必在列表中"，模型不再从报告侧兜底建文件夹
   const folders = buildCandidateFolders(
     [brief("c1", "张三")],
     [
       assessment("c1", "jd-1", { jd_title: "A" }),
-      assessment("dismissed-1", "", { candidate_name: "李四", jd_title: "B" }),
+      assessment("ghost", "", { candidate_name: "李四", jd_title: "B" }),
     ],
     [],
   );
-  assert.equal(folders.length, 2);
-  const dismissed = folders[1];
-  assert.equal(dismissed.inQueue, false);
-  assert.equal(dismissed.name, "李四");
+  assert.equal(folders.length, 1);
+  assert.equal(folders[0].candidateId, "c1");
+  assert.equal(folders[0].children.length, 2);
 });
 
 test("both admission outcomes stay visible; invalid reports show stale status", () => {

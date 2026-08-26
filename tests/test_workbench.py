@@ -61,16 +61,6 @@ class WorkbenchTest(unittest.TestCase):
         self.assertIn("index-current.js", second)
         self.assertEqual(mock_assets.call_count, 2)
 
-    def test_candidates_group_returns_list(self) -> None:
-        response = self.app.get("/api/candidates?group=pending")
-        self.assertEqual(response.status_code, 200)
-        data = response.get_json()
-        self.assertIsInstance(data, list)
-
-    def test_candidates_group_rejects_invalid_group(self) -> None:
-        response = self.app.get("/api/candidates?group=invalid")
-        self.assertEqual(response.status_code, 400)
-
     @patch("agi_talent_radar.core.database.get_candidate_with_latest_evaluation")
     def test_candidate_detail_returns_resume_card_fields(self, mock_get) -> None:
         mock_row = MagicMock()
@@ -525,7 +515,6 @@ class WorkbenchTest(unittest.TestCase):
     @patch("agi_talent_radar.web.workbench.run_candidate_stream")
     @patch("agi_talent_radar.core.database.record_node_event")
     @patch("agi_talent_radar.core.database.start_evaluation_run")
-    @patch("agi_talent_radar.core.database.move_candidate_group")
     @patch("agi_talent_radar.core.database.save_evaluation")
     @patch("agi_talent_radar.core.database.get_candidate_with_latest_evaluation")
     @patch("agi_talent_radar.core.database.get_session")
@@ -534,7 +523,6 @@ class WorkbenchTest(unittest.TestCase):
         mock_session,
         mock_get,
         mock_save,
-        mock_move,
         mock_start,
         mock_record,
         mock_run_stream,
@@ -591,9 +579,7 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(events[-1]["result"]["overall_score"], 75)
         mock_save.assert_called_once()
         mock_record.assert_called_once()
-        # 阶段 4：评估成功后不再按分数自动 move_candidate_group，
-        # 而是统一走 talent_service.admit_candidate_after_evaluation。
-        mock_move.assert_not_called()
+        # 评估成功统一走 talent_service.admit_candidate_after_evaluation。
         mock_admit.assert_called_once_with(101)
 
     def test_evaluation_continues_after_sse_disconnect(self) -> None:
@@ -794,7 +780,6 @@ class WorkbenchTest(unittest.TestCase):
     @patch("agi_talent_radar.services.talent_service.admit_candidate_after_evaluation")
     @patch("agi_talent_radar.web.workbench.run_candidate_stream")
     @patch("agi_talent_radar.core.database.start_evaluation_run")
-    @patch("agi_talent_radar.core.database.move_candidate_group")
     @patch("agi_talent_radar.core.database.save_evaluation")
     @patch("agi_talent_radar.core.database.get_candidate_with_latest_evaluation")
     @patch("agi_talent_radar.core.database.get_session")
@@ -803,7 +788,6 @@ class WorkbenchTest(unittest.TestCase):
         mock_session,
         mock_get,
         mock_save,
-        mock_move,
         mock_start,
         mock_run_stream,
         mock_admit,
@@ -827,7 +811,6 @@ class WorkbenchTest(unittest.TestCase):
         from agi_talent_radar.core.models import CandidateEvaluation
 
         for score in (85, 75, 55):
-            mock_move.reset_mock()
             mock_admit.reset_mock()
             evaluation = CandidateEvaluation(
                 id="candidate_01",
@@ -851,27 +834,8 @@ class WorkbenchTest(unittest.TestCase):
             response = self.app.post("/api/candidates/candidate_01/evaluate")
             self.assertEqual(response.status_code, 200)
             self._parse_sse(response)
-            # 阶段 4：任何分数都不再驱动 move_candidate_group；
             # 全部走 talent_service.admit_candidate_after_evaluation。
-            mock_move.assert_not_called()
             mock_admit.assert_called_once_with(102)
-
-    @patch("agi_talent_radar.core.database.move_candidate_group")
-    @patch("agi_talent_radar.core.database.get_candidate_with_latest_evaluation")
-    def test_move_candidate(self, mock_get, mock_move) -> None:
-        mock_row = MagicMock()
-        mock_row.id = "candidate_01"
-        mock_row.group = "rejected"
-        mock_get.return_value = (mock_row, None)
-        mock_move.return_value = mock_row
-
-        response = self.app.post(
-            "/api/candidates/candidate_01/move",
-            json={"group": "rejected"},
-        )
-        self.assertEqual(response.status_code, 200)
-        data = response.get_json()
-        self.assertEqual(data["group"], "rejected")
 
 
 class VerificationGateTest(unittest.TestCase):

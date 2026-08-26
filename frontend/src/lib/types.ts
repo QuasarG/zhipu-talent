@@ -93,23 +93,6 @@ export interface ExternalPaperRecord {
   is_retracted: boolean;
 }
 
-export interface PendingPublication {
-  candidate_id: string;
-  alignment_index: number;
-  candidate_name: string;
-  title: string;
-  claimed_venue?: string;
-  claimed_year?: string;
-  claimed_role?: string;
-  claimed_status?: string;
-  verdict: "unverifiable" | "mismatch";
-  review_kind?: "verify" | "rehabilitate";
-  note?: string;
-  discrepancies?: string[];
-  matched_title?: string;
-  source_url?: string;
-}
-
 export interface AcademicReport {
   alignments?: ClaimAlignment[];
   warnings?: string[];

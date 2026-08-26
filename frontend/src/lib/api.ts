@@ -11,7 +11,6 @@ import type {
   InterviewAssessment,
   InterviewAssessmentBatch,
   InterviewAssessmentRun,
-  PendingPublication,
   PersonBrief,
   PersonDetail,
   ReputationReport,
@@ -36,20 +35,9 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
 // ---- 候选人 ----
 export const api = {
   candidates: {
+    /** 统一人才目录：已入库或拥有准入报告的候选人（与人才库列表同源） */
     list: () => fetchJSON<CandidateBrief[]>("/api/candidates"),
-    /** 人才评估目录：队列 ∪ 有准入报告的候选人（含已过队列保留期/已软移出但报告仍在的人） */
-    evaluationDirectory: () => fetchJSON<CandidateBrief[]>("/api/evaluation-candidates"),
     get: (id: string) => fetchJSON<CandidateDetail>(`/api/candidates/${id}`),
-    delete: (id: string) =>
-      fetchJSON<{ id: string; deleted: boolean }>(`/api/candidates/${id}`, { method: "DELETE" }),
-    // 已评估候选人软移出：数据保留（已在人才库），仅退出队列
-    dismiss: (id: string) =>
-      fetchJSON<{ id: string; group: string; dismissed: boolean }>(`/api/candidates/${id}/dismiss`, {
-        method: "POST",
-      }),
-    // 仍需人工处理的 unverifiable 论文
-    pendingPublications: () =>
-      fetchJSON<PendingPublication[]>(`/api/candidates/pending-publications`),
     reviewPublication: (
       candidateId: string,
       alignmentIndex: number,
@@ -68,13 +56,6 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reviewer, note }),
       }),
-    // 按需论文核验：选中候选人后触发，返回 academic_report
-    verifyPublications: (id: string) =>
-      fetchJSON<Record<string, unknown>>(`/api/candidates/${id}/verify-publications`, {
-        method: "POST",
-      }),
-    evaluateSSE: (id: string, signal?: AbortSignal) =>
-      fetch(BASE + `/api/candidates/${id}/evaluate`, { method: "POST", signal }),
     updateEngagement: (id: string, status: string, changedBy: string, note: string) =>
       fetchJSON(`/api/candidates/${id}/engagement-status`, {
         method: "PATCH",

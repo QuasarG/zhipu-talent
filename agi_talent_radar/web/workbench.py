@@ -35,7 +35,6 @@ from agi_talent_radar.web.spa_assets import list_dist_assets as _list_dist_asset
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VALID_GROUPS = {"pending", "shortlisted", "alternative", "rejected", "dismissed"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 VALID_IMPORT_SUFFIXES = {".pdf", ".jsonl", ".md", ".txt"} | IMAGE_SUFFIXES
 MAX_BATCH_FILES = 50
@@ -165,6 +164,21 @@ def _has_structure(resume: CandidateResume) -> bool:
     ])
 
 
+def _sync_person_vectors_best_effort(person_id: str | None) -> None:
+    """导入即入库后把人物写入问答向量库；失败只记日志，不影响导入流程。"""
+    if not person_id:
+        return
+    try:
+        from agi_talent_radar.core.database import get_session
+        from agi_talent_radar.core.vector_store import QdrantVectorStore
+        from agi_talent_radar.knowledge_agent.vector_sync import sync_person_vectors
+
+        with get_session() as session:
+            sync_person_vectors(session, person_id, QdrantVectorStore())
+    except Exception:
+        logger.warning("person %s 导入后向量同步失败，等待后续重试", person_id, exc_info=True)
+
+
 def create_app() -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config["JSON_AS_ASCII"] = False
@@ -233,27 +247,10 @@ def create_app() -> Flask:
 
     @app.get("/api/candidates")
     def list_candidates():
-        group = request.args.get("group")
-        try:
-            from agi_talent_radar.core.database import get_session, list_candidates, list_candidates_by_group
-            from agi_talent_radar.core.db.repository import list_candidates_for_queue
+        """统一人才目录：已入库或拥有准入报告的候选人（docs/rebuild.md §2.1）。
 
-            with get_session() as session:
-                if group:
-                    if group not in VALID_GROUPS:
-                        return jsonify({"detail": "group 必须是 pending/shortlisted/alternative/rejected"}), 400
-                    rows = list_candidates_by_group(session, group)
-                else:
-                    # 队列默认视图：3 天保留期过滤 + 评估标记
-                    rows = list_candidates_for_queue(session)
-                candidates = [_orm_to_brief(row) for row in rows]
-            return jsonify(candidates)
-        except Exception as exc:
-            return jsonify([]), 500
-
-    @app.get("/api/evaluation-candidates")
-    def evaluation_candidates():
-        """统一人才评估外壳的候选人目录：队列 ∪ 有准入报告的候选人（docs/rebuild.md §2.1）。"""
+        队列语义已移除：导入即入库，与人才库列表同源，不再按保留期/软移出过滤。
+        """
         try:
             from agi_talent_radar.core.database import get_session
             from agi_talent_radar.core.db.repository import list_evaluation_directory_rows
@@ -389,77 +386,6 @@ def create_app() -> Flask:
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
-    @app.delete("/api/candidates/<candidate_id>")
-    def delete_candidate(candidate_id: str):
-        try:
-            from agi_talent_radar.core.database import delete_candidate as _delete_candidate, get_session
-
-            with get_session() as session:
-                deleted = _delete_candidate(session, candidate_id)
-                if not deleted:
-                    return jsonify({"detail": "候选人不存在"}), 404
-                return jsonify({"id": candidate_id, "deleted": True})
-        except Exception as exc:
-            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
-
-    @app.post("/api/candidates/<candidate_id>/dismiss")
-    def dismiss_candidate(candidate_id: str):
-        """已评估候选人的软移出：仅改 group=dismissed 让其退出队列，
-        数据保留（人物档案已在人才库）。前端对已评估项调用此接口。"""
-        try:
-            from agi_talent_radar.core.database import get_session, move_candidate_group
-
-            with get_session() as session:
-                moved = move_candidate_group(session, candidate_id, "dismissed")
-                if not moved:
-                    return jsonify({"detail": "候选人不存在"}), 404
-                return jsonify({"id": moved.id, "group": moved.group, "dismissed": True})
-        except Exception as exc:
-            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
-
-    @app.get("/api/candidates/pending-publications")
-    def list_pending_publications():
-        """返回仍需人工处理的论文：unverifiable（待核验）与 mismatch（待平反）。"""
-        try:
-            from agi_talent_radar.core.db.runtime import get_session
-            from agi_talent_radar.core.db.orm import CandidateORM
-            from sqlalchemy import select
-
-            with get_session() as session:
-                rows = session.execute(
-                    select(CandidateORM).where(CandidateORM.group != "dismissed")
-                ).scalars().all()
-                pending = []
-                for c in rows:
-                    report = _load_json(getattr(c, "academic_report", "")) or {}
-                    for alignment_index, a in enumerate(report.get("alignments", [])):
-                        verdict = a.get("verdict", "")
-                        if verdict not in {"unverifiable", "mismatch"}:
-                            continue
-                        if a.get("human_status", "unreviewed") != "unreviewed":
-                            continue
-                        claim = a.get("claim", {})
-                        pending.append({
-                            "candidate_id": c.id,
-                            "alignment_index": alignment_index,
-                            "candidate_name": c.name or c.id,
-                            "title": claim.get("title", ""),
-                            "claimed_venue": claim.get("venue", ""),
-                            "claimed_year": claim.get("year", ""),
-                            "claimed_role": claim.get("claimed_role", ""),
-                            "claimed_status": claim.get("claimed_status", ""),
-                            "verdict": verdict,
-                            # verify=待核验（查不到）；rehabilitate=待平反（机器判不通过，人工可平反）
-                            "review_kind": "rehabilitate" if verdict == "mismatch" else "verify",
-                            "note": a.get("note", ""),
-                            "discrepancies": a.get("discrepancies", []),
-                            "matched_title": a.get("matched_title", ""),
-                            "source_url": a.get("openalex_url") or a.get("source_url", ""),
-                        })
-                return jsonify(pending)
-        except Exception as exc:
-            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
-
     @app.post("/api/candidates/<candidate_id>/publications/<int:alignment_index>/review")
     def review_publication(candidate_id: str, alignment_index: int):
         """人工裁决论文自述：unverifiable 可确认/驳回；mismatch 可由 HR 平反（confirmed）。"""
@@ -510,40 +436,6 @@ def create_app() -> Flask:
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
-    @app.post("/api/candidates/<candidate_id>/verify-publications")
-    def verify_publications(candidate_id: str):
-        """按需论文核验：前端选中候选人后触发。
-        从 candidate 的 publications 调 AMiner/OpenAlex 核验，
-        结果写入 academic_report 并返回。已有结果时直接返回（不重复核验）。"""
-        try:
-            from agi_talent_radar.agents.academic.nodes import run_academic_check
-            from agi_talent_radar.core.db.runtime import get_session
-            from agi_talent_radar.core.db.orm import CandidateORM
-
-            with get_session() as session:
-                cand = session.get(CandidateORM, candidate_id)
-                if not cand:
-                    return jsonify({"detail": "候选人不存在"}), 404
-                # 已有核验结果直接返回（不重复核验）
-                existing = _load_json(getattr(cand, "academic_report", "")) or {}
-                if existing.get("alignments"):
-                    return jsonify(existing)
-                pubs_raw = _load_json(cand.publications)
-                pubs = [str(p) for p in pubs_raw if str(p).strip()]
-                if not pubs:
-                    return jsonify({"alignments": [], "warnings": []})
-                report = run_academic_check(
-                    name=cand.name or "",
-                    publications=pubs,
-                    raw_text=cand.raw_text or "",
-                )
-                result = report.model_dump()
-                cand.academic_report = result
-                session.commit()
-                return jsonify(result)
-        except Exception as exc:
-            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
-
     @app.get("/api/candidates/<candidate_id>/pdf")
     def get_candidate_pdf(candidate_id: str):
         """流式返回候选人原始简历文件（PDF/图片/MD/TXT 等按实际后缀）。
@@ -565,23 +457,6 @@ def create_app() -> Flask:
                 ".jsonl": "application/jsonl",
             }.get(original_path.suffix.lower(), "application/octet-stream")
             return send_from_directory(_ROOT, original_path.name, mimetype=mimetype)
-        except Exception as exc:
-            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
-
-    @app.post("/api/candidates/<candidate_id>/move")
-    def move_candidate(candidate_id: str):
-        body = request.get_json(silent=True) or {}
-        group = body.get("group")
-        if group not in VALID_GROUPS:
-            return jsonify({"detail": "group 必须是 pending/shortlisted/alternative/rejected"}), 400
-        try:
-            from agi_talent_radar.core.database import get_session, move_candidate_group
-
-            with get_session() as session:
-                moved = move_candidate_group(session, candidate_id, group)
-                if not moved:
-                    return jsonify({"detail": "候选人不存在"}), 404
-                return jsonify({"id": moved.id, "group": moved.group})
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
@@ -1492,6 +1367,7 @@ def _stream_import_upload(
         structured_by_id = {resume.id: resume for resume in structured_inputs}
         classifications = []
         structured_resumes: list[CandidateResume] = []
+        admitted_person_ids: list[str] = []
         with _IMPORT_IDENTITY_LOCK:
             identity_candidates = _candidate_identity_context()
             agent_results = list(
@@ -1559,6 +1435,14 @@ def _stream_import_upload(
                     )
                     saved.current_resume_version_id = version.id
                     session.commit()
+
+                    # 导入即入库：立即关联/创建人物主档，与人才库列表合并（docs/rebuild.md §2.1）
+                    from agi_talent_radar.services import talent_service
+
+                    direction = str(resume.directions[0]).strip() if resume.directions else ""
+                    person_id = talent_service.admit_candidate_from_import(session, saved, direction)
+                    if person_id:
+                        admitted_person_ids.append(person_id)
                 classifications.append(classification)
                 structured_resumes.append(resume)
 
@@ -1594,6 +1478,10 @@ def _stream_import_upload(
                 total=candidate_total,
                 candidate=_imported_candidate_payload(classification, resume, {}),
             )
+
+        # 导入即入库后的向量同步：best-effort，失败不阻塞导入收尾
+        for person_id in admitted_person_ids:
+            _sync_person_vectors_best_effort(person_id)
 
         # 论文核验在后台线程池异步进行，不阻塞导入 SSE 流。
         # 导入卡片此时已经关闭，核验结果通过前端轮询候选人列表刷新。

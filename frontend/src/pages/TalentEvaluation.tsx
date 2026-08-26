@@ -89,9 +89,9 @@ export default function TalentEvaluation() {
   // ---- 数据加载 ----
   const loadShell = useCallback(async () => {
     try {
-      // 目录接口：队列 ∪ 有准入报告的候选人（含过保留期/软移出但报告仍在的人）
+      // 候选人目录与人才库同源：已入库或拥有准入报告的人（导入即入库）
       const [candidateRows, jdRows, assessmentRows, activeRows] = await Promise.all([
-        api.candidates.evaluationDirectory(),
+        api.candidates.list(),
         api.jds.list(),
         api.interviewAssessments.list(),
         api.interviewAssessments.active(),

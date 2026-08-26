@@ -439,59 +439,6 @@ def _count(session, model) -> int:
     return int(session.scalar(select(func.count()).select_from(model)) or 0)
 
 
-class TestQueueRetention(unittest.TestCase):
-    """简历评估队列保留期：已评估超 3 天的隐藏，但重新评估进行中必须保留。"""
-
-    def setUp(self) -> None:
-        self.engine = create_engine("sqlite+pysqlite:///:memory:")
-        Base.metadata.create_all(self.engine)
-        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
-
-    def tearDown(self) -> None:
-        self.engine.dispose()
-
-    def _seed_stale_candidate(self, session, candidate_id: str, running: bool) -> None:
-        from datetime import datetime, timedelta, timezone
-
-        from agi_talent_radar.core.db.repository import list_candidates_for_queue  # noqa: F401
-
-        old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=10)
-        session.add(CandidateORM(id=candidate_id, name="老人"))
-        session.add(
-            EvaluationORM(
-                candidate_id=candidate_id,
-                status="completed",
-                overall_score=80,
-                created_at=old,
-                completed_at=old,
-            )
-        )
-        if running:
-            session.add(
-                EvaluationORM(candidate_id=candidate_id, status="running", overall_score=0)
-            )
-        session.commit()
-
-    def test_stale_evaluated_candidate_hidden(self) -> None:
-        from agi_talent_radar.core.db.repository import list_candidates_for_queue
-
-        with self.Session() as session:
-            self._seed_stale_candidate(session, "c-stale", running=False)
-            ids = [c.id for c in list_candidates_for_queue(session)]
-        self.assertNotIn("c-stale", ids)
-
-    def test_running_rerun_kept_in_queue(self) -> None:
-        from agi_talent_radar.core.db.repository import list_candidates_for_queue
-
-        with self.Session() as session:
-            self._seed_stale_candidate(session, "c-rerun", running=True)
-            rows = list_candidates_for_queue(session)
-            ids = [c.id for c in rows]
-        self.assertIn("c-rerun", ids)
-        row = next(c for c in rows if c.id == "c-rerun")
-        self.assertEqual(row.evaluation_status, "running")
-
-
 class TestSqliteConcurrentWrites(unittest.TestCase):
     """WAL + busy_timeout 回归：多线程并发写 sqlite 不得出现 database is locked。"""
 

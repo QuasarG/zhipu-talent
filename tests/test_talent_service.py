@@ -217,6 +217,44 @@ class TestAdmitCandidateAfterEvaluation(_TalentServiceTestBase):
             self.assertEqual(candidate.group, "pending", msg="admit 不应改 group。")
 
 
+class TestAdmitCandidateFromImport(_TalentServiceTestBase):
+    """导入即入库：建立/关联人物主档 + resume_import 来源，幂等。"""
+
+    def test_import_admit_creates_person_and_links(self) -> None:
+        with self.Session() as session:
+            candidate = CandidateORM(id="c-import", name="李四", target_role="", stage="博三")
+            session.add(candidate)
+            session.commit()
+
+            person_id = talent_service.admit_candidate_from_import(session, candidate, "多模态")
+
+            self.assertTrue(person_id)
+            person = session.get(PersonORM, person_id)
+            self.assertEqual(person.name, "李四")
+            self.assertEqual(person.direction, "多模态")
+            self.assertEqual(candidate.person_id, person_id)
+            self.assertIsNotNone(candidate.admitted_at)
+            kinds = repository.list_candidate_source_kinds(session, candidate.id)
+            self.assertIn("resume_import", kinds)
+
+    def test_import_admit_reuses_existing_person_and_is_idempotent(self) -> None:
+        with self.Session() as session:
+            candidate = CandidateORM(id="c-again", name="王五")
+            session.add(candidate)
+            session.commit()
+
+            first = talent_service.admit_candidate_from_import(session, candidate)
+            second = talent_service.admit_candidate_from_import(session, candidate)
+
+            self.assertEqual(first, second)
+            self.assertEqual(
+                session.query(CandidateSourceORM)
+                .filter_by(candidate_id="c-again", source_kind="resume_import")
+                .count(),
+                1,
+            )
+
+
 class TestManualAdmitPerson(_TalentServiceTestBase):
     def test_changed_by_is_required(self) -> None:
         self._seed_person(person_id="p-required")

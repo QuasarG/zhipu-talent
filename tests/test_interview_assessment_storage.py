@@ -29,7 +29,7 @@ class InterviewAssessmentStorageTests(unittest.TestCase):
         self.Session = sessionmaker(bind=self.engine)
 
     def test_schema_contains_independent_current_report_tables(self) -> None:
-        self.assertEqual(LATEST_SCHEMA_VERSION, 23)
+        self.assertEqual(LATEST_SCHEMA_VERSION, 24)
         with self.Session() as session:
             session.add_all(
                 [
@@ -146,29 +146,26 @@ class InterviewAssessmentStorageTests(unittest.TestCase):
             self.assertFalse(assessment.is_valid)
             self.assertEqual(assessment.invalid_reason, "岗位评估卡已更新")
 
-    def test_evaluation_directory_merges_queue_and_report_owners(self) -> None:
-        """目录 = 队列 ∪ 有准入报告者：dismissed 但有报告的保留入口，无报告的不出现。"""
+    def test_evaluation_directory_lists_pool_members_and_report_owners(self) -> None:
+        """目录 = 已入库（关联 person）∪ 有准入报告者；两者皆无的不返回。"""
         with self.Session() as session:
             session.add_all(
                 [
-                    CandidateORM(id="in-queue", name="队列中", group="pending"),
-                    CandidateORM(id="dismissed-with-report", name="有报告", group="dismissed"),
-                    CandidateORM(id="dismissed-no-report", name="无报告", group="dismissed"),
+                    CandidateORM(id="in-pool", name="已入库", person_id="person-1"),
+                    CandidateORM(id="report-only", name="仅报告"),
+                    CandidateORM(id="nowhere", name="不在库"),
                     JdEntryORM(id="jd-1", title="Agent 评测", raw_text="构建 Agent benchmark"),
                 ]
             )
             session.flush()
-            session.add(_assessment("dismissed-with-report", "jd-1"))
+            session.add(_assessment("report-only", "jd-1"))
             session.commit()
 
-            rows = list_evaluation_directory_rows(session)
-            ids = [row.id for row in rows]
+            ids = [row.id for row in list_evaluation_directory_rows(session)]
 
-        self.assertIn("in-queue", ids)
-        self.assertIn("dismissed-with-report", ids)
-        self.assertNotIn("dismissed-no-report", ids)
-        # 队列在前，仅因报告恢复的候选人在后
-        self.assertLess(ids.index("in-queue"), ids.index("dismissed-with-report"))
+        self.assertIn("in-pool", ids)
+        self.assertIn("report-only", ids)
+        self.assertNotIn("nowhere", ids)
 
 
 def _assessment(candidate_id: str, jd_id: str) -> CandidateJdAssessmentORM:
