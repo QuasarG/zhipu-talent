@@ -167,7 +167,7 @@ export default function AdmissionPane({
   }
 
   return (
-    <Card variant="filled" className="min-h-0 overflow-hidden">
+    <Card variant="filled" className="min-h-0 flex-1 overflow-hidden flex flex-col">
       <EmptyState
         icon="fact_check"
         title={t("选择左侧文件夹中的岗位子项")}
