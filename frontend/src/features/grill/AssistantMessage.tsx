@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ThinkingOrb } from "thinking-orbs";
 import type { GrillChatMessage as ChatMessage, GrillChatSegment as ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
+import Icon from "@/components/ui/Icon";
 import { useI18n } from "@/lib/i18n";
 import ToolCallCard from "./ToolCallCard";
 
@@ -28,7 +30,15 @@ export default function AssistantMessage({ message, busy, interactive = false, o
         </div>
       );
     }
-    if (seg.tool !== "ask_question" && seg.tool !== "search_jobs") return null;
+    if (seg.type === "thinking") {
+      return (
+        <ThinkingCard
+          key={`think-${i}`}
+          text={seg.text}
+          streaming={busy && i === message.segments.length - 1}
+        />
+      );
+    }
     return <ToolCallCard key={seg.call_id || i} segment={seg} interactive={interactive} onSend={onSend} userReply={userReply} />;
   };
 
@@ -38,7 +48,6 @@ export default function AssistantMessage({ message, busy, interactive = false, o
         AI
       </div>
       <div className="flex-1 min-w-0">
-        {busy && <CurrentRoundTrace segments={message.segments} />}
         {message.segments.map(renderSegment)}
         {busy && !message.segments.length && (
           <div className="mt-3 flex items-center gap-2">
@@ -58,19 +67,37 @@ export default function AssistantMessage({ message, busy, interactive = false, o
   );
 }
 
+function ThinkingCard({ text, streaming }: { text: string; streaming: boolean }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(streaming);
 
-function CurrentRoundTrace({ segments }: { segments: ChatSegment[] }) {
-  const tools = segments.filter((segment): segment is Extract<ChatSegment, { type: "tool" }> => segment.type === "tool");
-  const hasText = segments.some((segment) => segment.type === "text" && segment.text.trim());
-  return <div className="mb-3 rounded-md border border-outline-variant bg-surface-low p-3">
-    <div className="relative pl-6 flex flex-col gap-2 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-px before:bg-outline-variant">
-      <TraceStep label="理解当前回答" active={!tools.length && !hasText} done={tools.length > 0 || hasText} />
-      {tools.map((tool) => <TraceStep key={tool.call_id} label={tool.label || tool.tool} active={!tool.status} done={!!tool.status} failed={tool.status === "error"} summary={tool.summary || tool.args_summary} />)}
-      {hasText && <TraceStep label="更新画像并组织追问" active done={false} />}
+  useEffect(() => {
+    setOpen(streaming);
+  }, [streaming]);
+
+  if (!text) return null;
+  return (
+    <div className="mb-3 rounded-md border border-outline-variant bg-surface-low overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="state-layer flex items-center gap-2 w-full px-3 h-9 text-left cursor-pointer"
+      >
+        {streaming ? (
+          <ThinkingOrb state="shaping" size={20} aria-label={t("正在思考")} />
+        ) : (
+          <Icon name="psychology" size={15} className="text-on-surface-variant" />
+        )}
+        <span className="text-label font-medium text-on-surface-variant truncate">
+          {streaming ? t("思考中…") : t("思考过程")}
+        </span>
+        <Icon name={open ? "expand_less" : "expand_more"} size={16} className="ml-auto text-on-surface-variant" />
+      </button>
+      {open && (
+        <pre className="px-3 pb-3 text-label leading-5 text-on-surface-variant whitespace-pre-wrap break-words max-h-56 overflow-y-auto select-text">
+          {text}
+        </pre>
+      )}
     </div>
-  </div>;
-}
-
-function TraceStep({ label, active, done, failed = false, summary }: { label: string; active: boolean; done: boolean; failed?: boolean; summary?: string }) {
-  return <div className="relative min-h-7"><span className={`absolute -left-6 top-1.5 w-2.5 h-2.5 rounded-full ring-4 ring-surface-low ${failed ? "bg-error" : done ? "bg-success" : "bg-primary"}`} /><div className="flex items-center gap-2"><span className="text-label font-medium">{label}</span>{active && <ThinkingOrb state="shaping" size={20} aria-label="运行中" />}</div>{summary && <p className="text-label text-on-surface-variant truncate">{summary}</p>}</div>;
+  );
 }

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
@@ -51,7 +52,15 @@ def run_agent(session_id: str, user_text: str, emit: Emit) -> None:
         return
 
     history = sess["messages"]
-    history.append({"role": "user", "text": user_text, "tools": []})
+    history.append({"role": "user", "text": user_text, "tools": [], "segments": [{"type": "text", "text": user_text}]})
+    assistant_record = {
+        "role": "assistant",
+        "text": "",
+        "tools": [],
+        "segments": [],
+        "status": "running",
+    }
+    history.append(assistant_record)
     state.save_session(session_id, messages=history)
 
     messages = [{"role": "system", "content": _date_hint() + "\n\n" + SYSTEM_PROMPT + blueprint_section(sess) + "\n\n" + state_snapshot(sess)}]
@@ -62,15 +71,45 @@ def run_agent(session_id: str, user_text: str, emit: Emit) -> None:
     ctx = ToolContext(session_id, emit)
     full_text: list[str] = []
     tool_records: list[dict] = []
+    segments: list[dict] = assistant_record["segments"]
+    last_flush = [0.0]
+
+    def save_progress() -> None:
+        assistant_record["text"] = "".join(full_text)
+        assistant_record["tools"] = list(tool_records)
+        state.save_session(session_id, messages=history)
+
+    def flush_progress() -> None:
+        now = time.monotonic()
+        if now - last_flush[0] > 0.8:
+            last_flush[0] = now
+            save_progress()
 
     def on_delta(text: str) -> None:
         full_text.append(text)
         emit("answer_delta", {"text": text})
+        if not segments or segments[-1].get("type") != "text":
+            segments.append({"type": "text", "text": ""})
+        segments[-1]["text"] += text
+        flush_progress()
+
+    def on_reasoning(text: str) -> None:
+        emit("thinking_delta", {"text": text})
+        if not segments or segments[-1].get("type") != "thinking":
+            segments.append({"type": "thinking", "text": ""})
+        segments[-1]["text"] += text
+        flush_progress()
 
     try:
         exhausted = True
         for _ in range(MAX_ROUNDS):
-            result = call_llm_tools(messages, tools_schema(), on_delta=on_delta)
+            result = call_llm_tools(
+                messages,
+                tools_schema(),
+                on_delta=on_delta,
+                on_reasoning=on_reasoning,
+                reasoning_effort="low",
+            )
             tool_calls = result.get("tool_calls") or []
             if not tool_calls:
                 exhausted = False
@@ -85,14 +124,20 @@ def run_agent(session_id: str, user_text: str, emit: Emit) -> None:
                 ],
             })
             for tc in tool_calls:
-                _execute_tool(ctx, tc, messages, tool_records, emit)
+                _execute_tool(ctx, tc, messages, tool_records, segments, save_progress, emit)
             # ask_question 是本轮终点：执行完即收尾，防止 LLM 自问自答跑飞
             if any(tc["name"] == "ask_question" for tc in tool_calls):
                 exhausted = False
                 break
         if exhausted:
             messages.append({"role": "user", "content": "工具预算已用完，请基于已有信息立即给出本轮回复，不要再调用工具。"})
-            call_llm_tools(messages, [], on_delta=on_delta)
+            call_llm_tools(
+                messages,
+                [],
+                on_delta=on_delta,
+                on_reasoning=on_reasoning,
+                reasoning_effort="low",
+            )
 
         # 正文裸问兜底：没走 ask_question/finalize 却在正文提问 → 纠正一次补卡（最多 1 次，失败不卡死）
         called = {r["tool"] for r in tool_records}
@@ -108,33 +153,58 @@ def run_agent(session_id: str, user_text: str, emit: Emit) -> None:
                 "content": "你刚才在正文里直接提问了，违反纪律。请改用 ask_question 工具重新提问（带 options），正文不再重复问题。",
             })
             try:
-                result = call_llm_tools(messages, tools_schema(), on_delta=on_delta)
+                result = call_llm_tools(
+                    messages,
+                    tools_schema(),
+                    on_delta=on_delta,
+                    on_reasoning=on_reasoning,
+                    reasoning_effort="low",
+                )
                 for tc in result.get("tool_calls") or []:
-                    _execute_tool(ctx, tc, messages, tool_records, emit)
+                    _execute_tool(ctx, tc, messages, tool_records, segments, save_progress, emit)
             except Exception:  # noqa: BLE001 纠正失败就把原正文发出
                 logger.exception("裸问纠正失败")
 
-        history.append({"role": "assistant", "text": "".join(full_text), "tools": tool_records})
-        state.save_session(session_id, messages=history)
+        assistant_record["status"] = "completed"
+        save_progress()
         emit("message_done", {})
         emit("done", {"status": "completed"})
     except Exception as exc:  # noqa: BLE001
         logger.exception("agent 循环失败")
-        history.append({"role": "assistant", "text": "".join(full_text), "tools": tool_records})
-        state.save_session(session_id, messages=history)
+        assistant_record["status"] = "error"
+        assistant_record["error"] = str(exc)
+        save_progress()
         emit("error", {"message": str(exc)})
         emit("done", {"status": "error"})
 
 
-def _execute_tool(ctx: ToolContext, tc: dict, messages: list, tool_records: list, emit: Emit) -> None:
+def _execute_tool(
+    ctx: ToolContext,
+    tc: dict,
+    messages: list,
+    tool_records: list,
+    segments: list[dict],
+    save_progress: Callable[[], None],
+    emit: Emit,
+) -> None:
     tool = TOOLS_BY_NAME.get(tc["name"])
     if tool is None:
         messages.append({"role": "tool", "tool_call_id": tc["id"], "content": f"未知工具：{tc['name']}"})
         return
     args = _parse_args(tc.get("arguments"))
+    args_summary = json.dumps(args, ensure_ascii=False, default=str)[:120]
+    segment = {
+        "type": "tool",
+        "call_id": tc["id"],
+        "tool": tc["name"],
+        "label": tool["label"],
+        "args_summary": args_summary,
+    }
+    segments.append(segment)
+    save_progress()
     emit("tool_start", {
         "call_id": tc["id"], "tool": tc["name"], "label": tool["label"],
-        "args_summary": json.dumps(args, ensure_ascii=False, default=str)[:120],
+        "args_summary": args_summary,
     })
     try:
         output = tool["handler"](ctx, args)
@@ -148,6 +218,8 @@ def _execute_tool(ctx: ToolContext, tc: dict, messages: list, tool_records: list
         "tool": tc["name"], "label": tool["label"], "status": status,
         "summary": summary, "detail": detail[:DETAIL_MAX_CHARS],
     })
+    segment.update({"status": status, "summary": summary, "detail": detail[:DETAIL_MAX_CHARS]})
+    save_progress()
     emit("tool_end", {
         "call_id": tc["id"], "tool": tc["name"], "status": status,
         "summary": summary, "detail": detail[:DETAIL_MAX_CHARS],

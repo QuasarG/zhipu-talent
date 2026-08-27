@@ -476,6 +476,11 @@ export interface GrillTextSegment {
   text: string;
 }
 
+export interface GrillThinkingSegment {
+  type: "thinking";
+  text: string;
+}
+
 export interface GrillToolSegment {
   type: "tool";
   call_id: string;
@@ -487,7 +492,7 @@ export interface GrillToolSegment {
   detail?: string;
 }
 
-export type GrillChatSegment = GrillTextSegment | GrillToolSegment;
+export type GrillChatSegment = GrillThinkingSegment | GrillTextSegment | GrillToolSegment;
 
 export interface GrillChatMessage {
   id: string;
@@ -541,6 +546,9 @@ export interface GrillStoredMessage {
   role: "user" | "assistant";
   text: string;
   tools: { tool: string; label: string; status: string; summary: string; detail?: string }[];
+  segments?: GrillChatSegment[];
+  status?: "running" | "completed" | "error";
+  error?: string;
 }
 
 export interface GrillSessionState {

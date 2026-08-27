@@ -35,6 +35,7 @@ interface SseEvent {
 
 /** 历史消息（文本 + 工具记录）→ segments 渲染模型 */
 function storedToSegments(m: StoredMessage): ChatSegment[] {
+  if (m.segments?.length) return m.segments.map((segment) => ({ ...segment }));
   const segments: ChatSegment[] = [];
   if (m.text.trim()) segments.push({ type: "text", text: m.text });
   (m.tools || []).forEach((t, i) =>
@@ -59,6 +60,15 @@ function applyEvent(msg: ChatMessage, e: SseEvent): ChatMessage {
     args_summary?: string; status?: string; summary?: string; detail?: string; message?: string;
   };
   switch (e.type) {
+    case "thinking_delta": {
+      const last = segments[segments.length - 1];
+      if (last?.type === "thinking") {
+        segments[segments.length - 1] = { ...last, text: last.text + (p.text || "") };
+      } else {
+        segments.push({ type: "thinking", text: p.text || "" });
+      }
+      return { ...msg, segments };
+    }
     case "answer_delta": {
       const last = segments[segments.length - 1];
       if (last?.type === "text") {
@@ -117,19 +127,12 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
   const activeIdRef = useRef("");
   const pollRef = useRef<number | null>(null);
   const sessionIdRef = useRef("");
-  // 轮询回调里读不到最新 state，镜像一份
-  const messagesRef = useRef<ChatMessage[]>([]);
-
   const stopFollow = useCallback(() => {
     if (pollRef.current !== null) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
   }, []);
-
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
 
   const loadSessions = useCallback(async (): Promise<GrillSessionSummary[]> => {
     try {
@@ -158,15 +161,16 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
       setOutline(st.outline || []);
       if (st.deliverables) setDeliverables(st.deliverables);
       const stored = (st.messages || []) as StoredMessage[];
-      const assistantCount = stored.filter((m) => m.role === "assistant").length;
-      const prevAssistant = messagesRef.current.filter(
-        (m) => m.role === "assistant" && !m.id.startsWith("streaming-")
-      ).length;
-      if (assistantCount <= prevAssistant && st.running) return;
+      setMessages(stored.map((m, i) => ({
+        id: `hist-${i}`,
+        role: m.role,
+        segments: storedToSegments(m),
+        error: m.error,
+      })));
+      if (st.running) return;
       stopFollow();
       setBusy(false);
       loadSessions();
-      setMessages(stored.map((m, i) => ({ id: `hist-${i}`, role: m.role, segments: storedToSegments(m) })));
     }, 2000);
   }, [stopFollow, loadSessions]);
 
@@ -187,11 +191,12 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
         id: `hist-${i}`,
         role: m.role,
         segments: storedToSegments(m),
+        error: m.error,
       }));
       if (state?.running) {
-        const tempId = `streaming-${Date.now()}`;
-        activeIdRef.current = tempId;
-        msgs.push({ id: tempId, role: "assistant", segments: [] });
+        if (msgs[msgs.length - 1]?.role !== "assistant") {
+          msgs.push({ id: `streaming-${Date.now()}`, role: "assistant", segments: [], error: undefined });
+        }
         setMessages(msgs);
         setBusy(true);
         startFollow();

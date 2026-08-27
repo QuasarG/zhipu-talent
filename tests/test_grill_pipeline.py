@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import unittest
 from contextlib import contextmanager
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from agi_talent_radar.core.db.orm import Base, GrillSessionORM, UserORM
-from agi_talent_radar.grill import repository
+from agi_talent_radar.grill import loop, repository
 
 
 class GrillPipelineBase(unittest.TestCase):
@@ -123,6 +124,55 @@ class TestConverged(GrillPipelineBase):
         for f in profile["required_fields"].values():
             f["confidence"] = 0.8
         self.assertTrue(repository.check_converged(profile))
+
+
+class TestGrillAgentTrace(unittest.TestCase):
+    def test_trace_is_persisted_in_order_and_uses_low_reasoning(self) -> None:
+        session = {"messages": [], "profile": {}, "outline": []}
+        calls: list[dict] = []
+        scripts = [
+            {
+                "reasoning": "先理解岗位。",
+                "text": "我先更新画像。",
+                "tool_calls": [{"id": "c1", "name": "update", "arguments": "{}"}],
+            },
+            {"reasoning": "信息已经足够。", "text": "请继续补充团队偏好。", "tool_calls": []},
+        ]
+
+        def fake_llm(_messages, _tools, **kwargs):
+            calls.append(kwargs)
+            script = scripts.pop(0)
+            kwargs["on_reasoning"](script["reasoning"])
+            kwargs["on_delta"](script["text"])
+            return {"text": script["text"], "tool_calls": script["tool_calls"]}
+
+        def save_session(_sid, **fields):
+            session.update(fields)
+
+        events: list[tuple[str, dict]] = []
+        tool = {"label": "更新画像", "handler": lambda _ctx, _args: {"ok": True}}
+        with (
+            patch.object(loop.state, "get_session_by_id", return_value=session),
+            patch.object(loop.state, "save_session", side_effect=save_session),
+            patch.object(loop, "call_llm_tools", side_effect=fake_llm),
+            patch.object(loop, "tools_schema", return_value=[]),
+            patch.object(loop, "blueprint_section", return_value=""),
+            patch.object(loop, "state_snapshot", return_value=""),
+            patch.dict(loop.TOOLS_BY_NAME, {"update": tool}, clear=True),
+        ):
+            loop.run_agent("s1", "招聘一个算法工程师", lambda event, payload: events.append((event, payload)))
+
+        assistant = session["messages"][-1]
+        self.assertEqual(
+            [segment["type"] for segment in assistant["segments"]],
+            ["thinking", "text", "tool", "thinking", "text"],
+        )
+        self.assertEqual(assistant["status"], "completed")
+        self.assertTrue(all(call["reasoning_effort"] == "low" for call in calls))
+        self.assertEqual(
+            [payload["text"] for event, payload in events if event == "thinking_delta"],
+            ["先理解岗位。", "信息已经足够。"],
+        )
 
 
 if __name__ == "__main__":
