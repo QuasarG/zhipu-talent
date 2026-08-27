@@ -178,6 +178,7 @@ def call_llm_tools(
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
 
     last_error: Exception | None = None
+    effective_reasoning_effort = reasoning_effort or os.getenv("OPENAI_EFFORT_CHAT", "max").strip() or "max"
     for attempt in range(max(1, max_retries)):
         stream_delta = on_delta if attempt == 0 else None
         stream_reasoning = on_reasoning if attempt == 0 else None
@@ -187,7 +188,7 @@ def call_llm_tools(
             with _LLM_CONCURRENCY:
                 result = _call_llm_tools_once(
                     _client(), model, messages, tools, temperature, timeout_seconds,
-                    stream_delta, stream_reasoning, reasoning_effort,
+                    stream_delta, stream_reasoning, effective_reasoning_effort,
                 )
             _CIRCUIT.succeeded(primary_model, model, is_probe)
             _observe_call(on_call, model, fallback_reason, started_at)
@@ -445,10 +446,15 @@ def _thinking_kwargs_for(model: str, effort_override: str | None = None) -> dict
     """按模型选思考参数：GLM-5.3 系列不支持 disabled，强制 enabled+effort；其余禁思考。
 
     effort_override 显式指定（如问答 Agent 用 max 获取可流式展示的思考）；
-    Flash 默认走 OPENAI_EFFORT_FLASH=max，旧版 5.3 才使用 OPENAI_EFFORT_DEEP。
+    Flash 非对话节点默认走 OPENAI_EFFORT_NON_CONVERSATION=low；对话工具调用会由
+    call_llm_tools 显式传入 OPENAI_EFFORT_CHAT（默认 max）。
     """
     if model.startswith("glm-5.3-flash"):
-        effort = (effort_override or os.getenv("OPENAI_EFFORT_FLASH", "max").strip() or "max")
+        effort = (
+            effort_override
+            or os.getenv("OPENAI_EFFORT_NON_CONVERSATION", "low").strip()
+            or "low"
+        )
         return {
             "reasoning_effort": effort,
             "extra_body": {"thinking": {"type": "enabled", "clear_thinking": False}},

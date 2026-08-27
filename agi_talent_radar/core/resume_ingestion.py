@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from pathlib import Path
 
@@ -181,7 +182,7 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
                     ],
                 }
             ],
-            reasoning_effort="max",
+            reasoning_effort=(os.getenv("OPENAI_EFFORT_OCR", "low").strip() or "low"),
             thinking={"type": "enabled", "clear_thinking": False},
             temperature=0.1,
             top_p=0.95,

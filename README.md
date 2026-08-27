@@ -66,7 +66,9 @@ sudo cp deploy/nginx-talent-radar.conf /etc/nginx/sites-enabled/
 | `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.3-Flash + 多模态 + Web Search + Embedding 一把通吃） |
 | `OPENAI_MODEL` | 对话 Agent 主模型（默认 `glm-5.3-flash`） |
 | `OPENAI_MODEL_NON_CONVERSATION` | 非对话节点统一模型（默认 `glm-5.3-flash`） |
-| `OPENAI_EFFORT_FLASH` | Flash 思考强度（默认 `max`） |
+| `OPENAI_EFFORT_NON_CONVERSATION` | 非对话节点思考强度（默认 `low`，优先时效） |
+| `OPENAI_EFFORT_CHAT` | 对话 Agent 思考强度（默认 `max`） |
+| `OPENAI_EFFORT_OCR` | 多模态 OCR 思考强度（默认 `low`） |
 | `OPENAI_MODEL_FALLBACK` | Flash 限流时的兼容备用模型（可选；默认不切换模型） |
 | `OPENAI_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` |
 | `LLM_MAX_CONCURRENCY` | 所有 LLM 请求共享的全局并发上限，默认 `50` |

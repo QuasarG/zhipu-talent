@@ -312,7 +312,8 @@
 
 - `OPENAI_MODEL`：对话主模型，默认 `glm-5.3-flash`；
 - `OPENAI_MODEL_NON_CONVERSATION`：非对话节点模型，默认 `glm-5.3-flash`；
-- Flash 请求强制启用 thinking，默认 `reasoning_effort=max`，并保留完整思考内容；
+- Flash 请求强制启用 thinking；非对话节点默认 `reasoning_effort=low` 以保证时效，
+  对话 Agent 默认 `reasoning_effort=max` 并保留完整思考内容；
 - 每个节点继续记录实际模型、时间与错误信息；
 - 429 / 1302 只按显式配置的兼容备用模型处理，默认不回退到旧模型。
 
