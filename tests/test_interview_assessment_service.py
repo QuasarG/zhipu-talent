@@ -144,6 +144,94 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
             self.assertEqual(run.run_trace, [])
             self.assertEqual(run.staged_result, {})
 
+    def test_running_run_becomes_terminal_immediately_when_cancelled(self) -> None:
+        with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
+            batch = service.start_batch(["candidate-1"], ["jd-1"], None)
+            with self.Session() as session:
+                run = session.query(InterviewAssessmentRunORM).filter_by(batch_id=batch["id"]).one()
+                run.status = "running"
+                run.current_node = "task_score:agent_system"
+                run.run_trace = [{"node_id": "task_score:agent_system"}]
+                run.staged_result = {"partial": True}
+                session.commit()
+                run_id = run.id
+
+            self.assertTrue(service.cancel_run(run_id))
+
+        with self.Session() as session:
+            run = session.get(InterviewAssessmentRunORM, run_id)
+            self.assertEqual(run.status, "cancelled")
+            self.assertTrue(run.cancellation_requested)
+            self.assertEqual(run.current_node, "")
+            self.assertEqual(run.run_trace, [])
+            self.assertEqual(run.staged_result, {})
+            self.assertEqual(session.query(InterviewAssessmentPairLockORM).count(), 0)
+
+    def test_running_batch_becomes_terminal_immediately_when_cancelled(self) -> None:
+        with self.Session() as session:
+            session.add(
+                JdEntryORM(
+                    id="jd-2",
+                    title="评测研发",
+                    raw_text="建设评测系统",
+                    card_status="ready",
+                    assessment_card=_card(),
+                )
+            )
+            session.commit()
+
+        with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
+            batch = service.start_batch(["candidate-1"], ["jd-1", "jd-2"], None)
+            with self.Session() as session:
+                runs = session.query(InterviewAssessmentRunORM).filter_by(batch_id=batch["id"]).all()
+                for run in runs:
+                    run.status = "running"
+                    run.current_node = "task_score:agent_system"
+                session.commit()
+
+            self.assertEqual(service.cancel_batch(batch["id"]), 2)
+
+        with self.Session() as session:
+            runs = session.query(InterviewAssessmentRunORM).filter_by(batch_id=batch["id"]).all()
+            self.assertTrue(all(run.status == "cancelled" for run in runs))
+            self.assertTrue(all(run.cancellation_requested for run in runs))
+            self.assertEqual(session.query(InterviewAssessmentPairLockORM).count(), 0)
+
+    def test_late_worker_failure_cannot_overwrite_cancelled_status(self) -> None:
+        with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
+            batch = service.start_batch(["candidate-1"], ["jd-1"], None)
+            with self.Session() as session:
+                run_id = session.query(InterviewAssessmentRunORM.id).filter_by(batch_id=batch["id"]).scalar()
+
+            def fail_after_cancellation(*_args, **_kwargs):
+                self.assertTrue(service.cancel_run(run_id))
+                raise RuntimeError("迟到的模型错误")
+
+            with patch.object(service, "evaluate_candidate_for_job", side_effect=fail_after_cancellation):
+                service._run_pair(run_id)
+
+        with self.Session() as session:
+            run = session.get(InterviewAssessmentRunORM, run_id)
+            self.assertEqual(run.status, "cancelled")
+            self.assertEqual(run.error_message, "")
+
+    def test_active_run_listing_recovers_legacy_pending_cancellation(self) -> None:
+        with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
+            batch = service.start_batch(["candidate-1"], ["jd-1"], None)
+            with self.Session() as session:
+                run = session.query(InterviewAssessmentRunORM).filter_by(batch_id=batch["id"]).one()
+                run.status = "running"
+                run.cancellation_requested = True
+                session.commit()
+                run_id = run.id
+
+            self.assertEqual(service.list_active_runs(), [])
+
+        with self.Session() as session:
+            run = session.get(InterviewAssessmentRunORM, run_id)
+            self.assertEqual(run.status, "cancelled")
+            self.assertEqual(session.query(InterviewAssessmentPairLockORM).count(), 0)
+
 
 def _card() -> dict:
     def task(task_id: str, title: str, importance: str) -> dict:

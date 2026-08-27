@@ -147,6 +147,24 @@ def get_batch(batch_id: str) -> dict[str, Any] | None:
 def list_active_runs() -> list[dict[str, Any]]:
     """返回全局活动配对（含候选人姓名与 JD 标题），供所有用户同步互斥状态。"""
     with get_session() as session:
+        # 兼容旧版本留下的半取消状态：用户已经发出停止请求时，
+        # 查询活动任务也必须先把运行记录推进到终态并释放配对锁。
+        pending_cancellations = (
+            session.query(InterviewAssessmentRunORM)
+            .filter(
+                InterviewAssessmentRunORM.status.in_(("queued", "running")),
+                InterviewAssessmentRunORM.cancellation_requested.is_(True),
+            )
+            .all()
+        )
+        affected_batches = {row.batch_id for row in pending_cancellations}
+        for row in pending_cancellations:
+            _mark_run_cancelled(session, row)
+        if pending_cancellations:
+            session.commit()
+            for batch_id in affected_batches:
+                _refresh_batch(session, batch_id)
+
         rows = (
             session.query(InterviewAssessmentRunORM)
             .filter(InterviewAssessmentRunORM.status.in_(("queued", "running")))
@@ -170,15 +188,10 @@ def cancel_run(run_id: str) -> bool:
         if run is None or run.status not in {"queued", "running"}:
             return False
         run.cancellation_requested = True
-        if run.status == "queued":
-            run.status = "cancelled"
-            run.staged_result = {}
-            run.run_trace = []
-            run.model_usage = []
-            run.completed_at = _now()
-            _release_pair_lock(session, run)
+        batch_id = run.batch_id
+        _mark_run_cancelled(session, run)
         session.commit()
-        _refresh_batch(session, run.batch_id)
+        _refresh_batch(session, batch_id)
         return True
 
 
@@ -194,13 +207,7 @@ def cancel_batch(batch_id: str) -> int:
         )
         for run in runs:
             run.cancellation_requested = True
-            if run.status == "queued":
-                run.status = "cancelled"
-                run.staged_result = {}
-                run.run_trace = []
-                run.model_usage = []
-                run.completed_at = _now()
-                _release_pair_lock(session, run)
+            _mark_run_cancelled(session, run)
         session.commit()
         _refresh_batch(session, batch_id)
         return len(runs)
@@ -303,13 +310,16 @@ def _run_pair(run_id: str) -> None:
         with get_session() as session:
             run = session.get(InterviewAssessmentRunORM, run_id)
             if run is not None:
-                run.status = "failed"
-                run.error_message = str(exc)
-                run.staged_result = {}
-                run.completed_at = _now()
-                _release_pair_lock(session, run)
-                session.commit()
-                _refresh_batch(session, run.batch_id)
+                if run.cancellation_requested or run.status == "cancelled":
+                    _discard_cancelled_run(session, run)
+                else:
+                    run.status = "failed"
+                    run.error_message = str(exc)
+                    run.staged_result = {}
+                    run.completed_at = _now()
+                    _release_pair_lock(session, run)
+                    session.commit()
+                    _refresh_batch(session, run.batch_id)
 
 
 def _append_run_event(run_id: str, event: dict[str, Any]) -> None:
@@ -354,6 +364,15 @@ def _promote_result(session, run: InterviewAssessmentRunORM, result: dict[str, A
 
 
 def _discard_cancelled_run(session, run: InterviewAssessmentRunORM) -> None:
+    batch_id = run.batch_id
+    _mark_run_cancelled(session, run)
+    session.commit()
+    _refresh_batch(session, batch_id)
+
+
+def _mark_run_cancelled(session, run: InterviewAssessmentRunORM) -> None:
+    """在当前事务中丢弃运行产物并释放锁；由调用方统一提交和刷新批次。"""
+    run.cancellation_requested = True
     run.status = "cancelled"
     run.current_node = ""
     run.staged_result = {}
@@ -362,8 +381,6 @@ def _discard_cancelled_run(session, run: InterviewAssessmentRunORM) -> None:
     run.error_message = ""
     run.completed_at = _now()
     _release_pair_lock(session, run)
-    session.commit()
-    _refresh_batch(session, run.batch_id)
 
 
 def _refresh_batch(session, batch_id: str) -> None:
