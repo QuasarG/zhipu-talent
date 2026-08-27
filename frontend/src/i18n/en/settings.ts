@@ -19,7 +19,7 @@ export default {
   "{key} 已更新": "{key} updated",
   "{key} 更新失败": "Failed to update {key}",
   "智谱开放平台": "Zhipu Open Platform",
-  "一把 Key 通吃：GLM-5.2 全部 LLM 节点 + Web Search 联网搜索 + Embedding 向量化 + 云端 OCR": "One key for everything: GLM-5.2 LLM nodes + Web Search + Embedding + cloud OCR",
+  "一把 Key 通吃：GLM-5.3-Flash 主模型（文本与多模态），以及 Web Search、Embedding 与云端 OCR": "One key for everything: GLM-5.3-Flash for text and multimodal calls, plus Web Search, Embedding, and cloud OCR",
   "智谱 Z.AI": "Zhipu Z.AI",
   "AMiner 学术平台": "AMiner Academic Platform",
   "简历评估、初筛分类、结构化解析、论文对齐等 Agent 工作节点": "Agent workflow nodes such as resume evaluation, screening classification, structured parsing, and paper alignment",

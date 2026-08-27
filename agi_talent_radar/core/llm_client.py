@@ -38,7 +38,7 @@ def call_llm_json(
     on_call: CallObserver | None = None,
     conversation: bool = False,
 ) -> dict[str, Any]:
-    """调用 JSON 模型；对话调用显式传 conversation=True，其他调用统一走 5.2。"""
+    """调用 JSON 模型；对话调用显式传 conversation=True，其他调用统一走 Flash。"""
     primary_model = model_override or (
         _conversation_model() if conversation else (_deep_model() if deep else _non_conversation_model())
     )
@@ -52,6 +52,7 @@ def call_llm_json(
         {
             "messages": messages,
             "temperature": temperature,
+            "top_p": 0.95,
             "response_format": {"type": "json_object"},
             "timeout": timeout_seconds,
         },
@@ -79,6 +80,7 @@ def call_llm_json(
                 },
                 ],
                 "temperature": 0,
+                "top_p": 0.95,
                 "response_format": {"type": "json_object"},
                 "timeout": timeout_seconds,
             },
@@ -123,6 +125,7 @@ def call_llm_stream(
                     model=model,
                     messages=messages,
                     temperature=temperature,
+                    top_p=0.95,
                     stream=True,
                     timeout=timeout_seconds,
                     **_thinking_kwargs_for(model),
@@ -171,7 +174,7 @@ def call_llm_tools(
     故重试轮改为静默收集、不再回调（否则用户会看到重复文本），最终通过返回值的
     text 字段给出完整文本。只有整轮流完整结束才算成功，否则整轮作废、指数退避重试。
     """
-    primary_model = model_override or _required_env("OPENAI_MODEL")
+    primary_model = model_override or _conversation_model()
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
 
     last_error: Exception | None = None
@@ -222,7 +225,9 @@ def _call_llm_tools_once(
         "model": model,
         "messages": messages,
         "temperature": temperature,
+        "top_p": 0.95,
         "stream": True,
+        "tool_stream": True,
         "timeout": timeout_seconds,
         **_thinking_kwargs_for(model, reasoning_effort),
     }
@@ -270,7 +275,7 @@ def _call_llm_tools_once(
 
 _CLIENT: "OpenAI | None" = None
 _CLIENT_LOCK = threading.Lock()
-_LLM_CONCURRENCY = threading.BoundedSemaphore(max(1, int(os.getenv("LLM_MAX_CONCURRENCY", "5"))))
+_LLM_CONCURRENCY = threading.BoundedSemaphore(max(1, int(os.getenv("LLM_MAX_CONCURRENCY", "50"))))
 
 
 class _RateLimitCircuit:
@@ -361,6 +366,9 @@ def _fallback_model(primary_model: str) -> str:
     configured = os.getenv("OPENAI_MODEL_FALLBACK", "").strip()
     if configured:
         return configured
+    if primary_model.startswith("glm-5.3-flash"):
+        # Flash 账号并发额度更高，默认不切回旧模型，避免新旧模型混跑。
+        return primary_model
     if primary_model.startswith("glm-5.3"):
         return "glm-5.2"
     return primary_model
@@ -419,26 +427,32 @@ def _client() -> OpenAI:
 
 
 def _deep_model() -> str:
-    """非对话深度节点也固定使用 5.2，避免与对话模型争用 5.3 配额。"""
+    """非对话深度节点也固定使用 Flash，避免新旧模型混跑。"""
     return _non_conversation_model()
 
 
 def _non_conversation_model() -> str:
-    """所有非对话 LLM 节点的模型；默认固定为 GLM-5.2。"""
-    return os.getenv("OPENAI_MODEL_NON_CONVERSATION", "").strip() or "glm-5.2"
+    """所有非对话 LLM 节点的模型；默认固定为 GLM-5.3-Flash。"""
+    return os.getenv("OPENAI_MODEL_NON_CONVERSATION", "").strip() or "glm-5.3-flash"
 
 
 def _conversation_model() -> str:
-    """对话 Agent 使用的主模型，沿用 OPENAI_MODEL（生产环境为 GLM-5.3）。"""
+    """对话 Agent 使用的主模型，沿用 OPENAI_MODEL（生产环境为 GLM-5.3-Flash）。"""
     return _required_env("OPENAI_MODEL")
 
 
 def _thinking_kwargs_for(model: str, effort_override: str | None = None) -> dict[str, Any]:
-    """按模型选思考参数：glm-5.3 不支持 disabled，强制 enabled+effort；其余禁思考。
+    """按模型选思考参数：GLM-5.3 系列不支持 disabled，强制 enabled+effort；其余禁思考。
 
     effort_override 显式指定（如问答 Agent 用 max 获取可流式展示的思考）；
-    默认走 OPENAI_EFFORT_DEEP（low——实测 low 不产生思考内容，最快）。
+    Flash 默认走 OPENAI_EFFORT_FLASH=max，旧版 5.3 才使用 OPENAI_EFFORT_DEEP。
     """
+    if model.startswith("glm-5.3-flash"):
+        effort = (effort_override or os.getenv("OPENAI_EFFORT_FLASH", "max").strip() or "max")
+        return {
+            "reasoning_effort": effort,
+            "extra_body": {"thinking": {"type": "enabled", "clear_thinking": False}},
+        }
     if model.startswith("glm-5.3"):
         effort = (effort_override or os.getenv("OPENAI_EFFORT_DEEP", "low").strip() or "low")
         return {"reasoning_effort": effort, "extra_body": {"thinking": {"type": "enabled"}}}

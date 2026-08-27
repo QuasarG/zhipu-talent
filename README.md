@@ -22,7 +22,7 @@
 |---|---|
 | 后端 | Flask、SQLAlchemy、LangGraph |
 | 前端 | React 19、TypeScript、Tailwind CSS 4、Vite |
-| LLM | 智谱 GLM-5.3（评估/问答，OpenAI 兼容端点）、智谱 ZAI（OCR/Embedding/Web Search） |
+| LLM | 智谱 GLM-5.3-Flash（评估/问答/多模态，OpenAI 兼容端点）、智谱 ZAI（Embedding/Web Search） |
 | 向量库 | Qdrant（人才知识 talent_knowledge / 岗位库 grill_jobs 双集合） |
 | 数据库 | MySQL（生产）/ SQLite（本地可选） |
 
@@ -63,13 +63,14 @@ sudo cp deploy/nginx-talent-radar.conf /etc/nginx/sites-enabled/
 
 | 变量 | 说明 |
 |---|---|
-| `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.3 + Web Search + Embedding + OCR 一把通吃） |
-| `OPENAI_MODEL` | 对话 Agent 主模型（默认 `glm-5.3`） |
-| `OPENAI_MODEL_NON_CONVERSATION` | 非对话节点统一模型（默认 `glm-5.2`） |
-| `OPENAI_MODEL_FALLBACK` | 5.2 限流时的备用模型（可选） |
+| `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.3-Flash + 多模态 + Web Search + Embedding 一把通吃） |
+| `OPENAI_MODEL` | 对话 Agent 主模型（默认 `glm-5.3-flash`） |
+| `OPENAI_MODEL_NON_CONVERSATION` | 非对话节点统一模型（默认 `glm-5.3-flash`） |
+| `OPENAI_EFFORT_FLASH` | Flash 思考强度（默认 `max`） |
+| `OPENAI_MODEL_FALLBACK` | Flash 限流时的兼容备用模型（可选；默认不切换模型） |
 | `OPENAI_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` |
-| `LLM_MAX_CONCURRENCY` | 所有 LLM 请求共享的全局并发上限，默认 `5` |
-| `LLM_FALLBACK_COOLDOWN_SECONDS` | 429 / 1302 后整体使用 5.2 的冷却时间，默认 `60` 秒 |
+| `LLM_MAX_CONCURRENCY` | 所有 LLM 请求共享的全局并发上限，默认 `50` |
+| `LLM_FALLBACK_COOLDOWN_SECONDS` | 429 / 1302 后兼容备用模型的冷却时间，默认 `60` 秒 |
 | `AMINER_API_TOKEN` | AMiner 论文核验/学者检索（可选） |
 | `FLASK_SESSION_SECRET` | 会话密钥（必填，随机长串） |
 | `QDRANT_URL` / `QDRANT_COLLECTION` | 向量库地址/集合名 |

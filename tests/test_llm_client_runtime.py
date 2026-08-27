@@ -119,8 +119,8 @@ class LlmClientRuntimeTests(unittest.TestCase):
         for thread in threads:
             thread.join()
 
-        self.assertLessEqual(peak, 5)
-        self.assertEqual(peak, 5)
+        self.assertLessEqual(peak, 50)
+        self.assertEqual(peak, 12)
 
 
 if __name__ == "__main__":

@@ -141,7 +141,7 @@ export default {
   "这是主要功能入口，包含人才问答、简历评估、人才库和设置。下面逐一介绍每个模块。":
     "This is the main entry point, with Talent Q&A, Resume Screening, Talent Pool, and Settings. Let's walk through each module.",
   "输入姓名即可让 AI Agent 自动检索人才库、查论文、查舆情，生成调查报告。上下文取决于调用的模型。":
-    "Type a name and the AI agent automatically searches the Talent Pool, papers, and reputation to build an investigation report. Context length depends on the model in use (currently GLM-5.2[1M]).",
+    "Type a name and the AI agent automatically searches the Talent Pool, papers, and reputation to build an investigation report. Context length depends on the model in use (currently GLM-5.3-Flash[1M]).",
   "导入 PDF/图片简历，自动结构化解析、论文核验、AI 多维度评估打分。左侧导入，中间看简历，右侧看评估进度和结果。":
     "Import PDF/image resumes for automatic structured parsing, publication verification, and AI scoring across dimensions. Import on the left, view the resume in the center, track progress and results on the right.",
   "所有评估入库的人才都在这里。关系图谱可视化人才网络，列表视图查看评分排序，右侧详情栏看完整档案和简历版本对比。":

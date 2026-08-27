@@ -91,7 +91,7 @@ def extract_image_text(file_bytes: bytes) -> str:
     return _recognize_pixmap(pixmap)
 
 
-# 智谱云端 OCR 客户端（GLM-5V-Turbo，复用 LLM_API_KEY），失败回退本地 RapidOCR
+# 智谱云端 OCR 客户端（GLM-5.3-Flash 多模态，复用 LLM_API_KEY），失败回退本地 RapidOCR
 _ocr_client = None
 
 
@@ -171,7 +171,7 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
         if structured:
             kwargs["response_format"] = {"type": "json_object"}
         resp = client.chat.completions.create(
-            model="glm-5v-turbo",
+            model="glm-5.3-flash",
             messages=[
                 {
                     "role": "user",
@@ -181,8 +181,11 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
                     ],
                 }
             ],
-            thinking={"type": "disabled"},
+            reasoning_effort="max",
+            thinking={"type": "enabled", "clear_thinking": False},
             temperature=0.1,
+            top_p=0.95,
+            stream=False,
             **kwargs,
         )
     except Exception:

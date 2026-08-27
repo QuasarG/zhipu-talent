@@ -1307,7 +1307,7 @@ def _stream_import_upload(
         for resume in resumes:
             if resume.raw_text and not _has_structure(resume):
                 merged = resume
-                # 5V-Turbo 分节作为版面提示；GLM-5.3 仍在单次调用中读取完整 raw_text
+                # 视觉模型分节作为版面提示；GLM-5.3-Flash 仍在单次调用中读取完整 raw_text
                 pre_sections = take_last_ocr_sections() if resume.ocr_pages else None
                 for kind, section_name, done, total, payload in iter_parse_resume_chunks(
                     resume.id, resume.raw_text, has_ocr=bool(resume.ocr_pages), pre_sections=pre_sections
