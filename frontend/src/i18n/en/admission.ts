@@ -54,7 +54,7 @@ export default {
   "已有报告": "Saved Reports",
   "配对队列": "Pair Queue",
   "点击候选人 × 岗位查看完整报告": "Select a candidate × role pair to view the full report",
-  "全局最多并行评估 5 个配对": "Up to 5 pairs are assessed concurrently",
+  "全局最多并行评估 50 个配对": "Up to 50 pairs are assessed concurrently",
   "报告生成时的真实调用链": "Actual execution chain used to generate this report",
   "节点按真实调用顺序从上到下生长": "Nodes grow top to bottom in actual execution order",
   "运行": "Running",

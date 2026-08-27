@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -27,7 +28,10 @@ from agi_talent_radar.core.models import CandidateResume
 
 
 ASSESSMENT_RULE_VERSION = "interview-admission-v1"
-_PAIR_EXECUTOR = ThreadPoolExecutor(max_workers=5, thread_name_prefix="admission-pair")
+_PAIR_EXECUTOR = ThreadPoolExecutor(
+    max_workers=max(1, int(os.getenv("ADMISSION_PAIR_CONCURRENCY", "50"))),
+    thread_name_prefix="admission-pair",
+)
 _RUN_LOCKS: dict[str, threading.Lock] = {}
 _RUN_LOCKS_GUARD = threading.Lock()
 

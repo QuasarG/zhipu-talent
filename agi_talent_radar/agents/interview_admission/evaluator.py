@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -69,7 +70,10 @@ OVERALL_REVIEW_PROMPT = """
 """.strip()
 
 
-_TASK_EXECUTOR = ThreadPoolExecutor(max_workers=5, thread_name_prefix="admission-task")
+_TASK_EXECUTOR = ThreadPoolExecutor(
+    max_workers=max(1, int(os.getenv("ADMISSION_TASK_CONCURRENCY", "50"))),
+    thread_name_prefix="admission-task",
+)
 
 
 class _Trace:

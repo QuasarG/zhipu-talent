@@ -72,6 +72,8 @@ sudo cp deploy/nginx-talent-radar.conf /etc/nginx/sites-enabled/
 | `OPENAI_MODEL_FALLBACK` | Flash 限流时的兼容备用模型（可选；默认不切换模型） |
 | `OPENAI_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` |
 | `LLM_MAX_CONCURRENCY` | 所有 LLM 请求共享的全局并发上限，默认 `50` |
+| `ADMISSION_PAIR_CONCURRENCY` / `ADMISSION_TASK_CONCURRENCY` | 准入批次 / 单个候选人任务评分线程池上限，默认 `50` |
+| `IMPORT_CONCURRENCY` | 简历导入并行上限，默认 `50` |
 | `LLM_FALLBACK_COOLDOWN_SECONDS` | 429 / 1302 后兼容备用模型的冷却时间，默认 `60` 秒 |
 | `AMINER_API_TOKEN` | AMiner 论文核验/学者检索（可选） |
 | `FLASK_SESSION_SECRET` | 会话密钥（必填，随机长串） |
