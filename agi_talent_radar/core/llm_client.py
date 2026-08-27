@@ -222,18 +222,23 @@ def _call_llm_tools_once(
 
     reasoning delta（思考流）经 on_reasoning 回调；effort 不传走 env 默认（low）。
     """
+    thinking_kwargs = _thinking_kwargs_for(model, reasoning_effort)
+    extra_body = dict(thinking_kwargs.pop("extra_body", {}))
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "top_p": 0.95,
         "stream": True,
-        "tool_stream": True,
         "timeout": timeout_seconds,
-        **_thinking_kwargs_for(model, reasoning_effort),
+        **thinking_kwargs,
     }
     if tools:  # 空列表=无工具收尾调用，不传 tools 参数（部分 API 拒绝空数组）
         kwargs["tools"] = tools
+        # tool_stream 是智谱扩展字段，OpenAI SDK 只允许通过 extra_body 透传。
+        extra_body["tool_stream"] = True
+    if extra_body:
+        kwargs["extra_body"] = extra_body
     response = client.chat.completions.create(**kwargs)
     text_parts: list[str] = []
     tool_fragments: dict[int, dict[str, str]] = {}

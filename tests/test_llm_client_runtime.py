@@ -122,6 +122,49 @@ class LlmClientRuntimeTests(unittest.TestCase):
         self.assertLessEqual(peak, 50)
         self.assertEqual(peak, 12)
 
+    def test_tool_stream_is_sent_via_extra_body_without_overwriting_thinking(self) -> None:
+        requests: list[dict] = []
+        client = _FakeClient(lambda kwargs: requests.append(kwargs) or [])
+
+        llm_client._call_llm_tools_once(
+            client,
+            "glm-5.3-flash",
+            [{"role": "user", "content": "test"}],
+            [{"type": "function", "function": {"name": "lookup"}}],
+            1.0,
+            5.0,
+            None,
+            reasoning_effort="max",
+        )
+
+        request = requests[0]
+        self.assertNotIn("tool_stream", request)
+        self.assertEqual(request["extra_body"]["tool_stream"], True)
+        self.assertEqual(
+            request["extra_body"]["thinking"],
+            {"type": "enabled", "clear_thinking": False},
+        )
+        self.assertEqual(request["reasoning_effort"], "max")
+
+    def test_tool_stream_is_omitted_when_no_tools_are_available(self) -> None:
+        requests: list[dict] = []
+        client = _FakeClient(lambda kwargs: requests.append(kwargs) or [])
+
+        llm_client._call_llm_tools_once(
+            client,
+            "glm-5.3-flash",
+            [{"role": "user", "content": "test"}],
+            [],
+            1.0,
+            5.0,
+            None,
+        )
+
+        request = requests[0]
+        self.assertNotIn("tool_stream", request)
+        self.assertNotIn("tool_stream", request["extra_body"])
+        self.assertIn("thinking", request["extra_body"])
+
 
 if __name__ == "__main__":
     unittest.main()
