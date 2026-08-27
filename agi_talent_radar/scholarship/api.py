@@ -126,10 +126,23 @@ def build_scholarship_blueprint() -> Blueprint:
         expected = os.getenv("SCHOLARSHIP_WEBHOOK_TOKEN", "").strip()
         if not expected or not secrets.compare_digest(token, expected):
             return jsonify({"detail": "无效的 webhook token"}), 404
-        body = request.get_json(silent=True) or {}
+        body = request.get_json(silent=True)
+        if body is None:
+            # 飞书自动化把多行文本原样插进 JSON 模板会产生非法 JSON（裸换行/未转义引号），
+            # json_repair 兜底修复，别让真实问卷在门口 400
+            from json_repair import loads as repair_json_loads
+
+            try:
+                body = repair_json_loads(request.get_data(as_text=True) or "")
+            except Exception:  # noqa: BLE001
+                body = None
         if not isinstance(body, dict):
             return jsonify({"detail": "body 必须是 JSON 对象"}), 400
-        record_id = str(body.get("record_id") or "").strip()
+        # 飞书自动化变量里没有「记录ID」：平铺模式用「自动编号」字段做幂等键
+        record_id = (
+            str(body.get("record_id") or "").strip()
+            or str(body.get("自动编号") or "").strip()
+        )
 
         # 模式 B：record_id 反查（凭证齐备时优先，能顺带拉附件）
         payload: dict = {}
@@ -154,7 +167,11 @@ def build_scholarship_blueprint() -> Blueprint:
                     continue
                 payload[en] = _normalize_text(value)
             if payload.get("expected_graduation"):
-                payload["expected_graduation"] = payload["expected_graduation"][:7]
+                from agi_talent_radar.scholarship.feishu_pull import _normalize_datetime
+
+                month, _ = _normalize_datetime(payload["expected_graduation"])
+                if month:
+                    payload["expected_graduation"] = month
             if payload.get("advisors"):
                 import re as _re
 

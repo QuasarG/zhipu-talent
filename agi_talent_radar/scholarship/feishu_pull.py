@@ -101,17 +101,27 @@ def _normalize_text(value: Any) -> str:
 
 
 def _normalize_datetime(value: Any) -> tuple[str, datetime | None]:
-    """datetime → (YYYY-MM, datetime|None)。失败回 ('', None) 不阻断。"""
+    """datetime → (YYYY-MM, datetime|None)。兼容 ISO、YYYY/M/D、毫秒时间戳。失败回 ('', None) 不阻断。"""
     text = _normalize_text(value)
     if not text:
         return "", None
-    match = re.match(r"(\d{4})-(\d{2})", text)
+    if text.isdigit():  # 飞书自动化可能把日期变量渲染成时间戳
+        n = int(text)
+        if n > 10**12:
+            n //= 1000
+        try:
+            dt = datetime.fromtimestamp(n)
+        except (ValueError, OverflowError, OSError):
+            return "", None
+        return dt.strftime("%Y-%m"), dt
+    match = re.match(r"(\d{4})[-/](\d{1,2})", text)
     if not match:
         return text[:7], None
     try:
         dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
-        return f"{match.group(1)}-{match.group(2)}", None
+        # YYYY/M/D 单位数月份必须补零，否则字符串比较 "2028-6" < "2027-06" 误判资格
+        return f"{match.group(1)}-{int(match.group(2)):02d}", None
     return f"{match.group(1)}-{match.group(2)}", dt
 
 

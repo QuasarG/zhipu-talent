@@ -115,6 +115,39 @@ class FeishuWebhookTest(unittest.TestCase):
             resp = self._post({"中文姓名": "白名单", "主要研究方向": "AI Infrastructure"})
         self.assertNotEqual(resp.status_code, 401)
 
+    def test_auto_number_as_idempotency_key(self) -> None:
+        """飞书自动化变量没有「记录ID」：自动编号要能当幂等键。"""
+        body = {"自动编号": "7", "中文姓名": "测试丙", "当前年级": "博士一年级", "主要研究方向": "Agent Systems"}
+        first = self._post(body).get_json()
+        second = self._post(body).get_json()
+        self.assertTrue(second["duplicate"])
+        self.assertEqual(second["application_id"], first["application_id"])
+
+    def test_broken_json_with_raw_newlines_repaired(self) -> None:
+        """多行文本原样插进 JSON 模板产生非法 JSON：json_repair 兜底不 400。"""
+        raw = (
+            '{"自动编号": "8", "中文姓名": "测试丁", "当前年级": "硕士一年级", '
+            '"主要研究方向": "AI Infrastructure", '
+            '"教育与科研经历": "2025-2026 某大学<NL>2023-2025 某学院"}'
+        )
+        resp = self.client.post(
+            "/api/scholarship/feishu-webhook/tok123",
+            data=raw.replace("<NL>", chr(10)),  # 真裸换行：严格 JSON 非法
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = resp.get_json()
+        detail = self.client.get(f"/api/scholarship/applications/{data['application_id']}").get_json()
+        self.assertIn("某大学", detail["education_history"])
+
+    def test_slash_date_and_single_digit_month(self) -> None:
+        body = {"自动编号": "9", "中文姓名": "测试戊", "当前年级": "博士二年级", "预计毕业时间": "2028/6/30 00:00", "主要研究方向": "Foundation Models"}
+        resp = self._post(body)
+        self.assertEqual(resp.status_code, 201)
+        app_id = resp.get_json()["application_id"]
+        detail = self.client.get(f"/api/scholarship/applications/{app_id}").get_json()
+        self.assertEqual(detail["expected_graduation"], "2028-06")
+
     def test_docx_extraction(self) -> None:
         from agi_talent_radar.scholarship.ingest import _extract_docx_text
 
