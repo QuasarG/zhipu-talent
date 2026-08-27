@@ -20,7 +20,7 @@ from agi_talent_radar.knowledge_agent.agent import resume_agent, run_agent
 
 
 class ScriptedLLM:
-    """按脚本依次返回 call_llm_tools 结果；on_delta 逐段回放 text。"""
+    """按脚本依次返回 call_llm_tools 结果；逐段回放思考与正文。"""
 
     def __init__(self, scripts: list[dict]):
         self._scripts = list(scripts)
@@ -29,6 +29,8 @@ class ScriptedLLM:
     def __call__(self, messages, tools, temperature=0.2, on_delta=None, max_retries=3, on_reasoning=None, reasoning_effort=None):
         self.calls.append(messages)
         script = self._scripts.pop(0)
+        if on_reasoning and script.get("reasoning"):
+            on_reasoning(script["reasoning"])
         if on_delta and script.get("text"):
             on_delta(script["text"])
         return {
@@ -137,6 +139,36 @@ class TestToolCallThenAnswer(ChatAgentTestBase):
         tool_msgs = [m for m in second_call if m.get("role") == "tool"]
         self.assertEqual(len(tool_msgs), 1)
         self.assertIn("李四", tool_msgs[0]["content"])
+
+    def test_thinking_tool_and_answer_segments_persist_in_event_order(self) -> None:
+        self.session.add(PersonORM(id="p1", name="李四", direction="Agent", fingerprint="fp-test-2"))
+        self.session.commit()
+        llm = ScriptedLLM(
+            [
+                {
+                    "reasoning": "先检查人才库。",
+                    "text": "我先检索候选人。",
+                    "tool_calls": [_tool_call("call_1", "search_persons", '{"name": "李"}')],
+                    "finish_reason": "tool_calls",
+                },
+                {"reasoning": "检索结果足以作答。", "text": "库里有李四。"},
+            ]
+        )
+
+        self.run_with(llm)
+
+        assistant = self.db_messages()[-1]
+        segments = assistant.content["segments"]
+        self.assertEqual(
+            [segment["type"] for segment in segments],
+            ["thinking", "text", "tool", "thinking", "text"],
+        )
+        self.assertEqual(segments[0]["text"], "先检查人才库。")
+        self.assertEqual(segments[3]["text"], "检索结果足以作答。")
+        self.assertEqual(
+            [payload["text"] for event, payload in self.events if event == "thinking_delta"],
+            ["先检查人才库。", "检索结果足以作答。"],
+        )
 
 
 class TestGatedInterruptAndResume(ChatAgentTestBase):

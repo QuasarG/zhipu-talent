@@ -1,13 +1,14 @@
 """人才问答 Agent 的 SSE 事件类型与消息 segment 结构约定。
 
 SSE 事件：``data: {"type": <EVENT_TYPES 之一>, "payload": {...}}``。
-assistant 消息 content：``{segments: [{type:"text",text} | {type:"tool",call_id,
+assistant 消息 content：``{segments: [{type:"thinking",text} | {type:"text",text} | {type:"tool",call_id,
 tool,label,status,summary,detail} | {type:"action",action_id,kind,payload,decision}]}``。
 """
 from __future__ import annotations
 
 EVENT_TYPES = (
     "meta",             # {conversation_id, message_id}
+    "thinking_delta",   # {text}
     "answer_delta",     # {text}
     "tool_start",       # {call_id, tool, label, args_summary}
     "tool_end",         # {call_id, tool, status(ok|error), summary, detail}

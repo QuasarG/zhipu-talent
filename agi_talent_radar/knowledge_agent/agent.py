@@ -177,8 +177,15 @@ def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMess
             save_segments()
 
     def on_reasoning(text: str) -> None:
-        # 思考流只发 SSE 不落库；正文出现后前端收起，纯工具轮由前端在 tool_start 时丢弃
         emit("thinking_delta", {"text": text})
+        if not segments or segments[-1].get("type") != "thinking":
+            segments.append({"type": "thinking", "text": ""})
+        segments[-1]["text"] += text
+        # 与正文使用同一节流策略，切页或刷新后能从数据库恢复当前进度。
+        now = time.monotonic()
+        if now - last_flush[0] > 0.8:
+            last_flush[0] = now
+            save_segments()
 
     try:
         exhausted = True

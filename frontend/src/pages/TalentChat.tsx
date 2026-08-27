@@ -41,8 +41,7 @@ function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
       return { ...msg, content: { segments } };
     }
     case "tool_start":
-      // 本轮以工具调用收尾：尾部未兑现的思考段移除（该轮思考不展示），工具卡照常入列
-      if (segments[segments.length - 1]?.type === "thinking") segments.pop();
+      // 思考、工具与正文都按真实发生顺序保留，完成后切换会话仍可回看。
       segments.push({
         type: "tool",
         call_id: e.payload.call_id,
