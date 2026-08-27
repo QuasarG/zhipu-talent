@@ -1,11 +1,16 @@
-"""奖学金初筛 API：/api/scholarship/*（鉴权由全局 middleware 负责）。"""
+"""奖学金初筛 API：/api/scholarship/*（鉴权由全局 middleware 负责，
+feishu-webhook 例外——凭 URL 内随机 token 自证）。"""
 from __future__ import annotations
+
+import os
+import secrets
 
 from flask import Blueprint, jsonify, request
 
 from agi_talent_radar.core.db.runtime import get_session
 from agi_talent_radar.core.db.orm import ScholarshipApplicationORM
 from agi_talent_radar.scholarship import ingest, pipeline
+from agi_talent_radar.scholarship.feishu_pull import FEISHU_FIELD_MAP, feishu_configured
 from agi_talent_radar.scholarship.scoring import MAX_LETTERS
 
 SCHOLARSHIP_BP_NAME = "scholarship"
@@ -57,6 +62,17 @@ def _app_to_dict(session, app: ScholarshipApplicationORM, detail: bool = False) 
         "screening_detail": app.screening_detail or {},
         "brand_bonus": app.brand_bonus or 0.0,
         "brand_note": app.brand_note or "",
+        "feishu_record_id": app.feishu_record_id or "",
+        "name_en": app.name_en or "",
+        "phone": app.phone or "",
+        "email": app.email or "",
+        "country": app.country or "",
+        "lab": app.lab or "",
+        "advisor_title": app.advisor_title or "",
+        "grade": app.grade or "",
+        "research_summary": app.research_summary or "",
+        "education_history": app.education_history or "",
+        "submitted_at": app.submitted_at.isoformat() if app.submitted_at else None,
         "materials_count": len(app.materials),
         "blind_score": latest_eval.blind_score if latest_eval else None,
         "reputation_adjustment": pipeline.reputation_adjustment(session, app),
@@ -92,6 +108,84 @@ def build_scholarship_blueprint() -> Blueprint:
         # 有总分的排前面，按总分降序
         rows.sort(key=lambda r: (r["total_score"] is None, -(r["total_score"] or 0)))
         return jsonify(rows)
+
+    # ---- 飞书问卷自动化 webhook ----
+    # 飞书「添加新记录时」发 HTTP POST 到本端点；URL 含随机 token 自证（不走登录会话）。
+    # 两种触发模式：
+    #   A. 平铺字段：自动化里直接把问卷字段作为 JSON body 发来（键=字段名）；
+    #   B. record_id 反查：body 只带 record_id，服务端配了飞书 app 凭证时自动拉全量字段+附件。
+    @bp.get("/api/scholarship/feishu-webhook/<token>")
+    def feishu_webhook_ping(token: str):
+        expected = os.getenv("SCHOLARSHIP_WEBHOOK_TOKEN", "").strip()
+        if not expected or not secrets.compare_digest(token, expected):
+            return jsonify({"detail": "无效的 webhook token"}), 404
+        return jsonify({"ok": True, "pull_mode": feishu_configured()})
+
+    @bp.post("/api/scholarship/feishu-webhook/<token>")
+    def feishu_webhook(token: str):
+        expected = os.getenv("SCHOLARSHIP_WEBHOOK_TOKEN", "").strip()
+        if not expected or not secrets.compare_digest(token, expected):
+            return jsonify({"detail": "无效的 webhook token"}), 404
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"detail": "body 必须是 JSON 对象"}), 400
+        record_id = str(body.get("record_id") or "").strip()
+
+        # 模式 B：record_id 反查（凭证齐备时优先，能顺带拉附件）
+        payload: dict = {}
+        if record_id and feishu_configured():
+            try:
+                from agi_talent_radar.scholarship import feishu_pull
+
+                payload = feishu_pull.fetch_record(record_id)
+                payload["record_id"] = record_id
+            except Exception as exc:  # noqa: BLE001 — 反查失败降级平铺，不阻断推送
+                payload = {}
+                app.logger.warning("feishu pull failed, fallback to flat body: %s", exc)
+
+        if not payload:
+            # 模式 A：平铺字段直收（自动化里把问卷字段原样放进 body）
+            from agi_talent_radar.scholarship.feishu_pull import _normalize_text
+
+            payload = {"record_id": record_id}
+            for zh, en in FEISHU_FIELD_MAP.items():
+                value = body.get(zh)
+                if value in (None, ""):
+                    continue
+                payload[en] = _normalize_text(value)
+            if payload.get("expected_graduation"):
+                payload["expected_graduation"] = payload["expected_graduation"][:7]
+            if payload.get("advisors"):
+                import re as _re
+
+                payload["advisors"] = [
+                    a for a in _re.split(r"[、,，;；/]", payload["advisors"]) if a.strip()
+                ]
+            grade = payload.get("grade") or ""
+            if "博士" in grade or "phd" in grade.lower():
+                payload["degree_type"] = "phd"
+            elif "硕士" in grade or "master" in grade.lower():
+                payload["degree_type"] = "master"
+
+        with get_session() as session:
+            try:
+                app_row, created = ingest.upsert_application_from_feishu(session, payload)
+            except ValueError as exc:
+                return jsonify({"detail": str(exc)}), 400
+            # 新材料进来后回到 imported，随后立即自动筛选
+            app_row.status = "imported"
+            try:
+                screen_result = pipeline.screen_application(session, app_row)
+            except Exception as exc:  # noqa: BLE001 — 筛选失败不回滚落库，细节留在状态里
+                screen_result = {"status": "imported", "missing": [], "reasons": [f"自动筛选失败: {exc}"]}
+                app.logger.warning("feishu webhook auto-screen failed: %s", exc)
+            session.commit()
+        return jsonify({
+            "ok": True,
+            "duplicate": not created,
+            "application_id": app_row.id,
+            "status": screen_result.get("status"),
+        }), 201 if created else 200
 
     @bp.post("/api/scholarship/applications")
     def create_application():

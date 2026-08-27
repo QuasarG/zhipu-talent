@@ -143,7 +143,7 @@ def require_auth_page(view: Callable) -> Callable:
 # 不需要鉴权的路径前缀（白名单）。
 PUBLIC_PATHS = frozenset({"/login", "/api/auth/login", "/api/auth/status", "/health"})
 # 前缀白名单：只读分享页与其公开数据 API（凭随机 token 自证，不走会话）
-PUBLIC_PREFIXES = ("/share/", "/api/share/")
+PUBLIC_PREFIXES = ("/share/", "/api/share/", "/api/scholarship/feishu-webhook/")
 
 
 def install_auth_middleware(app) -> None:

@@ -617,6 +617,18 @@ export interface ScholarshipApplication {
   screening_detail: { missing?: string[]; reasons?: string[] };
   brand_bonus: number;
   brand_note: string;
+  // 飞书问卷同步字段（空串/null = 非飞书来源或未推送）
+  feishu_record_id: string;
+  name_en: string;
+  phone: string;
+  email: string;
+  country: string;
+  lab: string;
+  advisor_title: string;
+  grade: string;
+  research_summary: string;
+  education_history: string;
+  submitted_at: string | null;
   materials_count: number;
   blind_score: number | null;
   reputation_adjustment: number;

@@ -18,7 +18,7 @@ from agi_talent_radar.core.db.orm import (
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 24
+LATEST_SCHEMA_VERSION = 25
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -228,6 +228,31 @@ def ensure_schema(engine) -> None:
             engine,
             24,
             "phase 24: import-time pool admission backfill",
+        )
+    if current_version < 25:
+        existing = {c["name"] for c in inspect(engine).get_columns("scholarship_applications")}
+        definitions = (
+            ("feishu_record_id", "VARCHAR(64) NOT NULL DEFAULT ''"),
+            ("name_en", "VARCHAR(128) NOT NULL DEFAULT ''"),
+            ("phone", "VARCHAR(64) NOT NULL DEFAULT ''"),
+            ("email", "VARCHAR(256) NOT NULL DEFAULT ''"),
+            ("country", "VARCHAR(128) NOT NULL DEFAULT ''"),
+            ("lab", "VARCHAR(256) NOT NULL DEFAULT ''"),
+            ("advisor_title", "VARCHAR(256) NOT NULL DEFAULT ''"),
+            ("grade", "VARCHAR(64) NOT NULL DEFAULT ''"),
+            ("research_summary", "TEXT"),
+            ("education_history", "TEXT"),
+            ("submitted_at", "DATETIME"),
+        )
+        _add_columns(
+            engine,
+            "scholarship_applications",
+            [f"{name} {definition}" for name, definition in definitions if name not in existing],
+        )
+        _record_version(
+            engine,
+            25,
+            "phase 25: scholarship feishu sync fields",
         )
     _ensure_indexes(engine)
 

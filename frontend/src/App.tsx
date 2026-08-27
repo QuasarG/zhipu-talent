@@ -11,7 +11,6 @@ import TalentPool from "./pages/TalentPool";
 import TalentProfile from "./pages/TalentProfile";
 import JdPool from "./pages/JdPool";
 import Scholarship from "./pages/Scholarship";
-import ScholarshipDetail from "./pages/ScholarshipDetail";
 import Settings from "./pages/Settings";
 import SharedProfile from "./pages/SharedProfile";
 import OnboardingTour from "./components/OnboardingTour";
@@ -67,7 +66,6 @@ function App() {
             <Route path="/talent-pool/:personId" element={<TalentProfile />} />
             <Route path="/jd-pool" element={<JdPool />} />
             <Route path="/scholarship" element={<Scholarship />} />
-            <Route path="/scholarship/:id" element={<ScholarshipDetail />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

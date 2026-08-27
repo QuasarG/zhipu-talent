@@ -896,9 +896,21 @@ class ScholarshipApplicationORM(Base):
     school = Column(String(256), default="")
     advisors = Column(JSON, default=list)                  # 推荐导师姓名列表
     status = Column(String(24), default="imported", index=True)
-    screening_detail = Column(JSON, default=dict)          # 缺项/资格原因
+    screening_detail = Column(JSON, default=dict)          # 缺项/资格原因 + feishu 元信息
     brand_bonus = Column(Float, default=0.0)               # 手动品牌加分（不进 LLM 评分）
     brand_note = Column(Text, default="")
+    # 飞书问卷同步字段（webhook/反查写入；为空表示非飞书来源）
+    feishu_record_id = Column(String(64), default="", index=True)  # rec 开头，幂等去重键
+    name_en = Column(String(128), default="")
+    phone = Column(String(64), default="")
+    email = Column(String(256), default="")
+    country = Column(String(128), default="")
+    lab = Column(String(256), default="")
+    advisor_title = Column(String(256), default="")        # 导师单位/职务
+    grade = Column(String(64), default="")                 # 当前年级原始文案
+    research_summary = Column(Text, default="")            # 研究方向简述
+    education_history = Column(Text, default="")           # 教育与科研经历
+    submitted_at = Column(DateTime)                        # 飞书提交时间
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
