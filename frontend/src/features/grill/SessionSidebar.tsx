@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { GrillSessionSummary } from "@/lib/types";
 import Button, { IconButton } from "@/components/ui/Button";
-import { StatusChip } from "@/components/ui/Chip";
+import Icon from "@/components/ui/Icon";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 
@@ -19,12 +19,6 @@ function relativeTime(iso: string, t: (key: string, params?: Record<string, stri
   if (days < 7) return t("{n} 天前", { n: days });
   return new Date(time).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
-
-const STATUS_TONE: Record<string, "neutral" | "primary" | "success"> = {
-  进行中: "neutral",
-  已澄清: "primary",
-  已交付: "success",
-};
 
 interface Props {
   sessions: GrillSessionSummary[];
@@ -108,56 +102,56 @@ export default function SessionSidebar({ sessions, currentId, busy, onSelect, on
                       : "hover:bg-surface-low"
                 )}
               >
-                <div className="flex items-center gap-2">
-                  {managing && (
-                    <span
-                      className={cn(
-                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border",
-                        checked ? "border-primary bg-primary text-on-primary" : "border-outline"
-                      )}
-                    >
-                      {checked && "✓"}
-                    </span>
+                {managing && (
+                  <span
+                    className={cn(
+                      "absolute left-3 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-sm border",
+                      checked ? "border-primary bg-primary text-on-primary" : "border-outline"
+                    )}
+                  >
+                    {checked && <Icon name="check" size={13} />}
+                  </span>
+                )}
+                <p
+                  className={cn(
+                    "truncate text-body-sm font-medium text-on-surface",
+                    managing ? "pl-6" : "pr-10"
                   )}
-                  {/* 删除按钮绝对定位悬浮，不进文档流，避免 hover 撑高条目 */}
-                  <p className={cn("flex-1 min-w-0 truncate text-body-sm font-medium text-on-surface", !managing && "pr-7")}>
-                    {s.title}
-                  </p>
-                  {!managing && confirmingId === s.session_id ? (
-                    <button
-                      type="button"
-                      title={t("再点一次确认删除")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteOne(s.session_id);
-                      }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-2 h-6 text-label font-medium text-error bg-surface-lowest hover:bg-error-container"
-                    >
-                      {t("确认删除")}
-                    </button>
-                  ) : (
-                    !managing && (
+                  title={s.title}
+                >
+                  {s.title}
+                </p>
+                <p className={cn("mt-0.5 truncate text-label text-on-surface-variant", managing && "pl-6")}>
+                  {t(s.status)} · {relativeTime(s.updated_at, t)}
+                </p>
+                {!managing && (
+                  <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center group-hover:flex group-focus-within:flex">
+                    {confirmingId === s.session_id ? (
+                      <button
+                        type="button"
+                        title={t("再点一次确认删除")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteOne(s.session_id);
+                        }}
+                        className="h-8 rounded-full px-3 text-label font-medium text-error hover:bg-error-container focus-visible:outline-2 focus-visible:outline-primary"
+                      >
+                        {t("确认删除")}
+                      </button>
+                    ) : (
                       <IconButton
                         icon="delete"
                         size={16}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 hidden h-6 w-6 shrink-0 group-hover:flex"
+                        className="h-8 w-8"
                         title={t("删除会话")}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDeleteOne(s.session_id);
                         }}
                       />
-                    )
-                  )}
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2">
-                  <StatusChip tone={STATUS_TONE[s.status] || "neutral"} className="h-5 px-2">
-                    {t(s.status)}
-                  </StatusChip>
-                  <span className="shrink-0 text-label text-on-surface-variant">
-                    {relativeTime(s.updated_at, t)}
-                  </span>
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })
