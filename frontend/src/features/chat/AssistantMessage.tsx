@@ -5,6 +5,7 @@ import { ThinkingOrb } from "thinking-orbs";
 import type { ChatCitation, ChatMessage, ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
+import AgentWorkingBar from "@/components/ui/AgentWorkingBar";
 import ToolCallCard from "./ToolCallCard";
 import ActionCard from "./ActionCard";
 import CitationBadge from "./CitationBadge";
@@ -68,7 +69,6 @@ function citePlugin(citations: ChatCitation[]) {
 
 /** assistant 消息：按 segments 顺序渲染 文本(markdown) / 工具卡片 / 决策卡片 */
 export default function AssistantMessage({ message, error, busy, onDecide }: Props) {
-  const { t } = useI18n();
   const citationMap = useMemo(
     () => new Map((message.citations || []).map((c) => [c.id, c])),
     [message.citations]
@@ -123,12 +123,7 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
       </div>
       <div className="flex-1 min-w-0">
         {message.content.segments.map(renderSegment)}
-        {busy && message.status !== "awaiting_action" && !message.content.segments.length && (
-          <div className="mt-3 flex items-center gap-2">
-            <ThinkingOrb state="shaping" size={20} aria-label={t("正在思考")} />
-            <span className="text-body-sm text-on-surface-variant">{t("正在思考…")}</span>
-          </div>
-        )}
+        {busy && message.status !== "awaiting_action" && <AgentWorkingBar />}
         {error && (
           <div className="mt-2">
             <StatusChip tone="error" variant="filled" icon="error">

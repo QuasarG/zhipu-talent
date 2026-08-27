@@ -1,4 +1,5 @@
 export default {
+  "AI 正在工作": "AI is working",
   "思考过程": "Thinking process",
 "思考中…": "Thinking…",
   "选择目标人物": "Select Target Person",
