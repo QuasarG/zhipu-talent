@@ -173,6 +173,12 @@ def admit_candidate_from_import(session, candidate: CandidateORM, direction: str
         person_id = person.id
         candidate.person_id = person_id
         candidate.admitted_at = candidate.admitted_at or datetime.now(timezone.utc).replace(tzinfo=None)
+    # 学校自动回填：建档/关联后立即解析 education 刷 org/schools（图谱学校节点的数据源）
+    from agi_talent_radar.core.db.repository import _refresh_person_schools
+
+    person = session.get(PersonORM, person_id) if person_id else None
+    if person is not None:
+        _refresh_person_schools(person, candidate)
     repository.append_candidate_source(
         session,
         candidate_id=candidate.id,
