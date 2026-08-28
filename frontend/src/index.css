@@ -8,20 +8,20 @@
   src: url("./assets/fonts/roboto-mono-latin.woff2") format("woff2");
 }
 /* MiSans：中文高级感主力（GB2312 子集自托管） */
-/* 正文加重两档：400 槽位映射 Demibold 字形（Normal/Medium 文件保留可回退） */
+/* 正文加重：400/500 槽位映射 Semibold 字形（官方 Semibold 子集 909KB） */
 @font-face {
   font-family: "MiSans";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("./assets/fonts/MiSans-Demibold.woff2") format("woff2");
+  src: url("./assets/fonts/MiSans-Semibold.woff2") format("woff2");
 }
 @font-face {
   font-family: "MiSans";
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url("./assets/fonts/MiSans-Demibold.woff2") format("woff2");
+  src: url("./assets/fonts/MiSans-Semibold.woff2") format("woff2");
 }
 @font-face {
   font-family: "MiSans";
