@@ -220,7 +220,7 @@ function GroupSection({
         />
       </div>
       <div className="collapse-disclosure pl-1" data-open={!collapsed}>
-        <div className="overflow-hidden">
+        <div className="collapse-disclosure-content">
           <div className="flex flex-col gap-0.5">{children}</div>
         </div>
       </div>

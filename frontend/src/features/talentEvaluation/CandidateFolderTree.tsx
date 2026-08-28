@@ -189,7 +189,7 @@ function CandidateFolderNode({
 
       {/* 树形层级：竖线从头像下方引出，子项缩进到头像正下方（对齐即包含，不悬浮留白） */}
       <div className="collapse-disclosure ml-[32px] mb-1" data-open={open}>
-        <div className="overflow-hidden">
+        <div className="collapse-disclosure-content">
           <div className="mt-0.5 mb-1 flex flex-col border-l border-outline-variant">
             {folder.children.map((child) => (
               <FolderChildRow
