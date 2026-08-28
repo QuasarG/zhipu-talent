@@ -203,7 +203,7 @@ export default function Settings() {
                 {saveMsg.text}
               </div>
             )}
-            <div className="grid grid-cols-1 gap-3 max-w-[640px]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-[1040px]">
               {configEntries.map(([key, value]) => {
                 const skeleton = value === null || value === undefined;
                 const sensitive = !skeleton && isSensitive(value as ConfigValue);
