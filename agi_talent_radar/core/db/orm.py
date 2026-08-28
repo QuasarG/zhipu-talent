@@ -111,6 +111,8 @@ class CandidateORM(Base):
 
     evaluations = relationship("EvaluationORM", back_populates="candidate", cascade="all, delete-orphan")
     sources = relationship("CandidateSourceORM", back_populates="candidate", cascade="all, delete-orphan")
+    # 姓名备注等 person 主档字段的懒加载通道（_orm_to_detail 依赖）
+    person = relationship("PersonORM")
     engagement_history = relationship(
         "EngagementStatusHistoryORM",
         back_populates="candidate",
