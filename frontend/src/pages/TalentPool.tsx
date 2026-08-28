@@ -254,7 +254,12 @@ export default function TalentPool() {
       {view === "graph" ? (
         <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden">
           <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} showBatchEvaluate />
-          <RelationGraph persons={filtered} selectedId={selectedId} onSelect={selectPerson} />
+          <RelationGraph
+            persons={filtered}
+            selectedId={selectedId}
+            onSelect={selectPerson}
+            groupName={(gid) => groups.find((g) => g.id === gid)?.name || ""}
+          />
           <TalentDetail person={selected} personId={selectedId} onUpdated={handlePersonUpdated} />
         </div>
       ) : (

@@ -94,6 +94,12 @@ def save_candidate(
         candidate.import_level = ""
         candidate.import_confidence = classification.confidence
 
+    # 学校自动回填：解析即刷新主档 org/schools，不依赖旧评估链路
+    if candidate.person_id:
+        person = session.get(PersonORM, candidate.person_id)
+        if person is not None:
+            _refresh_person_schools(person, candidate)
+
     current_payload = (
         candidate.raw_text or "",
         candidate.education or "",

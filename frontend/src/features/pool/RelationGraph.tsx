@@ -3,15 +3,16 @@ import type { PersonBrief } from "@/lib/types";
 import { IconButton } from "@/components/ui/Button";
 import { getSchoolLogo } from "@/lib/schoolLogos";
 import { useI18n } from "@/lib/i18n";
-import { classifyTrack } from "./TalentList";
 
 interface Props {
   persons: PersonBrief[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** group_id → 分组名（图谱分组节点用） */
+  groupName: (groupId: string | null) => string;
 }
 
-type NodeType = "person" | "school" | "track";
+type NodeType = "person" | "school" | "group";
 interface GNode {
   id: string; type: NodeType; label: string; tag: string;
   x: number; y: number; vx: number; vy: number;
@@ -21,7 +22,7 @@ interface GEdge {
   from: string; to: string;
 }
 interface Palette {
-  schools: string[]; tracks: Record<string, string>; edge: string; label: string; labelStrong: string;
+  schools: string[]; group: string; edge: string; label: string; labelStrong: string;
   avatarBg: string; avatarText: string; personFill: string; ring: string; direction: string;
 }
 
@@ -29,20 +30,13 @@ const SCHOOL_TOKENS = [
   "--color-track-agent", "--color-track-safety", "--color-track-ai_infra",
   "--color-track-ai4science", "--color-track-multimodal", "--color-tertiary",
 ];
-const TRACK_TOKEN_NAMES: Record<string, string> = {
-  base: "--color-tertiary",
-  agent: "--color-track-agent", safety: "--color-track-safety",
-  ai_infra: "--color-track-ai_infra", ai4science: "--color-track-ai4science",
-  multimodal: "--color-track-multimodal",
-};
-
 // 从 CSS token 读色板，禁止写死 hex
 function readPalette(): Palette {
   const css = getComputedStyle(document.documentElement);
   const t = (n: string, fb: string) => css.getPropertyValue(n).trim() || fb;
   return {
     schools: SCHOOL_TOKENS.map((k) => t(k, "#888")),
-    tracks: Object.fromEntries(Object.entries(TRACK_TOKEN_NAMES).map(([k, v]) => [k, t(v, "#888")])),
+    group: t("--color-tertiary", "#888"),
     edge: t("--color-outline-variant", "#BEC9C8"),
     label: t("--color-on-surface-variant", "#3F4948"),
     labelStrong: t("--color-on-surface", "#161D1D"),
@@ -74,7 +68,7 @@ function personTopSchools(p: PersonBrief): string[] {
   return p.org ? [p.org] : [];
 }
 
-function buildGraph(persons: PersonBrief[], w: number, h: number, pal: Palette) {
+function buildGraph(persons: PersonBrief[], w: number, h: number, pal: Palette, groupName: (id: string | null) => string) {
   const nodes: GNode[] = [];
   const edges: GEdge[] = [];
   const entityMap = new Map<string, GNode>();
@@ -118,19 +112,19 @@ function buildGraph(persons: PersonBrief[], w: number, h: number, pal: Palette) 
       edges.push({ from: personNode.id, to: key });
     });
 
-    // Track 节点：只有简历评估人才参与（人物调查 classifyTrack 返回 ""）
-    const track = classifyTrack(p);
-    if (track) {
-      const key = "track:" + track;
+    // 分组节点：人才库分组（未分组人不连组）
+    const gName = groupName(p.group_id || null);
+    if (gName) {
+      const key = "group:" + (p.group_id || gName);
       if (!entityMap.has(key)) {
-        const tn: GNode = {
-          id: key, type: "track", label: track, tag: "",
+        const gn: GNode = {
+          id: key, type: "group", label: gName, tag: "",
           ...position(key, Math.min(190, w * 0.3), Math.min(140, h * 0.28)),
           vx: 0, vy: 0, radius: 10,
-          color: pal.tracks[track] || pal.direction,
+          color: pal.group,
         };
-        entityMap.set(key, tn);
-        nodes.push(tn);
+        entityMap.set(key, gn);
+        nodes.push(gn);
       }
       edges.push({ from: personNode.id, to: key });
     }
@@ -139,7 +133,7 @@ function buildGraph(persons: PersonBrief[], w: number, h: number, pal: Palette) 
   return { nodes, edges };
 }
 
-export default function RelationGraph({ persons, selectedId, onSelect }: Props) {
+export default function RelationGraph({ persons, selectedId, onSelect, groupName }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nodesRef = useRef<GNode[]>([]);
@@ -173,13 +167,13 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
   useEffect(() => {
     if (!palRef.current) palRef.current = readPalette();
     const { w, h } = sizeRef.current;
-    const { nodes, edges } = buildGraph(persons, w || 600, h || 400, palRef.current);
+    const { nodes, edges } = buildGraph(persons, w || 600, h || 400, palRef.current, groupName);
     nodesRef.current = nodes;
     edgesRef.current = edges;
     setStats({
       persons: nodes.filter((n) => n.type === "person").length,
       schools: nodes.filter((n) => n.type === "school").length,
-      tracks: nodes.filter((n) => n.type === "track").length,
+      tracks: nodes.filter((n) => n.type === "group").length,
     });
     // 等布局稳定后自动 fit 视图
     fitRef.current = 200;
@@ -262,8 +256,8 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText((tRef.current(n.label) || "?").charAt(0), n.x, n.y + 1);
-      } else if (n.type === "track") {
-        // Track：实心小圆点，取 track 主题色
+      } else if (n.type === "group") {
+        // 分组：实心小圆点
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
         ctx.globalAlpha *= 0.75;
@@ -497,7 +491,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-primary" />
-          <span className="ml-1">{t("实心圆点 = Track（仅简历评估）")}</span>
+          <span className="ml-1">{t("实心圆点 = 分组")}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-5 border-t border-outline" />

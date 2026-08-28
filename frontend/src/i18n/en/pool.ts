@@ -185,4 +185,5 @@ export default {
   "没有关联的评估记录": "No linked evaluation records",
   "姓名备注（优先显示）": "Name note (shown first)",
   "设置姓名备注（优先显示）": "Set name note (shown first)",
+  "实心圆点 = 分组": "Solid dot = Group",
 } as Record<string, string>;
