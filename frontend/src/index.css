@@ -44,13 +44,13 @@
   font-display: swap;
   src: url("./assets/fonts/BebasNeue-Regular.ttf") format("truetype");
 }
-/* 得意黑（Smiley Sans）：中文标题展示字体（自带倾斜 + 覆盖基本拉丁） */
+/* 斜月体（Smiley Moon）：中文标题展示字体（Regular 400，GB2312+拉丁子集） */
 @font-face {
-  font-family: "Smiley Sans";
+  font-family: "Smiley Moon";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("./assets/fonts/SmileySans-Oblique.woff2") format("woff2");
+  src: url("./assets/fonts/SmileyMoon-Regular.woff2") format("woff2");
 }
 /* Montserrat：西文正文字体（可变字重 wght 100-900），中文正文回退 MiSans */
 @font-face {
@@ -69,7 +69,7 @@
 .chat-markdown h2,
 .chat-markdown h3,
 .chat-markdown h4 {
-  font-family: "Smiley Sans", "MiSans", sans-serif;
+  font-family: "Smiley Moon", "MiSans", sans-serif;
   /* 得意黑字形偏紧凑，拉开一点更透气（en 模式被下方 Bebas 的 0.04em 覆盖） */
   letter-spacing: 0.03em;
 }
@@ -81,14 +81,14 @@ html[lang="en"] .chat-markdown h1,
 html[lang="en"] .chat-markdown h2,
 html[lang="en"] .chat-markdown h3,
 html[lang="en"] .chat-markdown h4 {
-  font-family: "Bebas Neue", "Smiley Sans", "MiSans", sans-serif;
+  font-family: "Bebas Neue", "Smiley Moon", "MiSans", sans-serif;
   font-weight: 400;
   letter-spacing: 0.04em;
 }
 
 /* 导航标签使用同一展示字体并保持单行 */
 html[lang="en"] .nav-rail-label {
-  font-family: "Bebas Neue", "Smiley Sans", "MiSans", sans-serif;
+  font-family: "Bebas Neue", "Smiley Moon", "MiSans", sans-serif;
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.02em;
