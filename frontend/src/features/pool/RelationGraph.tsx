@@ -120,7 +120,7 @@ function buildGraph(persons: PersonBrief[], w: number, h: number, pal: Palette, 
         const gn: GNode = {
           id: key, type: "group", label: gName, tag: "",
           ...position(key, Math.min(190, w * 0.3), Math.min(140, h * 0.28)),
-          vx: 0, vy: 0, radius: 10,
+          vx: 0, vy: 0, radius: 12,
           color: pal.group,
         };
         entityMap.set(key, gn);
@@ -257,15 +257,13 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
         ctx.textBaseline = "middle";
         ctx.fillText((tRef.current(n.label) || "?").charAt(0), n.x, n.y + 1);
       } else if (n.type === "group") {
-        // 分组：实心小圆点
+        // 分组：始终高亮——primary 实心 + 表面色描边隔离背景，不随选中降透明度
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-        ctx.globalAlpha *= 0.75;
-        ctx.fillStyle = n.color;
+        ctx.fillStyle = pal.ring;
         ctx.fill();
-        ctx.globalAlpha /= 0.75;
-        ctx.strokeStyle = n.color;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = pal.personFill;
         ctx.stroke();
       } else {
         const logo = schoolLogoImage(n.label);
@@ -327,7 +325,8 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
       edgesRef.current.forEach((e) => {
         const a = nodeMap.get(e.from), b = nodeMap.get(e.to);
         if (!a || !b) return;
-        const dimmed = sel && a.id !== sel && b.id !== sel;
+        const isGroupEdge = a.type === "group" || b.type === "group";
+        const dimmed = sel && !isGroupEdge && a.id !== sel && b.id !== sel;
         ctx.globalAlpha = dimmed ? 0.25 : 1;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
@@ -340,14 +339,16 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
 
       nodesRef.current.forEach((n) => {
         const isSelected = n.id === sel;
-        const dimmed = sel && !isSelected && !isRelated(n, sel);
+        const dimmed = sel && !isSelected && !isRelated(n, sel) && n.type !== "group";
         ctx.globalAlpha = dimmed ? 0.4 : 1;
         drawNode(n, isSelected);
-        // 人名 + 学校标签（最高学历学校）
-        ctx.fillStyle = isSelected ? pal.labelStrong : pal.label;
+        // 人名 + 学校标签（最高学历学校）；分组标签恒用强色
+        ctx.fillStyle = n.type === "group" || isSelected ? pal.labelStrong : pal.label;
         ctx.font = n.type === "person"
           ? '600 12px "Montserrat", "MiSans", sans-serif'
-          : '500 10px "Montserrat", "MiSans", sans-serif';
+          : n.type === "group"
+            ? '700 12px "Montserrat", "MiSans", sans-serif'
+            : '500 10px "Montserrat", "MiSans", sans-serif';
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillText(tRef.current(n.label), n.x, n.y + n.radius + 4);
