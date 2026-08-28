@@ -8,6 +8,7 @@ import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import ResumeContent, { OriginalPreview } from "@/features/resume/ResumeContent";
+import NameNoteEditor from "./NameNoteEditor";
 import ScoreOverview from "@/features/resume/ScoreOverview";
 import Tabs from "@/components/ui/Tabs";
 import { useI18n } from "@/lib/i18n";
@@ -265,6 +266,7 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
                   dragging={draggingId === entry.personId}
                   flash={flashId === entry.personId}
                   onRemove={() => removeFromDeck(entry.personId)}
+                  onReload={load}
                   t={t}
                 />
             ))}
@@ -299,12 +301,13 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
 }
 
 /** 轨道内可排序卡片：仅卡头横栏可拖；拖动时真身淡出、虚线框随指针滑移 */
-function DeckCard({ entry, displayName, dragging, flash, onRemove, t }: {
+function DeckCard({ entry, displayName, dragging, flash, onRemove, onReload, t }: {
   entry: DeckEntry;
   displayName: string;
   dragging: boolean;
   flash: boolean;
   onRemove: () => void;
+  onReload: (personId: string) => void;
   t: (k: string) => string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isSorting } = useSortable({
@@ -372,7 +375,7 @@ function DeckCard({ entry, displayName, dragging, flash, onRemove, t }: {
               <LoadingIndicator size={22} strokeWidth={2.5} />
             </div>
           ) : (
-            <DeckCardBody entry={entry} t={t} />
+            <DeckCardBody entry={entry} t={t} onRefresh={onReload} />
           )}
         </div>
       </div>
@@ -429,7 +432,7 @@ function MiniDragCard({ name, score, grabOffset }: { name: string; score?: numbe
 
 /** 卡体四视图：结构化简历 / 简历原件 / 评估结果 / 运行过程
  *  （= 评估页中间卡 + 右侧工作台卡合并，tab 全部拉平） */
-function DeckCardBody({ entry, t }: { entry: DeckEntry; t: (k: string) => string }) {
+function DeckCardBody({ entry, t, onRefresh }: { entry: DeckEntry; t: (k: string) => string; onRefresh?: (personId: string) => void }) {
   const [tab, setTab] = useState<"structured" | "raw" | "result" | "process">("structured");
   const detail = entry.detail!;
   return (
@@ -446,7 +449,20 @@ function DeckCardBody({ entry, t }: { entry: DeckEntry; t: (k: string) => string
         onChange={(v) => setTab(v as typeof tab)}
       />
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
-        {tab === "structured" && <ResumeContent detail={detail} hideTabs />}
+        {tab === "structured" && (
+          <ResumeContent
+            detail={detail}
+            hideTabs
+            nameNoteEditor={detail.person_id ? (
+              <NameNoteEditor
+                personId={detail.person_id}
+                nameNote={detail.name_note || ""}
+                rawName={detail.name}
+                onSaved={() => onRefresh?.(entry.personId)}
+              />
+            ) : undefined}
+          />
+        )}
         {tab === "raw" && (
           <OriginalPreview candidateId={detail.id} sourceFormat={detail.source_format} fallbackText={detail.raw_text || ""} />
         )}

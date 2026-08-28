@@ -720,6 +720,12 @@ def create_app() -> Flask:
                 if candidate is None:
                     return jsonify({"detail": "该人员没有关联简历档案"}), 404
                 data = _orm_to_detail(candidate)
+                # 姓名备注：滑轨卡结构化简历姓名旁显示/编辑
+                person = getattr(candidate, "person", None)
+                if person is not None:
+                    note = (getattr(person, "name_note", "") or "").strip()
+                    data["name_note"] = note
+                    data["display_name"] = note or data["name"]
                 _, evaluation = get_candidate_with_latest_evaluation(session, candidate.id)
                 if evaluation:
                     data["evaluation"] = _orm_to_evaluation(evaluation)

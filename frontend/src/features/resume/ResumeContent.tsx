@@ -23,9 +23,11 @@ interface Props {
   onReviewed?: () => void;
   /** 外层已提供简历/原件 tab（如滑轨卡）时置 true，隐藏内层 Tabs */
   hideTabs?: boolean;
+  /** 姓名备注编辑器（人才库场景传入；缺省不渲染） */
+  nameNoteEditor?: ReactNode;
 }
 
-export default function ResumeContent({ detail, onReviewed, hideTabs }: Props) {
+export default function ResumeContent({ detail, onReviewed, hideTabs, nameNoteEditor }: Props) {
   const [mode, setMode] = useSessionState<"structured" | "raw">(`resume-evaluate.resume-mode.${detail.id}`, "structured");
   const { t } = useI18n();
   const directions = (detail.directions || []).filter(Boolean);
@@ -54,8 +56,9 @@ export default function ResumeContent({ detail, onReviewed, hideTabs }: Props) {
         ) : (
           <div className="h-full min-h-0 overflow-y-auto pr-1">
             <header className="pb-4 border-b-2 border-outline-variant">
-              <h2 className="text-headline font-bold text-on-surface">
+              <h2 className="text-headline font-bold text-on-surface flex items-center gap-2 flex-wrap">
                 {importing ? <TypewriterText text={detail.name || t("解析中…")} enabled={!!detail.name} /> : (detail.name || t("未命名候选人"))}
+                {nameNoteEditor}
               </h2>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
                 <MetaField label={t("候选阶段")} value={importing && detail.stage ? <TypewriterText text={detail.stage} /> : detail.stage} />

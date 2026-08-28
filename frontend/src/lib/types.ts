@@ -33,6 +33,9 @@ export interface CandidateDetail extends CandidateBrief {
   source_format: string;
   document_analysis: Record<string, unknown>;
   person_id: string | null;
+  // 飞书/备注类：person 主档姓名备注（滑轨卡等 person 视图返回）
+  name_note?: string;
+  display_name?: string;
   sources: string[];
   academic_report?: AcademicReport;
   evaluation_graph: EvaluationGraph;
