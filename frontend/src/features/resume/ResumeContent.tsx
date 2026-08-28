@@ -31,17 +31,21 @@ function EditableName({ detail, onSaved }: { detail: CandidateDetail; onSaved?: 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const rawName = detail.name || "";
   const shown = detail.display_name || rawName || t("未命名候选人");
 
-  const save = async () => {
-    const v = draft.trim();
+  const save = async (override?: string) => {
+    const v = (override ?? draft).trim();
     setEditing(false);
     if (!detail.person_id || v === shown) return;        // 无改动
     setSaving(true);
+    setError("");
     try {
       await api.persons.setNameNote(detail.person_id, v && v !== rawName ? v : "");
       onSaved?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("保存失败"));
     } finally {
       setSaving(false);
     }
@@ -49,17 +53,20 @@ function EditableName({ detail, onSaved }: { detail: CandidateDetail; onSaved?: 
 
   if (editing) {
     return (
-      <input
-        autoFocus
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => void save()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          if (e.key === "Escape") { setDraft(shown); setEditing(false); }
-        }}
-        className="text-headline font-bold text-on-surface bg-transparent border-none outline-none px-0 w-full max-w-md"
-      />
+      <span className="inline-flex flex-col gap-1 min-w-0">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => void save()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void save();
+            if (e.key === "Escape") { setDraft(shown); setEditing(false); }
+          }}
+          className="name-edit-input text-headline font-bold text-on-surface bg-transparent border-none px-0 w-full max-w-md"
+        />
+        {error && <span className="text-label text-error">{error}</span>}
+      </span>
     );
   }
   if (!detail.person_id || detail.group === "importing") {
@@ -74,6 +81,7 @@ function EditableName({ detail, onSaved }: { detail: CandidateDetail; onSaved?: 
       className="text-left text-headline font-bold text-on-surface cursor-text transition-opacity hover:opacity-60"
     >
       {saving ? t("保存中…") : shown}
+      {error && <span className="ml-2 text-label font-normal text-error">{error}</span>}
     </button>
   );
 }

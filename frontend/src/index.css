@@ -88,6 +88,11 @@ html[lang="en"] .chat-markdown h4 {
 }
 
 /* 首字头像：中文统一展示字体（斜月体），供各处圆形头像字使用 */
+.name-edit-input:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
 .initial-avatar {
   font-family: "Smiley Moon", "MiSans", sans-serif;
 }
