@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   CandidateBrief,
   InterviewAssessment,
   InterviewAssessmentBatch,
   InterviewAssessmentRun,
   JdEntry,
+  CandidateDetail,
 } from "@/lib/types";
 import AdmissionWorkflowGraph, {
   type AdmissionGraphNode,
@@ -21,8 +22,11 @@ import Button, { IconButton } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
 import SearchField from "@/components/ui/SearchField";
 import Progress from "@/components/ui/Progress";
+import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
+import Tabs from "@/components/ui/Tabs";
+import ResumeContent, { OriginalPreview } from "@/features/resume/ResumeContent";
 
 // ---- 新建准入评估（批量选择临时模式，docs/rebuild.md §3.2） ----
 
@@ -286,6 +290,9 @@ export function BatchRunView({
   candidates,
   jds,
   assessments,
+  candidateDetail,
+  candidateDetailLoading,
+  onCandidateReviewed,
   selectedNode,
   selectedNodeId,
   onSelectNode,
@@ -296,6 +303,9 @@ export function BatchRunView({
   candidates: CandidateBrief[];
   jds: JdEntry[];
   assessments: InterviewAssessment[];
+  candidateDetail: CandidateDetail | null;
+  candidateDetailLoading: boolean;
+  onCandidateReviewed: () => void;
   selectedNode: AdmissionGraphNode | null;
   selectedNodeId: string | null;
   onSelectNode: (node: AdmissionGraphNode) => void;
@@ -343,30 +353,63 @@ export function BatchRunView({
         } as JdEntry)
       : undefined);
 
+  // 三视图 tab：结构化简历 / 简历原件 / 评估结果（含运行图）；运行中自动跳到评估结果看图
+  const [pairTab, setPairTab] = useState<"structured" | "raw" | "result">(
+    activeRun?.status === "running" ? "result" : "structured",
+  );
+  useEffect(() => {
+    if (activeRun?.status === "running") setPairTab("result");
+  }, [activeRun?.status]);
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(480px,1.5fr)_minmax(320px,1fr)]">
         <Card variant="filled" className="relative min-h-[420px] overflow-hidden flex flex-col">
-          <div className="flex items-center gap-3 border-b border-outline-variant px-4 py-3 shrink-0">
-            <div className="min-w-0">
+          <div className="flex items-center gap-3 border-b border-outline-variant px-4 py-2.5 shrink-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-title">
                 {activeRun?.candidate_name || t("候选人")} × {activeRun?.jd_title || t("岗位")}
-              </p>
-              <p className="mt-0.5 truncate text-label text-on-surface-variant">
-                {t("节点按真实调用顺序从上到下生长")}
               </p>
             </div>
             {activeRun && !TERMINAL_RUN_STATUSES.has(activeRun.status) && (
               <IconButton
                 icon="stop_circle"
-                className="ml-auto"
+                className="shrink-0"
                 title={t("停止此配对")}
                 onClick={() => onCancelRun(activeRun.id)}
               />
             )}
           </div>
+          <div className="px-4 pt-2 shrink-0">
+            <Tabs
+              items={[
+                { value: "structured", label: t("结构化简历") },
+                { value: "raw", label: t("简历原件") },
+                { value: "result", label: t("评估结果"), badge: activeRun?.status === "running" ? t("运行中") : undefined },
+              ]}
+              value={pairTab}
+              onChange={(v) => setPairTab(v as typeof pairTab)}
+            />
+          </div>
           <div className="flex-1 min-h-0 overflow-auto admission-panel-scrollbar">
-            {activeRun && (activeRun.run_trace?.length || activeRun.status !== "queued") ? (
+            {pairTab === "structured" ? (
+              candidateDetailLoading && !candidateDetail ? (
+                <div className="flex h-full items-center justify-center"><LoadingIndicator size={28} /></div>
+              ) : candidateDetail ? (
+                <ResumeContent key={candidateDetail.id} detail={candidateDetail} hideTabs onReviewed={onCandidateReviewed} />
+              ) : (
+                <ListEmpty icon="person" text={t("候选人简历加载失败")} />
+              )
+            ) : pairTab === "raw" ? (
+              candidateDetail ? (
+                <OriginalPreview
+                  candidateId={candidateDetail.id}
+                  sourceFormat={candidateDetail.source_format}
+                  fallbackText={candidateDetail.raw_text || ""}
+                />
+              ) : (
+                <ListEmpty icon="description" text={t("候选人简历加载失败")} />
+              )
+            ) : activeRun && (activeRun.run_trace?.length || activeRun.status !== "queued") ? (
               <AdmissionWorkflowGraph
                 run={activeRun}
                 candidate={candidateForRun(activeRun)}

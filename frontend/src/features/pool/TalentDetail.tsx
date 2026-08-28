@@ -154,6 +154,18 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
         </section>
 
         {/* 评估概览 */}
+        {!latest && (
+          <section className="rounded-md border border-dashed border-outline-variant px-3 py-3 flex items-center gap-2.5">
+            <Icon name="fact_check" size={18} className="text-on-surface-variant shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-body-sm text-on-surface">{t("尚未评估")}</p>
+              <p className="text-label text-on-surface-variant mt-0.5">{t("前往人才评估选择候选人与岗位发起准入评估")}</p>
+            </div>
+            <Button variant="tonal" icon="arrow_forward" className="h-8 shrink-0" onClick={() => navigate("/talent-evaluation/admission")}>
+              {t("去评估")}
+            </Button>
+          </section>
+        )}
         {latest && (
           <section>
             <h3 className="text-title mb-1.5 flex items-baseline justify-between gap-2">

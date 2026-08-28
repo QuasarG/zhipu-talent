@@ -72,6 +72,7 @@ export default function TalentEvaluation() {
   });
   const [selectedNode, setSelectedNode] = useState<AdmissionGraphNode | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const batchIdRef = useRef<string | null>(null);
   const detailIdRef = useRef<string | null>(null);
 
   const folders = useMemo(
@@ -124,6 +125,8 @@ export default function TalentEvaluation() {
   }, [loadShell]);
 
   const hydrateBatch = useCallback(async (id: string) => {
+    // 批次已被重置（返回浏览）时丢弃这次恢复请求
+    if (batchIdRef.current !== id) return;
     try {
       const next = await api.interviewAssessments.batch(id);
       setBatch(next);
@@ -151,6 +154,7 @@ export default function TalentEvaluation() {
 
   // 批次恢复与轮询：持久化以服务端运行记录为准
   useEffect(() => {
+    batchIdRef.current = batchId;
     if (!batchId) {
       setRestoring(false);
       return;
@@ -310,6 +314,7 @@ export default function TalentEvaluation() {
     setSelectedNodeId(null);
     setSelectedNode(null);
     setError("");
+    setRestoring(false);
   }, [setActiveRunId, setBatchId, setSelectedNodeId]);
 
   // ---- 左侧文件夹选择 ----

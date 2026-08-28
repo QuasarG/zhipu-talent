@@ -55,4 +55,5 @@ export default {
   "针对性面试重点": "Targeted Interview Focus",
   "模型与降级": "Models & Fallback",
   "{n} 次节点降级": "{n} node fallbacks",
+  "候选人简历加载失败": "Failed to load candidate resume",
 } as Record<string, string>;

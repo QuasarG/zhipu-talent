@@ -39,7 +39,8 @@ class InterviewAdmissionEvaluatorTests(unittest.TestCase):
         decision, _ = decide_admission(self.card, assessments, total)
 
         self.assertEqual(total, 58.3)
-        self.assertEqual(decision, "interview")
+        # 准入线 50→60：58.3 分不再直接进入面试
+        self.assertEqual(decision, "no_interview")
 
         assessments[0] = _assessment("agent_system", 1, "Coding Agent benchmark")
         decision, reason = decide_admission(

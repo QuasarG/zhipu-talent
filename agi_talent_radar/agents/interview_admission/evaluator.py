@@ -220,8 +220,8 @@ def decide_admission(
     failed_primary = [task.title for task in card.core_tasks if task.importance == "primary" and levels.get(task.id, 0) < 2]
     if failed_primary:
         return "no_interview", "首要任务未达到实际参与等级：" + "、".join(failed_primary)
-    if total_score < 50:
-        return "no_interview", f"核心任务加权总分 {total_score:.1f}，低于 50 分准入线"
+    if total_score < 60:
+        return "no_interview", f"核心任务加权总分 {total_score:.1f}，低于 60 分准入线"
     return "interview", f"首要任务均达到 2 级且加权总分 {total_score:.1f} 达到准入线"
 
 

@@ -203,6 +203,6 @@ export function computeScoreBreakdown(
     rows,
     total,
     primaryThresholdMet: primaryRows.every((row) => row.level >= 2),
-    scoreThresholdMet: total >= 50,
+    scoreThresholdMet: total >= 60,
   };
 }

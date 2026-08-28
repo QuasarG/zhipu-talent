@@ -188,4 +188,7 @@ export default {
   "各岗位准入结论": "Admission Decisions by JD",
   "点击前往人才评估查看完整报告": "Click to open the full report in Talent Evaluation",
   "不进入": "No Interview",
+  "尚未评估": "Not Evaluated",
+  "前往人才评估选择候选人与岗位发起准入评估": "Go to Talent Evaluation, pick a candidate and a JD to start an admission assessment",
+  "去评估": "Evaluate",
 } as Record<string, string>;

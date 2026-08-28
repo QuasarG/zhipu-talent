@@ -97,6 +97,9 @@ export default function AdmissionPane({
         candidates={candidates}
         jds={allJds}
         assessments={assessments}
+        candidateDetail={candidateDetail}
+        candidateDetailLoading={candidateDetailLoading}
+        onCandidateReviewed={onCandidateReviewed}
         selectedNode={selectedNode}
         selectedNodeId={selectedNodeId}
         onSelectNode={onSelectNode}
