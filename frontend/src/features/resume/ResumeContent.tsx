@@ -25,23 +25,22 @@ interface Props {
   hideTabs?: boolean;
 }
 
-/** 可编辑姓名：点击进入输入态；保存值等于提取名则清空备注，否则写入备注 */
+/** 可编辑姓名：名字框即编辑框（无边框裸文本）；保存值等于提取名则清空备注，否则写入备注 */
 function EditableName({ detail, onSaved }: { detail: CandidateDetail; onSaved?: () => void }) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
-  const shown = detail.display_name || detail.name || t("未命名候选人");
-  const editable = !!detail.person_id && detail.group !== "importing" && !editing;
+  const rawName = detail.name || "";
+  const shown = detail.display_name || rawName || t("未命名候选人");
 
   const save = async () => {
     const v = draft.trim();
     setEditing(false);
-    if (v === (detail.display_name || detail.name || "")) return;
-    if (!detail.person_id) return;
+    if (!detail.person_id || v === shown) return;        // 无改动
     setSaving(true);
     try {
-      await api.persons.setNameNote(detail.person_id, v && v !== detail.name ? v : "");
+      await api.persons.setNameNote(detail.person_id, v && v !== rawName ? v : "");
       onSaved?.();
     } finally {
       setSaving(false);
@@ -59,20 +58,20 @@ function EditableName({ detail, onSaved }: { detail: CandidateDetail; onSaved?: 
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           if (e.key === "Escape") { setDraft(shown); setEditing(false); }
         }}
-        className="text-headline font-bold text-on-surface bg-transparent border-b-2 border-primary outline-none w-full max-w-md px-0.5"
+        className="text-headline font-bold text-on-surface bg-transparent border-none outline-none px-0 w-full max-w-md"
       />
     );
   }
-  if (!editable) {
-    return <span className="text-headline font-bold text-on-surface">{shown}</span>;
+  if (!detail.person_id || detail.group === "importing") {
+    return <span className="text-headline font-bold text-on-surface">{saving ? t("保存中…") : shown}</span>;
   }
   return (
     <button
       type="button"
-      title={t("点击编辑姓名（保存后作为备注优先显示）")}
+      title={t("点击编辑姓名：写新名字作备注优先显示，改回原名即清空")}
       disabled={saving}
       onClick={() => { setDraft(shown); setEditing(true); }}
-      className="text-left text-headline font-bold text-on-surface cursor-text hover:underline decoration-dashed decoration-2 underline-offset-8 decoration-outline"
+      className="text-left text-headline font-bold text-on-surface cursor-text transition-opacity hover:opacity-60"
     >
       {saving ? t("保存中…") : shown}
     </button>
