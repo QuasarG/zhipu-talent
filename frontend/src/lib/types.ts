@@ -3,6 +3,8 @@
 export interface CandidateBrief {
   id: string;
   name: string;
+  name_note: string;
+  display_name: string;
   role: string;
   stage: string;
   group: string;

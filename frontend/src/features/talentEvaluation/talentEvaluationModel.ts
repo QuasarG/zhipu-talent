@@ -35,6 +35,8 @@ export interface FolderChild {
 export interface CandidateFolder {
   candidateId: string;
   name: string;
+  /** 姓名备注优先的展示名（候选人目录同源） */
+  display_name: string;
   role: string;
   stage: string;
   /** 是否已有任何岗位评估（报告或运行中），用于列表区分已评估/未评估 */
@@ -69,6 +71,7 @@ export function buildCandidateFolders(
     const folder: CandidateFolder = {
       candidateId: brief.id,
       name: brief.name || "",
+      display_name: brief.display_name || brief.name || "",
       role: brief.role || "",
       stage: brief.stage || "",
       evaluated: false,

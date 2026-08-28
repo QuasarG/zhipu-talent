@@ -127,10 +127,10 @@ export function NewBatchPanel({
                   "initial-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
                   selected ? "border-primary bg-primary text-on-primary" : "border-outline-variant bg-primary-container text-on-primary-container",
                 )}>
-                  {selected ? <Icon name="check" size={15} /> : (candidate.name || "?").slice(0, 1)}
+                  {selected ? <Icon name="check" size={15} /> : (candidate.display_name || candidate.name || "?").slice(0, 1)}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-body font-medium">{candidate.name || t("未命名")}</span>
+                  <span className="block truncate text-body font-medium">{candidate.display_name || candidate.name || t("未命名")}</span>
                   <span className="mt-0.5 block truncate text-body-sm text-on-surface-variant">
                     {[candidate.role, candidate.stage].filter(Boolean).join(" · ") || t("尚未标注方向")}
                   </span>

@@ -67,7 +67,12 @@ export default function TalentProfile() {
         <IconButton icon="arrow_back" variant="outlined" title={t("返回人才库")} onClick={() => navigate("/talent-pool")} />
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-headline font-bold text-on-surface">{person.name}</h1>
+            <h1 className="text-headline font-bold text-on-surface flex items-baseline gap-2">
+              {person.display_name || person.name}
+              {person.name_note && person.name && (
+                <span className="text-body-sm font-normal text-on-surface-variant">（{person.name}）</span>
+              )}
+            </h1>
             {person.dominant_track && <StatusChip tone="primary">{person.dominant_track}</StatusChip>}
             <StatusChip tone="neutral">{person.person_type === "guest" ? t("人物调查") : t("简历评估")}</StatusChip>
           </div>
