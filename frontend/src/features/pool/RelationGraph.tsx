@@ -257,13 +257,13 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
         ctx.textBaseline = "middle";
         ctx.fillText((tRef.current(n.label) || "?").charAt(0), n.x, n.y + 1);
       } else if (n.type === "group") {
-        // 分组：始终高亮——primary 实心 + 表面色描边隔离背景，不随选中降透明度
+        // 分组：选中态风格高亮——白底圆 + primary 外环（间隙双环），不随选中降透明度
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = pal.ring;
+        ctx.fillStyle = pal.personFill;
         ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = pal.personFill;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = pal.ring;
         ctx.stroke();
       } else {
         const logo = schoolLogoImage(n.label);
