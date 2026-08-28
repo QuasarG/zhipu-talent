@@ -161,7 +161,9 @@ function CandidateFolderNode({
           aria-label={open ? t("折叠") : t("展开")}
           className="state-layer flex h-9 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-on-surface-variant"
         >
-          <Icon name={open ? "chevron-down" : "chevron-right"} size={15} />
+          <span className="collapse-chevron inline-flex" data-open={open}>
+            <Icon name="chevron-down" size={15} />
+          </span>
         </button>
         <button
           type="button"
@@ -186,24 +188,26 @@ function CandidateFolderNode({
       </div>
 
       {/* 树形层级：竖线从头像下方引出，子项缩进到头像正下方（对齐即包含，不悬浮留白） */}
-      {open && (
-        <div className="ml-[32px] mt-0.5 mb-1 flex flex-col border-l border-outline-variant">
-          {folder.children.map((child) => (
-            <FolderChildRow
-              key={child.key}
-              child={child}
-              candidateId={folder.candidateId}
-              selected={
-                selectedCandidateId === folder.candidateId && selectedChildKey === child.key
-              }
-              onSelectPair={onSelectPair}
-            />
-          ))}
-          {!folder.children.length && (
-            <p className="px-2.5 py-1.5 text-label text-on-surface-variant">{t("暂无岗位评估")}</p>
-          )}
+      <div className="collapse-disclosure ml-[32px] mb-1" data-open={open}>
+        <div className="overflow-hidden">
+          <div className="mt-0.5 mb-1 flex flex-col border-l border-outline-variant">
+            {folder.children.map((child) => (
+              <FolderChildRow
+                key={child.key}
+                child={child}
+                candidateId={folder.candidateId}
+                selected={
+                  selectedCandidateId === folder.candidateId && selectedChildKey === child.key
+                }
+                onSelectPair={onSelectPair}
+              />
+            ))}
+            {!folder.children.length && (
+              <p className="px-2.5 py-1.5 text-label text-on-surface-variant">{t("暂无岗位评估")}</p>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

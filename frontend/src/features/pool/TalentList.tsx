@@ -194,7 +194,9 @@ function GroupSection({
     <div className="flex flex-col">
       <div className={cn("flex items-center gap-1 px-1 py-1.5 rounded-t-md transition-colors", isOver && "bg-primary-container/40")}>
         <button onClick={onToggle} className="flex items-center gap-1 shrink-0">
-          <Icon name={collapsed ? "chevron_right" : "expand_more"} size={18} className="text-on-surface-variant" />
+          <span className="collapse-chevron inline-flex" data-open={!collapsed}>
+            <Icon name="expand_more" size={18} className="text-on-surface-variant" />
+          </span>
           <span className="text-body font-semibold text-on-surface">{title}</span>
           <span className="text-label text-on-surface-variant">({count})</span>
         </button>
@@ -217,7 +219,11 @@ function GroupSection({
           )}
         />
       </div>
-      {!collapsed && <div className="flex flex-col gap-0.5 pl-1">{children}</div>}
+      <div className="collapse-disclosure pl-1" data-open={!collapsed}>
+        <div className="overflow-hidden">
+          <div className="flex flex-col gap-0.5">{children}</div>
+        </div>
+      </div>
     </div>
   );
 }

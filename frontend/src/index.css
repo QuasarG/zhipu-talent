@@ -124,6 +124,31 @@ html[lang="en"] .chat-markdown h4 {
   outline-offset: 0;
 }
 
+/* 通用展开收缩动画（grid-rows 0fr→1fr + 淡入），树/分组列表共用 */
+.collapse-disclosure-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 280ms var(--ease-emphasized),
+    opacity 180ms var(--ease-emphasized-accelerate);
+}
+.collapse-disclosure[data-open="true"] .collapse-disclosure-content {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition-timing-function: var(--ease-emphasized-decelerate);
+}
+.collapse-disclosure-content > div {
+  overflow: hidden;
+  min-height: 0;
+}
+.collapse-chevron {
+  transition: transform 200ms var(--ease-emphasized);
+}
+.collapse-chevron[data-open="false"] {
+  transform: rotate(-90deg);
+}
+
 .initial-avatar {
   font-family: "Smiley Moon", "MiSans", sans-serif;
 }
