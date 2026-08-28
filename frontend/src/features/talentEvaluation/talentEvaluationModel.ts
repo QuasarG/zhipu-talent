@@ -23,6 +23,9 @@ export type FolderChildStatus =
   | "stale"
   | "unevaluated";
 
+/** 准入线：加权总分≥该值进入面试（与后端 evaluator 的 total_score < 60 保持同步） */
+export const ADMISSION_SCORE_LINE = 60;
+
 export interface FolderChild {
   /** "jd:<jd_id>" */
   key: string;
@@ -203,6 +206,6 @@ export function computeScoreBreakdown(
     rows,
     total,
     primaryThresholdMet: primaryRows.every((row) => row.level >= 2),
-    scoreThresholdMet: total >= 60,
+    scoreThresholdMet: total >= ADMISSION_SCORE_LINE,
   };
 }

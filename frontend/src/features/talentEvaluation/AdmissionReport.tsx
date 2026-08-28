@@ -6,6 +6,7 @@ import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
+import { ADMISSION_SCORE_LINE } from "./talentEvaluationModel";
 
 export const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
@@ -135,7 +136,7 @@ export default function AdmissionReport({
         </div>
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-outline-variant pt-3 text-label">
           <ThresholdItem met={breakdown.primaryThresholdMet} label={t("首要任务等级 ≥ 2")} />
-          <ThresholdItem met={breakdown.scoreThresholdMet} label={t("加权总分 ≥ 50")} />
+          <ThresholdItem met={breakdown.scoreThresholdMet} label={t("加权总分 ≥ {n}", { n: ADMISSION_SCORE_LINE })} />
         </div>
       </div>
 

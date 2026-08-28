@@ -44,7 +44,7 @@ export default {
   "报告已失效，需要重评": "Report invalidated, reassessment required",
   "/100 加权总分": "/100 weighted total",
   "首要任务等级 ≥ 2": "Primary tasks at level ≥ 2",
-  "加权总分 ≥ 50": "Weighted total ≥ 50",
+  "加权总分 ≥ {n}": "Weighted total ≥ {n}",
   "总分计算明细": "Score Breakdown",
   "Σ(单项 × 系数) ÷ Σ系数": "Σ(item × weight) ÷ Σweights",
   "首要": "Primary",
