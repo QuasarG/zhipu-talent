@@ -1174,6 +1174,10 @@ def _run_import_worker(
             event_queue.put(event)
         success = True
     except Exception as exc:
+        logger.warning(
+            "import failed: %s stage=%s error=%s",
+            filename, getattr(exc, "stage", "validation"), exc,
+        )
         event_queue.put(
             _file_event(
                 "error",

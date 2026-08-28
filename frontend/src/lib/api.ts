@@ -367,11 +367,25 @@ export async function* parseSSE(
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  // 静默看门狗：流被中间层掐断时 reader.read() 会永久 pending，
+  // 超过该时长无任何字节则判定断流，抛错让上层把卡片标失败并复位状态。
+  const IDLE_TIMEOUT_MS = 120_000;
 
   try {
     while (true) {
       if (signal?.aborted) break;
-      const { value, done } = await reader.read();
+      const { value, done } = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("SSE_IDLE_TIMEOUT")), IDLE_TIMEOUT_MS);
+        }),
+      ]).catch((err) => {
+        if (err instanceof Error && err.message === "SSE_IDLE_TIMEOUT") {
+          void reader.cancel().catch(() => undefined);
+          throw new Error("连接中断，导入已停止");
+        }
+        throw err;
+      });
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
