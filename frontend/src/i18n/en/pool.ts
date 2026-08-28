@@ -120,7 +120,6 @@ export default {
   "{n} 专业": "{n} Specialized",
   "{n} 论文": "{n} Publications",
   "{n} 加分": "{n} Bonus",
-  "推荐 Track": "Recommended Tracks",
   "关系证据": "Relationship Evidence",
   "教育经历": "Education",
   "已确认": "Confirmed",
@@ -186,4 +185,7 @@ export default {
   "姓名备注（优先显示）": "Name note (shown first)",
   "设置姓名备注（优先显示）": "Set name note (shown first)",
   "实心圆点 = 分组": "Solid dot = Group",
+  "各岗位准入结论": "Admission Decisions by JD",
+  "点击前往人才评估查看完整报告": "Click to open the full report in Talent Evaluation",
+  "不进入": "No Interview",
 } as Record<string, string>;

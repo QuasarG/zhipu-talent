@@ -22,12 +22,6 @@ interface Props {
   readOnly?: boolean;
 }
 
-const TRACK_TOKENS: Record<string, string> = {
-  agent: "var(--color-track-agent)", safety: "var(--color-track-safety)",
-  ai_infra: "var(--color-track-ai_infra)", ai4science: "var(--color-track-ai4science)",
-  multimodal: "var(--color-track-multimodal)",
-};
-
 function fmtTime(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -95,7 +89,6 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
     }
   };
 
-  const tracks = [...(latest?.recommended_tracks || [])].sort((a, b) => b.weight - a.weight).slice(0, 3);
   const isJobFit = latest?.evaluation_mode === "jd_fit_v2";
 
   return (
@@ -209,23 +202,30 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
           </section>
         )}
 
-        {/* 推荐方向 / 各 JD 匹配 */}
-        {tracks.length > 0 && (
+        {/* 各岗位准入结论（新评估形式：一岗一评，取代旧 Track 推荐） */}
+        {(latest?.job_fit_assessments?.length ?? 0) > 0 && (
           <section>
-            <h3 className="text-title mb-1.5">{isJobFit ? t("各 JD 匹配") : t("推荐 Track")}</h3>
+            <h3 className="text-title mb-1.5">{t("各岗位准入结论")}</h3>
             <div className="flex flex-col gap-1.5">
-              {tracks.map((t, i) => {
-                const name = t.label || t.track || t.name || "";
-                return (
-                  <div key={i} className="grid grid-cols-[16px_88px_minmax(0,1fr)_36px] items-center gap-2">
-                    <span className="text-label text-on-surface-variant">{i + 1}</span>
-                    <span className="text-body-sm text-on-surface capitalize truncate">{name}</span>
-                    <Progress value={t.weight * 100} color={TRACK_TOKENS[name.toLowerCase()]} />
-                    <span className="text-label text-on-surface-variant text-right">{t.weight.toFixed(2)}</span>
-                  </div>
-                );
-              })}
+              {(latest.job_fit_assessments ?? []).map((a) => (
+                <button
+                  key={a.jd_id}
+                  type="button"
+                  onClick={() => navigate(`/talent-evaluation/admission`)}
+                  className="group flex items-center gap-2 rounded-md border border-outline-variant px-2.5 py-1.5 text-left cursor-pointer transition-colors hover:bg-surface-low"
+                >
+                  <StatusChip
+                    tone={a.decision === "interview" ? "success" : a.decision === "hold" ? "warning" : "error"}
+                    variant={a.decision === "interview" ? "filled" : "dot"}
+                  >
+                    {a.decision === "interview" ? t("进入面试") : a.decision === "hold" ? t("待补信息") : t("不进入")}
+                  </StatusChip>
+                  <span className="min-w-0 flex-1 truncate text-body-sm text-on-surface">{a.jd_title}</span>
+                  <span className="text-label text-on-surface-variant tabular-nums shrink-0">{Math.round(a.fit_score)}</span>
+                </button>
+              ))}
             </div>
+            <p className="mt-1 text-label text-on-surface-variant">{t("点击前往人才评估查看完整报告")}</p>
           </section>
         )}
 
