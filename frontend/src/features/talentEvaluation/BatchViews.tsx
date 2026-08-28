@@ -124,7 +124,7 @@ export function NewBatchPanel({
                 )}
               >
                 <span className={cn(
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
+                  "initial-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
                   selected ? "border-primary bg-primary text-on-primary" : "border-outline-variant bg-primary-container text-on-primary-container",
                 )}>
                   {selected ? <Icon name="check" size={15} /> : (candidate.name || "?").slice(0, 1)}

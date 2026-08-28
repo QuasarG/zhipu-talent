@@ -87,6 +87,11 @@ html[lang="en"] .chat-markdown h4 {
   letter-spacing: 0.04em;
 }
 
+/* 首字头像：中文统一展示字体（斜月体），供各处圆形头像字使用 */
+.initial-avatar {
+  font-family: "Smiley Moon", "MiSans", sans-serif;
+}
+
 /* 导航标签使用同一展示字体并保持单行 */
 /* 导航标签：中文走斜月体（en 模式由下方 Bebas 规则覆盖） */
 .nav-rail-label {

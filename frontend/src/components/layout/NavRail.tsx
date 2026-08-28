@@ -105,7 +105,7 @@ export default function NavRail({ username }: { username?: string }) {
         >
           <Icon name="logout" size={20} />
         </button>
-        <div className="w-9 h-9 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-xs font-semibold relative" title={username}>
+        <div className="initial-avatar w-9 h-9 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-xs font-semibold relative" title={username}>
           {(username || "?").slice(0, 1)}
           <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-success border-2 border-surface" />
         </div>

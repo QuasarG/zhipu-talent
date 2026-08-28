@@ -418,7 +418,7 @@ function MiniDragCard({ name, score, grabOffset }: { name: string; score?: numbe
       className="flex items-center gap-2.5 h-11 px-4 rounded-full bg-surface-lowest/85 backdrop-blur-sm border-2 border-primary/80 shadow-2 select-none"
     >
       <Icon name="drag_indicator" size={15} className="text-primary shrink-0" />
-      <span className="w-7 h-7 rounded-full bg-primary-container text-on-primary-container grid place-items-center text-label font-bold shrink-0">
+      <span className="initial-avatar w-7 h-7 rounded-full bg-primary-container text-on-primary-container grid place-items-center text-label font-bold shrink-0">
         {(name || "?").charAt(0)}
       </span>
       <span className="text-body font-semibold text-on-surface truncate max-w-[10rem]">{name}</span>

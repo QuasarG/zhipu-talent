@@ -610,7 +610,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
               style={{ width: node.screenRadius * 2, height: node.screenRadius * 2 }}
             >
               {node.kind === "source" && !node.icon ? (
-                <span className="font-medium" style={{ fontSize: Math.max(13, node.screenRadius * 0.68) }}>{(candidate?.name || t("候选人")).slice(0, 1)}</span>
+                <span className="initial-avatar font-medium" style={{ fontSize: Math.max(13, node.screenRadius * 0.68) }}>{(candidate?.name || t("候选人")).slice(0, 1)}</span>
               ) : level !== null ? (
                 <span className="font-mono font-medium tabular-nums" style={{ fontSize: Math.max(12, node.screenRadius * 0.64) }}>{level}</span>
               ) : (
