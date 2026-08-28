@@ -70,6 +70,8 @@
 .chat-markdown h3,
 .chat-markdown h4 {
   font-family: "Smiley Sans", "MiSans", sans-serif;
+  /* 得意黑字形偏紧凑，拉开一点更透气（en 模式被下方 Bebas 的 0.04em 覆盖） */
+  letter-spacing: 0.03em;
 }
 html[lang="en"] .text-display,
 html[lang="en"] .text-headline,
