@@ -593,6 +593,26 @@ def create_app() -> Flask:
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
+    @app.patch("/api/persons/<person_id>/name-note")
+    def set_person_name_note(person_id: str):
+        body = request.get_json(silent=True) or {}
+        note = str(body.get("name_note") or "").strip()[:128]
+        try:
+            from agi_talent_radar.core.database import get_person_detail, get_session
+
+            with get_session() as session:
+                person = get_person_detail(session, person_id)
+                if not person:
+                    return jsonify({"detail": "人员不存在"}), 404
+                person.name_note = note
+                session.commit()
+                return jsonify({
+                    "name_note": note,
+                    "display_name": note or (person.name or person.id),
+                })
+        except Exception as exc:
+            logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
     # ---- 人才档案只读分享（v1：token 链接） ----
 
     @app.get("/share/<token>")
@@ -1768,6 +1788,8 @@ def _person_to_brief(person, candidate=None) -> dict[str, Any]:
     return {
         "id": person.id,
         "name": person.name or person.id,
+        "name_note": getattr(person, "name_note", "") or "",
+        "display_name": (getattr(person, "name_note", "") or "").strip() or (person.name or person.id),
         "org": person.org or "",
         "direction": person.direction or "",
         "person_type": person.person_type,
@@ -1789,6 +1811,8 @@ def _person_to_detail(person, candidate=None) -> dict[str, Any]:
     return {
         "id": person.id,
         "name": person.name or person.id,
+        "name_note": getattr(person, "name_note", "") or "",
+        "display_name": (getattr(person, "name_note", "") or "").strip() or (person.name or person.id),
         "org": person.org or "",
         "direction": person.direction or "",
         "person_type": person.person_type,

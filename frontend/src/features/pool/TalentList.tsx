@@ -122,12 +122,12 @@ function PersonRow({
         </span>
       ) : (
         <span className="flex items-center justify-center w-9 h-9 rounded-full bg-primary-container text-on-primary-container text-title shrink-0">
-          {(p.name || "?").slice(0, 1)}
+          {(p.display_name || p.name || "?").slice(0, 1)}
         </span>
       )}
       <span className="flex-1 min-w-0">
         <span className="flex items-center justify-between gap-2">
-          <span className="text-body font-medium text-on-surface truncate">{p.name || t("未命名")}</span>
+          <span className="text-body font-medium text-on-surface truncate">{p.display_name || p.name || t("未命名")}</span>
           <span className="text-label text-on-surface-variant shrink-0">{fmtTime(p.updated_at)}</span>
         </span>
         <span className="flex items-center gap-1.5 mt-0.5">

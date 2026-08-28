@@ -340,6 +340,8 @@ export interface PersonEducation {
 export interface PersonBrief {
   id: string;
   name: string;
+  name_note: string;
+  display_name: string;
   org: string;
   direction: string;
   person_type: string;

@@ -97,7 +97,7 @@ function buildGraph(persons: PersonBrief[], w: number, h: number, pal: Palette) 
     // 头像描边与标签色以学位授予校（org）为准，标签展示全部最高层级学校
     const primary = p.org || topSchools[0] || "";
     const personNode: GNode = {
-      id: p.id, type: "person", label: p.name || "未命名", tag: topSchools.join(" · "),
+      id: p.id, type: "person", label: p.display_name || p.name || "未命名", tag: topSchools.join(" · "),
       ...position(`person:${p.id}`, Math.min(260, w * 0.38), Math.min(180, h * 0.34)),
       vx: 0, vy: 0, radius: 20, color: primary ? colorOf(primary) : pal.direction,
     };

@@ -82,6 +82,12 @@ export const api = {
       return fetchJSON<PersonBrief[]>(`/api/persons?${qs}`);
     },
     get: (id: string) => fetchJSON<PersonDetail>(`/api/persons/${id}`),
+    setNameNote: (id: string, note: string) =>
+      fetchJSON<{ name_note: string; display_name: string }>(`/api/persons/${id}/name-note`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name_note: note }),
+      }),
     create: (data: { name: string; org?: string; direction?: string }) =>
       fetchJSON<PersonBrief>(`/api/persons`, {
         method: "POST",

@@ -334,6 +334,8 @@ class PersonORM(Base):
 
     id = Column(String(36), primary_key=True)
     name = Column(String(128), default="", index=True)
+    # 姓名备注：英文简历提取不出中文名时 HR 手动补，展示优先于 name
+    name_note = Column(String(128), default="")
     org = Column(String(256), default="")
     direction = Column(String(256), default="")
     fingerprint = Column(String(64), unique=True, nullable=False, index=True)

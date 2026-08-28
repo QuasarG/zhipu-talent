@@ -43,8 +43,21 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
   const [shareState, setShareState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const [historyKey, setHistoryKey] = useState(0);
   const [showVersionDiff, setShowVersionDiff] = useState(false);
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
   const navigate = useNavigate();
   const { t } = useI18n();
+
+  const saveNote = async () => {
+    if (!personId) return;
+    try {
+      await api.persons.setNameNote(personId, noteDraft.trim());
+      setEditingNote(false);
+      onUpdated(personId);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t("保存失败"));
+    }
+  };
 
   if (!person) {
     return (
@@ -61,7 +74,7 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
   const evaluations = person.evaluations || [];
   const latest = evaluations[0];
   const reputation = person.reputation_reports || [];
-  const initials = (person.name || "?").charAt(0);
+  const initials = (person.display_name || person.name || "?").charAt(0);
   const candidateId = person.candidate_id || "";
 
   const shareProfile = async () => {
@@ -107,7 +120,37 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="text-title-lg text-on-surface truncate">{person.name}</span>
+              <span className="text-title-lg text-on-surface truncate">{person.display_name || person.name}</span>
+              {editingNote ? (
+                <input
+                  autoFocus
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveNote();
+                    if (e.key === "Escape") setEditingNote(false);
+                  }}
+                  placeholder={t("姓名备注（优先显示）")}
+                  className="h-7 w-40 px-2 rounded-sm border border-outline-variant bg-surface-lowest text-body-sm text-on-surface outline-none focus:outline-2 focus:outline-primary"
+                />
+              ) : (
+                <button
+                  onClick={() => { setNoteDraft(person.name_note || ""); setEditingNote(true); }}
+                  className="state-layer shrink-0 inline-flex items-center h-6 w-6 justify-center rounded-full text-on-surface-variant hover:bg-surface-low cursor-pointer"
+                  title={t("设置姓名备注（优先显示）")}
+                >
+                  <Icon name="edit" size={13} />
+                </button>
+              )}
+              {editingNote && (
+                <>
+                  <button onClick={() => void saveNote()} className="state-layer h-6 px-2 rounded-full text-label text-primary cursor-pointer">{t("保存")}</button>
+                  <button onClick={() => setEditingNote(false)} className="state-layer h-6 px-2 rounded-full text-label text-on-surface-variant cursor-pointer">{t("取消")}</button>
+                </>
+              )}
+              {person.name_note && !editingNote && person.name && (
+                <span className="text-label text-on-surface-variant truncate">（{person.name}）</span>
+              )}
               <StatusChip tone={person.person_type === "guest" ? "info" : "primary"} className="shrink-0">
                 {person.person_type === "guest" ? t("人物调查") : t("简历评估")}
               </StatusChip>
@@ -123,7 +166,7 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
               )}
               {!readOnly && (
                 <button
-                  onClick={() => navigate(`/chat?new=1&ask=${encodeURIComponent(t("帮我全面分析一下{name}的背景、评估结果和潜在风险", { name: person.name || "" }))}`)}
+                  onClick={() => navigate(`/chat?new=1&ask=${encodeURIComponent(t("帮我全面分析一下{name}的背景、评估结果和潜在风险", { name: person.display_name || person.name || "" }))}`)}
                   className="state-layer shrink-0 ml-auto inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-label font-medium text-primary border border-outline-variant cursor-pointer"
                 >
                   <Icon name="forum" size={13} />

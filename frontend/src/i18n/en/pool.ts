@@ -183,4 +183,6 @@ export default {
   "该人物没有关联简历": "This person has no linked resume",
   "没有可展示的简历": "No resume to display",
   "没有关联的评估记录": "No linked evaluation records",
+  "姓名备注（优先显示）": "Name note (shown first)",
+  "设置姓名备注（优先显示）": "Set name note (shown first)",
 } as Record<string, string>;

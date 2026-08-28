@@ -18,7 +18,7 @@ from agi_talent_radar.core.db.orm import (
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 25
+LATEST_SCHEMA_VERSION = 26
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -253,6 +253,15 @@ def ensure_schema(engine) -> None:
             engine,
             25,
             "phase 25: scholarship feishu sync fields",
+        )
+    if current_version < 26:
+        existing = {c["name"] for c in inspect(engine).get_columns("persons")}
+        if "name_note" not in existing:
+            _add_columns(engine, "persons", ["name_note VARCHAR(128) NOT NULL DEFAULT ''"])
+        _record_version(
+            engine,
+            26,
+            "phase 26: person name note (display priority over extracted name)",
         )
     _ensure_indexes(engine)
 

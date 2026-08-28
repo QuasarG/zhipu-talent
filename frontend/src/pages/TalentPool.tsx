@@ -264,7 +264,7 @@ export default function TalentPool() {
           </div>
           <TrackDeck
             selectedId={selectedId}
-            personsName={(id) => filtered.find((p) => p.id === id)?.name || id}
+            personsName={(id) => { const p = filtered.find((x) => x.id === id); return (p?.display_name || p?.name) || id; }}
             deckApiRef={deckApiRef}
             deckDragApiRef={deckDragApiRef}
           />
