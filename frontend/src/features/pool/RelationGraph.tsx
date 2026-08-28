@@ -156,6 +156,11 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
   const [stats, setStats] = useState({ persons: 0, schools: 0, tracks: 0 });
   const { t } = useI18n();
   const tRef = useRef(t);
+  // Canvas 字体绘制不会触发 webfont 下载，先显式加载斜月体
+  useEffect(() => {
+    void document.fonts?.load('600 16px "Smiley Moon"');
+  }, []);
+
   useEffect(() => {
     tRef.current = t;
   }, [t]);
@@ -253,7 +258,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         ctx.lineWidth = isSelected ? 3 : 2;
         ctx.stroke();
         ctx.fillStyle = pal.avatarText;
-        ctx.font = `600 ${Math.round(r * 0.85)}px sans-serif`;
+        ctx.font = `600 ${Math.round(r * 0.85)}px "Smiley Moon", "MiSans", sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText((tRef.current(n.label) || "?").charAt(0), n.x, n.y + 1);
@@ -295,7 +300,7 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
           ctx.lineWidth = 1.5;
           ctx.stroke();
           ctx.fillStyle = n.color;
-          ctx.font = `600 ${Math.round(r * 0.8)}px sans-serif`;
+          ctx.font = `600 ${Math.round(r * 0.8)}px "Smiley Moon", "MiSans", sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText((n.label || "?").charAt(0), n.x, n.y + 1);
@@ -346,12 +351,14 @@ export default function RelationGraph({ persons, selectedId, onSelect }: Props) 
         drawNode(n, isSelected);
         // 人名 + 学校标签（最高学历学校）
         ctx.fillStyle = isSelected ? pal.labelStrong : pal.label;
-        ctx.font = n.type === "person" ? "600 12px sans-serif" : "500 10px sans-serif";
+        ctx.font = n.type === "person"
+          ? '600 12px "Montserrat", "MiSans", sans-serif'
+          : '500 10px "Montserrat", "MiSans", sans-serif';
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillText(tRef.current(n.label), n.x, n.y + n.radius + 4);
         if (n.type === "person" && n.tag) {
-          ctx.font = "400 10px sans-serif";
+          ctx.font = '400 10px "Montserrat", "MiSans", sans-serif';
           ctx.fillStyle = pal.label;
           ctx.fillText(n.tag, n.x, n.y + n.radius + 20);
         }
