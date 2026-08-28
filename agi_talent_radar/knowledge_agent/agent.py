@@ -66,6 +66,29 @@ def _sys_text(lang: str, key: str) -> str:
     return SYSTEM_TEXT.get(lang, SYSTEM_TEXT["zh"]).get(key, SYSTEM_TEXT["zh"][key])
 
 
+def _tool_error_text(lang: str, exc: Exception) -> tuple[str, str]:
+    """工具异常 → (summary 一句话, detail 可折叠技术细节)。
+
+    summary 会直接渲染给用户，不能把上游 URL / MDN 链接 / 堆栈尾巴甩脸上；
+    技术上下文收进 detail 供排查（前端点开才可见）。
+    """
+    raw = str(exc)
+    head = raw.splitlines()[0][:160] if raw else exc.__class__.__name__
+    lowered = raw.lower()
+    if "timeout" in lowered or "timed out" in lowered:
+        reason = "上游服务响应超时" if lang == "zh" else "upstream timeout"
+    elif any(k in lowered for k in ("connection", "dns", "refused", "unreachable")):
+        reason = "网络连接失败" if lang == "zh" else "network connection failed"
+    elif "429" in raw or "rate" in lowered and "limit" in lowered:
+        reason = "上游限流" if lang == "zh" else "upstream rate limit"
+    elif any(code in raw for code in ("500", "502", "503", "504")) or "server error" in lowered:
+        reason = "上游服务暂时不可用" if lang == "zh" else "upstream service unavailable"
+    else:
+        reason = head
+    label = _sys_text(lang, "tool_failed")
+    return f"{label}：{reason}", raw[:1200]
+
+
 def run_agent(session, conversation_id: str, user_text: str, emit: Emit, lang: str = "zh") -> None:
     """一轮问答：落库 user 消息 → ReAct 循环 → assistant 消息落库。"""
     conv = session.get(ConversationORM, conversation_id)
@@ -302,8 +325,7 @@ def _execute_readonly_tool(tool, tc, args, ctx, segments, messages, emit, lang: 
         detail = json.dumps(output, ensure_ascii=False, default=str)
         status = "ok"
     except Exception as exc:  # noqa: BLE001
-        summary = f'{_sys_text(lang, "tool_failed")}: {exc}'
-        detail = ""
+        summary, detail = _tool_error_text(lang, exc)
         status = "error"
     segments.append(
         {

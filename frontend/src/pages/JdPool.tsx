@@ -27,11 +27,17 @@ export default function JdPool() {
   }, [t]);
   useEffect(() => { void load(); }, [load]);
 
+  // 稳定展示序：未归档在前，同组内按更新时间倒序（最近维护的优先可见）
+  const ordered = [...jds].sort((a, b) => {
+    if (!!a.archived !== !!b.archived) return a.archived ? 1 : -1;
+    return (b.updated_at || "").localeCompare(a.updated_at || "");
+  });
+
   return <div className="w-full flex flex-col gap-4">
     <PageToolbar title={t("JD 池")} subtitle={t("JD 入池即生成岗位评估卡；是否参与评估由每次批次显式选择")} right={<><IconButton icon="refresh" variant="outlined" onClick={load} title={t("刷新")} /><Button variant="filled" icon="add" onClick={() => setEditing("new")}>{t("添加 JD")}</Button></>} />
     {error && <p className="text-body-sm text-error px-2">{error}</p>}
     {loading ? <div className="flex justify-center py-20"><LoadingIndicator size={28} /></div> : <div className="flex flex-col gap-3 pb-6">
-      {jds.map((jd) => <JdCard key={jd.id} jd={jd} expanded={expandedId === jd.id} onToggle={() => setExpandedId(expandedId === jd.id ? null : jd.id)} onEdit={() => setEditing(jd)} onArchive={async () => { await api.jds.setArchived(jd.id, !jd.archived); await load(); }} onDelete={async () => { await api.jds.delete(jd.id); await load(); }} />)}
+      {ordered.map((jd) => <JdCard key={jd.id} jd={jd} expanded={expandedId === jd.id} onToggle={() => setExpandedId(expandedId === jd.id ? null : jd.id)} onEdit={() => setEditing(jd)} onArchive={async () => { await api.jds.setArchived(jd.id, !jd.archived); await load(); }} onDelete={async () => { await api.jds.delete(jd.id); await load(); }} />)}
       {!jds.length && <Card variant="filled" className="py-16 text-center text-on-surface-variant">{t("JD 池为空")}</Card>}
     </div>}
     {editing && <JdEditor jd={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />}

@@ -343,6 +343,7 @@ function TaskAssessmentCard({
         className="flex min-h-[92px] w-full cursor-pointer items-center gap-3 px-3.5 py-3 text-left"
         aria-expanded={open}
         aria-controls={contentId}
+        aria-label={`${title}，契合度 L${level}/4，${open ? "收起证据" : "展开证据"}`}
         onClick={onToggle}
       >
         <span className="admission-task-importance-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-md">
@@ -378,7 +379,7 @@ function TaskAssessmentCard({
           className={cn("admission-task-chevron shrink-0 text-on-surface-variant", open && "is-open")}
         />
       </button>
-      <div id={contentId} className="admission-task-drawer-content" aria-hidden={!open}>
+      <div id={contentId} role="region" aria-label={t("{title} 证据详情", { title })} className="admission-task-drawer-content" aria-hidden={!open}>
         <div>
           <TaskAssessmentDrawerContent task={task} t={t} />
         </div>

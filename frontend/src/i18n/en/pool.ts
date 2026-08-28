@@ -127,6 +127,8 @@ export default {
   "舆情核查": "Reputation Check",
   "待核验": "Pending Verification",
   "暂无关系证据": "No relationship evidence yet",
+  "暂未评估": "Not assessed",
+  "未发起": "Not started",
   "最近更新": "Recent Updates",
   "档案": "Profile",
   "{count} 条": "{count} items",

@@ -229,6 +229,7 @@ function FolderChildRow({
     <button
       type="button"
       onClick={() => onSelectPair(candidateId, child.jdId)}
+      title={`${child.jdTitle || t("未命名岗位")} · ${t(meta.label)}`}
       className={cn(
         "relative flex w-full cursor-pointer items-center gap-2 rounded-md py-1.5 pl-3.5 pr-2 text-left transition-colors",
         selected ? "bg-secondary-container" : "hover:bg-surface-low",

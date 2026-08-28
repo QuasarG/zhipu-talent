@@ -164,7 +164,15 @@ export default function Settings() {
               <div className="flex items-center gap-2">
                 {health?.checked_at && (
                   <span className="text-label text-on-surface-variant">
-                    {t("检测于 {time}", { time: new Date(health.checked_at + "Z").toLocaleTimeString() })}
+                    {t("检测于 {time}", {
+                      time: new Date(health.checked_at + "Z").toLocaleString(undefined, {
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      }),
+                    })}
                   </span>
                 )}
                 <Button variant="text" icon="refresh" className="h-7 px-2 text-xs" onClick={recheck}>

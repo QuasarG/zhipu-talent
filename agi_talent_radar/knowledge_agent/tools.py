@@ -7,18 +7,26 @@ gated=True 的工具 handler 不写库，只返回 {requires_confirmation, kind,
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from typing import Any
 
 from agi_talent_radar.core.db.orm import (
+    CandidateJdAssessmentORM,
+    CandidateORM,
     EvaluationORM,
     ExternalFactORM,
+    JdEntryORM,
     PersonORM,
     ResumeSubmissionORM,
 )
 
 # 喂回 LLM 的单次工具结果最大字符数
 TOOL_RESULT_MAX_CHARS = 2000
+
+# 知识库空态缓存：(检查时间戳, 是否为空)，TTL 内不重复 count
+_KB_EMPTY_TTL_SECONDS = 300
+_KB_EMPTY_CACHE: tuple[float, bool] | None = None
 
 
 class ToolContext:
@@ -85,6 +93,43 @@ def _latest_evaluation(session, person_id: str) -> EvaluationORM | None:
     )
 
 
+_ADMISSION_DECISION_LABELS = {"interview": "进入面试", "no_interview": "不进入面试"}
+
+
+def _person_jd_assessments(session, person_id: str) -> list[CandidateJdAssessmentORM]:
+    """新准入表（一岗一评）的有效评估，按时间倒序。"""
+    return (
+        session.query(CandidateJdAssessmentORM)
+        .join(CandidateORM, CandidateJdAssessmentORM.candidate_id == CandidateORM.id)
+        .filter(
+            CandidateORM.person_id == person_id,
+            CandidateJdAssessmentORM.status == "completed",
+            CandidateJdAssessmentORM.is_valid.is_(True),
+        )
+        .order_by(CandidateJdAssessmentORM.created_at.desc())
+        .all()
+    )
+
+
+def _admission_view(session, assessment: CandidateJdAssessmentORM, jd_title: str) -> dict[str, Any]:
+    """单条准入评估的紧凑视图（控制在 TOOL_RESULT_MAX_CHARS 内，给 LLM 的一岗一评摘要）。"""
+    tasks = [
+        {
+            "task_id": str(t.get("task_id") or ""),
+            "level": t.get("level"),
+            "confidence": t.get("confidence"),
+        }
+        for t in (assessment.task_assessments or [])
+        if isinstance(t, dict)
+    ]
+    return {
+        "jd_title": jd_title,
+        "decision": _ADMISSION_DECISION_LABELS.get(assessment.decision, assessment.decision),
+        "total_score": round(float(assessment.total_score or 0), 1),
+        "tasks": tasks,
+    }
+
+
 def _person_citation_meta(session, person: PersonORM) -> dict[str, Any]:
     """人物引用的 meta：brief + 最新评估。前端凭 meta.person_id 渲染详细档案卡。"""
     meta = _person_brief(person, session)
@@ -93,6 +138,13 @@ def _person_citation_meta(session, person: PersonORM) -> dict[str, Any]:
         meta["overall_score"] = evaluation.overall_score
         meta["level"] = evaluation.level
         meta["tier"] = evaluation.tier
+    else:
+        # 旧评估表没有时看新准入表，取最高总分当快照（与人才库列表口径一致）
+        admissions = _person_jd_assessments(session, person.id)
+        if admissions:
+            best = max(admissions, key=lambda a: float(a.total_score or 0))
+            meta["overall_score"] = round(float(best.total_score or 0), 1)
+            meta["admission_decision"] = _ADMISSION_DECISION_LABELS.get(best.decision, best.decision)
     return meta
 
 
@@ -154,9 +206,20 @@ def tool_search_knowledge(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
     from agi_talent_radar.core.embedding import embed_texts
     from agi_talent_radar.core.vector_store import QdrantVectorStore
 
+    store = QdrantVectorStore()
+    # 空库短路：避免每次问答都白花一次 embedding + 检索
+    global _KB_EMPTY_CACHE
+    if _KB_EMPTY_CACHE is None or time.time() - _KB_EMPTY_CACHE[0] > _KB_EMPTY_TTL_SECONDS:
+        try:
+            _KB_EMPTY_CACHE = (time.time(), store.count() == 0)
+        except Exception:  # noqa: BLE001
+            _KB_EMPTY_CACHE = None
+    if _KB_EMPTY_CACHE is not None and _KB_EMPTY_CACHE[1]:
+        return {"hits": [], "empty_collection": True, "summary": "人才知识库当前为空，请直接使用库内人物工具与外部数据源"}
+
     vector = embed_texts([query])[0]
     try:
-        hits = QdrantVectorStore().search(vector, top_k=top_k)
+        hits = store.search(vector, top_k=top_k)
     except Exception as exc:  # noqa: BLE001
         return {"hits": [], "summary": f"向量库暂不可用：{exc}"}
     items = []
@@ -242,6 +305,34 @@ def tool_get_person_evaluation(ctx: ToolContext, args: dict[str, Any]) -> dict[s
     person = ctx.session.get(PersonORM, str(args.get("person_id") or ""))
     if person is None:
         return {"found": False, "summary": "人物不存在"}
+    # 新准入表优先（一岗一评），旧评估表兜底——两者数据不同源，别再只看旧表漏掉新评估
+    admissions = _person_jd_assessments(ctx.session, person.id)
+    if admissions:
+        jd_ids = {a.jd_id for a in admissions}
+        jd_titles = {
+            jd.id: jd.title
+            for jd in ctx.session.query(JdEntryORM).filter(JdEntryORM.id.in_(jd_ids))
+        }
+        views = [_admission_view(ctx.session, a, jd_titles.get(a.jd_id, "")) for a in admissions]
+        interview_count = sum(1 for v in views if v["decision"] == "进入面试")
+        citation_id = ctx.register_source(
+            "evaluation", f"{person.name} 的面试准入评估", status="confirmed",
+            meta=_person_citation_meta(ctx.session, person),
+        )
+        return {
+            "found": True,
+            "has_evaluation": True,
+            "citation_id": citation_id,
+            "source": "interview_admission",
+            "assessments": views,
+            "interview_count": interview_count,
+            "total_positions": len(views),
+            "latest_evaluated_at": str(admissions[0].created_at or ""),
+            "summary": (
+                f"已获取 {person.name} 的面试准入评估（{len(views)} 个岗位："
+                f"{interview_count} 进入面试 / {len(views) - interview_count} 不进入面试）"
+            ),
+        }
     evaluation = _latest_evaluation(ctx.session, person.id)
     if evaluation is None:
         return {"found": True, "has_evaluation": False, "summary": f"{person.name} 暂无评估记录"}
@@ -320,7 +411,14 @@ def tool_aggregate_persons(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
         row = _person_brief(person, ctx.session)
         if metric == "avg_score":
             evaluation = _latest_evaluation(ctx.session, person.id)
-            row["score"] = evaluation.overall_score if evaluation else None
+            if evaluation is not None:
+                row["score"] = evaluation.overall_score
+            else:
+                # 旧表无记录时取新准入表最高总分，保持与人才库列表口径一致
+                admissions = _person_jd_assessments(ctx.session, person.id)
+                row["score"] = (
+                    round(max(float(a.total_score or 0) for a in admissions), 1) if admissions else None
+                )
         elif metric == "pub_count":
             submission = _latest_submission(ctx.session, person.id)
             structured = (submission.structured or {}) if submission else {}
@@ -385,16 +483,28 @@ def tool_search_papers(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]
 
 
 def tool_search_dblp(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from agi_talent_radar.core.connectors.aminer_rest import _pinyin_variants
     from agi_talent_radar.core.connectors.dblp import search_author_pubs
 
-    facts = search_author_pubs(str(args.get("name") or ""))
-    papers = []
-    for fact in facts:
-        citation_id = ctx.register_source(
-            "dblp", str(fact.payload.get("title") or ""), fact.source_url, "confirmed"
-        )
-        papers.append({"citation_id": citation_id, **fact.payload})
-    return {"papers": papers, "summary": f"DBLP 命中 {len(papers)} 篇论文"}
+    name = str(args.get("name") or "").strip()
+    variants = [name]
+    for v in [*(str(x) for x in (args.get("name_variants") or [])), *_pinyin_variants(name)]:
+        v = v.strip()
+        if v and v not in variants:
+            variants.append(v)
+    papers: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for query_name in variants:
+        for fact in search_author_pubs(query_name):
+            if fact.source_url in seen_urls:
+                continue
+            seen_urls.add(fact.source_url)
+            citation_id = ctx.register_source(
+                "dblp", str(fact.payload.get("title") or ""), fact.source_url, "confirmed"
+            )
+            papers.append({"citation_id": citation_id, "query_name": query_name, **fact.payload})
+    suffix = f"（尝试变体：{'/'.join(variants)}）" if len(variants) > 1 else ""
+    return {"papers": papers, "summary": f"DBLP 命中 {len(papers)} 篇论文{suffix}"}
 
 
 def tool_search_web(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -786,8 +896,18 @@ TOOLS: list[dict[str, Any]] = [
         "name": "search_dblp",
         "label": "DBLP 发文检索",
         "label_en": "DBLP publication search",
-        "description": "按作者名检索 DBLP 论文（题名/venue/年份），用于发文核验。",
-        "parameters": _obj({"name": _str("作者姓名")}, ["name"]),
+        "description": "按作者名检索 DBLP 论文（题名/venue/年份），用于发文核验。中文名会自动补拼音变体；已知英文名/其他拼写可放进 name_variants。",
+        "parameters": _obj(
+            {
+                "name": _str("作者姓名"),
+                "name_variants": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "姓名变体（英文名/常见拼写，可空）",
+                },
+            },
+            ["name"],
+        ),
         "handler": tool_search_dblp,
         "gated": False,
     },

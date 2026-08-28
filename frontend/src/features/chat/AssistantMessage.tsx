@@ -108,7 +108,7 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
         <ThinkingCard
           key={`think-${i}`}
           text={seg.text}
-          streaming={busy && i === message.content.segments.length - 1}
+          streaming={busy && message.status === "running" && i === message.content.segments.length - 1}
         />
       );
     }
@@ -136,21 +136,28 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
   );
 }
 
-/** 思考段与文本、工具卡按生成顺序持久展示；流式时展开，结束后收起。 */
+/** 思考段与文本、工具卡按生成顺序持久展示；流式时展开，结束后收起。
+ *  手动展开优先：一旦用户点开，后续 streaming 翻转不再劫持其状态。 */
 function ThinkingCard({ text, streaming }: { text: string; streaming: boolean }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(streaming);
+  const [userToggled, setUserToggled] = useState(false);
 
   useEffect(() => {
-    setOpen(streaming);
-  }, [streaming]);
+    if (!userToggled) setOpen(streaming);
+  }, [streaming, userToggled]);
+
+  const toggle = () => {
+    setUserToggled(true);
+    setOpen((value) => !value);
+  };
 
   if (!text) return null;
   return (
     <div className="mb-3 rounded-md border border-outline-variant bg-surface-low overflow-hidden">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
         className="state-layer flex items-center gap-2 w-full px-3 h-9 text-left cursor-pointer"
       >
         {streaming ? (

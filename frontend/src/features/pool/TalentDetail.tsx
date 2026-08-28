@@ -306,12 +306,12 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
             <span className="flex items-center gap-1">
               <Icon name="description" size={15} className="text-on-surface-variant" />
               <span className="text-on-surface">{t("简历评估")}</span>
-              <span className="text-on-surface-variant">{evaluations.length ? `v${evaluations.length}` : "—"}</span>
+              <span className="text-on-surface-variant">{evaluations.length ? `v${evaluations.length}` : t("暂未评估")}</span>
             </span>
             <span className="flex items-center gap-1">
               <Icon name="fact_check" size={15} className="text-on-surface-variant" />
               <span className="text-on-surface">{t("舆情核查")}</span>
-              <span className="text-on-surface-variant">{reputation.length ? t("{count} 条", { count: reputation.length }) : "—"}</span>
+              <span className="text-on-surface-variant">{reputation.length ? t("{count} 条", { count: reputation.length }) : t("未发起")}</span>
             </span>
             <span className="flex items-center gap-1">
               <Icon name="schedule" size={15} className="text-on-surface-variant" />
