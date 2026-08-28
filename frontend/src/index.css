@@ -46,6 +46,36 @@
   font-display: swap;
   src: url("./assets/fonts/BebasNeue-Regular.ttf") format("truetype");
 }
+/* MiSans 原生梯度（问答正文专用）：Regular 细正文，粗体对比明显 */
+@font-face {
+  font-family: "MiSans Native";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/MiSans-Normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "MiSans Native";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/MiSans-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "MiSans Native";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/MiSans-Demibold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "MiSans Native";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/MiSans-Bold.woff2") format("woff2");
+}
+
 /* 斜月体（Smiley Moon）：中文标题展示字体（Regular 400，GB2312+拉丁子集） */
 @font-face {
   font-family: "Smiley Moon";
@@ -753,6 +783,11 @@ body {
   background: var(--color-surface-low); border-radius: var(--radius-sm);
 }
 .chat-markdown pre code { background: none; padding: 0; }
+/* 问答正文：普通文本用原生 Regular（全局正文是加重版 Demibold），粗体对比明显 */
+.chat-markdown {
+  font-family: "Montserrat", "MiSans Native", "MiSans", sans-serif;
+}
+
 .chat-markdown table { margin: 0 0 8px; border-collapse: collapse; width: 100%; }
 .chat-markdown th, .chat-markdown td {
   border: 1px solid var(--color-outline-variant);
