@@ -56,10 +56,10 @@ export default function ResumeContent({ detail, onReviewed, hideTabs, nameNoteEd
         ) : (
           <div className="h-full min-h-0 overflow-y-auto pr-1">
             <header className="pb-4 border-b-2 border-outline-variant">
-              <h2 className="text-headline font-bold text-on-surface flex items-center gap-2 flex-wrap">
+              <h2 className="text-headline font-bold text-on-surface">
                 {importing ? <TypewriterText text={detail.name || t("解析中…")} enabled={!!detail.name} /> : (detail.name || t("未命名候选人"))}
-                {nameNoteEditor}
               </h2>
+              {nameNoteEditor && <div className="mt-1.5 -ml-1">{nameNoteEditor}</div>}
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
                 <MetaField label={t("候选阶段")} value={importing && detail.stage ? <TypewriterText text={detail.stage} /> : detail.stage} />
                 <MetaField label={t("目标岗位")} value={importing && detail.role ? <TypewriterText text={detail.role} /> : detail.role} />
