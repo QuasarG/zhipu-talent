@@ -166,7 +166,7 @@ export interface ScoreBreakdown {
   total: number;
   /** 所有首要任务等级不低于 2 */
   primaryThresholdMet: boolean;
-  /** 加权总分不低于 50 */
+  /** 加权总分不低于准入线（ADMISSION_SCORE_LINE） */
   scoreThresholdMet: boolean;
 }
 
