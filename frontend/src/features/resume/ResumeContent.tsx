@@ -23,11 +23,63 @@ interface Props {
   onReviewed?: () => void;
   /** 外层已提供简历/原件 tab（如滑轨卡）时置 true，隐藏内层 Tabs */
   hideTabs?: boolean;
-  /** 姓名备注编辑器（人才库场景传入；缺省不渲染） */
-  nameNoteEditor?: ReactNode;
 }
 
-export default function ResumeContent({ detail, onReviewed, hideTabs, nameNoteEditor }: Props) {
+/** 可编辑姓名：点击进入输入态；保存值等于提取名则清空备注，否则写入备注 */
+function EditableName({ detail, onSaved }: { detail: CandidateDetail; onSaved?: () => void }) {
+  const { t } = useI18n();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const shown = detail.display_name || detail.name || t("未命名候选人");
+  const editable = !!detail.person_id && detail.group !== "importing" && !editing;
+
+  const save = async () => {
+    const v = draft.trim();
+    setEditing(false);
+    if (v === (detail.display_name || detail.name || "")) return;
+    if (!detail.person_id) return;
+    setSaving(true);
+    try {
+      await api.persons.setNameNote(detail.person_id, v && v !== detail.name ? v : "");
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => void save()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") { setDraft(shown); setEditing(false); }
+        }}
+        className="text-headline font-bold text-on-surface bg-transparent border-b-2 border-primary outline-none w-full max-w-md px-0.5"
+      />
+    );
+  }
+  if (!editable) {
+    return <span className="text-headline font-bold text-on-surface">{shown}</span>;
+  }
+  return (
+    <button
+      type="button"
+      title={t("点击编辑姓名（保存后作为备注优先显示）")}
+      disabled={saving}
+      onClick={() => { setDraft(shown); setEditing(true); }}
+      className="text-left text-headline font-bold text-on-surface cursor-text hover:underline decoration-dashed decoration-2 underline-offset-8 decoration-outline"
+    >
+      {saving ? t("保存中…") : shown}
+    </button>
+  );
+}
+
+export default function ResumeContent({ detail, onReviewed, hideTabs }: Props) {
   const [mode, setMode] = useSessionState<"structured" | "raw">(`resume-evaluate.resume-mode.${detail.id}`, "structured");
   const { t } = useI18n();
   const directions = (detail.directions || []).filter(Boolean);
@@ -57,9 +109,10 @@ export default function ResumeContent({ detail, onReviewed, hideTabs, nameNoteEd
           <div className="h-full min-h-0 overflow-y-auto pr-1">
             <header className="pb-4 border-b-2 border-outline-variant">
               <h2 className="text-headline font-bold text-on-surface">
-                {importing ? <TypewriterText text={detail.name || t("解析中…")} enabled={!!detail.name} /> : (detail.name || t("未命名候选人"))}
+                {importing
+                  ? <TypewriterText text={detail.name || t("解析中…")} enabled={!!detail.name} />
+                  : <EditableName detail={detail} onSaved={onReviewed} />}
               </h2>
-              {nameNoteEditor && <div className="mt-1.5 -ml-1">{nameNoteEditor}</div>}
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
                 <MetaField label={t("候选阶段")} value={importing && detail.stage ? <TypewriterText text={detail.stage} /> : detail.stage} />
                 <MetaField label={t("目标岗位")} value={importing && detail.role ? <TypewriterText text={detail.role} /> : detail.role} />

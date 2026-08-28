@@ -7,7 +7,6 @@ import Button, { IconButton } from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { StatusChip } from "@/components/ui/Chip";
 import ResumeContent from "@/features/resume/ResumeContent";
-import NameNoteEditor from "@/features/pool/NameNoteEditor";
 import EvaluationWorkspace from "@/features/resume/EvaluationWorkspace";
 import EngagementStatusControl from "@/features/pool/EngagementStatusControl";
 import { useI18n } from "@/lib/i18n";
@@ -85,20 +84,7 @@ export default function TalentProfile() {
 
       <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-4 flex-1 min-h-0">
         <Card variant="filled" className="min-h-0 overflow-hidden p-5">
-          {candidate ? (
-            <ResumeContent
-              key={candidate.id}
-              detail={candidate}
-              nameNoteEditor={person ? (
-                <NameNoteEditor
-                  personId={person.id}
-                  nameNote={person.name_note || ""}
-                  rawName={person.name}
-                  onSaved={() => void load()}
-                />
-              ) : undefined}
-            />
-          ) : <EmptyPanel title={t("没有可展示的简历")} />}
+          {candidate ? <ResumeContent key={candidate.id} detail={candidate} onReviewed={() => void load()} /> : <EmptyPanel title={t("没有可展示的简历")} />}
         </Card>
         <Card variant="filled" className="min-h-0 overflow-hidden p-5">
           {candidate ? (

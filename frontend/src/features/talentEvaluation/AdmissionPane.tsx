@@ -13,7 +13,6 @@ import AdmissionReport, { NodeInspector } from "./AdmissionReport";
 import { BatchRunView, NewBatchPanel } from "./BatchViews";
 import EmptyState from "./EmptyState";
 import ResumeContent from "@/features/resume/ResumeContent";
-import NameNoteEditor from "@/features/pool/NameNoteEditor";
 import Card from "@/components/ui/Card";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { useI18n } from "@/lib/i18n";
@@ -28,7 +27,6 @@ export default function AdmissionPane({
   creating,
   batch,
   candidates,
-  personNotes,
   allJds,
   assessments,
   activeRuns,
@@ -59,8 +57,6 @@ export default function AdmissionPane({
   creating: boolean;
   batch: InterviewAssessmentBatch | null;
   candidates: CandidateBrief[];
-  /** person_id → name_note（姓名备注显示/编辑用） */
-  personNotes: Record<string, string>;
   allJds: JdEntry[];
   assessments: InterviewAssessment[];
   activeRuns: InterviewAssessmentRun[];
@@ -158,19 +154,7 @@ export default function AdmissionPane({
             <LoadingIndicator size={32} label={t("加载中…")} />
           </div>
         ) : candidateDetail ? (
-          <ResumeContent
-            key={candidateDetail.id}
-            detail={candidateDetail}
-            onReviewed={onCandidateReviewed}
-            nameNoteEditor={candidateDetail.person_id ? (
-              <NameNoteEditor
-                personId={candidateDetail.person_id}
-                nameNote={personNotes[candidateDetail.person_id] || ""}
-                rawName={candidateDetail.name}
-                onSaved={onCandidateReviewed}
-              />
-            ) : undefined}
-          />
+          <ResumeContent key={candidateDetail.id} detail={candidateDetail} onReviewed={onCandidateReviewed} />
         ) : (
           <EmptyState
             icon="person"

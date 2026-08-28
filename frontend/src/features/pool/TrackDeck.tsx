@@ -8,7 +8,6 @@ import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import ResumeContent, { OriginalPreview } from "@/features/resume/ResumeContent";
-import NameNoteEditor from "./NameNoteEditor";
 import ScoreOverview from "@/features/resume/ScoreOverview";
 import Tabs from "@/components/ui/Tabs";
 import { useI18n } from "@/lib/i18n";
@@ -449,20 +448,7 @@ function DeckCardBody({ entry, t, onRefresh }: { entry: DeckEntry; t: (k: string
         onChange={(v) => setTab(v as typeof tab)}
       />
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
-        {tab === "structured" && (
-          <ResumeContent
-            detail={detail}
-            hideTabs
-            nameNoteEditor={detail.person_id ? (
-              <NameNoteEditor
-                personId={detail.person_id}
-                nameNote={detail.name_note || ""}
-                rawName={detail.name}
-                onSaved={() => onRefresh?.(entry.personId)}
-              />
-            ) : undefined}
-          />
-        )}
+        {tab === "structured" && <ResumeContent detail={detail} hideTabs onReviewed={() => onRefresh?.(entry.personId)} />}
         {tab === "raw" && (
           <OriginalPreview candidateId={detail.id} sourceFormat={detail.source_format} fallbackText={detail.raw_text || ""} />
         )}

@@ -78,17 +78,9 @@ export default function TalentEvaluation() {
     [candidates, assessments, activeRuns],
   );
 
-  // person_id → 姓名备注（结构化简历姓名旁显示/编辑）
-  const [personNotes, setPersonNotes] = useState<Record<string, string>>({});
-
   // ---- 数据加载 ----
   const loadShell = useCallback(async () => {
     try {
-      void api.persons.list().then((rows) => {
-        const map: Record<string, string> = {};
-        for (const p of rows) if (p.name_note) map[p.id] = p.name_note;
-        setPersonNotes(map);
-      }).catch(() => { /* 备注缺失不阻塞页面 */ });
       // 候选人目录与人才库同源：已入库或拥有准入报告的人（导入即入库）
       const [candidateRows, jdRows, assessmentRows, activeRows] = await Promise.all([
         api.candidates.list(),
@@ -470,7 +462,6 @@ export default function TalentEvaluation() {
               creating={creating}
               batch={batch}
               candidates={candidates}
-              personNotes={personNotes}
               allJds={allJds}
               assessments={assessments}
               activeRuns={activeRuns}

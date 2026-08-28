@@ -720,12 +720,6 @@ def create_app() -> Flask:
                 if candidate is None:
                     return jsonify({"detail": "该人员没有关联简历档案"}), 404
                 data = _orm_to_detail(candidate)
-                # 姓名备注：滑轨卡结构化简历姓名旁显示/编辑
-                person = getattr(candidate, "person", None)
-                if person is not None:
-                    note = (getattr(person, "name_note", "") or "").strip()
-                    data["name_note"] = note
-                    data["display_name"] = note or data["name"]
                 _, evaluation = get_candidate_with_latest_evaluation(session, candidate.id)
                 if evaluation:
                     data["evaluation"] = _orm_to_evaluation(evaluation)
@@ -1724,9 +1718,17 @@ def _iso(value) -> str | None:
 def _orm_to_detail(row) -> dict[str, Any]:
     from agi_talent_radar.core.graph import evaluation_graph_catalog
 
+    # 姓名备注：person 主档人工补充，展示优先于提取名
+    note = ""
+    person = getattr(row, "person", None)
+    if person is not None:
+        raw = getattr(person, "name_note", "") or ""
+        note = raw.strip() if isinstance(raw, str) else ""
     return {
         "id": row.id,
         "name": row.name or row.id,
+        "name_note": note,
+        "display_name": note or (row.name or row.id),
         "role": row.target_role,
         "stage": row.stage,
         "group": row.group,
