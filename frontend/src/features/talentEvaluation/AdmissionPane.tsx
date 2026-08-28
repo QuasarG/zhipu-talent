@@ -48,9 +48,9 @@ export default function AdmissionPane({
   onDraftCandidateSearch,
   onDraftJdSearch,
   onSelectNode,
-  onSelectRun,
+
   onCancelRun,
-  onCancelBatch,
+
   onExitCreate,
   onStartBatch,
 }: {
@@ -79,9 +79,7 @@ export default function AdmissionPane({
   onDraftCandidateSearch: (value: string) => void;
   onDraftJdSearch: (value: string) => void;
   onSelectNode: (node: AdmissionGraphNode) => void;
-  onSelectRun: (runId: string) => void;
   onCancelRun: (runId: string) => void;
-  onCancelBatch: () => void;
   onExitCreate: () => void;
   onStartBatch: (candidateIds: string[], jdIds: string[]) => Promise<void>;
 }) {
@@ -101,10 +99,8 @@ export default function AdmissionPane({
         assessments={assessments}
         selectedNode={selectedNode}
         selectedNodeId={selectedNodeId}
-        onSelectRun={onSelectRun}
         onSelectNode={onSelectNode}
         onCancelRun={onCancelRun}
-        onCancelBatch={onCancelBatch}
       />
     );
   }

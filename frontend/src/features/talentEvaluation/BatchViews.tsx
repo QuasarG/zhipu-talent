@@ -288,10 +288,8 @@ export function BatchRunView({
   assessments,
   selectedNode,
   selectedNodeId,
-  onSelectRun,
   onSelectNode,
   onCancelRun,
-  onCancelBatch,
 }: {
   batch: InterviewAssessmentBatch;
   activeRunId: string | null;
@@ -300,15 +298,12 @@ export function BatchRunView({
   assessments: InterviewAssessment[];
   selectedNode: AdmissionGraphNode | null;
   selectedNodeId: string | null;
-  onSelectRun: (runId: string) => void;
   onSelectNode: (node: AdmissionGraphNode) => void;
   onCancelRun: (runId: string) => void;
-  onCancelBatch: () => void;
 }) {
   const { t } = useI18n();
   const runs = batch.runs || [];
   const activeRun = runs.find((run) => run.id === activeRunId) ?? runs[0];
-  const running = !TERMINAL_BATCH.has(batch.status);
   const completedAssessment = activeRun?.status === "completed"
     ? assessments.find((item) => item.candidate_id === activeRun.candidate_id && item.jd_id === activeRun.jd_id)
     : undefined;
@@ -348,42 +343,8 @@ export function BatchRunView({
         } as JdEntry)
       : undefined);
 
-  const done = batch.completed_pairs + batch.failed_pairs + batch.cancelled_pairs;
-
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <Card variant="filled" className="shrink-0 overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-2.5">
-          <p className="shrink-0 text-title">{t("评估批次")}</p>
-          <div className="hidden min-w-32 flex-1 items-center gap-2 sm:flex">
-            <Progress value={batch.total_pairs ? (done / batch.total_pairs) * 100 : 0} className="flex-1" />
-            <span className="text-label tabular-nums text-on-surface-variant">{done} / {batch.total_pairs}</span>
-          </div>
-          {running ? (
-            <Button variant="tonal" icon="stop_circle" className="h-9 px-4" onClick={onCancelBatch}>
-              {t("停止整批")}
-            </Button>
-          ) : (
-            <StatusChip tone={batch.status === "completed" ? "success" : "neutral"}>
-              {t(RUN_STATUS_LABEL[batch.status] || batch.status)}
-            </StatusChip>
-          )}
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto border-t border-outline-variant px-3 py-2 admission-panel-scrollbar">
-          {runs.map((run) => (
-            <PairRunChip
-              key={run.id}
-              run={run}
-              active={run.id === activeRun?.id}
-              assessment={assessments.find(
-                (item) => item.candidate_id === run.candidate_id && item.jd_id === run.jd_id,
-              )}
-              onClick={() => onSelectRun(run.id)}
-            />
-          ))}
-        </div>
-      </Card>
-
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(480px,1.5fr)_minmax(320px,1fr)]">
         <Card variant="filled" className="relative min-h-[420px] overflow-hidden flex flex-col">
           <div className="flex items-center gap-3 border-b border-outline-variant px-4 py-3 shrink-0">
@@ -405,7 +366,7 @@ export function BatchRunView({
             )}
           </div>
           <div className="flex-1 min-h-0 overflow-auto admission-panel-scrollbar">
-            {activeRun ? (
+            {activeRun && (activeRun.run_trace?.length || activeRun.status !== "queued") ? (
               <AdmissionWorkflowGraph
                 run={activeRun}
                 candidate={candidateForRun(activeRun)}
@@ -414,7 +375,13 @@ export function BatchRunView({
                 onSelectNode={onSelectNode}
               />
             ) : (
-              <ListEmpty icon="account_tree" text={t("等待运行信息")} />
+              <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center text-on-surface-variant">
+                <Icon name="hourglass_top" size={30} />
+                <p className="text-body-sm text-on-surface">{t("正在等待可用评估槽位")}</p>
+                <p className="text-label">
+                  {t("评估按批次顺序执行；可先点选左侧队列中的其他配对查看")}
+                </p>
+              </div>
             )}
           </div>
         </Card>
@@ -449,42 +416,67 @@ export function BatchRunView({
 
 const TERMINAL_BATCH = new Set(["completed", "failed", "cancelled"]);
 
-function PairRunChip({
-  run,
-  active,
-  assessment,
-  onClick,
+/** 左栏评估队列卡：批次进度 + 配对列表（点击切换中间图） */
+export function BatchQueueCard({
+  batch,
+  activeRunId,
+  onSelectRun,
+  onCancelBatch,
 }: {
-  run: InterviewAssessmentRun;
-  active: boolean;
-  assessment?: InterviewAssessment;
-  onClick: () => void;
+  batch: InterviewAssessmentBatch;
+  activeRunId: string | null;
+  onSelectRun: (runId: string) => void;
+  onCancelBatch: () => void;
 }) {
   const { t } = useI18n();
-  const tone = assessment
-    ? assessment.is_valid
-      ? assessment.decision === "interview" ? "success" : "error"
-      : "warning"
-    : RUN_STATUS_TONE[run.status] || "neutral";
-  const label = assessment
-    ? assessment.is_valid
-      ? assessment.decision === "interview" ? t("进入面试") : t("不进入面试")
-      : t("需重评")
-    : t(RUN_STATUS_LABEL[run.status] || run.status);
+  const runs = batch.runs || [];
+  const done = batch.completed_pairs + batch.failed_pairs + batch.cancelled_pairs;
+  const running = !TERMINAL_BATCH.has(batch.status);
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-label transition-colors",
-        active ? "border-outline bg-secondary-container text-on-secondary-container" : "border-outline-variant bg-surface-lowest text-on-surface-variant hover:bg-surface-low",
-      )}
-    >
-      <span className="max-w-56 truncate">
-        {run.candidate_name || t("候选人")} × {run.jd_title || t("岗位")}
-      </span>
-      {run.status === "running" && <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />}
-      <StatusChip tone={tone}>{label}</StatusChip>
-    </button>
+    <div className="rounded-md border border-outline-variant bg-surface-lowest flex flex-col overflow-hidden">
+      <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+        <p className="text-label font-medium text-on-surface">{t("评估队列")}</p>
+        <span className="text-label tabular-nums text-on-surface-variant">{done} / {batch.total_pairs}</span>
+        {running ? (
+          <Button variant="text" icon="stop_circle" className="ml-auto h-7 px-2 text-label" onClick={onCancelBatch}>
+            {t("停止")}
+          </Button>
+        ) : (
+          <StatusChip tone={batch.status === "completed" ? "success" : "neutral"} className="ml-auto">
+            {t(RUN_STATUS_LABEL[batch.status] || batch.status)}
+          </StatusChip>
+        )}
+      </div>
+      <div className="px-3 pb-1">
+        <Progress value={batch.total_pairs ? (done / batch.total_pairs) * 100 : 0} />
+      </div>
+      <div className="flex flex-col pb-1.5">
+        {runs.map((run) => {
+          const active = run.id === activeRunId;
+          const tone = RUN_STATUS_TONE[run.status] || "neutral";
+          return (
+            <button
+              key={run.id}
+              type="button"
+              onClick={() => onSelectRun(run.id)}
+              className={cn(
+                "flex cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-label transition-colors",
+                active ? "bg-secondary-container text-on-secondary-container" : "text-on-surface-variant hover:bg-surface-low",
+              )}
+            >
+              <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full",
+                run.status === "running" ? "bg-primary animate-pulse"
+                  : run.status === "completed" ? "bg-success"
+                  : run.status === "failed" ? "bg-error" : "bg-outline-variant")}
+              />
+              <span className="min-w-0 flex-1 truncate">
+                {run.candidate_name || t("候选人")} × {run.jd_title || t("岗位")}
+              </span>
+              <StatusChip tone={tone}>{t(RUN_STATUS_LABEL[run.status] || run.status)}</StatusChip>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

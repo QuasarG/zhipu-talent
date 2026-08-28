@@ -18,6 +18,7 @@ import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowGraph";
 import CandidateFolderTree from "@/features/talentEvaluation/CandidateFolderTree";
 import AdmissionPane from "@/features/talentEvaluation/AdmissionPane";
+import { BatchQueueCard } from "@/features/talentEvaluation/BatchViews";
 import ImportOverlay from "@/features/resume/ImportOverlay";
 import { buildCandidateFolders } from "@/features/talentEvaluation/talentEvaluationModel";
 import { useSessionState } from "@/lib/sessionState";
@@ -446,6 +447,14 @@ export default function TalentEvaluation() {
           onSelectCandidate={selectCandidateRoot}
           onSelectPair={selectPair}
           runningCard={runningCard}
+          queueCard={batch && !TERMINAL_BATCH_STATUSES.has(batch.status) ? (
+            <BatchQueueCard
+              batch={batch}
+              activeRunId={activeRunId}
+              onSelectRun={selectRun}
+              onCancelBatch={() => void cancelBatch()}
+            />
+          ) : undefined}
           onImport={openImport}
         />
 
@@ -486,9 +495,7 @@ export default function TalentEvaluation() {
               onDraftCandidateSearch={setDraftCandidateSearch}
               onDraftJdSearch={setDraftJdSearch}
               onSelectNode={selectGraphNode}
-              onSelectRun={selectRun}
               onCancelRun={(runId) => void cancelRun(runId)}
-              onCancelBatch={() => void cancelBatch()}
               onExitCreate={() => setCreating(false)}
               onStartBatch={startBatch}
             />

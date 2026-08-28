@@ -22,6 +22,8 @@ interface Props {
   onSelectPair: (candidateId: string, jdId: string) => void;
   /** 导入运行卡（插入列表底部，运行期间不可关闭） */
   runningCard?: ReactNode;
+  /** 评估队列卡（批次进度 + 配对列表），展示在人才树与导入按钮之间 */
+  queueCard?: ReactNode;
   onImport: () => void;
 }
 
@@ -49,6 +51,7 @@ export default function CandidateFolderTree({
   onSelectCandidate,
   onSelectPair,
   runningCard,
+  queueCard,
   onImport,
 }: Props) {
   const { t } = useI18n();
@@ -113,6 +116,7 @@ export default function CandidateFolderTree({
       </div>
 
       {runningCard}
+      {queueCard}
 
       <div className="border-t border-outline-variant p-2 shrink-0">
         <Button variant="outlined" icon="upload_file" className="w-full" onClick={onImport}>

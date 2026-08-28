@@ -521,6 +521,11 @@ body {
   transform: translateX(-50%) scale(0.84);
   filter: blur(5px);
   animation: admission-node-enter 520ms var(--ease-emphasized-decelerate) forwards;
+  /* 流式事件到达重排时平滑过渡；拖拽中禁用保证跟手 */
+  transition: left 280ms var(--ease-standard), top 280ms var(--ease-standard);
+}
+.admission-graph-node.is-dragging {
+  transition: none;
 }
 
 .admission-graph-node:focus-visible {

@@ -145,7 +145,7 @@ function buildNodes(run: InterviewAssessmentRun, candidate: CandidateBrief | und
 
   const taskEvents = events.filter((event) => event.node_id.startsWith("task_score:"));
   if (taskEvents.length) {
-    const spread = Math.min(720, Math.max(260, taskEvents.length * 128));
+    const spread = Math.max(260, taskEvents.length * 150);
     const start = 500 - spread / 2;
     const step = taskEvents.length === 1 ? 0 : spread / (taskEvents.length - 1);
     taskEvents.forEach((event, index) => {
@@ -187,7 +187,7 @@ function buildNodes(run: InterviewAssessmentRun, candidate: CandidateBrief | und
 
   const repairEvents = events.filter((event) => event.node_id.startsWith("evidence_repair:"));
   if (repairEvents.length) {
-    const spread = Math.min(620, Math.max(220, repairEvents.length * 142));
+    const spread = Math.max(220, repairEvents.length * 160);
     const start = 500 - spread / 2;
     const step = repairEvents.length === 1 ? 0 : spread / (repairEvents.length - 1);
     repairEvents.forEach((event, index) => {
@@ -321,6 +321,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
   const returnFramesRef = useRef(new Map<string, number>());
   const [, setLayoutTick] = useState(0);
   const [view, setView] = useState<GraphView>(viewRef.current);
+  const [dragNodeId, setDragNodeId] = useState<string | null>(null);
 
   const commitView = useCallback((next: GraphView) => {
     viewRef.current = next;
@@ -340,7 +341,8 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
     const bh = Math.max(1, bounds.maxY - bounds.minY);
     const padding = 32;
     const scale = Math.min(1.2, (width - padding * 2) / bw, (height - padding * 2) / bh);
-    const safeScale = Math.min(1.2, scale);
+    // 下限 0.75 保证标签（固定 px 宽）在缩放后仍小于节点间距；上限 1.15 防节点少时撑满
+    const safeScale = Math.max(0.75, Math.min(1.15, scale));
     commitView({
       width,
       height,
@@ -400,7 +402,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
       screenX: node.x * view.scale + view.offsetX,
       screenY: node.y * view.scale + view.offsetY,
       screenRadius,
-      labelWidth: Math.max(104, Math.min(nodeLabelWidth(node), nodeLabelWidth(node) * view.scale)),
+      labelWidth: nodeLabelWidth(node),
     };
   }), [positionedNodes, view]);
   const edges = useMemo(() => buildEdges(screenNodes.map((node) => ({
@@ -474,6 +476,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
     if (nodeId) cancelNodeReturn(nodeId);
     const node = nodeId ? positionsRef.current.get(nodeId) : undefined;
     const current = viewRef.current;
+    setDragNodeId(nodeId || null);
     pointerRef.current = {
       pointerId: event.pointerId,
       mode,
@@ -523,6 +526,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
       returnNodeHome(active.nodeId);
     }
     pointerRef.current = null;
+    setDragNodeId(null);
   };
 
   const toggleFullscreen = () => {
@@ -586,6 +590,7 @@ export default function AdmissionWorkflowGraph({ run, candidate, jd, selectedNod
               `is-${node.status}`,
               `kind-${node.kind}`,
               selected && "is-selected",
+              dragNodeId === node.id && "is-dragging",
             )}
             style={{
               left: node.screenX,
