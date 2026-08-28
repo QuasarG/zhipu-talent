@@ -5,7 +5,7 @@ import hashlib
 import re
 import uuid
 
-from agi_talent_radar.core.db.orm import PersonORM, ReputationReportORM, TalentGroupORM
+from agi_talent_radar.core.db.orm import CandidateORM, PersonORM, ReputationReportORM, TalentGroupORM
 from sqlalchemy import Text, or_ as _sql_or
 
 PERSON_TYPES = {"student", "social", "guest"}
