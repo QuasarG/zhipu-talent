@@ -8,12 +8,13 @@
   src: url("./assets/fonts/roboto-mono-latin.woff2") format("woff2");
 }
 /* MiSans：中文高级感主力（GB2312 子集自托管） */
+/* 正文加重一档：400 槽位映射 Medium 字形（Normal 文件保留可随时回退） */
 @font-face {
   font-family: "MiSans";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("./assets/fonts/MiSans-Normal.woff2") format("woff2");
+  src: url("./assets/fonts/MiSans-Medium.woff2") format("woff2");
 }
 @font-face {
   font-family: "MiSans";
@@ -87,6 +88,10 @@ html[lang="en"] .chat-markdown h4 {
 }
 
 /* 导航标签使用同一展示字体并保持单行 */
+/* 导航标签：中文走斜月体（en 模式由下方 Bebas 规则覆盖） */
+.nav-rail-label {
+  font-family: "Smiley Moon", "MiSans", sans-serif;
+}
 html[lang="en"] .nav-rail-label {
   font-family: "Bebas Neue", "Smiley Moon", "MiSans", sans-serif;
   font-size: 12px;
