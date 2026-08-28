@@ -89,7 +89,10 @@ export default function AdmissionPane({
     [allJds],
   );
 
-  if (batch && !TERMINAL_BATCH_STATUSES.has(batch.status)) {
+  // 评估态不再霸屏：用户在左树显式选择了候选人/配对时优先显示选中内容，
+  // 批次运行视图由左栏队列卡承载（点选队列行也可切回）
+  if (batch && !TERMINAL_BATCH_STATUSES.has(batch.status)
+    && !selectedCandidateId && !selectedJdId && !creating) {
     return (
       <BatchRunView
         batch={batch}

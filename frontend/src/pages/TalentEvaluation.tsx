@@ -341,9 +341,12 @@ export default function TalentEvaluation() {
   }, [setSelectedNodeId]);
 
   const selectRun = useCallback((runId: string) => {
+    // 进入批次运行视图：清掉左树的显式选择，让 AdmissionPane 显示 BatchRunView
+    setSelectedCandidateId(null);
+    setSelectedJdId(null);
     setActiveRunId(runId);
     clearNode();
-  }, [clearNode, setActiveRunId]);
+  }, [clearNode, setActiveRunId, setSelectedCandidateId, setSelectedJdId]);
 
   // ---- 导入简历（共用动作，位于左侧候选人卡片底部） ----
   const openImport = useCallback(() => {
