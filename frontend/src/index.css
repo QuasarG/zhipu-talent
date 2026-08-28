@@ -44,15 +44,25 @@
   font-display: swap;
   src: url("./assets/fonts/BebasNeue-Regular.ttf") format("truetype");
 }
-/* Montserrat：英文模式正文字体（可变字重 wght 100-900） */
+/* 得意黑（Smiley Sans）：中文标题展示字体（自带倾斜 + 覆盖基本拉丁） */
 @font-face {
-  font-family: "Montserrat";
+  font-family: "Smiley Sans";
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 400;
   font-display: swap;
-  src: url("./assets/fonts/Montserrat-VariableFont_wght.ttf") format("truetype");
+  src: url("./assets/fonts/SmileySans-Oblique.woff2") format("woff2");
 }
-/* 英文标题使用展示字体，正文继续使用全局 Montserrat */
+/* 标题类（中英通用）：中文走得意黑，英文模式 Bebas 优先，中文字符回退得意黑 */
+.text-display,
+.text-headline,
+.text-title-lg,
+.text-title,
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+  font-family: "Smiley Sans", "MiSans", sans-serif;
+}
 html[lang="en"] .text-display,
 html[lang="en"] .text-headline,
 html[lang="en"] .text-title-lg,
@@ -61,14 +71,14 @@ html[lang="en"] .chat-markdown h1,
 html[lang="en"] .chat-markdown h2,
 html[lang="en"] .chat-markdown h3,
 html[lang="en"] .chat-markdown h4 {
-  font-family: "Bebas Neue", "MiSans", sans-serif;
+  font-family: "Bebas Neue", "Smiley Sans", "MiSans", sans-serif;
   font-weight: 400;
   letter-spacing: 0.04em;
 }
 
 /* 导航标签使用同一展示字体并保持单行 */
 html[lang="en"] .nav-rail-label {
-  font-family: "Bebas Neue", "MiSans", sans-serif;
+  font-family: "Bebas Neue", "Smiley Sans", "MiSans", sans-serif;
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.02em;
@@ -126,8 +136,8 @@ html[lang="en"] .nav-rail-label {
   --color-track-multimodal: #979CA6;
   --color-track-base: #C7CBD0;
 
-  /* Typography：西文统一 Montserrat（不随语言切换），中文回退 MiSans */
-  --font-sans: "Montserrat", "MiSans", -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  /* Typography：正文全量 MiSans（自带基本拉丁，中英统一），标题得意黑 */
+  --font-sans: "MiSans", -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: "Roboto Mono", "SF Mono", Consolas, monospace;
 
   /* Shape：DSh 圆角阶（8/12/16 为主） */
