@@ -1801,10 +1801,21 @@ def _person_candidate_fields(candidate, latest_eval) -> dict[str, Any]:
     }
 
 
+def _latest_jd_assessment(person):
+    """最新一条有效准入评估（新表：一岗一评）；无则 None。"""
+    best = None
+    for c in getattr(person, "candidates", []) or []:
+        for a in getattr(c, "jd_assessments", []) or []:
+            if a.status == "completed" and a.is_valid and (best is None or a.created_at > best.created_at):
+                best = a
+    return best
+
+
 def _person_to_brief(person, candidate=None) -> dict[str, Any]:
     """人才库列表项：主档摘要 + 最新评估/舆情快照。"""
     latest_eval = _latest_evaluation(person)
     latest_rep = _latest_reputation(person)
+    latest_jd = _latest_jd_assessment(person)
     return {
         "id": person.id,
         "name": person.name or person.id,
@@ -1816,8 +1827,10 @@ def _person_to_brief(person, candidate=None) -> dict[str, Any]:
         "group_id": person.group_id,
         "schools": getattr(person, "schools", None) or [],
         "top_schools": top_school_names(getattr(person, "schools", None) or []),
-        "overall_score": latest_eval.overall_score if latest_eval else None,
-        "level": latest_eval.level if latest_eval else None,
+        "overall_score": latest_eval.overall_score if latest_eval else (latest_jd.total_score if latest_jd else None),
+        "level": latest_eval.level if latest_eval else ("interview" if latest_jd and latest_jd.decision == "interview" else "no_interview" if latest_jd else None),
+        "jd_evaluated": latest_jd is not None,
+        "latest_jd_decision": latest_jd.decision if latest_jd else None,
         "reputation_level": latest_rep.level if latest_rep else None,
         "reputation_status": latest_rep.review_status if latest_rep else None,
         "updated_at": person.updated_at.isoformat() if person.updated_at else None,
@@ -1828,9 +1841,13 @@ def _person_to_brief(person, candidate=None) -> dict[str, Any]:
 def _person_to_detail(person, candidate=None) -> dict[str, Any]:
     """人才详情：主档 + 评估历史 + 舆情报告列表。"""
     latest_eval = _latest_evaluation(person)
+    latest_jd = _latest_jd_assessment(person)
     return {
         "id": person.id,
         "name": person.name or person.id,
+        "jd_evaluated": latest_jd is not None,
+        "latest_jd_decision": latest_jd.decision if latest_jd else None,
+        "latest_jd_score": latest_jd.total_score if latest_jd else None,
         "name_note": getattr(person, "name_note", "") or "",
         "display_name": (getattr(person, "name_note", "") or "").strip() or (person.name or person.id),
         "org": person.org or "",

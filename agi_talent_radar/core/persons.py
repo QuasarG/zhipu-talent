@@ -105,6 +105,8 @@ def list_persons(
         query.options(
             selectinload(PersonORM.evaluations),
             selectinload(PersonORM.reputation_reports),
+            # 新准入评估（一岗一评）走 candidates.person_id 反查，列表页快照用
+            selectinload(PersonORM.candidates).selectinload(CandidateORM.jd_assessments),
         )
         .order_by(PersonORM.updated_at.desc())
         .limit(limit)

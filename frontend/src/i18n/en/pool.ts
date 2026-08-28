@@ -191,4 +191,5 @@ export default {
   "尚未评估": "Not Evaluated",
   "前往人才评估选择候选人与岗位发起准入评估": "Go to Talent Evaluation, pick a candidate and a JD to start an admission assessment",
   "去评估": "Evaluate",
+  "/100 加权总分（各岗位详情见评估页）": "/100 weighted total (per-JD details in Talent Evaluation)",
 } as Record<string, string>;

@@ -113,6 +113,11 @@ class CandidateORM(Base):
     sources = relationship("CandidateSourceORM", back_populates="candidate", cascade="all, delete-orphan")
     # 姓名备注等 person 主档字段的懒加载通道（_orm_to_detail 依赖）
     person = relationship("PersonORM")
+    # 新准入评估（一岗一评）列表
+    jd_assessments = relationship(
+        "CandidateJdAssessmentORM", back_populates="candidate",
+        order_by="CandidateJdAssessmentORM.created_at.desc()",
+    )
     engagement_history = relationship(
         "EngagementStatusHistoryORM",
         back_populates="candidate",
@@ -338,6 +343,8 @@ class PersonORM(Base):
     name = Column(String(128), default="", index=True)
     # 姓名备注：英文简历提取不出中文名时 HR 手动补，展示优先于 name
     name_note = Column(String(128), default="")
+    # 关联候选人档案（导入即入库，正常 0..1 条）
+    candidates = relationship("CandidateORM", foreign_keys="CandidateORM.person_id")
     org = Column(String(256), default="")
     direction = Column(String(256), default="")
     fingerprint = Column(String(64), unique=True, nullable=False, index=True)
@@ -757,6 +764,7 @@ class CandidateJdAssessmentORM(Base):
     )
     status = Column(String(24), default="completed", nullable=False, index=True)
     is_valid = Column(Boolean, default=True, nullable=False, index=True)
+    candidate = relationship("CandidateORM", back_populates="jd_assessments")
     invalid_reason = Column(Text, default="")
     decision = Column(String(16), nullable=False)
     total_score = Column(Float, default=0.0, nullable=False)

@@ -54,6 +54,8 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
 
   const evaluations = person.evaluations || [];
   const latest = evaluations[0];
+  // 新准入评估兜底：旧评估表为空但有岗位准入记录时仍算已评估
+  const jdEvaluated = !!person.jd_evaluated;
   const reputation = person.reputation_reports || [];
   const initials = (person.display_name || person.name || "?").charAt(0);
   const candidateId = person.candidate_id || "";
@@ -154,7 +156,7 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
         </section>
 
         {/* 评估概览 */}
-        {!latest && (
+        {!latest && !jdEvaluated && (
           <section className="rounded-md border border-dashed border-outline-variant px-3 py-3 flex items-center gap-2.5">
             <Icon name="fact_check" size={18} className="text-on-surface-variant shrink-0" />
             <div className="min-w-0 flex-1">
@@ -164,6 +166,24 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
             <Button variant="tonal" icon="arrow_forward" className="h-8 shrink-0" onClick={() => navigate("/talent-evaluation/admission")}>
               {t("去评估")}
             </Button>
+          </section>
+        )}
+        {!latest && jdEvaluated && (
+          <section>
+            <h3 className="text-title mb-1.5 flex items-baseline justify-between gap-2">
+              {t("面试准入")}
+              <span className="text-label font-normal text-on-surface-variant">{t("针对最匹配 JD，不代表录用")}</span>
+            </h3>
+            <div className="flex items-center gap-3">
+              <StatusChip
+                tone={person.latest_jd_decision === "interview" ? "success" : person.latest_jd_decision === "hold" ? "warning" : "error"}
+                variant="filled"
+              >
+                {person.latest_jd_decision === "interview" ? t("进入面试") : person.latest_jd_decision === "hold" ? t("待补信息") : t("不进入面试")}
+              </StatusChip>
+              <span className="text-headline text-on-surface">{person.latest_jd_score != null ? Math.round(person.latest_jd_score) : "—"}</span>
+              <span className="text-body-sm text-on-surface-variant">{t("/100 加权总分（各岗位详情见评估页）")}</span>
+            </div>
           </section>
         )}
         {latest && (

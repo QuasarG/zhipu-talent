@@ -351,6 +351,10 @@ export interface PersonBrief {
   direction: string;
   person_type: string;
   group_id: string | null;
+  // 新准入评估快照（一岗一评）；无旧 evaluations 时以此判定"已评估"
+  jd_evaluated?: boolean;
+  latest_jd_decision?: string | null;
+  latest_jd_score?: number | null;
   schools?: PersonEducation[];
   top_schools?: string[];
   overall_score: number | null;
