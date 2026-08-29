@@ -139,9 +139,7 @@ function PersonRow({
           <span className="text-body-sm text-on-surface-variant truncate capitalize">
             {[track, p.org].filter(Boolean).join(" · ") || "—"}
           </span>
-          {p.person_type !== "guest" && p.overall_score != null && (
-            <span className="text-body-sm font-bold text-primary shrink-0 ml-auto">{p.overall_score}</span>
-          )}
+          {/* 不展示单一分数：一个候选人可有多个 JD 准入分，任何“一个分”都不代表整体 */}
         </span>
       </span>
 
@@ -248,15 +246,9 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
   useEffect(() => { setSelected(new Set()); setBatchNote(""); }, [batchMode, persons]);
 
   const grouped = useMemo(() => {
-    // 排序:有评分的优先,从高到低;无评分的排后面
-    const sortByScore = (a: PersonBrief, b: PersonBrief) => {
-      const sa = a.overall_score ?? null;
-      const sb = b.overall_score ?? null;
-      if (sa != null && sb != null) return sb - sa;
-      if (sa != null) return -1;
-      if (sb != null) return 1;
-      return 0;
-    };
+    // 列表不再展示分数（多 JD 准入无单一代表分），排序退化为按更新时间新→旧
+    const sortByUpdated = (a: PersonBrief, b: PersonBrief) =>
+      (b.updated_at || "").localeCompare(a.updated_at || "");
     const byGroup: Record<string, PersonBrief[]> = {};
     const ungrouped: PersonBrief[] = [];
     for (const p of persons) {
@@ -266,8 +258,8 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
         ungrouped.push(p);
       }
     }
-    for (const gid of Object.keys(byGroup)) byGroup[gid].sort(sortByScore);
-    ungrouped.sort(sortByScore);
+    for (const gid of Object.keys(byGroup)) byGroup[gid].sort(sortByUpdated);
+    ungrouped.sort(sortByUpdated);
     return { byGroup, ungrouped };
   }, [persons, groups]);
   const visibleGroupKeys = useMemo(() => {

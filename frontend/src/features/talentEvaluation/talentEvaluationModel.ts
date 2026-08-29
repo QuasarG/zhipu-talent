@@ -27,7 +27,11 @@ export interface PlannedAssessmentPair {
   candidateId: string;
   jdId: string;
   candidateName: string;
+  candidateMeta: string;
   jdTitle: string;
+  jdTeam: string;
+  jdSummary: string;
+  jdTaskCount: number;
   existing: boolean;
   active: boolean;
   estimatedModelCalls: number;
@@ -52,7 +56,10 @@ export function buildBatchRiskPlan(
 ): BatchRiskPlan {
   const candidateNames = new Map(candidates.map((item) => [
     item.id,
-    item.display_name || item.name || "未命名",
+    {
+      name: item.display_name || item.name || "未命名",
+      meta: [item.role, item.stage].filter(Boolean).join(" · "),
+    },
   ]));
   const jobs = new Map(jds.map((item) => [item.id, item]));
   const existingKeys = new Set(
@@ -68,15 +75,21 @@ export function buildBatchRiskPlan(
     for (const jdId of [...new Set(jdIds)]) {
       const key = `${candidateId}::${jdId}`;
       const job = jobs.get(jdId);
+      const candidate = candidateNames.get(candidateId) || { name: "未命名", meta: "" };
+      const taskCount = job?.assessment_card?.core_tasks?.length || 0;
       allPairs.push({
         key,
         candidateId,
         jdId,
-        candidateName: candidateNames.get(candidateId) || "未命名",
+        candidateName: candidate.name,
+        candidateMeta: candidate.meta,
         jdTitle: job?.title || "岗位未命名",
+        jdTeam: job?.team || "",
+        jdSummary: job?.assessment_card?.role_summary || "",
+        jdTaskCount: taskCount,
         existing: existingKeys.has(key),
         active: activeKeys.has(key),
-        estimatedModelCalls: (job?.assessment_card?.core_tasks?.length || 0) + 2,
+        estimatedModelCalls: taskCount + 2,
       });
     }
   }

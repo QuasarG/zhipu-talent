@@ -293,10 +293,29 @@ export function NewBatchPanel({
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
               {plan.runnablePairs.map((pair) => (
-                <div key={pair.key} className="flex items-center gap-2 border-b border-outline-variant py-2 text-body-sm last:border-0">
-                  <span className="min-w-0 flex-1 truncate">{pair.candidateName} × {pair.jdTitle}</span>
+                <div key={pair.key} className="flex items-center gap-3 border-b border-outline-variant py-2.5 text-body-sm last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2">
+                      <span className="truncate font-medium text-on-surface">{pair.candidateName}</span>
+                      {pair.candidateMeta && (
+                        <span className="shrink-0 truncate text-label text-on-surface-variant">{pair.candidateMeta}</span>
+                      )}
+                      <span className="text-on-surface-variant">×</span>
+                      <span className="truncate font-medium text-on-surface">{pair.jdTitle}</span>
+                      {pair.jdTeam && (
+                        <span className="shrink-0 truncate text-label text-on-surface-variant">{pair.jdTeam}</span>
+                      )}
+                    </p>
+                    {(pair.jdSummary || pair.jdTaskCount > 0) && (
+                      <p className="mt-0.5 truncate text-label text-on-surface-variant">
+                        {pair.jdSummary}
+                        {pair.jdSummary && pair.jdTaskCount > 0 ? " · " : ""}
+                        {pair.jdTaskCount > 0 ? t("{n} 项核心任务", { n: pair.jdTaskCount }) : ""}
+                      </p>
+                    )}
+                  </div>
                   {pair.existing && <StatusChip tone="warning">{t("强制重评")}</StatusChip>}
-                  <span className="text-label text-on-surface-variant">≥ {pair.estimatedModelCalls} calls</span>
+                  <span className="shrink-0 text-label tabular-nums text-on-surface-variant">≥ {pair.estimatedModelCalls} calls</span>
                 </div>
               ))}
               {forceReasonRequired && (
@@ -597,7 +616,8 @@ export function BatchQueueCard({
       <div className="px-3 pb-1">
         <Progress value={batch.total_pairs ? (done / batch.total_pairs) * 100 : 0} />
       </div>
-      <div className="flex flex-col pb-1.5">
+      {/* 队列可能很长（大批次无上限）：卡片本身固定高度，列表内部滚动，不撑爆左栏 */}
+      <div className="flex max-h-[280px] min-h-0 flex-col overflow-y-auto pb-1.5 admission-panel-scrollbar">
         {runs.map((run) => {
           const active = run.id === activeRunId;
           const tone = RUN_STATUS_TONE[run.status] || "neutral";
