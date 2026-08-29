@@ -168,42 +168,11 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
             </Button>
           </section>
         )}
-        {!latest && jdEvaluated && (
-          <section>
-            <h3 className="text-title mb-1.5 flex items-baseline justify-between gap-2">
-              {t("面试准入")}
-              <span className="text-label font-normal text-on-surface-variant">{t("按岗位分别判断，不代表录用")}</span>
-            </h3>
-            {(person.assessment_view?.admissions?.length ?? 0) > 0 ? (
-              <div className="flex flex-col gap-1.5">
-                {(person.assessment_view?.admissions ?? []).map((a) => (
-                  <div key={a.id} className="flex items-center gap-2">
-                    <StatusChip
-                      tone={a.decision === "interview" ? "success" : "error"}
-                      variant={a.decision === "interview" ? "filled" : "dot"}
-                    >
-                      {a.decision === "interview" ? t("进入面试") : t("不进入")}
-                    </StatusChip>
-                    <span className="min-w-0 flex-1 truncate text-body-sm text-on-surface">{a.jd_title}</span>
-                  </div>
-                ))}
-                <p className="mt-0.5 text-label text-on-surface-variant">{t("分数与完整证据见人才评估页")}</p>
-              </div>
-            ) : (
-              /* 老数据没有 assessment_view：只给最新一次结论，不标单一分数 */
-              <StatusChip
-                tone={person.latest_jd_decision === "interview" ? "success" : person.latest_jd_decision === "hold" ? "warning" : "error"}
-                variant="filled"
-              >
-                {person.latest_jd_decision === "interview" ? t("进入面试") : person.latest_jd_decision === "hold" ? t("待补信息") : t("不进入面试")}
-              </StatusChip>
-            )}
-          </section>
-        )}
+        {/* 能力概览：通用/旧评估——与岗位准入互不排斥，各有各的区块 */}
         {latest && (
           <section>
             <h3 className="text-title mb-1.5 flex items-baseline justify-between gap-2">
-              {isJobFit ? t("面试准入") : t("能力概览")}
+              {isJobFit ? t("面试准入（旧口径）") : t("能力概览")}
               <span className="text-label font-normal text-on-surface-variant">
                 {isJobFit ? t("针对最匹配 JD，不代表录用") : t("能力描述，不代表录取结论")}
               </span>
@@ -248,7 +217,48 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
           </section>
         )}
 
-        {/* 各岗位准入结论（新评估形式：一岗一评，取代旧 Track 推荐） */}
+        {/* 岗位准入结论（新评估：一岗一评）——独立区块，与能力概览互不排斥 */}
+        {jdEvaluated && (
+          <section>
+            <h3 className="text-title mb-1.5 flex items-baseline justify-between gap-2">
+              {t("岗位准入")}
+              <span className="text-label font-normal text-on-surface-variant">{t("按岗位分别判断，不代表录用")}</span>
+            </h3>
+            {(person.assessment_view?.admissions?.length ?? 0) > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {(person.assessment_view?.admissions ?? []).map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => navigate("/talent-evaluation/admission")}
+                    className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left cursor-pointer transition-colors hover:bg-surface-low"
+                  >
+                    <StatusChip
+                      tone={a.decision === "interview" ? "success" : "error"}
+                      variant={a.decision === "interview" ? "filled" : "dot"}
+                    >
+                      {a.decision === "interview" ? t("进入面试") : t("不进入")}
+                    </StatusChip>
+                    <span className="min-w-0 flex-1 truncate text-body-sm text-on-surface">{a.jd_title}</span>
+                  </button>
+                ))}
+                <p className="mt-0.5 text-label text-on-surface-variant">{t("分数与完整证据见人才评估页")}</p>
+              </div>
+            ) : (
+              /* 老数据没有 assessment_view：只给最新一次结论，不标单一分数 */
+              person.latest_jd_decision && (
+                <StatusChip
+                  tone={person.latest_jd_decision === "interview" ? "success" : person.latest_jd_decision === "hold" ? "warning" : "error"}
+                  variant="filled"
+                >
+                  {person.latest_jd_decision === "interview" ? t("进入面试") : person.latest_jd_decision === "hold" ? t("待补信息") : t("不进入面试")}
+                </StatusChip>
+              )
+            )}
+          </section>
+        )}
+
+        {/* 各岗位准入结论（旧 job_fit 口径，跟随旧评估展示） */}
         {(latest?.job_fit_assessments?.length ?? 0) > 0 && (
           <section>
             <h3 className="text-title mb-1.5">{t("各岗位准入结论")}</h3>

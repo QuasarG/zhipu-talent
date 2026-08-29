@@ -150,6 +150,21 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
         self.assertEqual(batch["total_pairs"], 120)
         self.assertEqual(submit.call_count, 120)
 
+    def test_thousand_pair_batch_does_not_blow_sql_expression_tree(self) -> None:
+        """P1 回归：1200 配对的重复/运行中检查分块 IN 查询，不再生成巨型 OR SQL。"""
+        pairs = [(f"candidate-bulk-{index}", "jd-1") for index in range(1200)]
+        with self.Session() as session:
+            session.add_all(CandidateORM(id=c, name=c, raw_text="Agent") for c, _ in pairs)
+            session.commit()
+
+        with patch.object(service, "get_session", self.session_scope), patch.object(
+            service._PAIR_EXECUTOR, "submit"
+        ) as submit:
+            batch = service.start_batch([], [], None, pairs=pairs)
+
+        self.assertEqual(batch["total_pairs"], 1200)
+        self.assertEqual(submit.call_count, 1200)
+
     def test_failed_force_run_keeps_old_current_report(self) -> None:
         with self.Session() as session:
             current = CandidateJdAssessmentORM(

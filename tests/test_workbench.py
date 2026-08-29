@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import threading
 import tempfile
 import unittest
@@ -9,6 +10,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from agi_talent_radar.core.db.orm import Base
 from agi_talent_radar.web.workbench import create_app
 from tests.resume_fixtures import make_resume_fixtures
 
@@ -17,6 +23,35 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkbenchTest(unittest.TestCase):
+    _saved_url: str | None = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        # 无 MySQL 的环境也能跑：StaticPool 内存 sqlite（跨线程共享同一份数据）
+        cls._saved_url = os.environ.get("DATABASE_URL")
+        cls._engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(cls._engine)
+        os.environ["DATABASE_URL"] = "sqlite://"
+
+        import agi_talent_radar.core.db.runtime as runtime
+
+        runtime._ENGINES["sqlite://"] = cls._engine
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        import agi_talent_radar.core.db.runtime as runtime
+
+        runtime._ENGINES.pop("sqlite://", None)
+        cls._engine.dispose()
+        if cls._saved_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = cls._saved_url
+
     def setUp(self) -> None:
         # 阶段 8 之后 create_app 注册了鉴权 middleware；
         # 既有 workbench 测试关注路由行为而非鉴权，统一放行。

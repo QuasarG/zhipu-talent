@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
-from sqlalchemy import inspect, select, text
+from sqlalchemy import Index, inspect, select, text
 from sqlalchemy.orm import sessionmaker
 
 from agi_talent_radar.core.db.orm import (
@@ -17,8 +18,10 @@ from agi_talent_radar.core.db.orm import (
 )
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
+logger = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 28
+
+LATEST_SCHEMA_VERSION = 29
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -286,6 +289,24 @@ def ensure_schema(engine) -> None:
     if current_version < 28:
         # config_change_audit 由 create_all 创建；只保存键名、操作者和时间，不保存配置值。
         _record_version(engine, 28, "add value-free config change audit trail")
+    if current_version < 29:
+        # 一人一档唯一索引（建在 ORM 元数据上，_ensure_indexes 统一创建）。
+        # 存量重复时创建失败只告警不阻断（audit_duplicates.py 先清理，下次启动自愈）。
+        with engine.connect() as conn:
+            dupes = conn.execute(
+                text(
+                    "SELECT person_id, COUNT(*) AS n FROM candidates "
+                    "WHERE person_id IS NOT NULL GROUP BY person_id HAVING n > 1"
+                )
+            ).fetchall()
+        if dupes:
+            logger.warning(
+                "candidates 存在 %d 个 person_id 重复组，跳过唯一索引创建；"
+                "请运行 scripts/audit_duplicates.py 审计并清理后重启自愈",
+                len(dupes),
+            )
+            _drop_index_if_exists(engine, "candidates", "uq_candidates_person_id")
+        _record_version(engine, 29, "one person one candidate profile (unique partial index)")
     _ensure_indexes(engine)
 
 
@@ -539,6 +560,20 @@ def _add_columns(engine, table_name: str, definitions: list[str]) -> None:
             connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {definition}"))
 
 
+def _drop_index_if_exists(engine, table_name: str, index_name: str) -> None:
+    """按名字删索引；不经过 ORM 元数据，避免往 Table.indexes 里塞副本。"""
+    dialect_name = engine.dialect.name
+    if dialect_name == "mysql":
+        conn_stmt = text(f"SHOW INDEX FROM {table_name} WHERE Key_name = :idx")
+        drop_stmt = text(f"DROP INDEX {index_name} ON {table_name}")
+        with engine.begin() as conn:
+            if conn.execute(conn_stmt, {"idx": index_name}).first():
+                conn.execute(drop_stmt)
+    else:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f"DROP INDEX IF EXISTS {index_name}")
+
+
 def _ensure_indexes(engine) -> None:
     table_names = set(inspect(engine).get_table_names())
     for table in Base.metadata.sorted_tables:
@@ -549,7 +584,11 @@ def _ensure_indexes(engine) -> None:
             # 跳过依赖尚未迁移的新列的索引，等迁移后再创建。
             if not _index_columns_exist(index, existing_columns):
                 continue
-            index.create(bind=engine, checkfirst=True)
+            try:
+                index.create(bind=engine, checkfirst=True)
+            except Exception:  # noqa: BLE001
+                # 唯一索引在存量脏数据下会创建失败：不阻断启动，清理后下次自愈。
+                logger.warning("索引 %s 创建失败（可能存在存量重复数据），跳过", index.name, exc_info=True)
 
 
 def _index_columns_exist(index, existing_columns: set[str]) -> bool:

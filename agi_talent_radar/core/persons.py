@@ -21,38 +21,65 @@ def person_fingerprint(name: str, org: str = "", direction: str = "") -> str:
 
 
 def find_person(session, name: str, org: str = "", direction: str = "") -> PersonORM | None:
-    """按渐进补全的身份字段查找人物，避免后补方向时重复建档。"""
+    """身份归并查找：强指纹精确命中，弱身份（仅姓名）只做兼容候选。
+
+    归并安全规则（同名不同机构必须保持独立）：
+    - 精确指纹（name+org+direction 归一化）命中 → 直接返回。
+    - 仅姓名不带任何强字段时不做弱归并：纯姓名指纹由精确路径覆盖，
+      姓名与已有强身份无法判定一致性，宁可新建也不猜。
+    - 带强字段时：同名候选中，字段"为空或相等"视为兼容；
+      恰好一个兼容候选才归并，多个或冲突（已有不同机构/方向）都不归并。
+    """
     person = session.query(PersonORM).filter_by(fingerprint=person_fingerprint(name, org, direction)).first()
     if person is not None:
         return person
-    if org or direction:
-        person = session.query(PersonORM).filter_by(fingerprint=person_fingerprint(name)).first()
-        if person is not None:
-            return person
+    if not (org or direction):
+        return None
 
-        normalized_name = normalize_identity(name)
-        candidates = (
-            session.query(PersonORM)
-            .filter(func.lower(func.replace(PersonORM.name, " ", "")) == normalized_name)
-            .all()
+    normalized_name = normalize_identity(name)
+    candidates = (
+        session.query(PersonORM)
+        .filter(func.lower(func.replace(PersonORM.name, " ", "")) == normalized_name)
+        .all()
+    )
+    compatible = [
+        candidate
+        for candidate in candidates
+        if (
+            not candidate.org
+            or not org
+            or normalize_identity(candidate.org) == normalize_identity(org)
         )
-        compatible = [
-            candidate
-            for candidate in candidates
-            if (
-                not org
-                or not candidate.org
-                or normalize_identity(candidate.org) == normalize_identity(org)
-            )
-            and (
-                not direction
-                or not candidate.direction
-                or normalize_identity(candidate.direction) == normalize_identity(direction)
-            )
-        ]
-        if len(compatible) == 1:
-            return compatible[0]
+        and (
+            not candidate.direction
+            or not direction
+            or normalize_identity(candidate.direction) == normalize_identity(direction)
+        )
+    ]
+    if len(compatible) == 1:
+        return compatible[0]
+    if len(compatible) > 1:
+        # 多个兼容候选无法自动判定：标记冲突留人工审查，不擅自归并
+        for candidate in compatible:
+            candidate.identity_conflict = True
+        session.flush()
     return None
+
+
+def _upgrade_fingerprint(session, person: PersonORM, name: str, org: str, direction: str) -> None:
+    """强身份字段补全后受控升级 canonical 指纹；目标已被他人占用时标记冲突而非硬撞约束。"""
+    target = person_fingerprint(
+        person.name or name,
+        person.org or org or "",
+        person.direction or direction or "",
+    )
+    if target == person.fingerprint:
+        return
+    holder = session.query(PersonORM).filter_by(fingerprint=target).first()
+    if holder is not None and holder.id != person.id:
+        person.identity_conflict = True
+        return
+    person.fingerprint = target
 
 
 def get_or_create_person(
@@ -68,19 +95,30 @@ def get_or_create_person(
             person.org = org
         if direction and not person.direction:
             person.direction = direction
+        _upgrade_fingerprint(session, person, name, org, direction)
         session.flush()
         return person
-    person = PersonORM(
-        id=uuid.uuid4().hex,
-        name=name or "",
-        org=org or "",
-        direction=direction or "",
-        fingerprint=person_fingerprint(name, org, direction),
-        person_type=person_type if person_type in PERSON_TYPES else "student",
-    )
-    session.add(person)
-    session.flush()
-    return person
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        person = PersonORM(
+            id=uuid.uuid4().hex,
+            name=name or "",
+            org=org or "",
+            direction=direction or "",
+            fingerprint=person_fingerprint(name, org, direction),
+            person_type=person_type if person_type in PERSON_TYPES else "student",
+        )
+        session.add(person)
+        session.flush()
+        return person
+    except IntegrityError:
+        # 并发创建撞 fingerprint 唯一约束：以先落库的一方为准
+        session.rollback()
+        existing = find_person(session, name, org, direction)
+        if existing is None:
+            raise
+        return existing
 
 
 def list_persons(

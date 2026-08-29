@@ -24,7 +24,7 @@ import {
   buildCandidateFolders,
   resolveEvaluationUiState,
 } from "@/features/talentEvaluation/talentEvaluationModel";
-import { useSessionState } from "@/lib/sessionState";
+import { useSessionState, sessionKey } from "@/lib/sessionState";
 import { useI18n } from "@/lib/i18n";
 
 const TERMINAL_BATCH_STATUSES = new Set(["completed", "failed", "cancelled"]);
@@ -68,7 +68,7 @@ export default function TalentEvaluation() {
   const [importOpen, setImportOpen] = useState(false);
   const [importRecovering, setImportRecovering] = useState(() => {
     try {
-      return sessionStorage.getItem(IMPORT_FLAG) === "1";
+      return sessionStorage.getItem(sessionKey(IMPORT_FLAG)) === "1";
     } catch {
       return false;
     }
@@ -415,7 +415,7 @@ export default function TalentEvaluation() {
   const openImport = useCallback(() => {
     setImportOpen(true);
     try {
-      sessionStorage.setItem(IMPORT_FLAG, "1");
+      sessionStorage.setItem(sessionKey(IMPORT_FLAG), "1");
     } catch {
       /* ignore */
     }
@@ -425,7 +425,7 @@ export default function TalentEvaluation() {
     setImportOpen(false);
     setImportRecovering(false);
     try {
-      sessionStorage.removeItem(IMPORT_FLAG);
+      sessionStorage.removeItem(sessionKey(IMPORT_FLAG));
     } catch {
       /* ignore */
     }
@@ -452,7 +452,7 @@ export default function TalentEvaluation() {
             onClick={() => {
               setImportRecovering(false);
               try {
-                sessionStorage.removeItem(IMPORT_FLAG);
+                sessionStorage.removeItem(sessionKey(IMPORT_FLAG));
               } catch {
                 /* ignore */
               }
@@ -467,9 +467,12 @@ export default function TalentEvaluation() {
 
   const selectedChildKey = selectedJdId ? `jd:${selectedJdId}` : null;
 
+  // 运行中的进度从 run 状态实时统计（后端聚合字段要等终态才更新，会长期显示 0/N）
   const batchDone = batch && TERMINAL_BATCH_STATUSES.has(batch.status)
     ? batch.completed_pairs + batch.failed_pairs + batch.cancelled_pairs
-    : 0;
+    : (batch?.runs ?? []).filter((run) =>
+        run.status === "completed" || run.status === "failed" || run.status === "cancelled",
+      ).length;
   const uiState = resolveEvaluationUiState({
     selecting: creating,
     batchStatus: batch?.status || null,

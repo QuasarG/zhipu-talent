@@ -144,12 +144,13 @@ def _run_evaluation_job(
             pass
 
         event_queue.put({"type": "result", "result": evaluation.model_dump()})
-    except Exception as exc:
+    except Exception:
+        logger.error("评估任务 %s 失败", evaluation_run_id, exc_info=True)
         from agi_talent_radar.core.database import fail_evaluation_run, get_session
 
         with get_session() as session:
             fail_evaluation_run(session, evaluation_run_id, exc)
-        event_queue.put({"type": "error", "message": str(exc)})
+        event_queue.put({"type": "error", "message": "评估执行失败，请稍后重试；问题持续请联系管理员。"})
     finally:
         _set_evaluation_active(evaluation_run_id, False)
         event_queue.put(None)
@@ -338,8 +339,9 @@ def create_app() -> Flask:
                     daemon=True,
                 )
                 worker.start()
-        except Exception as exc:
-            return jsonify({"detail": f"读取候选人失败: {exc}"}), 500
+        except Exception:
+            logger.error("读取候选人 %s 失败", candidate_id, exc_info=True)
+            return jsonify({"detail": "读取候选人失败，请稍后重试"}), 500
 
         def generate():
             yield f"data: {json.dumps({'type': 'started', 'evaluation_id': evaluation_run_id}, ensure_ascii=False)}\n\n"
@@ -985,8 +987,9 @@ def create_app() -> Flask:
                 on_event=trace.append,
                 on_call=model_usage.append,
             )
-        except Exception as exc:
-            return jsonify({"detail": f"岗位评估卡生成失败：{exc}"}), 502
+        except Exception:
+            logger.error("新建岗位 %s 评估卡生成失败", title[:80], exc_info=True)
+            return jsonify({"detail": "岗位评估卡生成失败，请稍后重试"}), 502
         with get_session() as session:
             row = create_jd(session, title[:200], str(body.get("team", "")).strip()[:200], raw_text)
             row = replace_jd_assessment_card(
@@ -1020,8 +1023,9 @@ def create_app() -> Flask:
                 on_event=trace.append,
                 on_call=model_usage.append,
             )
-        except Exception as exc:
-            return jsonify({"detail": f"岗位评估卡生成失败，原 JD 未修改：{exc}"}), 502
+        except Exception:
+            logger.error("更新岗位 %s 评估卡生成失败", jd_id, exc_info=True)
+            return jsonify({"detail": "岗位评估卡生成失败，原 JD 未修改，请稍后重试"}), 502
         with get_session() as session:
             try:
                 assert_jd_editable(session, jd_id)

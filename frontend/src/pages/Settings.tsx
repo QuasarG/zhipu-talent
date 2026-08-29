@@ -124,11 +124,18 @@ export default function Settings() {
       api.health().then(setHealth).catch(() => setHealth(null));
       setEditingKey(null);
       setEditValue("");
+      // 部分成功也要如实提示：文件已写但运行时没刷新 / 有键被拒
+      const rejected = Object.keys(result.rejected || {});
+      const okAll = result.audit_status !== "failed" && rejected.length === 0 && result.runtime_refreshed;
       setSaveMsg({
-        ok: result.audit_status !== "failed",
+        ok: okAll,
         text: result.audit_status === "failed"
           ? t("{key} 已更新，但审计记录失败，请联系管理员", { key })
-          : t("{key} 已更新", { key }),
+          : rejected.length > 0
+            ? t("{key} 已更新；以下键未接受：{keys}", { key, keys: rejected.join(", ") })
+            : !result.runtime_refreshed
+              ? t("{key} 已写入文件，但运行时刷新失败，重启服务后生效", { key })
+              : t("{key} 已更新", { key }),
       });
     } catch {
       setSaveMsg({ ok: false, text: t("{key} 更新失败", { key }) });

@@ -7,9 +7,12 @@ gated=True 的工具 handler 不写库，只返回 {requires_confirmation, kind,
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from agi_talent_radar.core.db.orm import (
     CandidateJdAssessmentORM,
@@ -222,8 +225,9 @@ def tool_search_knowledge(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
     vector = embed_texts([query])[0]
     try:
         hits = store.search(vector, top_k=top_k)
-    except Exception as exc:  # noqa: BLE001
-        return {"hits": [], "summary": f"向量库暂不可用：{exc}"}
+    except Exception:  # noqa: BLE001
+        logger.warning("知识库向量检索失败", exc_info=True)
+        return {"hits": [], "summary": "向量库暂不可用，请稍后重试或改用库内人物工具"}
     items = []
     for hit in hits:
         payload = hit.payload or {}

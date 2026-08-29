@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects import mysql
@@ -71,6 +72,15 @@ class CandidateORM(Base):
     """
 
     __tablename__ = "candidates"
+    # 一人一档：person_id 非空时唯一（NULL 档案不受限；v29 迁移建同名索引）
+    __table_args__ = (
+        Index(
+            "uq_candidates_person_id",
+            "person_id",
+            unique=True,
+            sqlite_where=text("person_id IS NOT NULL"),
+        ),
+    )
 
     id = Column(String(32), primary_key=True)
     name = Column(String(128), default="")

@@ -49,6 +49,19 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return resp.json();
 }
 
+// 统一认证 fetch：非 JSON 场景（文件上传、SSE 流）也要一致的 401 处理，
+// 会话过期时派发同一事件由全局边界跳登录，而不是各调用点自行其是。
+export async function authedFetch(url: string, init?: RequestInit): Promise<Response> {
+  const resp = await fetch(BASE + url, { cache: "no-store", ...init });
+  if (resp.status === 401) {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: { url } }));
+    }
+    throw new UnauthorizedError();
+  }
+  return resp;
+}
+
 // ---- 候选人 ----
 export const api = {
   candidates: {
@@ -306,7 +319,7 @@ export const api = {
     get: (token: string) => fetchJSON<PersonDetail>(`/api/share/${token}`),
   },
   import: (formData: FormData) =>
-    fetch(BASE + "/api/import-file", { method: "POST", body: formData }),
+    authedFetch("/api/import-file", { method: "POST", body: formData }),
   chat: {
     listConversations: () => fetchJSON<ChatConversation[]>("/api/conversations"),
     createConversation: () =>
@@ -325,7 +338,7 @@ export const api = {
     deleteConversation: (id: string) =>
       fetchJSON<{ id: string; deleted: boolean }>(`/api/conversations/${id}`, { method: "DELETE" }),
     askSSE: (conversationId: string, prompt: string, lang: "zh" | "en" = "zh") =>
-      fetch(BASE + "/api/knowledge/ask", {
+      authedFetch("/api/knowledge/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation_id: conversationId, prompt, lang }),
@@ -336,7 +349,7 @@ export const api = {
       decision: Record<string, unknown>,
       lang: "zh" | "en" = "zh"
     ) =>
-      fetch(BASE + "/api/knowledge/action", {
+      authedFetch("/api/knowledge/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation_id: conversationId, action_id: actionId, decision, lang }),
@@ -390,7 +403,7 @@ export const api = {
         method: "POST",
       }),
     chatSSE: (sid: string, message: string) =>
-      fetch(BASE + "/api/grill/chat", {
+      authedFetch("/api/grill/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sid, message }),

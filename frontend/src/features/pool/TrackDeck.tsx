@@ -12,7 +12,7 @@ import ScoreOverview from "@/features/resume/ScoreOverview";
 import Tabs from "@/components/ui/Tabs";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
-import { parseSessionEnvelope } from "@/lib/sessionState";
+import { parseSessionEnvelope, sessionKey } from "@/lib/sessionState";
 
 interface DeckEntry {
   personId: string;
@@ -49,7 +49,7 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
   // name 一并存：恢复不依赖左列表加载时机（旧结构纯 id 数组兼容读）
   const [deck, setDeck] = useState<DeckEntry[]>(() => {
     const parsed = parseSessionEnvelope(
-      sessionStorage.getItem(DECK_KEY),
+      sessionStorage.getItem(sessionKey(DECK_KEY)),
       DECK_VERSION,
       [] as Array<string | { personId: string; name: string }>,
       (legacy) => Array.isArray(legacy) ? legacy as Array<string | { personId: string; name: string }> : [],
@@ -81,7 +81,7 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
   useEffect(() => {
     if (!deckResolved) return;
     try {
-      sessionStorage.setItem(DECK_KEY, JSON.stringify({
+      sessionStorage.setItem(sessionKey(DECK_KEY), JSON.stringify({
         version: DECK_VERSION,
         data: deck.map((e) => ({ personId: e.personId, name: e.name })),
       }));

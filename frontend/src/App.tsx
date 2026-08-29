@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { lazy, Suspense, useState, useEffect } from "react";
 import { api, UNAUTHORIZED_EVENT } from "./lib/api";
+import { setSessionNamespace } from "./lib/sessionState";
 import { useI18n } from "./lib/i18n";
 import NavRail from "./components/layout/NavRail";
 import LoadingIndicator from "./components/ui/LoadingIndicator";
@@ -39,6 +40,11 @@ function App() {
   useEffect(() => {
     api.auth.status().then((d) => setCurrentUser(d.user)).catch(() => setCurrentUser(null));
   }, []);
+
+  // sessionStorage 用户命名空间：换号/登出时清旧用户的会话键（见 sessionState.ts）
+  useEffect(() => {
+    setSessionNamespace(currentUser ? currentUser.id : "");
+  }, [currentUser]);
 
   useEffect(() => {
     const handleUnauthorized = () => setCurrentUser(null);

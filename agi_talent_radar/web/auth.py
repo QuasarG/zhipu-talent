@@ -238,10 +238,15 @@ def build_auth_blueprint() -> Blueprint:
 
 
 def configure_app_session(app) -> None:
-    """配置 Flask session secret。
+    """配置 Flask session secret 与 Cookie 安全属性。
 
     未配置 FLASK_SESSION_SECRET 时打印警告（不崩溃，便于本地开发）。
     生产环境必须配置。
+
+    Cookie 安全属性：
+    - HttpOnly + SameSite=Lax 默认开启；
+    - Secure 由 FLASK_SESSION_COOKIE_SECURE=1 显式开启（HTTPS 部署时设置；
+      裸 HTTP 下开 Secure 会导致 Cookie 无法下发，因此不默认开）。
     """
     secret = _read_session_secret()
     if not secret:
@@ -256,6 +261,13 @@ def configure_app_session(app) -> None:
 
         secret = _secrets.token_hex(32)
     app.secret_key = secret
+    import os as _os
+
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=_os.getenv("FLASK_SESSION_COOKIE_SECURE", "0") == "1",
+    )
 
 
 __all__ = [

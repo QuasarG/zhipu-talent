@@ -204,4 +204,8 @@ export default {
   "前往人才评估选择候选人与岗位发起准入评估": "Go to Talent Evaluation, pick a candidate and a JD to start an admission assessment",
   "去评估": "Evaluate",
   "/100 加权总分（各岗位详情见评估页）": "/100 weighted total (per-JD details in Talent Evaluation)",
+  "面试准入（旧口径）": "Admission (legacy scope)",
+  "岗位准入": "Admission by JD",
+  "按岗位分别判断，不代表录用": "Judged per JD; not a hiring decision",
+  "分数与完整证据见人才评估页": "See Talent Evaluation for scores and full evidence",
 } as Record<string, string>;

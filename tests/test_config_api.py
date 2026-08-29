@@ -26,7 +26,7 @@ from agi_talent_radar.web.config_api import (
     _list_config_audits,
     _record_config_audits,
     update_env,
-    test_llm_connection,
+    test_llm_connection as llm_connection_probe,
     build_config_blueprint,
 )
 
@@ -234,7 +234,7 @@ class TestLLMConnection(unittest.TestCase):
             "agi_talent_radar.web.config_api.get_settings",
             return_value=Settings(values={}),
         ):
-            result = test_llm_connection()
+            result = llm_connection_probe()
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "unconfigured")
 

@@ -20,6 +20,8 @@ export default {
   "外部服务 Key": "External Service Keys",
   "{key} 已更新": "{key} updated",
   "{key} 已更新，但审计记录失败，请联系管理员": "{key} updated, but the audit record failed. Contact an administrator.",
+  "{key} 已更新；以下键未接受：{keys}": "{key} updated; the following keys were rejected: {keys}",
+  "{key} 已写入文件，但运行时刷新失败，重启服务后生效": "{key} saved to file, but the runtime refresh failed. Restart the service to apply it.",
   "{key} 更新失败": "Failed to update {key}",
   "智谱开放平台": "Zhipu Open Platform",
   "一把 Key 通吃：GLM-5.3-Flash 主模型（文本与多模态），以及 Web Search、Embedding 与云端 OCR": "One key for everything: GLM-5.3-Flash for text and multimodal calls, plus Web Search, Embedding, and cloud OCR",

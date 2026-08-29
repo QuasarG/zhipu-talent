@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_  # noqa: F401  (and_/or_ 保留给查询构造辅助；大批次已改分块 IN)
 
 from agi_talent_radar.agents.interview_admission import (
     AssessmentCard,
@@ -93,6 +93,27 @@ def generate_and_store_card(jd_id: str, supplements: list[str]) -> dict[str, Any
         raise
 
 
+# 大批次分块查询步长：or_(and_(...), ...) 展开在 SQLite 会撞表达式树深度上限，
+# 任何数据库也不该为上千配对生成单条巨型 SQL；IN 分块后每条只有 N 个参数。
+_PAIR_QUERY_CHUNK = 200
+
+
+def _existing_pair_rows(session, model, pairs: list[tuple[str, str]], extra_filter=None) -> list:
+    """按 (candidate_id, jd_id) 分块查询，返回去重后的行。"""
+    found: dict[tuple[str, str], Any] = {}
+    for start in range(0, len(pairs), _PAIR_QUERY_CHUNK):
+        chunk = pairs[start:start + _PAIR_QUERY_CHUNK]
+        candidate_filter = model.candidate_id.in_({c for c, _ in chunk})
+        query = session.query(model).filter(candidate_filter)
+        if extra_filter is not None:
+            query = query.filter(extra_filter)
+        for row in query.all():
+            key = (row.candidate_id, row.jd_id)
+            if key in {(c, j) for c, j in chunk}:
+                found.setdefault(key, row)
+    return list(found.values())
+
+
 def start_batch(
     candidate_ids: list[str],
     jd_ids: list[str],
@@ -132,36 +153,21 @@ def start_batch(
                 raise ValueError("request_id 已用于另一组评估配对。")
             return batch_to_dict(existing_batch)
 
-        running = (
-            session.query(InterviewAssessmentRunORM)
-            .filter(
-                or_(*[
-                    and_(
-                        InterviewAssessmentRunORM.candidate_id == candidate_id,
-                        InterviewAssessmentRunORM.jd_id == jd_id,
-                    )
-                    for candidate_id, jd_id in normalized_pairs
-                ]),
-                InterviewAssessmentRunORM.status.in_(("queued", "running")),
-            )
-            .first()
+        running_rows = _existing_pair_rows(
+            session,
+            InterviewAssessmentRunORM,
+            normalized_pairs,
+            extra_filter=InterviewAssessmentRunORM.status.in_(("queued", "running")),
         )
-        if running is not None:
+        if running_rows:
             raise ValueError("所选候选人–JD 配对正在评估，请等待当前运行结束。")
-        repeated = (
-            session.query(CandidateJdAssessmentORM)
-            .filter(
-                or_(*[
-                    and_(
-                        CandidateJdAssessmentORM.candidate_id == candidate_id,
-                        CandidateJdAssessmentORM.jd_id == jd_id,
-                    )
-                    for candidate_id, jd_id in normalized_pairs
-                ]),
-                CandidateJdAssessmentORM.is_valid.is_(True),
-            )
-            .count()
+        repeated_rows = _existing_pair_rows(
+            session,
+            CandidateJdAssessmentORM,
+            normalized_pairs,
+            extra_filter=CandidateJdAssessmentORM.is_valid.is_(True),
         )
+        repeated = len(repeated_rows)
         normalized_force_reason = force_reason.strip()
         if repeated and not normalized_force_reason:
             raise ValueError("所选配对包含已有有效报告；强制重评必须填写原因。")

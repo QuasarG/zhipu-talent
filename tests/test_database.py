@@ -208,6 +208,65 @@ class DatabaseTest(unittest.TestCase):
             self.assertNotEqual(first.id, second.id)
             self.assertEqual(_count(session, PersonORM), 2)
 
+    def test_person_three_stage_name_only_then_orgs_stay_separate(self) -> None:
+        """P0 回归：仅姓名建档 → 补机构甲 → 同名机构乙，不得并入同一人。"""
+        with self.Session() as session:
+            stage1 = get_or_create_person(session, name="张三")
+            self.assertEqual(_count(session, PersonORM), 1)
+
+            # 第二阶段：带机构甲导入 → 渐进补全到第一个人并升级指纹
+            stage2 = get_or_create_person(session, name="张三", org="机构甲")
+            self.assertEqual(stage1.id, stage2.id)
+            self.assertEqual(stage2.org, "机构甲")
+            self.assertEqual(_count(session, PersonORM), 1)
+
+            # 第三阶段：同名但机构乙 → 必须建独立人物，绝不并入
+            stage3 = get_or_create_person(session, name="张三", org="机构乙")
+            self.assertNotEqual(stage1.id, stage3.id)
+            self.assertEqual(_count(session, PersonORM), 2)
+            self.assertEqual({p.org for p in session.query(PersonORM).all()}, {"机构甲", "机构乙"})
+
+    def test_person_name_only_never_merges_into_existing_strong_identity(self) -> None:
+        """仅姓名的新导入不归并到已有强身份的同名人（信息不足不猜）。"""
+        with self.Session() as session:
+            strong = get_or_create_person(session, name="王五", org="清华")
+            bare = get_or_create_person(session, name="王五")
+
+            self.assertNotEqual(strong.id, bare.id)
+            self.assertEqual(_count(session, PersonORM), 2)
+
+    def test_person_fingerprint_upgrades_after_direction_completion(self) -> None:
+        """B-014 行为保持：核验建档后补方向，仍归并且指纹升级到全量。"""
+        from agi_talent_radar.core.persons import person_fingerprint
+
+        with self.Session() as session:
+            first = get_or_create_person(session, name="赵六", org="中科院")
+            second = get_or_create_person(session, name="赵六", org="中科院", direction="多模态")
+
+            self.assertEqual(first.id, second.id)
+            self.assertEqual(second.direction, "多模态")
+            self.assertEqual(second.fingerprint, person_fingerprint("赵六", "中科院", "多模态"))
+            self.assertEqual(_count(session, PersonORM), 1)
+
+    def test_person_ambiguous_compatible_matches_flag_conflict_not_merge(self) -> None:
+        """多个兼容候选无法判定时标记 identity_conflict，不自动归并。"""
+        with self.Session() as session:
+            # 两个仅姓名的同名档（绕过 get_or_create 用不同 direction 占位指纹后清空）
+            a = PersonORM(id="pa", name="钱七", direction="占位A", fingerprint="fp-a-unique")
+            b = PersonORM(id="pb", name="钱七", direction="占位B", fingerprint="fp-b-unique")
+            session.add_all([a, b])
+            session.flush()
+            a.direction = ""
+            b.direction = ""
+            session.flush()
+
+            merged = get_or_create_person(session, name="钱七", org="新机构")
+            # 两个 org 为空的同名档都兼容 → 不唯一 → 新建独立人物
+            self.assertNotIn(merged.id, {a.id, b.id})
+            self.assertEqual(_count(session, PersonORM), 3)
+            self.assertTrue(a.identity_conflict)
+            self.assertTrue(b.identity_conflict)
+
     def test_config_change_audit_table_exists_without_secret_value_column(self) -> None:
         columns = {column["name"] for column in inspect(self.engine).get_columns("config_change_audit")}
         self.assertEqual(columns, {"id", "config_key", "changed_by", "created_at"})
@@ -278,6 +337,37 @@ class DatabaseTest(unittest.TestCase):
         self.assertTrue({"persons", "external_facts", "reputation_reports", "tasks"} <= tables)
         evaluation_columns = {column["name"] for column in inspect(self.engine).get_columns("evaluations")}
         self.assertTrue({"person_id", "config_version"} <= evaluation_columns)
+        with self.Session() as session:
+            self.assertIsNotNone(session.get(SchemaVersionORM, LATEST_SCHEMA_VERSION))
+
+    def test_one_person_one_candidate_unique_index(self) -> None:
+        # 干净库：一个 person 只能挂一个 candidate，NULL 不受限
+        ensure_schema(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+        with self.Session() as session:
+            session.add(PersonORM(id="person-u1", name="甲", fingerprint="fp-u1"))
+            session.add(CandidateORM(id="candidate-u1", name="甲", person_id="person-u1"))
+            session.commit()
+            session.add(CandidateORM(id="candidate-u2", name="甲", person_id="person-u1"))
+            with self.assertRaises(Exception):
+                session.commit()
+            session.rollback()
+            session.add(CandidateORM(id="candidate-u3", name="乙", person_id=None))
+            session.commit()
+
+    def test_one_person_one_candidate_skips_on_dirty_data(self) -> None:
+        # 存量重复：迁移不崩溃（降索引+告警），其余 schema 照常就绪
+        with self.Session() as session:
+            session.add(PersonORM(id="person-d1", name="丙", fingerprint="fp-d1"))
+            session.add(CandidateORM(id="candidate-d1", name="丙", person_id="person-d1"))
+            session.add(CandidateORM(id="candidate-d2", name="丙", person_id="person-d1"))
+            session.execute(
+                text("DROP INDEX IF EXISTS uq_candidates_person_id")
+            )
+            session.commit()
+        ensure_schema(self.engine)
+        indexes = {index["name"] for index in inspect(self.engine).get_indexes("candidates")}
+        self.assertNotIn("uq_candidates_person_id", indexes)
         with self.Session() as session:
             self.assertIsNotNone(session.get(SchemaVersionORM, LATEST_SCHEMA_VERSION))
 
