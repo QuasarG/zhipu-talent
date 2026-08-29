@@ -51,7 +51,6 @@ export default function AdmissionPane({
 
   onCancelRun,
 
-  onExitCreate,
   onStartBatch,
 }: {
   creating: boolean;
@@ -80,7 +79,6 @@ export default function AdmissionPane({
   onDraftJdSearch: (value: string) => void;
   onSelectNode: (node: AdmissionGraphNode) => void;
   onCancelRun: (runId: string) => void;
-  onExitCreate: () => void;
   onStartBatch: (
     pairs: Array<{ candidate_id: string; jd_id: string }>,
     requestId: string,
@@ -132,7 +130,6 @@ export default function AdmissionPane({
         onJdIds={onDraftJdIds}
         starting={starting}
         onStart={onStartBatch}
-        onExit={onExitCreate}
       />
     );
   }

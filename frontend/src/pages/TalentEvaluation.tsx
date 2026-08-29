@@ -497,9 +497,11 @@ export default function TalentEvaluation() {
               </div>
             ) : batch && TERMINAL_BATCH_STATUSES.has(batch.status) ? (
               <Button variant="tonal" icon="close" onClick={resetBatch}>{t("关闭已完成批次")}</Button>
-            ) : uiState !== "selecting" ? (
+            ) : uiState === "selecting" ? (
+              <Button variant="text" icon="close" onClick={exitCreate}>{t("退出选择")}</Button>
+            ) : (
               <Button variant="filled" icon="add" onClick={beginCreate}>{t("新建准入评估")}</Button>
-            ) : null}
+            )}
           </>
         }
       />
@@ -579,7 +581,6 @@ export default function TalentEvaluation() {
               onDraftJdSearch={setDraftJdSearch}
               onSelectNode={selectGraphNode}
               onCancelRun={(runId) => void cancelRun(runId)}
-              onExitCreate={exitCreate}
               onStartBatch={startBatch}
             />
           )}

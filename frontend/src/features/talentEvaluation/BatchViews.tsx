@@ -49,7 +49,6 @@ export function NewBatchPanel({
   onJdIds,
   starting,
   onStart,
-  onExit,
 }: {
   candidates: CandidateBrief[];
   jds: JdEntry[];
@@ -69,7 +68,6 @@ export function NewBatchPanel({
     requestId: string,
     forceReason: string,
   ) => Promise<void>;
-  onExit: () => void;
 }) {
   const { t } = useI18n();
   const [includeExisting, setIncludeExisting] = useState(false);
@@ -123,14 +121,11 @@ export function NewBatchPanel({
 
   return (
     <Card variant="filled" className="min-h-0 overflow-hidden flex flex-col">
-      <div className="flex items-center justify-between border-b border-outline-variant px-3 py-3 shrink-0">
-        <div>
-          <p className="text-title">{t("新建准入评估")}</p>
-          <p className="mt-0.5 text-label text-on-surface-variant">
-            {t("选择一批候选人和岗位，提交前确认配对数量；这是临时选择模式，不改变左侧文件夹")}
-          </p>
-        </div>
-        <Button variant="text" icon="close" onClick={onExit}>{t("退出选择")}</Button>
+      <div className="border-b border-outline-variant px-3 py-3 shrink-0">
+        <p className="text-title">{t("新建准入评估")}</p>
+        <p className="mt-0.5 text-label text-on-surface-variant">
+          {t("选择一批候选人和岗位，提交前确认配对数量；这是临时选择模式，不改变左侧文件夹")}
+        </p>
       </div>
 
       <div className="grid flex-1 min-h-0 grid-cols-1 gap-0 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden admission-panel-scrollbar">
