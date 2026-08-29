@@ -27,10 +27,7 @@ import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
 import Tabs from "@/components/ui/Tabs";
 import ResumeContent, { OriginalPreview } from "@/features/resume/ResumeContent";
-import {
-  buildBatchRiskPlan,
-  MAX_BATCH_PAIRS,
-} from "./talentEvaluationModel";
+import { buildBatchRiskPlan } from "./talentEvaluationModel";
 
 // ---- 新建准入评估（批量选择临时模式，docs/rebuild.md §3.2） ----
 
@@ -110,7 +107,7 @@ export function NewBatchPanel({
     [activeRuns, assessments, candidateIds, candidates, includeExisting, jdIds, jds],
   );
   const forceReasonRequired = includeExisting && plan.existingCount > 0;
-  const canReview = plan.runnablePairs.length > 0 && !plan.exceedsLimit;
+  const canReview = plan.runnablePairs.length > 0;
 
   const toggle = (current: Set<string>, id: string, onChange: (value: Set<string>) => void) => {
     const next = new Set(current);
@@ -248,10 +245,9 @@ export function NewBatchPanel({
             </p>
           )}
           <p className="text-label text-on-surface-variant">
-            {t("本次运行 {n} 个配对 · 预计至少 {calls} 次模型调用 · 单批上限 {limit}", {
+            {t("本次运行 {n} 个配对 · 预计至少 {calls} 次模型调用 · 超出并发的配对自动排队", {
               n: plan.runnablePairs.length,
               calls: plan.estimatedModelCalls,
-              limit: MAX_BATCH_PAIRS,
             })}
           </p>
           <div className="ml-auto flex items-center gap-2">
@@ -264,11 +260,9 @@ export function NewBatchPanel({
                 setConfirming(true);
               }}
             >
-              {plan.exceedsLimit
-                ? t("超过单批上限")
-                : plan.runnablePairs.length
-                  ? t("检查并确认 {n} 个配对", { n: plan.runnablePairs.length })
-                  : t("先从两侧完成选择")}
+              {plan.runnablePairs.length
+                ? t("检查并确认 {n} 个配对", { n: plan.runnablePairs.length })
+                : t("先从两侧完成选择")}
             </Button>
           </div>
         </div>

@@ -134,11 +134,21 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
         self.assertEqual(batch["total_pairs"], 2)
         self.assertEqual(submit.call_count, 2)
 
-    def test_batch_pair_limit_is_enforced_before_database_writes(self) -> None:
-        pairs = [(f"candidate-{index}", "jd-1") for index in range(service.MAX_BATCH_PAIRS + 1)]
-        with patch.object(service, "get_session", self.session_scope):
-            with self.assertRaisesRegex(ValueError, "单批最多"):
-                service.start_batch([], [], None, pairs=pairs)
+    def test_large_batch_pairs_are_all_accepted_no_cap(self) -> None:
+        # 单批上限已移除：大批次全量入队，由线程池排队消化（模型便宜，成本可控）
+        pairs = [(f"candidate-{index}", "jd-1") for index in range(2, 122)]
+        with self.Session() as session:
+            for candidate_id, _ in pairs:
+                session.add(CandidateORM(id=candidate_id, name=candidate_id, raw_text="完成 Agent benchmark"))
+            session.commit()
+
+        with patch.object(service, "get_session", self.session_scope), patch.object(
+            service._PAIR_EXECUTOR, "submit"
+        ) as submit:
+            batch = service.start_batch([], [], None, pairs=pairs)
+
+        self.assertEqual(batch["total_pairs"], 120)
+        self.assertEqual(submit.call_count, 120)
 
     def test_failed_force_run_keeps_old_current_report(self) -> None:
         with self.Session() as session:

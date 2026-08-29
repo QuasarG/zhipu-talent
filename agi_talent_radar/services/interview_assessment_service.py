@@ -31,7 +31,6 @@ from agi_talent_radar.core.models import CandidateResume
 
 
 ASSESSMENT_RULE_VERSION = "interview-admission-v1"
-MAX_BATCH_PAIRS = max(1, int(os.getenv("ADMISSION_MAX_BATCH_PAIRS", "20")))
 _PAIR_EXECUTOR = ThreadPoolExecutor(
     max_workers=max(1, int(os.getenv("ADMISSION_PAIR_CONCURRENCY", "50"))),
     thread_name_prefix="admission-pair",
@@ -112,8 +111,6 @@ def start_batch(
     ))
     if not normalized_pairs:
         raise ValueError("至少选择一个候选人–JD 配对。")
-    if len(normalized_pairs) > MAX_BATCH_PAIRS:
-        raise ValueError(f"单批最多允许 {MAX_BATCH_PAIRS} 个配对。")
     normalized_request_id = (request_id or uuid4().hex).strip()
     if len(normalized_request_id) > 64:
         raise ValueError("request_id 最长 64 个字符。")

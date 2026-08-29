@@ -6,8 +6,6 @@ import type {
   JdEntry,
 } from "@/lib/types";
 
-export const MAX_BATCH_PAIRS = 20;
-
 export type EvaluationUiState = "browsing" | "selecting" | "running" | "viewingReport";
 
 export function resolveEvaluationUiState(input: {
@@ -41,7 +39,6 @@ export interface BatchRiskPlan {
   existingCount: number;
   activeCount: number;
   estimatedModelCalls: number;
-  exceedsLimit: boolean;
 }
 
 export function buildBatchRiskPlan(
@@ -95,7 +92,6 @@ export function buildBatchRiskPlan(
       (total, item) => total + item.estimatedModelCalls,
       0,
     ),
-    exceedsLimit: runnablePairs.length > MAX_BATCH_PAIRS,
   };
 }
 

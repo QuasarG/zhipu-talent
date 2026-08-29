@@ -239,8 +239,8 @@ test("existing reports are excluded by default and require explicit inclusion", 
   assert.equal(forced.runnablePairs.length, 1);
 });
 
-test("active pairs are never runnable and oversized batches are rejected", () => {
-  const candidates = Array.from({ length: 21 }, (_, index) => brief(`c${index}`, `候选人${index}`));
+test("active pairs are never runnable and large batches have no cap", () => {
+  const candidates = Array.from({ length: 120 }, (_, index) => brief(`c${index}`, `候选人${index}`));
   const jobs = [{ id: "j1", title: "岗位一", assessment_card: card({ t1: "primary" }) }];
   const plan = buildBatchRiskPlan(
     candidates.map((item) => item.id),
@@ -251,17 +251,8 @@ test("active pairs are never runnable and oversized batches are rejected", () =>
     [run("c0", "j1")],
   );
   assert.equal(plan.activeCount, 1);
-  assert.equal(plan.runnablePairs.length, 20);
-  assert.equal(plan.exceedsLimit, false);
-  const oversized = buildBatchRiskPlan(
-    [...candidates.map((item) => item.id), "c21"],
-    ["j1"],
-    [...candidates, brief("c21", "候选人21")],
-    jobs,
-    [],
-    [],
-  );
-  assert.equal(oversized.exceedsLimit, true);
+  // 单批上限已移除：119 个可运行配对全部放行，由后端线程池排队消化
+  assert.equal(plan.runnablePairs.length, 119);
 });
 
 test("evaluation UI state has one explicit precedence order", () => {
