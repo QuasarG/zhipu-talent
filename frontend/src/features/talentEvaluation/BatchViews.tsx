@@ -29,6 +29,18 @@ import Tabs from "@/components/ui/Tabs";
 import ResumeContent, { OriginalPreview } from "@/features/resume/ResumeContent";
 import { buildBatchRiskPlan } from "./talentEvaluationModel";
 
+// crypto.randomUUID 仅安全上下文（HTTPS/localhost）可用；线上裸 HTTP 部署时
+// 不存在，用 getRandomValues 手搓等价实现（RFC 4122 v4），避免点确认即白屏。
+function newRequestId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 // ---- 新建准入评估（批量选择临时模式，docs/rebuild.md §3.2） ----
 
 export function NewBatchPanel({
@@ -256,7 +268,7 @@ export function NewBatchPanel({
               icon="fact_check"
               disabled={!canReview || starting}
               onClick={() => {
-                setRequestId((current) => current || crypto.randomUUID());
+                setRequestId((current) => current || newRequestId());
                 setConfirming(true);
               }}
             >
