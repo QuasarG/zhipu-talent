@@ -1907,11 +1907,17 @@ def _person_candidate_fields(candidate, latest_eval) -> dict[str, Any]:
 
 
 def _latest_jd_assessment(person):
-    """最新一条有效准入评估（新表：一岗一评）；无则 None。"""
+    """最新一条有效准入评估（新表：一岗一评）；无则 None。
+
+    排序口径与 person_assessment_view 一致：updated_at 优先（重评会原地覆盖
+    updated_at），同刻回退 created_at/id，禁止只用 created_at。
+    """
     best = None
     for c in getattr(person, "candidates", []) or []:
         for a in getattr(c, "jd_assessments", []) or []:
-            if a.status == "completed" and a.is_valid and (best is None or a.created_at > best.created_at):
+            if a.status != "completed" or not a.is_valid:
+                continue
+            if best is None or (a.updated_at, a.created_at, a.id) > (best.updated_at, best.created_at, best.id):
                 best = a
     return best
 
