@@ -9,7 +9,7 @@ import Button from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import { useI18n } from "@/lib/i18n";
-import { ENGAGEMENT_LABELS } from "./talentPoolModel";
+import { ENGAGEMENT_LABELS, visibleTalentGroupKeys } from "./talentPoolModel";
 
 interface Props {
   persons: PersonBrief[];
@@ -21,6 +21,8 @@ interface Props {
   onAddPerson?: () => void;
   onManageGroups?: () => void;
   showBatchEvaluate?: boolean;
+  isFiltering?: boolean;
+  onClearFilters?: () => void;
 }
 
 export function classifyTrack(p: { direction?: string; dominant_track?: string; person_type?: string }): string {
@@ -228,7 +230,7 @@ function GroupSection({
   );
 }
 
-export default function TalentList({ persons, selectedId, onSelect, onDelete, groups = [], onChanged, onAddPerson, onManageGroups, showBatchEvaluate }: Props) {
+export default function TalentList({ persons, selectedId, onSelect, onDelete, groups = [], onChanged, onAddPerson, onManageGroups, showBatchEvaluate, isFiltering = false, onClearFilters }: Props) {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(loadCollapsed);
   const [batchMode, setBatchMode] = useState(false);
@@ -268,12 +270,18 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
     ungrouped.sort(sortByScore);
     return { byGroup, ungrouped };
   }, [persons, groups]);
+  const visibleGroupKeys = useMemo(() => {
+    const counts: Record<string, number> = { ungrouped: grouped.ungrouped.length };
+    for (const group of groups) counts[group.id] = (grouped.byGroup[group.id] || []).length;
+    return new Set(visibleTalentGroupKeys(counts, isFiltering));
+  }, [grouped, groups, isFiltering]);
 
   const toggleGroup = (id: string) => setCollapsed((c) => ({ ...c, [id]: !c[id] }));
   const toggleSelect = useCallback((id: string) => {
     setSelected((s) => {
       const next = new Set(s);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -387,6 +395,26 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-1">
+          {persons.length === 0 ? (
+            <div className="flex flex-1 min-h-[220px] flex-col items-center justify-center px-5 py-8 text-center">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-low text-on-surface-variant">
+                <Icon name={isFiltering ? "filter_alt_off" : "person_search"} size={23} />
+              </span>
+              <p className="mt-3 text-body font-medium text-on-surface">
+                {isFiltering ? t("无匹配人才") : t("人才库还是空的")}
+              </p>
+              <p className="mt-1 max-w-[16rem] text-body-sm text-on-surface-variant text-pretty">
+                {isFiltering ? t("当前条件没有命中人才，请调整或清除筛选条件。") : t("手动加入人才或导入简历后，将在这里统一管理。")}
+              </p>
+              {isFiltering && onClearFilters && (
+                <Button variant="tonal" icon="filter_alt_off" className="mt-4 min-h-10" onClick={onClearFilters}>
+                  {t("清除筛选")}
+                </Button>
+              )}
+            </div>
+          ) : null}
+
+          {persons.length > 0 && visibleGroupKeys.has("ungrouped") && (
           <GroupSection
             dropId="drop-ungrouped"
             title={t("未分组")}
@@ -398,8 +426,9 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
               ? <div className="text-center py-3 text-body-sm text-on-surface-variant">{t("无")}</div>
               : grouped.ungrouped.map(renderRow)}
           </GroupSection>
+          )}
 
-          {groups.map((g) => (
+          {persons.length > 0 && groups.filter((g) => visibleGroupKeys.has(g.id)).map((g) => (
             <GroupSection
               key={g.id}
               dropId={`drop-group-${g.id}`}
@@ -425,9 +454,6 @@ export default function TalentList({ persons, selectedId, onSelect, onDelete, gr
             </GroupSection>
           ))}
 
-          {persons.length === 0 && (
-            <div className="text-center py-8 text-body-sm text-on-surface-variant">{t("无匹配人才")}</div>
-          )}
         </div>
 
         {/* 批量操作底栏：悬浮「移动到」按钮 + hover 弹出分组菜单 */}

@@ -18,7 +18,7 @@ from agi_talent_radar.core.db.orm import (
 from agi_talent_radar.core.db.repository import _replace_evaluation_details
 
 
-LATEST_SCHEMA_VERSION = 26
+LATEST_SCHEMA_VERSION = 28
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -263,6 +263,29 @@ def ensure_schema(engine) -> None:
             26,
             "phase 26: person name note (display priority over extracted name)",
         )
+    if current_version < 27:
+        existing = {
+            column["name"]
+            for column in inspect(engine).get_columns("interview_assessment_batches")
+        }
+        definitions = (
+            ("request_id", "VARCHAR(64)"),
+            ("config_version", "VARCHAR(64) NOT NULL DEFAULT ''"),
+            ("force_reason", "TEXT"),
+        )
+        _add_columns(
+            engine,
+            "interview_assessment_batches",
+            [f"{name} {definition}" for name, definition in definitions if name not in existing],
+        )
+        _record_version(
+            engine,
+            27,
+            "phase 27: admission batch idempotency and explicit rerun audit fields",
+        )
+    if current_version < 28:
+        # config_change_audit 由 create_all 创建；只保存键名、操作者和时间，不保存配置值。
+        _record_version(engine, 28, "add value-free config change audit trail")
     _ensure_indexes(engine)
 
 

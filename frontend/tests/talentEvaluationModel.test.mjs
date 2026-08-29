@@ -3,9 +3,11 @@ import test from "node:test";
 
 import {
   buildCandidateFolders,
+  buildBatchRiskPlan,
   computeScoreBreakdown,
   filterFolders,
   pairChildStatus,
+  resolveEvaluationUiState,
 } from "../src/features/talentEvaluation/talentEvaluationModel.ts";
 
 const brief = (id, name, extra = {}) => ({
@@ -189,7 +191,7 @@ test("weighted total mirrors the deterministic formula Σ(level/4×100×coef) ÷
   assert.equal(breakdown.scoreThresholdMet, true);
 });
 
-test("a primary task below level 2 fails admission even with a high total", () => {
+test("a primary task below level 2 and a score below 60 both fail admission", () => {
   const breakdown = computeScoreBreakdown(
     [
       { task_id: "t1", level: 1 },
@@ -197,10 +199,10 @@ test("a primary task below level 2 fails admission even with a high total", () =
     ],
     card({ t1: "primary", t2: "major" }),
   );
-  // (25×3 + 100×2) / 5 = 55 → 总分达标，但首要任务只有 1 级
+  // (25×3 + 100×2) / 5 = 55 → 总分和首要任务门槛均未达到
   assert.equal(breakdown.total, 55);
   assert.equal(breakdown.primaryThresholdMet, false);
-  assert.equal(breakdown.scoreThresholdMet, true);
+  assert.equal(breakdown.scoreThresholdMet, false);
 });
 
 test("missing card falls back to equal weights for display only", () => {
@@ -208,5 +210,80 @@ test("missing card falls back to equal weights for display only", () => {
     [{ task_id: "t1", level: 2 }, { task_id: "t2", level: 4 }],
     null,
   );
+  assert.equal(breakdown.total, 75);
+});
+
+test("batch plan starts at 0×0 and expands N×M deterministically", () => {
+  const jobs = [{ id: "j1", title: "岗位一", assessment_card: card({ t1: "primary" }) }];
+  assert.equal(buildBatchRiskPlan([], [], [], jobs, [], []).selectedCount, 0);
+  const plan = buildBatchRiskPlan(
+    ["c1", "c2", "c2"],
+    ["j1"],
+    [brief("c1", "甲"), brief("c2", "乙")],
+    jobs,
+    [],
+    [],
+  );
+  assert.equal(plan.selectedCount, 2);
+  assert.equal(plan.runnablePairs.length, 2);
+  assert.equal(plan.estimatedModelCalls, 6);
+});
+
+test("existing reports are excluded by default and require explicit inclusion", () => {
+  const jobs = [{ id: "j1", title: "岗位一", assessment_card: card({ t1: "primary" }) }];
+  const existing = [assessment("c1", "j1")];
+  const safe = buildBatchRiskPlan(["c1"], ["j1"], [brief("c1", "甲")], jobs, existing, []);
+  assert.equal(safe.existingCount, 1);
+  assert.equal(safe.runnablePairs.length, 0);
+  const forced = buildBatchRiskPlan(["c1"], ["j1"], [brief("c1", "甲")], jobs, existing, [], true);
+  assert.equal(forced.runnablePairs.length, 1);
+});
+
+test("active pairs are never runnable and oversized batches are rejected", () => {
+  const candidates = Array.from({ length: 21 }, (_, index) => brief(`c${index}`, `候选人${index}`));
+  const jobs = [{ id: "j1", title: "岗位一", assessment_card: card({ t1: "primary" }) }];
+  const plan = buildBatchRiskPlan(
+    candidates.map((item) => item.id),
+    ["j1"],
+    candidates,
+    jobs,
+    [],
+    [run("c0", "j1")],
+  );
+  assert.equal(plan.activeCount, 1);
+  assert.equal(plan.runnablePairs.length, 20);
+  assert.equal(plan.exceedsLimit, false);
+  const oversized = buildBatchRiskPlan(
+    [...candidates.map((item) => item.id), "c21"],
+    ["j1"],
+    [...candidates, brief("c21", "候选人21")],
+    jobs,
+    [],
+    [],
+  );
+  assert.equal(oversized.exceedsLimit, true);
+});
+
+test("evaluation UI state has one explicit precedence order", () => {
+  assert.equal(resolveEvaluationUiState({ selecting: true, batchStatus: "running", selectedCandidateId: "c", selectedJdId: "j" }), "selecting");
+  assert.equal(resolveEvaluationUiState({ selecting: false, batchStatus: "running", selectedCandidateId: "c", selectedJdId: "j" }), "viewingReport");
+  assert.equal(resolveEvaluationUiState({ selecting: false, batchStatus: "running", selectedCandidateId: null, selectedJdId: null }), "running");
+  assert.equal(resolveEvaluationUiState({ selecting: false, batchStatus: "completed", selectedCandidateId: null, selectedJdId: null }), "browsing");
+  assert.equal(resolveEvaluationUiState({ selecting: false, batchStatus: null, selectedCandidateId: "c", selectedJdId: null }), "browsing");
+});
+
+test("JD cards missing core_tasks no longer crash batch planning or score breakdown", () => {
+  const brokenCard = { id: "j1", title: "岗位一", assessment_card: {} };
+  const plan = buildBatchRiskPlan(
+    ["c1"],
+    ["j1"],
+    [brief("c1", "甲")],
+    [brokenCard],
+    [],
+    [],
+  );
+  assert.equal(plan.selectedCount, 1);
+  assert.equal(plan.estimatedModelCalls, 2);
+  const breakdown = computeScoreBreakdown([{ task_id: "t1", level: 3 }], {});
   assert.equal(breakdown.total, 75);
 });

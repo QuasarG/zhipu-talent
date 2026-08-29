@@ -162,6 +162,10 @@ def build_config_blueprint(env_path: Path | None = None) -> Blueprint:
         # 只返回脱敏配置
         return jsonify(get_settings().to_public_dict())
 
+    @bp.get("/api/config/audit")
+    def config_audit():
+        return jsonify(_list_config_audits())
+
     @bp.put("/api/config")
     def config_update():
         body = request.get_json(silent=True) or {}
@@ -183,7 +187,20 @@ def build_config_blueprint(env_path: Path | None = None) -> Blueprint:
             else:
                 masked_applied[key] = value
         response["applied"] = masked_applied
-        status = 200 if result.applied and not result.rejected else (
+        audit_failed = False
+        response["audit"] = {}
+        response["audit_status"] = "not_required"
+        if result.applied:
+            try:
+                response["audit"] = _record_config_audits(list(result.applied))
+                response["audit_status"] = "recorded"
+            except Exception:  # noqa: BLE001
+                # .env 已原子替换，不能用 500 假装整次更新失败。
+                # 明确返回部分成功，且不回显数据库异常或配置内容。
+                audit_failed = True
+                response["audit_status"] = "failed"
+                response["warning"] = "配置已应用，但变更审计记录失败，请联系管理员检查审计数据库。"
+        status = 200 if result.applied and not result.rejected and not audit_failed else (
             400 if result.rejected and not result.applied else 207
         )
         return jsonify(response), status
@@ -193,6 +210,46 @@ def build_config_blueprint(env_path: Path | None = None) -> Blueprint:
         return jsonify({"llm": test_llm_connection()})
 
     return bp
+
+
+def _record_config_audits(keys: list[str]) -> dict[str, dict[str, str]]:
+    """记录配置键变更；审计表永不接收配置值。"""
+    if not keys:
+        return {}
+    from agi_talent_radar.core.database import get_session
+    from agi_talent_radar.core.db.orm import ConfigChangeAuditORM
+    from agi_talent_radar.web.auth import current_user
+
+    user = current_user()
+    changed_by = (user.display_name or user.username) if user else "system"
+    with get_session() as session:
+        session.add_all(
+            [ConfigChangeAuditORM(config_key=key, changed_by=changed_by) for key in keys]
+        )
+        session.commit()
+    return _list_config_audits(keys)
+
+
+def _list_config_audits(keys: list[str] | None = None) -> dict[str, dict[str, str]]:
+    from agi_talent_radar.core.database import get_session
+    from agi_talent_radar.core.db.orm import ConfigChangeAuditORM
+
+    with get_session() as session:
+        query = session.query(ConfigChangeAuditORM)
+        if keys:
+            query = query.filter(ConfigChangeAuditORM.config_key.in_(keys))
+        rows = query.order_by(
+            ConfigChangeAuditORM.created_at.desc(), ConfigChangeAuditORM.id.desc()
+        ).all()
+        latest: dict[str, dict[str, str]] = {}
+        for row in rows:
+            if row.config_key in latest:
+                continue
+            latest[row.config_key] = {
+                "changed_by": row.changed_by,
+                "changed_at": row.created_at.isoformat() if row.created_at else "",
+            }
+        return latest
 
 
 def _default_env_path() -> Path:

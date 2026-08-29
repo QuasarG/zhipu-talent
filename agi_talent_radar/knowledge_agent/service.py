@@ -14,7 +14,7 @@ def ask_events(conversation_id: str, prompt: str, lang: str = "zh") -> Iterator[
     """POST /api/knowledge/ask 的事件流。"""
     from agi_talent_radar.knowledge_agent.agent import run_agent
 
-    return _stream(lambda session, emit: run_agent(session, conversation_id, prompt, emit, lang))
+    return _stream(lambda session, emit: run_agent(session, conversation_id, prompt, emit, lang), lang)
 
 
 def action_events(
@@ -24,11 +24,12 @@ def action_events(
     from agi_talent_radar.knowledge_agent.agent import resume_agent
 
     return _stream(
-        lambda session, emit: resume_agent(session, conversation_id, action_id, decision, emit, lang)
+        lambda session, emit: resume_agent(session, conversation_id, action_id, decision, emit, lang),
+        lang,
     )
 
 
-def _stream(run: Callable[[Any, Callable], None]) -> Iterator[dict[str, Any]]:
+def _stream(run: Callable[[Any, Callable], None], lang: str = "zh") -> Iterator[dict[str, Any]]:
     from agi_talent_radar.core.database import get_session
 
     events: queue.Queue = queue.Queue()
@@ -40,8 +41,13 @@ def _stream(run: Callable[[Any, Callable], None]) -> Iterator[dict[str, Any]]:
         try:
             with get_session() as session:
                 run(session, emit)
-        except Exception as exc:  # noqa: BLE001
-            emit("error", {"message": str(exc)})
+        except Exception:  # noqa: BLE001
+            message = (
+                "本次回答未能完成，请稍后重试"
+                if lang == "zh"
+                else "This answer could not be completed. Please try again later"
+            )
+            emit("error", {"message": message})
             emit("done", {"status": "completed"})
         finally:
             events.put(None)

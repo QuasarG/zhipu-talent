@@ -8,6 +8,7 @@ import { StatusChip } from "@/components/ui/Chip";
 import SubmitDialog from "./SubmitDialog";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
+import { canSubmitProfile } from "./grillModel";
 
 type FieldState = "empty" | "rag" | "inferred" | "confirmed";
 
@@ -148,6 +149,7 @@ export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables,
 
   const required = Object.values(profile.required_fields);
   const confirmedCount = required.filter((f) => fieldState(f) === "confirmed").length;
+  const canSubmit = canSubmitProfile(confirmedCount, required.length);
   const position = valueText(profile.required_fields.position_name?.value ?? null);
 
   return (
@@ -246,6 +248,7 @@ export default function ProfileCardPanel({ profile: rawProfile, hasDeliverables,
         variant={submitted ? "tonal" : "outlined"}
         icon={submitted ? "check_circle" : "send"}
         className="mt-2 w-full shrink-0"
+        disabled={!submitted && !canSubmit}
         onClick={() => !submitted && setShowSubmit(true)}
       >
         {submitted ? t("已提交给 HR 团队") : t("提交给 HR 团队")}

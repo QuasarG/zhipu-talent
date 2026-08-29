@@ -43,7 +43,7 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
             )
             session.commit()
 
-    def test_valid_current_report_is_replaced_without_a_permission_flag(self) -> None:
+    def test_valid_current_report_requires_an_audited_force_reason(self) -> None:
         with self.Session() as session:
             session.add(
                 CandidateJdAssessmentORM(
@@ -57,10 +57,88 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
 
         with patch.object(service, "get_session", self.session_scope):
             with patch.object(service._PAIR_EXECUTOR, "submit") as submit:
-                batch = service.start_batch(["candidate-1"], ["jd-1"], None)
+                with self.assertRaisesRegex(ValueError, "强制重评必须填写原因"):
+                    service.start_batch(["candidate-1"], ["jd-1"], None)
+                batch = service.start_batch(
+                    ["candidate-1"],
+                    ["jd-1"],
+                    None,
+                    force_reason="岗位要求发生实质变化",
+                )
 
         self.assertEqual(batch["total_pairs"], 1)
+        self.assertEqual(batch["force_reason"], "岗位要求发生实质变化")
         submit.assert_called_once()
+
+    def test_same_request_id_returns_the_original_batch_without_resubmitting(self) -> None:
+        with patch.object(service, "get_session", self.session_scope):
+            with patch.object(service._PAIR_EXECUTOR, "submit") as submit:
+                first = service.start_batch(
+                    ["candidate-1"], ["jd-1"], None, request_id="request-1"
+                )
+                second = service.start_batch(
+                    ["candidate-1"], ["jd-1"], None, request_id="request-1"
+                )
+
+        self.assertEqual(second["id"], first["id"])
+        submit.assert_called_once()
+
+    def test_request_id_cannot_be_reused_for_different_pairs(self) -> None:
+        with self.Session() as session:
+            session.add(
+                JdEntryORM(
+                    id="jd-2",
+                    title="评测研发",
+                    raw_text="建设评测系统",
+                    card_status="ready",
+                    assessment_card=_card(),
+                )
+            )
+            session.commit()
+
+        with patch.object(service, "get_session", self.session_scope), patch.object(
+            service._PAIR_EXECUTOR, "submit"
+        ):
+            service.start_batch(
+                ["candidate-1"], ["jd-1"], None, request_id="request-1"
+            )
+            with self.assertRaisesRegex(ValueError, "另一组"):
+                service.start_batch(
+                    ["candidate-1"], ["jd-2"], None, request_id="request-1"
+                )
+
+    def test_explicit_pairs_do_not_expand_to_a_cartesian_product(self) -> None:
+        with self.Session() as session:
+            session.add(CandidateORM(id="candidate-2", name="候选人二", raw_text="评测"))
+            session.add(
+                JdEntryORM(
+                    id="jd-2",
+                    title="评测研发",
+                    raw_text="建设评测系统",
+                    card_status="ready",
+                    assessment_card=_card(),
+                )
+            )
+            session.commit()
+
+        with patch.object(service, "get_session", self.session_scope), patch.object(
+            service._PAIR_EXECUTOR, "submit"
+        ) as submit:
+            batch = service.start_batch(
+                ["candidate-1", "candidate-2"],
+                ["jd-1", "jd-2"],
+                None,
+                pairs=[("candidate-1", "jd-1"), ("candidate-2", "jd-2")],
+            )
+
+        self.assertEqual(batch["total_pairs"], 2)
+        self.assertEqual(submit.call_count, 2)
+
+    def test_batch_pair_limit_is_enforced_before_database_writes(self) -> None:
+        pairs = [(f"candidate-{index}", "jd-1") for index in range(service.MAX_BATCH_PAIRS + 1)]
+        with patch.object(service, "get_session", self.session_scope):
+            with self.assertRaisesRegex(ValueError, "单批最多"):
+                service.start_batch([], [], None, pairs=pairs)
 
     def test_failed_force_run_keeps_old_current_report(self) -> None:
         with self.Session() as session:
@@ -74,7 +152,9 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
             session.commit()
 
         with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
-            batch = service.start_batch(["candidate-1"], ["jd-1"], None)
+            batch = service.start_batch(
+                ["candidate-1"], ["jd-1"], None, force_reason="验证失败时保留旧报告"
+            )
             with self.Session() as session:
                 run_id = session.query(InterviewAssessmentRunORM.id).filter_by(batch_id=batch["id"]).scalar()
             with patch.object(service, "evaluate_candidate_for_job", side_effect=RuntimeError("模型失败")):
@@ -116,7 +196,9 @@ class InterviewAssessmentServiceTests(unittest.TestCase):
             session.commit()
 
         with patch.object(service, "get_session", self.session_scope), patch.object(service._PAIR_EXECUTOR, "submit"):
-            service.start_batch(["candidate-1"], ["jd-1"], None)
+            service.start_batch(
+                ["candidate-1"], ["jd-1"], None, force_reason="验证报告与活动运行标签"
+            )
             reports = service.list_current_assessments()
             active = service.list_active_runs()
 

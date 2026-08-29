@@ -181,7 +181,7 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
               >
                 {person.latest_jd_decision === "interview" ? t("进入面试") : person.latest_jd_decision === "hold" ? t("待补信息") : t("不进入面试")}
               </StatusChip>
-              <span className="text-headline text-on-surface">{person.latest_jd_score != null ? Math.round(person.latest_jd_score) : "—"}</span>
+              <span className="text-headline text-on-surface">{person.latest_jd_score != null ? person.latest_jd_score.toFixed(1) : "—"}</span>
               <span className="text-body-sm text-on-surface-variant">{t("/100 加权总分（各岗位详情见评估页）")}</span>
             </div>
           </section>
@@ -253,7 +253,7 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
                     {a.decision === "interview" ? t("进入面试") : a.decision === "hold" ? t("待补信息") : t("不进入")}
                   </StatusChip>
                   <span className="min-w-0 flex-1 truncate text-body-sm text-on-surface">{a.jd_title}</span>
-                  <span className="text-label text-on-surface-variant tabular-nums shrink-0">{Math.round(a.fit_score)}</span>
+                  <span className="text-label text-on-surface-variant tabular-nums shrink-0">{a.fit_score.toFixed(1)}</span>
                 </button>
               ))}
             </div>
@@ -284,12 +284,54 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
             {reputation.map((r) => {
               const confirmed = ["approved", "confirmed", "已确认"].includes(r.review_status || "");
               return (
-                <div key={r.id} className="flex items-center gap-2">
-                  <Icon name="campaign" size={18} className="text-on-surface-variant shrink-0" />
-                <span className="text-body-sm text-on-surface flex-1 truncate">{t("舆情核查 · {level}", { level: r.level || "—" })}</span>
-                <StatusChip tone={confirmed ? "success" : "warning"}>
-                    {confirmed ? t("已确认") : t("待核验")}
-                  </StatusChip>
+                <div key={r.id} className="rounded-md border border-outline-variant bg-surface-lowest px-2.5 py-2">
+                  <div className="flex items-center gap-2">
+                    <Icon name="campaign" size={18} className="text-on-surface-variant shrink-0" />
+                    <span className="text-body-sm text-on-surface flex-1 truncate">
+                      {t("舆情核查 · {level}", { level: r.level || "—" })}
+                    </span>
+                    <StatusChip tone={confirmed ? "success" : "warning"}>
+                      {confirmed ? t("已确认") : t("待核验")}
+                    </StatusChip>
+                  </div>
+                  {(r.events || []).length > 0 && (
+                    <div className="mt-2 flex flex-col gap-1.5 pl-6">
+                      {r.events.map((event, index) => {
+                        const eventStatus = String(event.review_status || event.status || "");
+                        const dismissed = eventStatus === "dismissed" || eventStatus === "已驳回";
+                        const title = String(event.title || event.summary || event.category || t("未命名舆情条目"));
+                        const url = String(event.url || "");
+                        return (
+                          <div key={`${r.id}-${index}`} className="flex items-start gap-2 text-body-sm">
+                            <Icon
+                              name={dismissed ? "block" : "verified"}
+                              size={15}
+                              className={dismissed ? "text-on-surface-variant mt-0.5" : "text-success mt-0.5"}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className={dismissed ? "text-on-surface-variant line-through" : "text-on-surface"}>
+                                {title}
+                              </p>
+                              <p className="text-label text-on-surface-variant">
+                                {dismissed ? t("已驳回") : t("已经人工核验")}
+                                {event.sentiment ? ` · ${t(String(event.sentiment) === "negative" ? "负面" : "正面")}` : ""}
+                              </p>
+                            </div>
+                            {/^https?:\/\//i.test(url) && (
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary text-label shrink-0 hover:underline"
+                              >
+                                {t("来源")}
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -306,7 +348,7 @@ export default function TalentDetail({ person, personId, onUpdated, readOnly }: 
             <span className="flex items-center gap-1">
               <Icon name="description" size={15} className="text-on-surface-variant" />
               <span className="text-on-surface">{t("简历评估")}</span>
-              <span className="text-on-surface-variant">{evaluations.length ? `v${evaluations.length}` : t("暂未评估")}</span>
+              <span className="text-on-surface-variant">{evaluations.length ? `v${evaluations.length}` : t("尚未评估")}</span>
             </span>
             <span className="flex items-center gap-1">
               <Icon name="fact_check" size={15} className="text-on-surface-variant" />

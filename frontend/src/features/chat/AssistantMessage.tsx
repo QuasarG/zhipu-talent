@@ -10,6 +10,7 @@ import ToolCallCard from "./ToolCallCard";
 import ActionCard from "./ActionCard";
 import CitationBadge from "./CitationBadge";
 import { useI18n } from "@/lib/i18n";
+import { markdownHeadings } from "./chatNavigationModel";
 
 interface Props {
   message: ChatMessage;
@@ -81,11 +82,21 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
   const renderSegment = (seg: ChatSegment, i: number) => {
     if (seg.type === "text") {
       if (!seg.text.trim()) return null;
+      const headings = markdownHeadings(seg.text, `${message.id}-${i}`);
+      let headingIndex = 0;
+      const renderHeading = (level: 1 | 2 | 3) => ({ children }: { children?: React.ReactNode }) => {
+        const heading = headings[headingIndex++];
+        const Tag = `h${level}` as "h1" | "h2" | "h3";
+        return <Tag id={heading?.id} className="scroll-mt-14 text-wrap-balance">{children}</Tag>;
+      };
       return (
         <div key={i} className="chat-markdown text-on-surface">
           <ReactMarkdown
             remarkPlugins={plugins}
             components={{
+              h1: renderHeading(1),
+              h2: renderHeading(2),
+              h3: renderHeading(3),
               a: ({ href, children }) => {
                 const id = href?.startsWith("#cite-") ? href.slice(6) : "";
                 const citation = id ? citationMap.get(id) : undefined;

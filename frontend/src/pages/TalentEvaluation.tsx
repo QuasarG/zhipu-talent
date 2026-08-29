@@ -20,7 +20,10 @@ import CandidateFolderTree from "@/features/talentEvaluation/CandidateFolderTree
 import AdmissionPane from "@/features/talentEvaluation/AdmissionPane";
 import { BatchQueueCard } from "@/features/talentEvaluation/BatchViews";
 import ImportOverlay from "@/features/resume/ImportOverlay";
-import { buildCandidateFolders } from "@/features/talentEvaluation/talentEvaluationModel";
+import {
+  buildCandidateFolders,
+  resolveEvaluationUiState,
+} from "@/features/talentEvaluation/talentEvaluationModel";
 import { useSessionState } from "@/lib/sessionState";
 import { useI18n } from "@/lib/i18n";
 
@@ -74,6 +77,7 @@ export default function TalentEvaluation() {
   const [restoring, setRestoring] = useState(false);
   const batchIdRef = useRef<string | null>(null);
   const detailIdRef = useRef<string | null>(null);
+  const previousSelectionRef = useRef<{ candidateId: string | null; jdId: string | null } | null>(null);
 
   const folders = useMemo(
     () => buildCandidateFolders(candidates, assessments, activeRuns),
@@ -265,18 +269,26 @@ export default function TalentEvaluation() {
   }, [searchParams, setSearchParams, setSelectedCandidateId, setSelectedJdId, loadShell]);
 
   // ---- 批次操作 ----
-  const startBatch = useCallback(async (candidateIds: string[], jdIds: string[]) => {
-    if (!candidateIds.length || !jdIds.length || starting) return;
+  const startBatch = useCallback(async (
+    pairs: Array<{ candidate_id: string; jd_id: string }>,
+    requestId: string,
+    forceReason: string,
+  ) => {
+    if (!pairs.length || !requestId || starting) return;
     setStarting(true);
     setError("");
     try {
-      const next = await api.interviewAssessments.start(candidateIds, jdIds);
+      const next = await api.interviewAssessments.start(pairs, requestId, forceReason);
       setBatch(next);
       setBatchId(next.id);
       setActiveRunId(next.runs?.[0]?.id || null);
       setSelectedNodeId(null);
       setSelectedNode(null);
-      setCreating(false);
+      setSearchParams((current) => {
+        const nextParams = new URLSearchParams(current);
+        nextParams.delete("mode");
+        return nextParams;
+      }, { replace: true });
       void refreshActiveRuns();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("启动失败"));
@@ -284,7 +296,7 @@ export default function TalentEvaluation() {
     } finally {
       setStarting(false);
     }
-  }, [loadShell, refreshActiveRuns, setActiveRunId, setBatchId, setSelectedNodeId, starting, t]);
+  }, [loadShell, refreshActiveRuns, setActiveRunId, setBatchId, setSearchParams, setSelectedNodeId, starting, t]);
 
   const cancelRun = useCallback(async (runId: string) => {
     try {
@@ -316,6 +328,57 @@ export default function TalentEvaluation() {
     setError("");
     setRestoring(false);
   }, [setActiveRunId, setBatchId, setSelectedNodeId]);
+
+  const clearCreateDraft = useCallback(() => {
+    setDraftCandidateIds([]);
+    setDraftJdIds([]);
+    setDraftCandidateSearch("");
+    setDraftJdSearch("");
+  }, [setDraftCandidateIds, setDraftCandidateSearch, setDraftJdIds, setDraftJdSearch]);
+
+  const beginCreate = useCallback(() => {
+    previousSelectionRef.current = {
+      candidateId: selectedCandidateId,
+      jdId: selectedJdId,
+    };
+    clearCreateDraft();
+    setSearchParams((current) => {
+      const nextParams = new URLSearchParams(current);
+      nextParams.set("mode", "selecting");
+      return nextParams;
+    });
+  }, [clearCreateDraft, selectedCandidateId, selectedJdId, setSearchParams]);
+
+  const exitCreate = useCallback(() => {
+    setSearchParams((current) => {
+      const nextParams = new URLSearchParams(current);
+      nextParams.delete("mode");
+      return nextParams;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  useEffect(() => {
+    const selectingInUrl = searchParams.get("mode") === "selecting";
+    if (selectingInUrl && !creating) {
+      previousSelectionRef.current = {
+        candidateId: selectedCandidateId,
+        jdId: selectedJdId,
+      };
+      clearCreateDraft();
+      setCreating(true);
+      return;
+    }
+    if (!selectingInUrl && creating) {
+      setCreating(false);
+      clearCreateDraft();
+      const previous = previousSelectionRef.current;
+      if (previous) {
+        setSelectedCandidateId(previous.candidateId);
+        setSelectedJdId(previous.jdId);
+      }
+      previousSelectionRef.current = null;
+    }
+  }, [clearCreateDraft, creating, searchParams, selectedCandidateId, selectedJdId, setSelectedCandidateId, setSelectedJdId]);
 
   // ---- 左侧文件夹选择 ----
   const clearNode = useCallback(() => {
@@ -407,23 +470,35 @@ export default function TalentEvaluation() {
   const batchDone = batch && TERMINAL_BATCH_STATUSES.has(batch.status)
     ? batch.completed_pairs + batch.failed_pairs + batch.cancelled_pairs
     : 0;
+  const uiState = resolveEvaluationUiState({
+    selecting: creating,
+    batchStatus: batch?.status || null,
+    selectedCandidateId,
+    selectedJdId,
+  });
+  const stateLabel = {
+    browsing: t("浏览候选人"),
+    selecting: t("批量选择"),
+    running: t("批次运行中"),
+    viewingReport: t("浏览岗位报告"),
+  }[uiState];
 
   return (
     <div className="w-full max-w-full min-w-0">
       <PageToolbar
         title={t("人才评估")}
-        subtitle={t("面试准入：判断候选人是否值得进入某个岗位的面试")}
+        subtitle={`${t("面试准入：判断候选人是否值得进入某个岗位的面试")} · ${stateLabel}`}
         right={
           <>
-            {batchRunning ? (
+            {uiState === "running" ? (
               <div className="hidden lg:flex w-[240px] items-center gap-3">
                 <Progress value={batch!.total_pairs ? (batchDone / batch!.total_pairs) * 100 : 0} className="flex-1" />
                 <span className="text-label tabular-nums text-on-surface-variant">{batchDone} / {batch!.total_pairs}</span>
               </div>
-            ) : batch ? (
-              <Button variant="tonal" icon="add" onClick={resetBatch}>{t("返回浏览")}</Button>
-            ) : !creating ? (
-              <Button variant="filled" icon="add" onClick={() => setCreating(true)}>{t("新建准入评估")}</Button>
+            ) : batch && TERMINAL_BATCH_STATUSES.has(batch.status) ? (
+              <Button variant="tonal" icon="close" onClick={resetBatch}>{t("关闭已完成批次")}</Button>
+            ) : uiState !== "selecting" ? (
+              <Button variant="filled" icon="add" onClick={beginCreate}>{t("新建准入评估")}</Button>
             ) : null}
           </>
         }
@@ -504,7 +579,7 @@ export default function TalentEvaluation() {
               onDraftJdSearch={setDraftJdSearch}
               onSelectNode={selectGraphNode}
               onCancelRun={(runId) => void cancelRun(runId)}
-              onExitCreate={() => setCreating(false)}
+              onExitCreate={exitCreate}
               onStartBatch={startBatch}
             />
           )}

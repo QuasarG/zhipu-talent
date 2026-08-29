@@ -368,7 +368,7 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
         }
       />
 
-      <div className="app-workspace-frame flex gap-6 min-h-0">
+      <div className="app-workspace-frame flex gap-4 2xl:gap-6 min-h-0">
         {/* 侧栏：历史会话 */}
         <SessionSidebar
           sessions={sessions}
@@ -380,7 +380,7 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
         />
 
         {/* 左栏：对话流 */}
-        <div data-tour="chat-flow" className="flex-1 min-w-[480px] flex flex-col">
+        <div data-tour="chat-flow" className="flex-1 min-w-[360px] flex flex-col">
           <div ref={convRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-5 pr-1 pb-2">
             {!ready ? (
               <div className="flex-1 flex items-center justify-center">
@@ -440,12 +440,12 @@ export default function GrillWorkbench({ onSwitchMode }: Props) {
         </div>
 
         {/* 中栏：提问大纲 */}
-        <div data-tour="outline" className="w-[300px] shrink-0 min-h-0">
+        <div data-tour="outline" className="w-[240px] 2xl:w-[300px] shrink-0 min-h-0">
           <OutlinePanel outline={outline} />
         </div>
 
         {/* 右栏：画像卡 */}
-        <div data-tour="profile" className="w-[360px] shrink-0 min-h-0">
+        <div data-tour="profile" className="w-[300px] 2xl:w-[360px] shrink-0 min-h-0">
           <ProfileCardPanel
             profile={profile}
             hasDeliverables={!!deliverables}

@@ -31,9 +31,27 @@ def build_interview_assessment_blueprint() -> Blueprint:
         jd_ids = body.get("jd_ids") or []
         if not isinstance(candidate_ids, list) or not isinstance(jd_ids, list):
             return jsonify({"detail": "candidate_ids 和 jd_ids 必须是数组"}), 400
+        raw_pairs = body.get("pairs")
+        pairs = None
+        if raw_pairs is not None:
+            if not isinstance(raw_pairs, list) or any(
+                not isinstance(item, dict)
+                or not isinstance(item.get("candidate_id"), str)
+                or not isinstance(item.get("jd_id"), str)
+                for item in raw_pairs
+            ):
+                return jsonify({"detail": "pairs 必须是 candidate_id/jd_id 对象数组"}), 400
+            pairs = [(item["candidate_id"], item["jd_id"]) for item in raw_pairs]
         user = current_user()
         try:
-            return jsonify(start_batch(candidate_ids, jd_ids, user.id if user else None)), 202
+            return jsonify(start_batch(
+                candidate_ids,
+                jd_ids,
+                user.id if user else None,
+                pairs=pairs,
+                request_id=str(body.get("request_id") or "") or None,
+                force_reason=str(body.get("force_reason") or ""),
+            )), 202
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 409
 

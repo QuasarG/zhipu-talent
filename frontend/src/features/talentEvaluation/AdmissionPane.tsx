@@ -81,7 +81,11 @@ export default function AdmissionPane({
   onSelectNode: (node: AdmissionGraphNode) => void;
   onCancelRun: (runId: string) => void;
   onExitCreate: () => void;
-  onStartBatch: (candidateIds: string[], jdIds: string[]) => Promise<void>;
+  onStartBatch: (
+    pairs: Array<{ candidate_id: string; jd_id: string }>,
+    requestId: string,
+    forceReason: string,
+  ) => Promise<void>;
 }) {
   const { t } = useI18n();
   const readyJds = useMemo(
@@ -116,6 +120,7 @@ export default function AdmissionPane({
       <NewBatchPanel
         candidates={candidates}
         jds={readyJds}
+        assessments={assessments}
         activeRuns={activeRuns}
         candidateIds={draftCandidateIds}
         jdIds={draftJdIds}
@@ -126,7 +131,7 @@ export default function AdmissionPane({
         onCandidateIds={onDraftCandidateIds}
         onJdIds={onDraftJdIds}
         starting={starting}
-        onStart={() => onStartBatch([...draftCandidateIds], [...draftJdIds])}
+        onStart={onStartBatch}
         onExit={onExitCreate}
       />
     );

@@ -3,7 +3,101 @@ import type {
   CandidateBrief,
   InterviewAssessment,
   InterviewAssessmentRun,
+  JdEntry,
 } from "@/lib/types";
+
+export const MAX_BATCH_PAIRS = 20;
+
+export type EvaluationUiState = "browsing" | "selecting" | "running" | "viewingReport";
+
+export function resolveEvaluationUiState(input: {
+  selecting: boolean;
+  batchStatus: string | null;
+  selectedCandidateId: string | null;
+  selectedJdId: string | null;
+}): EvaluationUiState {
+  if (input.selecting) return "selecting";
+  if (input.selectedCandidateId && input.selectedJdId) return "viewingReport";
+  if (input.batchStatus && !["completed", "failed", "cancelled"].includes(input.batchStatus)) {
+    return "running";
+  }
+  return "browsing";
+}
+
+export interface PlannedAssessmentPair {
+  key: string;
+  candidateId: string;
+  jdId: string;
+  candidateName: string;
+  jdTitle: string;
+  existing: boolean;
+  active: boolean;
+  estimatedModelCalls: number;
+}
+
+export interface BatchRiskPlan {
+  selectedCount: number;
+  runnablePairs: PlannedAssessmentPair[];
+  existingCount: number;
+  activeCount: number;
+  estimatedModelCalls: number;
+  exceedsLimit: boolean;
+}
+
+export function buildBatchRiskPlan(
+  candidateIds: readonly string[],
+  jdIds: readonly string[],
+  candidates: readonly CandidateBrief[],
+  jds: readonly JdEntry[],
+  assessments: readonly InterviewAssessment[],
+  activeRuns: readonly InterviewAssessmentRun[],
+  includeExisting = false,
+): BatchRiskPlan {
+  const candidateNames = new Map(candidates.map((item) => [
+    item.id,
+    item.display_name || item.name || "未命名",
+  ]));
+  const jobs = new Map(jds.map((item) => [item.id, item]));
+  const existingKeys = new Set(
+    assessments
+      .filter((item) => item.is_valid && item.status === "completed")
+      .map((item) => `${item.candidate_id}::${item.jd_id}`),
+  );
+  const activeKeys = new Set(
+    activeRuns.map((item) => `${item.candidate_id}::${item.jd_id}`),
+  );
+  const allPairs: PlannedAssessmentPair[] = [];
+  for (const candidateId of [...new Set(candidateIds)]) {
+    for (const jdId of [...new Set(jdIds)]) {
+      const key = `${candidateId}::${jdId}`;
+      const job = jobs.get(jdId);
+      allPairs.push({
+        key,
+        candidateId,
+        jdId,
+        candidateName: candidateNames.get(candidateId) || "未命名",
+        jdTitle: job?.title || "岗位未命名",
+        existing: existingKeys.has(key),
+        active: activeKeys.has(key),
+        estimatedModelCalls: (job?.assessment_card?.core_tasks?.length || 0) + 2,
+      });
+    }
+  }
+  const runnablePairs = allPairs.filter(
+    (item) => !item.active && (includeExisting || !item.existing),
+  );
+  return {
+    selectedCount: allPairs.length,
+    runnablePairs,
+    existingCount: allPairs.filter((item) => item.existing).length,
+    activeCount: allPairs.filter((item) => item.active).length,
+    estimatedModelCalls: runnablePairs.reduce(
+      (total, item) => total + item.estimatedModelCalls,
+      0,
+    ),
+    exceedsLimit: runnablePairs.length > MAX_BATCH_PAIRS,
+  };
+}
 
 /**
  * 人才评估统一外壳的左侧"候选人文件夹"组装逻辑（纯函数，node:test 覆盖）。
@@ -179,7 +273,7 @@ export function computeScoreBreakdown(
   card: AssessmentCard | null | undefined,
 ): ScoreBreakdown {
   const cardTask = (taskId: string) =>
-    card?.core_tasks.find((task) => task.id === taskId);
+    card?.core_tasks?.find((task) => task.id === taskId);
   const rows: ScoreRow[] = taskAssessments.map((task) => {
     const id = task.task_id || "";
     const meta = cardTask(id);

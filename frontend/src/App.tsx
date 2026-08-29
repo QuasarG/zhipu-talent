@@ -1,19 +1,29 @@
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { api } from "./lib/api";
+import { lazy, Suspense, useState, useEffect } from "react";
+import { api, UNAUTHORIZED_EVENT } from "./lib/api";
 import { useI18n } from "./lib/i18n";
 import NavRail from "./components/layout/NavRail";
 import LoadingIndicator from "./components/ui/LoadingIndicator";
 import Login from "./pages/Login";
-import TalentChat from "./pages/TalentChat";
-import TalentEvaluation from "./pages/TalentEvaluation";
-import TalentPool from "./pages/TalentPool";
-import TalentProfile from "./pages/TalentProfile";
-import JdPool from "./pages/JdPool";
 import Scholarship from "./pages/Scholarship";
-import Settings from "./pages/Settings";
-import SharedProfile from "./pages/SharedProfile";
 import OnboardingTour from "./components/OnboardingTour";
+
+const TalentChat = lazy(() => import("./pages/TalentChat"));
+const TalentEvaluation = lazy(() => import("./pages/TalentEvaluation"));
+const TalentPool = lazy(() => import("./pages/TalentPool"));
+const TalentProfile = lazy(() => import("./pages/TalentProfile"));
+const JdPool = lazy(() => import("./pages/JdPool"));
+const Settings = lazy(() => import("./pages/Settings"));
+const SharedProfile = lazy(() => import("./pages/SharedProfile"));
+
+function RouteFallback() {
+  const { t } = useI18n();
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <LoadingIndicator size={30} label={t("加载中…")} />
+    </div>
+  );
+}
 
 /** 旧入口迁移兼容：保留 ?focus= 跳转参数，统一回到面试准入子界面（能力评估入口暂时移除） */
 function EvaluationRedirect({ to }: { to: string }) {
@@ -27,7 +37,13 @@ function App() {
   const { t } = useI18n();
 
   useEffect(() => {
-    api.auth.status().then((d) => setCurrentUser(d.user));
+    api.auth.status().then((d) => setCurrentUser(d.user)).catch(() => setCurrentUser(null));
+  }, []);
+
+  useEffect(() => {
+    const handleUnauthorized = () => setCurrentUser(null);
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
   }, []);
 
   if (currentUser === undefined) {
@@ -40,7 +56,7 @@ function App() {
 
   // 只读分享页：凭随机 token 自证，不要求登录，也不进主应用布局
   if (window.location.pathname.startsWith("/share/")) {
-    return <SharedProfile />;
+    return <Suspense fallback={<RouteFallback />}><SharedProfile /></Suspense>;
   }
 
   if (currentUser === null) {
@@ -52,6 +68,7 @@ function App() {
       <div className="flex min-h-screen">
         <NavRail username={currentUser.display_name || currentUser.username} />
         <main className="flex-1 min-w-0 px-6 pb-6">
+          <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<TalentPool />} />
             {/* 统一"人才评估"外壳：当前只承载面试准入 */}
@@ -69,6 +86,7 @@ function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </main>
       </div>
       <OnboardingTour />

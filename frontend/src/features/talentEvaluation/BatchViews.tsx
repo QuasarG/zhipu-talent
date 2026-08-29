@@ -27,12 +27,17 @@ import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
 import Tabs from "@/components/ui/Tabs";
 import ResumeContent, { OriginalPreview } from "@/features/resume/ResumeContent";
+import {
+  buildBatchRiskPlan,
+  MAX_BATCH_PAIRS,
+} from "./talentEvaluationModel";
 
 // ---- 新建准入评估（批量选择临时模式，docs/rebuild.md §3.2） ----
 
 export function NewBatchPanel({
   candidates,
   jds,
+  assessments,
   activeRuns,
   candidateIds,
   jdIds,
@@ -48,6 +53,7 @@ export function NewBatchPanel({
 }: {
   candidates: CandidateBrief[];
   jds: JdEntry[];
+  assessments: InterviewAssessment[];
   activeRuns: InterviewAssessmentRun[];
   candidateIds: Set<string>;
   jdIds: Set<string>;
@@ -58,10 +64,18 @@ export function NewBatchPanel({
   onCandidateIds: (value: Set<string>) => void;
   onJdIds: (value: Set<string>) => void;
   starting: boolean;
-  onStart: () => void;
+  onStart: (
+    pairs: Array<{ candidate_id: string; jd_id: string }>,
+    requestId: string,
+    forceReason: string,
+  ) => Promise<void>;
   onExit: () => void;
 }) {
   const { t } = useI18n();
+  const [includeExisting, setIncludeExisting] = useState(false);
+  const [forceReason, setForceReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [requestId, setRequestId] = useState("");
   const filteredCandidates = useMemo(() => {
     const query = candidateSearch.trim().toLowerCase();
     if (!query) return candidates;
@@ -79,10 +93,26 @@ export function NewBatchPanel({
     );
   }, [jdSearch, jds]);
 
-  const pairCount = candidateIds.size * jdIds.size;
-  const selectedActiveRuns = activeRuns.filter(
-    (item) => candidateIds.has(item.candidate_id) && jdIds.has(item.jd_id),
+  const selectionSignature = `${[...candidateIds].sort().join(",")}::${[...jdIds].sort().join(",")}`;
+  useEffect(() => {
+    setConfirming(false);
+    setRequestId("");
+  }, [selectionSignature, includeExisting]);
+
+  const plan = useMemo(
+    () => buildBatchRiskPlan(
+      [...candidateIds],
+      [...jdIds],
+      candidates,
+      jds,
+      assessments,
+      activeRuns,
+      includeExisting,
+    ),
+    [activeRuns, assessments, candidateIds, candidates, includeExisting, jdIds, jds],
   );
+  const forceReasonRequired = includeExisting && plan.existingCount > 0;
+  const canReview = plan.runnablePairs.length > 0 && !plan.exceedsLimit;
 
   const toggle = (current: Set<string>, id: string, onChange: (value: Set<string>) => void) => {
     const next = new Set(current);
@@ -184,7 +214,7 @@ export function NewBatchPanel({
                     {jd.assessment_card?.role_summary || jd.team || t("岗位评估卡已就绪")}
                   </span>
                   <span className="mt-1 block text-label text-on-surface-variant">
-                    {t("{n} 项核心任务", { n: jd.assessment_card?.core_tasks.length || 0 })}
+                    {t("{n} 项核心任务", { n: jd.assessment_card?.core_tasks?.length || 0 })}
                   </span>
                 </span>
                 {!!activeCount && <Icon name="lock" size={14} className="mt-1 shrink-0 text-primary" />}
@@ -202,30 +232,103 @@ export function NewBatchPanel({
             <span className="mx-1.5">×</span>
             {t("{m} 个岗位", { m: jdIds.size })}
             <span className="mx-1.5">=</span>
-            <span className="font-medium text-on-surface">{t("{k} 个配对", { k: pairCount })}</span>
+            <span className="font-medium text-on-surface">{t("{k} 个配对", { k: plan.selectedCount })}</span>
           </p>
-          {!!selectedActiveRuns.length && (
+          {!!plan.existingCount && (
+            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-warning/40 bg-warning-container px-2.5 py-1.5 text-label text-on-warning-container">
+              <input
+                type="checkbox"
+                checked={includeExisting}
+                onChange={(event) => setIncludeExisting(event.target.checked)}
+              />
+              {includeExisting
+                ? t("将强制重评 {n} 个已有报告", { n: plan.existingCount })
+                : t("已默认排除 {n} 个已有报告", { n: plan.existingCount })}
+            </label>
+          )}
+          {!!plan.activeCount && (
             <p className="flex items-center gap-1.5 rounded-md border border-outline-variant bg-surface-low px-2.5 py-1.5 text-label text-on-surface-variant">
               <Icon name="lock" size={14} className="shrink-0" />
-              {t("所选配对正在评估，完成或停止后可重新评估")}
+              {t("已跳过 {n} 个正在评估的配对", { n: plan.activeCount })}
             </p>
           )}
+          <p className="text-label text-on-surface-variant">
+            {t("本次运行 {n} 个配对 · 预计至少 {calls} 次模型调用 · 单批上限 {limit}", {
+              n: plan.runnablePairs.length,
+              calls: plan.estimatedModelCalls,
+              limit: MAX_BATCH_PAIRS,
+            })}
+          </p>
           <div className="ml-auto flex items-center gap-2">
             <Button
               variant="filled"
-              icon={selectedActiveRuns.length ? "lock" : "play_circle"}
-              disabled={!pairCount || starting || !!selectedActiveRuns.length}
-              onClick={onStart}
+              icon="fact_check"
+              disabled={!canReview || starting}
+              onClick={() => {
+                setRequestId((current) => current || crypto.randomUUID());
+                setConfirming(true);
+              }}
             >
-              {starting
-                ? t("正在创建评估批次…")
-                : pairCount
-                  ? t("开始评估 {n} 个配对", { n: pairCount })
+              {plan.exceedsLimit
+                ? t("超过单批上限")
+                : plan.runnablePairs.length
+                  ? t("检查并确认 {n} 个配对", { n: plan.runnablePairs.length })
                   : t("先从两侧完成选择")}
             </Button>
           </div>
         </div>
       </div>
+      {confirming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/45 p-6" onClick={() => !starting && setConfirming(false)}>
+          <Card variant="elevated" className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="border-b border-outline-variant px-5 py-4">
+              <p className="text-title-lg">{t("最终确认准入评估批次")}</p>
+              <p className="mt-1 text-body-sm text-on-surface-variant">
+                {t("即将创建 {n} 个配对，预计至少 {calls} 次模型调用。提交后任务会立即进入后台队列。", {
+                  n: plan.runnablePairs.length,
+                  calls: plan.estimatedModelCalls,
+                })}
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+              {plan.runnablePairs.map((pair) => (
+                <div key={pair.key} className="flex items-center gap-2 border-b border-outline-variant py-2 text-body-sm last:border-0">
+                  <span className="min-w-0 flex-1 truncate">{pair.candidateName} × {pair.jdTitle}</span>
+                  {pair.existing && <StatusChip tone="warning">{t("强制重评")}</StatusChip>}
+                  <span className="text-label text-on-surface-variant">≥ {pair.estimatedModelCalls} calls</span>
+                </div>
+              ))}
+              {forceReasonRequired && (
+                <label className="mt-4 block">
+                  <span className="text-label text-on-surface-variant">{t("强制重评原因（必填）")}</span>
+                  <textarea
+                    value={forceReason}
+                    onChange={(event) => setForceReason(event.target.value)}
+                    rows={3}
+                    className="mt-1 w-full resize-none rounded-md border border-outline bg-surface-lowest p-3 text-body-sm outline-none focus:border-primary"
+                    placeholder={t("说明岗位要求、简历或评估规则发生了什么变化")}
+                  />
+                </label>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-outline-variant px-5 py-4">
+              <Button variant="text" disabled={starting} onClick={() => setConfirming(false)}>{t("返回检查")}</Button>
+              <Button
+                variant="filled"
+                icon="play_circle"
+                disabled={starting || (forceReasonRequired && !forceReason.trim())}
+                onClick={() => void onStart(
+                  plan.runnablePairs.map((pair) => ({ candidate_id: pair.candidateId, jd_id: pair.jdId })),
+                  requestId,
+                  forceReason.trim(),
+                )}
+              >
+                {starting ? t("正在创建评估批次…") : t("确认并开始评估")}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </Card>
   );
 }

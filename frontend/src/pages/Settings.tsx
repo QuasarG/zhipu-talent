@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { useTheme, type ThemeMode } from "@/lib/theme";
 import { resetOnboarding } from "@/components/OnboardingTour";
-import type { HealthReport } from "@/lib/types";
+import type { HealthReport, ServiceHealth } from "@/lib/types";
 
 // 服务状态骨架：health 检测完成前先渲染这些卡片（status=checking）
 const HEALTH_SKELETON = [
@@ -23,9 +23,10 @@ const HEALTH_SKELETON = [
   "arxiv",
   "openalex",
   "web_search",
-].map((name) => ({ name, status: "checking", latency_ms: 0, detail: "", required: false }));
+].map((name): ServiceHealth => ({ name, status: "checking", latency_ms: 0, detail: "", required: false }));
 
-const statusMeta: Record<string, { icon: string; cls: string }> = {
+const statusMeta: Record<ServiceHealth["status"], { icon: string; cls: string }> = {
+  checking: { icon: "pending", cls: "text-on-surface-variant animate-pulse" },
   ok: { icon: "check_circle", cls: "text-success" },
   degraded: { icon: "warning", cls: "text-warning" },
   down: { icon: "error", cls: "text-error" },
@@ -38,6 +39,7 @@ interface SensitiveValue {
 }
 
 type ConfigValue = string | SensitiveValue;
+type ConfigAudit = Record<string, { changed_by: string; changed_at: string }>;
 
 /** 每个 Key 对应的服务描述（名称 + 用途 + 图标） */
 const KEY_META: Record<string, { label: string; desc: string; icon: string }> = {
@@ -63,6 +65,7 @@ export default function Settings() {
   // 卡片先渲染骨架，结果回来后逐卡片无缝定格
   const [health, setHealth] = useState<HealthReport | null>(null);
   const [config, setConfig] = useState<Record<string, ConfigValue>>({});
+  const [configAudit, setConfigAudit] = useState<ConfigAudit>({});
   // 正在编辑的 key（一次只能编辑一个）
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -74,6 +77,7 @@ export default function Settings() {
     // /health 已是后端缓存优先（秒回上次结果 + 后台刷新），切页不再重复探测
     api.health().then(setHealth).catch(() => setHealth(null));
     api.config.get().then((c) => setConfig(c as Record<string, ConfigValue>)).catch(() => setConfig({}));
+    api.config.audit().then(setConfigAudit).catch(() => setConfigAudit({}));
   }, []);
 
   const recheck = useCallback(async () => {
@@ -109,13 +113,23 @@ export default function Settings() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      await api.config.put({ [key]: editValue });
+      const result = await api.config.put({ [key]: editValue });
       // 重新拉取脱敏配置（不会回显刚写入的值，只显示 configured + masked）
       const c = await api.config.get();
       setConfig(c as Record<string, ConfigValue>);
+      if (result.audit_status === "recorded") {
+        setConfigAudit(await api.config.audit());
+      }
+      setHealth(null);
+      api.health().then(setHealth).catch(() => setHealth(null));
       setEditingKey(null);
       setEditValue("");
-      setSaveMsg({ ok: true, text: t("{key} 已更新", { key }) });
+      setSaveMsg({
+        ok: result.audit_status !== "failed",
+        text: result.audit_status === "failed"
+          ? t("{key} 已更新，但审计记录失败，请联系管理员", { key })
+          : t("{key} 已更新", { key }),
+      });
     } catch {
       setSaveMsg({ ok: false, text: t("{key} 更新失败", { key }) });
     } finally {
@@ -182,7 +196,8 @@ export default function Settings() {
             </div>
             <div className="grid grid-cols-3 gap-3">
               {(health?.services ?? HEALTH_SKELETON).map((s) => {
-                const meta = statusMeta[s.status] ?? statusMeta.down;
+                const meta = statusMeta[s.status];
+                const checking = s.status === "checking";
                 return (
                   <Card key={s.name} variant="outlined" className="flex items-center justify-between gap-3 p-4">
                     <div className="flex items-center gap-2 min-w-0">
@@ -191,9 +206,11 @@ export default function Settings() {
                       {s.required && <StatusChip tone="error">{t("必需")}</StatusChip>}
                     </div>
                     <div className="flex flex-col items-end gap-0.5 shrink-0">
-                      <span className="font-mono text-body-sm text-on-surface-variant">{Math.round(s.latency_ms)}ms</span>
+                      <span className="font-mono text-body-sm text-on-surface-variant">
+                        {checking ? "—" : `${Math.round(s.latency_ms)}ms`}
+                      </span>
                       <span className="font-mono text-label text-on-surface-variant truncate max-w-[160px]" title={s.detail}>
-                        {s.detail}
+                        {checking ? t("检测中…") : s.detail}
                       </span>
                     </div>
                   </Card>
@@ -217,6 +234,7 @@ export default function Settings() {
                 const sensitive = !skeleton && isSensitive(value as ConfigValue);
                 const isEditing = editingKey === key;
                 const meta = KEY_META[key];
+                const audit = configAudit[key];
                 // 从服务状态找对应的健康检查结果
                 const svcHealth = health?.services.find((s) => {
                   if (key === "LLM_API_KEY") return s.name === "llm";
@@ -258,6 +276,14 @@ export default function Settings() {
                     </div>
                     {/* 服务用途描述 */}
                     {meta && <p className="text-body-sm text-on-surface-variant">{t(meta.desc)}</p>}
+                    {audit && (
+                      <p className="text-label text-on-surface-variant">
+                        {t("最后更新：{time} · {user}", {
+                          time: new Date(`${audit.changed_at}Z`).toLocaleString(),
+                          user: audit.changed_by || t("未知用户"),
+                        })}
+                      </p>
+                    )}
                     {/* 值显示区（敏感项只显示脱敏，非敏感显示原值） */}
                     {!isEditing && (
                       <div className="flex items-center justify-between gap-2">

@@ -373,6 +373,70 @@ export interface PersonDetail extends PersonBrief {
   created_at: string;
   evaluations: Evaluation[];
   reputation_reports: ReputationReport[];
+  assessment_view?: PersonAssessmentView;
+}
+
+export interface PersonAdmissionAssessment {
+  id: string;
+  candidate_id: string;
+  jd_id: string;
+  jd_title: string;
+  status: string;
+  is_valid: boolean;
+  invalid_reason: string;
+  decision: "interview" | "no_interview";
+  total_score: number;
+  task_assessments: Array<Record<string, unknown>>;
+  review_corrections: Array<Record<string, unknown>>;
+  interview_focus: Array<Record<string, string>>;
+  model_usage: ModelUsage[];
+  run_trace: WorkflowNodeEvent[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface PersonAssessmentView {
+  schema_version: "person-assessment-view.v1";
+  person_id: string;
+  candidate_id: string | null;
+  resume: {
+    has_resume: boolean;
+    submission_id: string | null;
+    candidate_id: string | null;
+    filename: string;
+    source_format: string;
+    parse_status: string | null;
+    structured: Record<string, unknown>;
+    structured_sections: string[];
+    updated_at: string | null;
+  };
+  general_evaluation: {
+    id: number;
+    candidate_id: string;
+    status: string;
+    overall_score: number;
+    level: string;
+    tier: string;
+    one_liner: string;
+    stage_profile: string;
+    core_strengths: string[];
+    potential_risks: string[];
+    recommended_tracks: TrackRecommendation[];
+    academic_report: AcademicReport;
+    created_at: string | null;
+    completed_at: string | null;
+  } | null;
+  admissions: PersonAdmissionAssessment[];
+  latest: {
+    source_type: "interview_admission" | "general_evaluation";
+    source_id: string;
+    candidate_id: string;
+    jd_id?: string;
+    jd_title?: string;
+    decision: "interview" | "no_interview" | null;
+    score: number;
+    generated_at: string | null;
+  } | null;
 }
 
 export interface TalentGroup {
@@ -660,10 +724,21 @@ export interface HealthReport {
 
 export interface ServiceHealth {
   name: string;
-  status: "ok" | "degraded" | "down";
+  status: "checking" | "ok" | "degraded" | "down";
   required: boolean;
   detail: string;
   latency_ms: number;
+}
+
+export interface ResumeOriginalMetadata {
+  exists: boolean;
+  mime_type: string;
+  size: number;
+  filename: string;
+  previewable: boolean;
+  preview_url: string;
+  download_url: string;
+  error: string;
 }
 
 
@@ -754,6 +829,9 @@ export interface InterviewAssessmentRun {
 
 export interface InterviewAssessmentBatch {
   id: string;
+  request_id: string;
+  config_version: string;
+  force_reason: string;
   status: string;
   candidate_ids: string[];
   jd_ids: string[];

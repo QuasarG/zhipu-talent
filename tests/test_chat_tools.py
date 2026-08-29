@@ -26,6 +26,7 @@ from agi_talent_radar.knowledge_agent.tools import (
     execute_gated_action,
     tool_aggregate_persons,
     tool_ask_clarification,
+    tool_check_reputation,
     tool_get_person_evaluation,
     tool_get_person_profile,
     tool_get_resume_versions,
@@ -95,6 +96,20 @@ class TestSearchPersons(ChatToolsTestBase):
         result = tool_search_persons(self.ctx, {})
         self.assertEqual(result["persons"], [])
         self.assertIn("0 人", result["summary"])
+
+    def test_reputation_search_does_not_expose_connector_exception(self) -> None:
+        from agi_talent_radar.core.connectors.base import ConnectorUnavailableError
+
+        with patch(
+            "agi_talent_radar.core.connectors.web_search.search_web",
+            side_effect=ConnectorUnavailableError(
+                "HTTP 500 https://provider.example/v1 secret-token stack trace"
+            ),
+        ):
+            result = tool_check_reputation(self.ctx, {"name": "测试人物"})
+
+        self.assertEqual(result["errors"], ["网络搜索暂时不可用，请稍后重试"])
+        self.assertNotIn("provider.example", str(result))
 
     def test_hit_by_name_and_direction(self) -> None:
         _add_person(self.session, "李四", org="清华大学", direction="NLP")
@@ -287,6 +302,47 @@ class TestExecuteGatedAction(ChatToolsTestBase):
             {"approved": True},
         )
         self.assertEqual(self.session.query(PersonORM).filter_by(name="王五").count(), 1)
+
+    def test_review_then_add_person_reuses_profile_and_keeps_reputation(self) -> None:
+        review_payload = {
+            "name": "李博杰",
+            "org": "北京智源人工智能研究院",
+            "items": [
+                {
+                    "title": "公开争议已经人工确认",
+                    "url": "https://example.test/reputation",
+                    "sentiment": "negative",
+                }
+            ],
+        }
+        review_decision = {"verdicts": [{"index": 0, "action": "confirmed"}]}
+        execute_gated_action(
+            self.session, "review_reputation", review_payload, review_decision
+        )
+
+        add_payload = {
+            "name": "李博杰",
+            "org": "北京智源人工智能研究院",
+            "direction": "多模态大模型",
+            "note": "问答调查完成",
+        }
+        first = execute_gated_action(
+            self.session, "propose_add_person", add_payload, {"approved": True}
+        )
+        second = execute_gated_action(
+            self.session, "propose_add_person", add_payload, {"approved": True}
+        )
+
+        persons = self.session.query(PersonORM).filter_by(name="李博杰").all()
+        self.assertEqual(len(persons), 1)
+        person = persons[0]
+        self.assertEqual(person.direction, "多模态大模型")
+        self.assertEqual(person.identifiers.get("agent_note"), "问答调查完成")
+        self.assertEqual(len(person.reputation_reports), 1)
+        self.assertEqual(person.reputation_reports[0].level, "red")
+        self.assertEqual(person.reputation_reports[0].review_status, "confirmed")
+        self.assertIn(f"person_id={person.id}", first)
+        self.assertIn(f"person_id={person.id}", second)
 
     def test_propose_add_person_rejected(self) -> None:
         text = execute_gated_action(

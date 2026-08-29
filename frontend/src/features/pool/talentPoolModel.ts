@@ -38,3 +38,18 @@ export function transitionEngagementSelection(
   if (clicked === pending) return { pending: null, commit: clicked };
   return { pending: clicked, commit: null };
 }
+
+export function validVisibleSelection(
+  selectedId: string | null,
+  visibleIds: readonly string[],
+): string | null {
+  if (!selectedId) return null;
+  return visibleIds.includes(selectedId) ? selectedId : null;
+}
+
+export function visibleTalentGroupKeys(
+  groupCounts: Readonly<Record<string, number>>,
+  isFiltering: boolean,
+): string[] {
+  return Object.keys(groupCounts).filter((key) => !isFiltering || groupCounts[key] > 0);
+}

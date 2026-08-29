@@ -72,7 +72,7 @@ export default function AdmissionReport({
   const tasks = (assessment.task_assessments || []) as TaskAssessmentView[];
   const breakdown = computeScoreBreakdown(tasks, jd?.assessment_card);
   const cardTask = (taskId?: string) =>
-    jd?.assessment_card?.core_tasks.find((item) => item.id === taskId);
+    jd?.assessment_card?.core_tasks?.find((item) => item.id === taskId);
   const decisionReason = [...(assessment.run_trace || [])]
     .reverse()
     .find((event) => event.node_id === "admission_decision")?.summary;

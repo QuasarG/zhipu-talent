@@ -12,6 +12,7 @@ import ScoreOverview from "@/features/resume/ScoreOverview";
 import Tabs from "@/components/ui/Tabs";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
+import { parseSessionEnvelope } from "@/lib/sessionState";
 
 interface DeckEntry {
   personId: string;
@@ -39,22 +40,26 @@ const fromDragId = (dragId: string) => (dragId.startsWith("deck:") ? dragId.slic
 /** 名字清洗：历史 sessionStorage 污染（name 被写成 id）一律视为无名 */
 const realName = (name: string | undefined | null, personId: string) =>
   name && name !== personId ? name : "";
+const DECK_KEY = "talent-pool.deck";
+const DECK_VERSION = 2;
 
 /** 简历对比滑轨（niri 风）：左列表拖入卡片，Shift+滚轮横滚，恰好同时显示两份。 */
 export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDragApiRef }: Props) {
   // 滑轨状态跟随：sessionStorage 存 {id, name} 顺序（刷新恢复；标签页隔离，不跨用户同步）
   // name 一并存：恢复不依赖左列表加载时机（旧结构纯 id 数组兼容读）
-  const DECK_KEY = "talent-pool.deck";
   const [deck, setDeck] = useState<DeckEntry[]>(() => {
-    try {
-      const raw = JSON.parse(sessionStorage.getItem(DECK_KEY) || "[]") as (string | { personId: string; name: string })[];
-      return raw.map((item) =>
-        typeof item === "string" ? { personId: item, name: "" } : { personId: item.personId, name: item.name || "" },
-      );
-    } catch {
-      return [];
-    }
+    const parsed = parseSessionEnvelope(
+      sessionStorage.getItem(DECK_KEY),
+      DECK_VERSION,
+      [] as Array<string | { personId: string; name: string }>,
+      (legacy) => Array.isArray(legacy) ? legacy as Array<string | { personId: string; name: string }> : [],
+    );
+    return parsed.value.map((item) =>
+      typeof item === "string" ? { personId: item, name: "" } : { personId: item.personId, name: item.name || "" },
+    );
   });
+  const [deckResolved, setDeckResolved] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState("");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   // 左列表行拖起时也挂一张贴光标的小卡（列表行本体保持原样不动）
   const [listDragId, setListDragId] = useState<string | null>(null);
@@ -72,14 +77,18 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
     return () => clearTimeout(timer);
   }, [flashId]);
 
-  // deck 变更即持久化
+  // 只持久化已通过服务端校验的 v2 person ID。
   useEffect(() => {
+    if (!deckResolved) return;
     try {
-      sessionStorage.setItem(DECK_KEY, JSON.stringify(deck.map((e) => ({ personId: e.personId, name: e.name }))));
+      sessionStorage.setItem(DECK_KEY, JSON.stringify({
+        version: DECK_VERSION,
+        data: deck.map((e) => ({ personId: e.personId, name: e.name })),
+      }));
     } catch {
       /* ignore */
     }
-  }, [deck]);
+  }, [deck, deckResolved]);
   const load = useCallback(async (personId: string) => {
     setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, detail: undefined, error: undefined } : e)));
     try {
@@ -92,26 +101,51 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
       );
     } catch (err) {
       const raw = err instanceof Error ? err.message : "";
-      const msg = raw.includes("没有关联简历") ? t("该人员没有关联简历档案") : raw || t("加载失败");
-      setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, error: msg } : e)));
+      if (raw.includes("没有关联简历") || raw.includes("不存在") || raw.includes("404")) {
+        setDeck((prev) => prev.filter((e) => e.personId !== personId));
+        setRecoveryNotice(t("已移除失效滑轨条目，请从左侧选择替代人才"));
+      } else {
+        setDeck((prev) => prev.map((e) => (e.personId === personId ? { ...e, error: raw || t("加载失败") } : e)));
+      }
     }
   }, [t]);
 
-  // 刷新恢复：清洗污染名（历史 bug 会把 id 写进 name），缺的从父层补，然后懒加载详情
+  // 刷新恢复：批量校验 person ID、迁移旧 candidate ID、移除已删除或无简历条目。
   const hydratedRef = useRef(false);
   useEffect(() => {
-    if (hydratedRef.current || deck.length === 0) return;
+    if (hydratedRef.current) return;
     hydratedRef.current = true;
-    setDeck((prev) =>
-      prev.map((e) => ({
-        ...e,
-        name: realName(e.name, e.personId) || realName(e.detail?.name, e.personId) || realName(personsName(e.personId), e.personId),
-      })),
-    );
-    for (const e of deck) {
-      if (!e.detail && !e.error) void load(e.personId);
+    if (deck.length === 0) {
+      setDeckResolved(true);
+      return;
     }
-  }, [deck, personsName, load]);
+    const previous = new Map(deck.map((entry) => [entry.personId, entry]));
+    api.persons.resolveDeck(deck.map((entry) => entry.personId))
+      .then((result) => {
+        const next = result.entries.map((entry) => {
+          const old = previous.get(entry.input_id);
+          return {
+            personId: entry.person_id,
+            name: realName(entry.name, entry.person_id)
+              || realName(old?.name, entry.person_id)
+              || realName(personsName(entry.person_id), entry.person_id),
+          };
+        });
+        setDeck(next);
+        const migrated = result.entries.filter((entry) => entry.migrated).length;
+        if (result.invalid.length || migrated) {
+          setRecoveryNotice(t("滑轨已修复：迁移 {migrated} 项，移除 {removed} 项；可从左侧选择替代人才", {
+            migrated,
+            removed: result.invalid.length,
+          }));
+        }
+        setDeckResolved(true);
+        for (const entry of next) void load(entry.personId);
+      })
+      .catch((reason) => {
+        setRecoveryNotice(reason instanceof Error ? reason.message : t("滑轨校验失败，请刷新重试"));
+      });
+  }, [deck, load, personsName, t]);
 
   const addToDeck = useCallback(
     (personId: string) => {
@@ -232,6 +266,16 @@ export default function TrackDeck({ selectedId, personsName, deckApiRef, deckDra
             )}
           </div>
         </div>
+
+        {recoveryNotice && (
+          <div className="flex items-center gap-2 border-b border-outline-variant bg-warning-container px-3 py-2 text-label text-on-warning-container">
+            <Icon name="info" size={15} />
+            <span className="min-w-0 flex-1">{recoveryNotice}</span>
+            <button type="button" className="cursor-pointer" onClick={() => setRecoveryNotice("")} aria-label={t("关闭提示")}>
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        )}
 
         {/* 轨道体：卡片内横滚区，每卡恰好占 1/2 视宽 */}
         <div

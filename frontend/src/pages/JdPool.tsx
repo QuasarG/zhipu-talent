@@ -36,9 +36,18 @@ export default function JdPool() {
   return <div className="w-full flex flex-col gap-4">
     <PageToolbar title={t("JD 池")} subtitle={t("JD 入池即生成岗位评估卡；是否参与评估由每次批次显式选择")} right={<><IconButton icon="refresh" variant="outlined" onClick={load} title={t("刷新")} /><Button variant="filled" icon="add" onClick={() => setEditing("new")}>{t("添加 JD")}</Button></>} />
     {error && <p className="text-body-sm text-error px-2">{error}</p>}
-    {loading ? <div className="flex justify-center py-20"><LoadingIndicator size={28} /></div> : <div className="flex flex-col gap-3 pb-6">
+    {loading ? <div className="flex justify-center py-20"><LoadingIndicator size={28} /></div> : <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 pb-6">
       {ordered.map((jd) => <JdCard key={jd.id} jd={jd} expanded={expandedId === jd.id} onToggle={() => setExpandedId(expandedId === jd.id ? null : jd.id)} onEdit={() => setEditing(jd)} onArchive={async () => { await api.jds.setArchived(jd.id, !jd.archived); await load(); }} onDelete={async () => { await api.jds.delete(jd.id); await load(); }} />)}
-      {!jds.length && <Card variant="filled" className="py-16 text-center text-on-surface-variant">{t("JD 池为空")}</Card>}
+      {!jds.length && (
+        <Card variant="filled" className="col-span-full flex flex-col items-center py-16 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-low text-on-surface-variant">
+            <Icon name="work_outline" size={24} />
+          </span>
+          <p className="mt-3 text-title text-on-surface">{t("JD 池为空")}</p>
+          <p className="mt-1 max-w-md text-body-sm text-on-surface-variant">{t("添加岗位说明后，系统会生成可用于准入评估的岗位卡。")}</p>
+          <Button variant="tonal" icon="add" className="mt-4" onClick={() => setEditing("new")}>{t("添加 JD")}</Button>
+        </Card>
+      )}
     </div>}
     {editing && <JdEditor jd={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />}
   </div>;
@@ -46,14 +55,17 @@ export default function JdPool() {
 
 function JdCard({ jd, expanded, onToggle, onEdit, onArchive, onDelete }: { jd: JdEntry; expanded: boolean; onToggle: () => void; onEdit: () => void; onArchive: () => void; onDelete: () => void }) {
   const [confirming, setConfirming] = useState(false);
+  const { t } = useI18n();
   const card = jd.assessment_card;
-  return <Card variant="filled" className={cn("flex flex-col", jd.archived && "opacity-60")}>
-    <div className="flex items-center gap-3 px-4 min-h-14 cursor-pointer" onClick={onToggle}>
-      <Icon name={expanded ? "expand_less" : "expand_more"} size={18} /><span className="text-title truncate">{jd.title}</span>
-      {jd.team && <span className="text-body-sm text-on-surface-variant truncate">{jd.team}</span>}
-      <StatusChip tone={jd.card_status === "ready" ? "success" : jd.card_status === "failed" ? "error" : "primary"}>{jd.card_status === "ready" ? "评估卡就绪" : jd.card_status === "failed" ? "生成失败" : "生成中"}</StatusChip>
-      {jd.archived && <StatusChip tone="neutral">已归档</StatusChip>}
-      <span className="ml-auto flex gap-1" onClick={(event) => event.stopPropagation()}><IconButton icon="edit" onClick={onEdit} title="编辑并重新生成" /><IconButton icon={jd.archived ? "unarchive" : "archive"} onClick={onArchive} title={jd.archived ? "恢复" : "归档"} />{confirming ? <Button variant="text" className="text-error" onClick={onDelete}>确认删除</Button> : <IconButton icon="delete" onClick={() => setConfirming(true)} title="删除" />}</span>
+  return <Card variant="filled" className={cn("flex flex-col", expanded && "xl:col-span-2", jd.archived && "opacity-60")}>
+    <div className="flex min-h-14 items-center gap-1 px-2">
+      <button type="button" className="state-layer flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-2 text-left" onClick={onToggle} aria-expanded={expanded}>
+        <Icon name={expanded ? "expand_less" : "expand_more"} size={18} /><span className="text-title truncate">{jd.title}</span>
+        {jd.team && <span className="text-body-sm text-on-surface-variant truncate">{jd.team}</span>}
+        <StatusChip tone={jd.card_status === "ready" ? "success" : jd.card_status === "failed" ? "error" : "primary"}>{t(jd.card_status === "ready" ? "评估卡就绪" : jd.card_status === "failed" ? "生成失败" : "生成中")}</StatusChip>
+        {jd.archived && <StatusChip tone="neutral">{t("已归档")}</StatusChip>}
+      </button>
+      <span className="ml-auto flex shrink-0 gap-1"><IconButton icon="edit" onClick={onEdit} title={t("编辑并重新生成")} /><IconButton icon={jd.archived ? "unarchive" : "archive"} onClick={onArchive} title={t(jd.archived ? "恢复" : "归档")} />{confirming ? <Button variant="text" className="text-error" onClick={onDelete}>{t("确认删除")}</Button> : <IconButton icon="delete" onClick={() => setConfirming(true)} title={t("删除")} />}</span>
     </div>
     {expanded && <div className="grid grid-cols-1 xl:grid-cols-[0.8fr_1.2fr] gap-4 border-t border-outline-variant p-4">
       <div><p className="text-label text-on-surface-variant mb-2">JD 原文</p><pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-surface-lowest p-3 text-body-sm">{jd.raw_text}</pre></div>

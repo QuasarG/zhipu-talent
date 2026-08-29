@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, parseSSE } from "@/lib/api";
 import type { ChatConversation, ChatEvent, ChatMessage, ChatSegment } from "@/lib/types";
@@ -12,6 +12,7 @@ import { useSessionState } from "@/lib/sessionState";
 import { useI18n } from "@/lib/i18n";
 import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import GrillWorkbench, { type ChatMode } from "@/features/grill/GrillWorkbench";
+import { markdownHeadings } from "@/features/chat/chatNavigationModel";
 
 type LocalMessage = ChatMessage & { error?: string };
 
@@ -196,6 +197,25 @@ export default function TalentChat() {
     convRef.current?.scrollTo(0, convRef.current.scrollHeight);
   }, [messages]);
 
+  const reportHeadings = useMemo(() => {
+    const latest = [...messages].reverse().find((message) => message.role === "assistant");
+    if (!latest) return [];
+    return latest.content.segments.flatMap((segment, index) =>
+      segment.type === "text" ? markdownHeadings(segment.text, `${latest.id}-${index}`) : []
+    );
+  }, [messages]);
+
+  const jumpToHeading = (id: string) => {
+    const container = convRef.current;
+    const target = document.getElementById(id);
+    if (!container || !target || !container.contains(target)) return;
+    const top = target.getBoundingClientRect().top
+      - container.getBoundingClientRect().top
+      + container.scrollTop
+      - 48;
+    container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  };
+
   // 画像澄清模式：渲染独立工作台，两套会话/Agent 完全隔离
   if (mode === "clarify") {
     return <GrillWorkbench onSwitchMode={setMode} />;
@@ -355,6 +375,35 @@ export default function TalentChat() {
 
         <div className="flex-1 min-w-0 flex flex-col w-full max-w-5xl mx-auto">
           <div ref={convRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-5 pr-1 pb-2">
+            {reportHeadings.length >= 2 && (
+              <nav className="sticky top-0 z-10 flex min-h-10 items-center gap-1.5 overflow-x-auto rounded-md border border-outline-variant bg-surface/95 px-2 shadow-sm backdrop-blur-sm" aria-label={t("本回答目录")}>
+                <span className="flex shrink-0 items-center gap-1 text-label font-medium text-on-surface-variant">
+                  <Icon name="toc" size={16} />
+                  {t("目录")}
+                </span>
+                {reportHeadings.map((heading) => (
+                  <button
+                    key={heading.id}
+                    type="button"
+                    onClick={() => jumpToHeading(heading.id)}
+                    data-target-id={heading.id}
+                    className="state-layer min-h-8 shrink-0 rounded-full px-2.5 text-label text-on-surface-variant hover:text-on-surface"
+                    title={heading.label}
+                  >
+                    {heading.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => convRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+                  className="state-layer ml-auto flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-label text-primary"
+                  title={t("回到顶部")}
+                >
+                  <Icon name="vertical_align_top" size={15} />
+                  {t("顶部")}
+                </button>
+              </nav>
+            )}
             {loadingMsgs ? (
               <div className="flex-1 flex items-center justify-center">
                 <LoadingIndicator size={28} label={t("加载会话…")} />

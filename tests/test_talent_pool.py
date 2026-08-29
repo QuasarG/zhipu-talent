@@ -3,8 +3,15 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from agi_talent_radar.core.db.orm import Base, EvaluationORM, PersonORM, ReputationReportORM
+from agi_talent_radar.core.db.orm import (
+    Base,
+    CandidateORM,
+    EvaluationORM,
+    PersonORM,
+    ReputationReportORM,
+)
 from agi_talent_radar.core.persons import get_person_detail, list_persons
+from agi_talent_radar.knowledge_agent.tools import execute_gated_action
 
 
 def _make_person(person_id: str, name: str, org: str = "", direction: str = "", person_type: str = "guest") -> PersonORM:
@@ -142,6 +149,104 @@ class TalentPoolRouteTest(unittest.TestCase):
         self.assertEqual(data["name"], "王五")
         self.assertEqual(len(data["reputation_reports"]), 1)
         self.assertEqual(data["reputation_reports"][0]["level"], "yellow")
+        self.assertEqual(data["assessment_view"]["schema_version"], "person-assessment-view.v1")
+        self.assertFalse(data["assessment_view"]["resume"]["has_resume"])
+        self.assertIsNone(data["assessment_view"]["latest"])
+
+    def test_chat_review_then_add_is_one_person_with_reputation_in_pool_routes(self) -> None:
+        with self.Session() as session:
+            execute_gated_action(
+                session,
+                "review_reputation",
+                {
+                    "name": "李博杰",
+                    "org": "北京智源人工智能研究院",
+                    "items": [
+                        {
+                            "title": "已经人工确认的负面事件",
+                            "url": "https://example.test/reputation",
+                            "sentiment": "negative",
+                        }
+                    ],
+                },
+                {"verdicts": [{"index": 0, "action": "confirmed"}]},
+            )
+            execute_gated_action(
+                session,
+                "propose_add_person",
+                {
+                    "name": "李博杰",
+                    "org": "北京智源人工智能研究院",
+                    "direction": "多模态大模型",
+                },
+                {"approved": True},
+            )
+            person_id = session.query(PersonORM).filter_by(name="李博杰").one().id
+
+        from agi_talent_radar.web.workbench import create_app
+
+        client = create_app().test_client()
+        listed = client.get("/api/persons").get_json()
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["id"], person_id)
+        self.assertEqual(listed[0]["reputation_level"], "red")
+        self.assertEqual(listed[0]["reputation_status"], "confirmed")
+
+        detail = client.get(f"/api/persons/{person_id}").get_json()
+        self.assertEqual(len(detail["reputation_reports"]), 1)
+        report = detail["reputation_reports"][0]
+        self.assertEqual(report["level"], "red")
+        self.assertEqual(report["review_status"], "confirmed")
+        self.assertEqual(report["events"][0]["title"], "已经人工确认的负面事件")
+
+    def test_resolve_deck_migrates_candidate_ids_and_removes_invalid_entries(self) -> None:
+        with self.Session() as session:
+            valid = _make_person("person-valid", "有效人才", person_type="student")
+            no_resume = _make_person("person-empty", "无简历人才", person_type="student")
+            session.add_all([valid, no_resume])
+            session.flush()
+            session.add(CandidateORM(
+                id="candidate-legacy",
+                person_id=valid.id,
+                name="有效人才",
+                raw_text="拥有可用于对比的简历内容",
+                source_format="pdf",
+            ))
+            session.add(CandidateORM(
+                id="candidate-empty",
+                person_id=no_resume.id,
+                name="无简历人才",
+                raw_text="",
+                source_format="",
+            ))
+            session.commit()
+
+        from agi_talent_radar.web.workbench import create_app
+
+        response = create_app().test_client().post(
+            "/api/persons/resolve-deck",
+            json={"ids": ["person-valid", "candidate-legacy", "person-empty", "deleted"]},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["schema_version"], "comparison-deck.v2")
+        self.assertEqual([row["person_id"] for row in data["entries"]], ["person-valid", "person-valid"])
+        self.assertFalse(data["entries"][0]["migrated"])
+        self.assertTrue(data["entries"][1]["migrated"])
+        self.assertEqual(
+            {row["input_id"] for row in data["invalid"]},
+            {"person-empty", "deleted"},
+        )
+
+    def test_resolve_deck_rejects_invalid_or_oversized_payloads(self) -> None:
+        from agi_talent_radar.web.workbench import create_app
+
+        client = create_app().test_client()
+        self.assertEqual(client.post("/api/persons/resolve-deck", json={"ids": [1]}).status_code, 400)
+        self.assertEqual(
+            client.post("/api/persons/resolve-deck", json={"ids": [f"p{index}" for index in range(51)]}).status_code,
+            400,
+        )
 
     def test_get_person_reputation_route(self) -> None:
         self._seed_person_with_report()

@@ -1,5 +1,14 @@
 // JD 池页面英文文案（中文文案即 key）
 export default {
+  "添加岗位说明后，系统会生成可用于准入评估的岗位卡。": "Add a job description to generate a role card for admission assessment.",
+  "编辑并重新生成": "Edit and regenerate",
+  "评估卡就绪": "Role card ready",
+  "生成失败": "Generation failed",
+  "生成中": "Generating",
+  "已归档": "Archived",
+  "恢复": "Restore",
+  "归档": "Archive",
+  "确认删除": "Confirm delete",
   "JD 池": "JD Pool",
   "{count} 个激活 JD 将分别参与后续面试准入评估":
     "{count} active JDs will be evaluated independently for interview admission",

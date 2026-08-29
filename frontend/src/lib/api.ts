@@ -15,6 +15,7 @@ import type {
   PersonDetail,
   ReputationReport,
   ResumeVersionEntry,
+  ResumeOriginalMetadata,
   ScholarshipApplication,
   ScholarshipEvaluation,
   ScholarshipReputationItem,
@@ -22,11 +23,27 @@ import type {
 } from "./types";
 
 const BASE = "";
+export const UNAUTHORIZED_EVENT = "talent-radar:unauthorized";
+
+export class UnauthorizedError extends Error {
+  readonly status = 401;
+
+  constructor(message = "未鉴权，请先登录。") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(BASE + url, { cache: "no-store", ...init });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    if (resp.status === 401) {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: { url } }));
+      }
+      throw new UnauthorizedError(err.detail);
+    }
     throw new Error(err.detail || `HTTP ${resp.status}`);
   }
   return resp.json();
@@ -70,6 +87,8 @@ export const api = {
       }),
     engagementHistory: (id: string) =>
       fetchJSON<unknown[]>(`/api/candidates/${id}/engagement-history`),
+    originalMetadata: (id: string) =>
+      fetchJSON<ResumeOriginalMetadata>(`/api/candidates/${id}/original-metadata`),
   },
   persons: {
     list: (params?: { person_type?: string; name?: string; q?: string; level?: string; group_id?: string }) => {
@@ -104,6 +123,16 @@ export const api = {
       fetchJSON<ReputationReport[]>(`/api/persons/${id}/reputation`),
     resumeVersions: (id: string) =>
       fetchJSON<ResumeVersionEntry[]>(`/api/persons/${id}/resume-versions`),
+    resolveDeck: (ids: string[]) =>
+      fetchJSON<{
+        schema_version: "comparison-deck.v2";
+        entries: Array<{ input_id: string; person_id: string; candidate_id: string; name: string; migrated: boolean }>;
+        invalid: Array<{ input_id: string; reason: string }>;
+      }>("/api/persons/resolve-deck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      }),
     delete: (id: string) =>
       fetchJSON<{ id: string; deleted: boolean }>(`/api/persons/${id}`, { method: "DELETE" }),
     move: (id: string, groupId: string | null) =>
@@ -178,11 +207,15 @@ export const api = {
       }),
   },
   interviewAssessments: {
-    start: (candidateIds: string[], jdIds: string[]) =>
+    start: (
+      pairs: Array<{ candidate_id: string; jd_id: string }>,
+      requestId: string,
+      forceReason = "",
+    ) =>
       fetchJSON<InterviewAssessmentBatch>("/api/interview-assessment-batches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidate_ids: candidateIds, jd_ids: jdIds }),
+        body: JSON.stringify({ pairs, request_id: requestId, force_reason: forceReason }),
       }),
     batch: (id: string) =>
       fetchJSON<InterviewAssessmentBatch>(`/api/interview-assessment-batches/${id}`),
@@ -311,8 +344,15 @@ export const api = {
   },
   config: {
     get: () => fetchJSON<Record<string, unknown>>("/api/config"),
+    audit: () => fetchJSON<Record<string, { changed_by: string; changed_at: string }>>("/api/config/audit"),
     put: (updates: Record<string, string>) =>
-      fetchJSON("/api/config", {
+      fetchJSON<{
+        applied: Record<string, unknown>;
+        rejected: Record<string, string>;
+        runtime_refreshed: boolean;
+        audit_status: "recorded" | "failed" | "not_required";
+        warning?: string;
+      }>("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),

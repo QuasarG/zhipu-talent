@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import threading
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -66,6 +67,45 @@ class WorkbenchTest(unittest.TestCase):
         response = self.app.get("/api/not-a-real-endpoint")
         self.assertEqual(response.status_code, 404)
         self.assertIn("detail", response.get_json())
+
+    def test_resume_original_metadata_and_pdf_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "candidate-pdf.pdf").write_bytes(b"%PDF-1.4\nvalid")
+            with patch("agi_talent_radar.core.pdf_storage._ROOT", root):
+                metadata = self.app.get("/api/candidates/candidate-pdf/original-metadata")
+                preview = self.app.get("/api/candidates/candidate-pdf/original-file")
+                download = self.app.get("/api/candidates/candidate-pdf/original-file?download=1")
+                preview.close()
+                download.close()
+
+        self.assertEqual(metadata.status_code, 200)
+        self.assertTrue(metadata.get_json()["previewable"])
+        self.assertEqual(metadata.get_json()["mime_type"], "application/pdf")
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview.content_type, "application/pdf")
+        self.assertIn("inline", preview.headers["Content-Disposition"])
+        self.assertEqual(preview.headers["X-Frame-Options"], "SAMEORIGIN")
+        self.assertEqual(preview.headers["Content-Security-Policy"], "frame-ancestors 'self'")
+        self.assertIn("attachment", download.headers["Content-Disposition"])
+
+    def test_resume_original_metadata_handles_missing_empty_and_corrupt_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch("agi_talent_radar.core.pdf_storage._ROOT", root):
+                missing = self.app.get("/api/candidates/missing/original-metadata").get_json()
+                (root / "empty.pdf").write_bytes(b"")
+                empty = self.app.get("/api/candidates/empty/original-metadata").get_json()
+                (root / "corrupt.pdf").write_bytes(b"not a pdf")
+                corrupt = self.app.get("/api/candidates/corrupt/original-metadata").get_json()
+
+        self.assertFalse(missing["exists"])
+        self.assertFalse(empty["previewable"])
+        self.assertIn("为空", empty["error"])
+        self.assertTrue(corrupt["exists"])
+        self.assertFalse(corrupt["previewable"])
+        self.assertIn("文件头无效", corrupt["error"])
+        self.assertTrue(corrupt["download_url"].endswith("download=1"))
 
     @patch(
         "agi_talent_radar.web.workbench._list_dist_assets",

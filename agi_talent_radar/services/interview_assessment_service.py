@@ -7,6 +7,9 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
+
+from sqlalchemy import and_, or_
 
 from agi_talent_radar.agents.interview_admission import (
     AssessmentCard,
@@ -28,6 +31,7 @@ from agi_talent_radar.core.models import CandidateResume
 
 
 ASSESSMENT_RULE_VERSION = "interview-admission-v1"
+MAX_BATCH_PAIRS = max(1, int(os.getenv("ADMISSION_MAX_BATCH_PAIRS", "20")))
 _PAIR_EXECUTOR = ThreadPoolExecutor(
     max_workers=max(1, int(os.getenv("ADMISSION_PAIR_CONCURRENCY", "50"))),
     thread_name_prefix="admission-pair",
@@ -94,20 +98,86 @@ def start_batch(
     candidate_ids: list[str],
     jd_ids: list[str],
     owner_id: str | None,
+    *,
+    pairs: list[tuple[str, str]] | None = None,
+    request_id: str | None = None,
+    force_reason: str = "",
 ) -> dict[str, Any]:
+    normalized_pairs = list(dict.fromkeys(
+        pairs if pairs is not None else [
+            (candidate_id, jd_id)
+            for candidate_id in candidate_ids
+            for jd_id in jd_ids
+        ]
+    ))
+    if not normalized_pairs:
+        raise ValueError("至少选择一个候选人–JD 配对。")
+    if len(normalized_pairs) > MAX_BATCH_PAIRS:
+        raise ValueError(f"单批最多允许 {MAX_BATCH_PAIRS} 个配对。")
+    normalized_request_id = (request_id or uuid4().hex).strip()
+    if len(normalized_request_id) > 64:
+        raise ValueError("request_id 最长 64 个字符。")
+
     with get_session() as session:
+        existing_batch = (
+            session.query(InterviewAssessmentBatchORM)
+            .filter_by(request_id=normalized_request_id)
+            .first()
+        )
+        if existing_batch is not None:
+            existing_pairs = {
+                (row.candidate_id, row.jd_id)
+                for row in session.query(InterviewAssessmentRunORM)
+                .filter_by(batch_id=existing_batch.id)
+                .all()
+            }
+            if existing_pairs != set(normalized_pairs):
+                raise ValueError("request_id 已用于另一组评估配对。")
+            return batch_to_dict(existing_batch)
+
         running = (
             session.query(InterviewAssessmentRunORM)
             .filter(
-                InterviewAssessmentRunORM.candidate_id.in_(candidate_ids),
-                InterviewAssessmentRunORM.jd_id.in_(jd_ids),
+                or_(*[
+                    and_(
+                        InterviewAssessmentRunORM.candidate_id == candidate_id,
+                        InterviewAssessmentRunORM.jd_id == jd_id,
+                    )
+                    for candidate_id, jd_id in normalized_pairs
+                ]),
                 InterviewAssessmentRunORM.status.in_(("queued", "running")),
             )
             .first()
         )
         if running is not None:
             raise ValueError("所选候选人–JD 配对正在评估，请等待当前运行结束。")
-        batch = create_interview_assessment_batch(session, candidate_ids, jd_ids, owner_id)
+        repeated = (
+            session.query(CandidateJdAssessmentORM)
+            .filter(
+                or_(*[
+                    and_(
+                        CandidateJdAssessmentORM.candidate_id == candidate_id,
+                        CandidateJdAssessmentORM.jd_id == jd_id,
+                    )
+                    for candidate_id, jd_id in normalized_pairs
+                ]),
+                CandidateJdAssessmentORM.is_valid.is_(True),
+            )
+            .count()
+        )
+        normalized_force_reason = force_reason.strip()
+        if repeated and not normalized_force_reason:
+            raise ValueError("所选配对包含已有有效报告；强制重评必须填写原因。")
+        batch = create_interview_assessment_batch(
+            session,
+            candidate_ids,
+            jd_ids,
+            owner_id,
+            pairs=normalized_pairs,
+            request_id=normalized_request_id,
+            config_version=ASSESSMENT_RULE_VERSION,
+            force_reason=normalized_force_reason,
+        )
         batch.status = "running"
         batch.started_at = _now()
         run_ids = [row.id for row in session.query(InterviewAssessmentRunORM).filter_by(batch_id=batch.id).all()]
@@ -437,6 +507,9 @@ def _input_fingerprint(resume: CandidateResume, jd: JdEntryORM, card: Assessment
 def batch_to_dict(row: InterviewAssessmentBatchORM) -> dict[str, Any]:
     return {
         "id": row.id,
+        "request_id": row.request_id or "",
+        "config_version": row.config_version or "",
+        "force_reason": row.force_reason or "",
         "status": row.status,
         "candidate_ids": list(row.candidate_ids or []),
         "jd_ids": list(row.jd_ids or []),

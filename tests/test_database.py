@@ -200,6 +200,18 @@ class DatabaseTest(unittest.TestCase):
             self.assertEqual(later.org, "某大学")
             self.assertEqual(_count(session, PersonORM), 1)
 
+    def test_person_identity_does_not_merge_same_name_at_different_orgs(self) -> None:
+        with self.Session() as session:
+            first = get_or_create_person(session, name="李博杰", org="甲研究院")
+            second = get_or_create_person(session, name="李博杰", org="乙研究院")
+
+            self.assertNotEqual(first.id, second.id)
+            self.assertEqual(_count(session, PersonORM), 2)
+
+    def test_config_change_audit_table_exists_without_secret_value_column(self) -> None:
+        columns = {column["name"] for column in inspect(self.engine).get_columns("config_change_audit")}
+        self.assertEqual(columns, {"id", "config_key", "changed_by", "created_at"})
+
     def test_delete_person_removes_complete_resume_record_tree(self) -> None:
         with self.Session() as session:
             person = PersonORM(id="person-delete", name="待删除", fingerprint="fp-delete")

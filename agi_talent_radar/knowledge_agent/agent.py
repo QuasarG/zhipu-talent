@@ -45,6 +45,7 @@ SYSTEM_TEXT = {
         "skipped_tool": "该工具调用因等待用户确认被跳过。",
         "done_fallback": "执行完成",
         "tool_failed": "执行失败",
+        "agent_failed": "本次回答未能完成，请稍后重试",
         "title_prompt": '你是会话标题生成器。根据用户首条问题生成不超过 15 字的中文标题，只输出 JSON：{"title": "..."}',
     },
     "en": {
@@ -57,6 +58,7 @@ SYSTEM_TEXT = {
         "skipped_tool": "This tool call was skipped while awaiting user confirmation.",
         "done_fallback": "Done",
         "tool_failed": "Tool failed",
+        "agent_failed": "This answer could not be completed. Please try again later",
         "title_prompt": 'You are a conversation title generator. Generate an English title of at most 40 characters from the user first question. Output JSON only: {"title": "..."}',
     },
 }
@@ -84,7 +86,7 @@ def _tool_error_text(lang: str, exc: Exception) -> tuple[str, str]:
     elif any(code in raw for code in ("500", "502", "503", "504")) or "server error" in lowered:
         reason = "上游服务暂时不可用" if lang == "zh" else "upstream service unavailable"
     else:
-        reason = head
+        reason = "未知上游错误" if lang == "zh" else "unknown upstream error"
     label = _sys_text(lang, "tool_failed")
     return f"{label}：{reason}", raw[:1200]
 
@@ -313,7 +315,7 @@ def _agent_loop(session, messages: list[dict], emit: Emit, message_rec: ChatMess
             save_segments()
         except Exception:  # noqa: BLE001
             session.rollback()
-        emit("error", {"message": str(exc)})
+        emit("error", {"message": _sys_text(lang, "agent_failed")})
         emit("done", {"status": "completed"})
 
 

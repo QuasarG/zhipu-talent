@@ -6,7 +6,7 @@ import re
 import uuid
 
 from agi_talent_radar.core.db.orm import CandidateORM, PersonORM, ReputationReportORM, TalentGroupORM
-from sqlalchemy import Text, or_ as _sql_or
+from sqlalchemy import Text, func, or_ as _sql_or
 
 PERSON_TYPES = {"student", "social", "guest"}
 
@@ -21,12 +21,37 @@ def person_fingerprint(name: str, org: str = "", direction: str = "") -> str:
 
 
 def find_person(session, name: str, org: str = "", direction: str = "") -> PersonORM | None:
-    """先精确指纹，再退化到纯姓名指纹（早期主档可能缺机构/方向）。"""
+    """按渐进补全的身份字段查找人物，避免后补方向时重复建档。"""
     person = session.query(PersonORM).filter_by(fingerprint=person_fingerprint(name, org, direction)).first()
     if person is not None:
         return person
     if org or direction:
-        return session.query(PersonORM).filter_by(fingerprint=person_fingerprint(name)).first()
+        person = session.query(PersonORM).filter_by(fingerprint=person_fingerprint(name)).first()
+        if person is not None:
+            return person
+
+        normalized_name = normalize_identity(name)
+        candidates = (
+            session.query(PersonORM)
+            .filter(func.lower(func.replace(PersonORM.name, " ", "")) == normalized_name)
+            .all()
+        )
+        compatible = [
+            candidate
+            for candidate in candidates
+            if (
+                not org
+                or not candidate.org
+                or normalize_identity(candidate.org) == normalize_identity(org)
+            )
+            and (
+                not direction
+                or not candidate.direction
+                or normalize_identity(candidate.direction) == normalize_identity(direction)
+            )
+        ]
+        if len(compatible) == 1:
+            return compatible[0]
     return None
 
 

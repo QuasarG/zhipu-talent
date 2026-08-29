@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { PersonBrief, PersonDetail, TalentGroup } from "@/lib/types";
@@ -9,13 +9,19 @@ import Chip from "@/components/ui/Chip";
 import { IconButton } from "@/components/ui/Button";
 import TalentList, { classifyTrack, STATUS_LABELS } from "@/features/pool/TalentList";
 import TalentDetail from "@/features/pool/TalentDetail";
-import RelationGraph from "@/features/pool/RelationGraph";
-import TrackDeck from "@/features/pool/TrackDeck";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import AddPersonDialog from "@/features/pool/AddPersonDialog";
 import GroupDrawer from "@/features/pool/GroupDrawer";
 import { useSessionState } from "@/lib/sessionState";
 import { useI18n } from "@/lib/i18n";
+import { validVisibleSelection } from "@/features/pool/talentPoolModel";
+
+const RelationGraph = lazy(() => import("@/features/pool/RelationGraph"));
+const TrackDeck = lazy(() => import("@/features/pool/TrackDeck"));
+
+function WorkspaceFallback() {
+  return <div className="h-full min-h-[320px] rounded-md bg-surface-low animate-pulse" aria-label="loading" />;
+}
 
 export default function TalentPool() {
   const [persons, setPersons] = useState<PersonBrief[]>([]);
@@ -28,6 +34,7 @@ export default function TalentPool() {
   const [hrFilter, setHrFilter] = useSessionState("talent-pool.hr-filter", "");
   const [view, setView] = useSessionState<"graph" | "deck">("talent-pool.view", "graph");
   const deckApiRef = useRef<{ addToDeck: (id: string) => void } | null>(null);
+  const pendingFocusRef = useRef<string | null>(null);
   const deckDragApiRef = useRef<{
     onDeckDragStart: (e: { active: { id: string | number } }) => void;
     onDeckDragEnd: (e: { active: { id: string | number }; over?: { id: string | number } | null }) => void;
@@ -51,6 +58,7 @@ export default function TalentPool() {
       ]);
       setPersons(list);
       setGroups(gs);
+      pendingFocusRef.current = null;
     } catch (err) {
       console.error(err);
     }
@@ -81,6 +89,7 @@ export default function TalentPool() {
   useEffect(() => {
     const focus = searchParams.get("focus");
     if (!focus) return;
+    pendingFocusRef.current = focus;
     setSearchParams({}, { replace: true });
     setTypeFilter("all");
     setTrackFilter("");
@@ -137,6 +146,29 @@ export default function TalentPool() {
       ),
     [persons, typeFilter, trackFilter, schoolFilter, hrFilter]
   );
+
+  const visibleSelectedId = useMemo(
+    () => validVisibleSelection(selectedId, filtered.map((person) => person.id)),
+    [filtered, selectedId],
+  );
+  const isFiltering = Boolean(
+    search.trim() || typeFilter !== "all" || trackFilter || schoolFilter || hrFilter
+  );
+  const clearFilters = useCallback(() => {
+    setSearch("");
+    setTypeFilter("all");
+    setTrackFilter("");
+    setSchoolFilter("");
+    setHrFilter("");
+  }, [setSearch, setTypeFilter, setTrackFilter, setSchoolFilter, setHrFilter]);
+
+  useEffect(() => {
+    if (pendingFocusRef.current === selectedId) return;
+    if (selectedId && !visibleSelectedId) {
+      setSelectedId(null);
+      setSelected(null);
+    }
+  }, [selectedId, setSelectedId, visibleSelectedId]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const movePersons = async (ids: string[], groupId: string | null) => {
@@ -253,26 +285,30 @@ export default function TalentPool() {
 
       {view === "graph" ? (
         <div className="grid w-full max-w-full grid-cols-[minmax(0,1.05fr)_minmax(0,2.15fr)_minmax(0,0.95fr)] gap-4 flex-1 min-h-0 min-w-0 overflow-hidden">
-          <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} showBatchEvaluate />
-          <RelationGraph
-            persons={filtered}
-            selectedId={selectedId}
-            onSelect={selectPerson}
-            groupName={(gid) => groups.find((g) => g.id === gid)?.name || ""}
-          />
-          <TalentDetail person={selected} personId={selectedId} onUpdated={handlePersonUpdated} />
+          <TalentList persons={filtered} selectedId={visibleSelectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} showBatchEvaluate isFiltering={isFiltering} onClearFilters={clearFilters} />
+          <Suspense fallback={<WorkspaceFallback />}>
+            <RelationGraph
+              persons={filtered}
+              selectedId={visibleSelectedId}
+              onSelect={selectPerson}
+              groupName={(gid) => groups.find((g) => g.id === gid)?.name || ""}
+            />
+          </Suspense>
+          <TalentDetail person={visibleSelectedId ? selected : null} personId={visibleSelectedId} onUpdated={handlePersonUpdated} />
         </div>
       ) : (
         <div className="flex w-full max-w-full gap-4 flex-1 min-h-0 min-w-0 overflow-hidden">
           <div className="min-w-0 max-w-[24rem] flex-1 h-full min-h-0 flex">
-            <TalentList persons={filtered} selectedId={selectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} />
+            <TalentList persons={filtered} selectedId={visibleSelectedId} onSelect={selectPerson} onDelete={handleDeletePerson} groups={groups} onChanged={load} onAddPerson={() => setShowAddPerson(true)} onManageGroups={() => setShowGroups(true)} isFiltering={isFiltering} onClearFilters={clearFilters} />
           </div>
-          <TrackDeck
-            selectedId={selectedId}
-            personsName={(id) => { const p = filtered.find((x) => x.id === id); return (p?.display_name || p?.name) || id; }}
-            deckApiRef={deckApiRef}
-            deckDragApiRef={deckDragApiRef}
-          />
+          <Suspense fallback={<WorkspaceFallback />}>
+            <TrackDeck
+              selectedId={visibleSelectedId}
+              personsName={(id) => { const p = filtered.find((x) => x.id === id); return (p?.display_name || p?.name) || id; }}
+              deckApiRef={deckApiRef}
+              deckDragApiRef={deckDragApiRef}
+            />
+          </Suspense>
         </div>
       )}
       </div>

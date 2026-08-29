@@ -76,7 +76,7 @@ export default function SessionSidebar({ sessions, currentId, busy, onSelect, on
   const allSelected = sessions.length > 0 && selected.size === sessions.length;
 
   return (
-    <div className="flex w-60 shrink-0 flex-col gap-2 min-h-0">
+    <div className="flex w-48 2xl:w-60 shrink-0 flex-col gap-2 min-h-0">
       <Button variant="tonal" icon="add" className="w-full shrink-0" disabled={busy} onClick={onCreate}>
         {t("新建对话")}
       </Button>

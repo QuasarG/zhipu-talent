@@ -1,4 +1,8 @@
 export default {
+  "本回答目录": "Answer outline",
+  "目录": "Outline",
+  "回到顶部": "Back to top",
+  "顶部": "Top",
   "AI 正在工作": "AI is working",
   "思考过程": "Thinking process",
 "思考中…": "Thinking…",

@@ -1058,6 +1058,17 @@ def create_publication_verification_task(
 # ---------------------------------------------------------------------------
 
 
+def _normalize_assessment_card(card: dict | None) -> dict[str, Any]:
+    """卡片 JSON 可能因历史数据/中断写入缺字段；序列化时补齐数组形状。"""
+    normalized = dict(card or {})
+    for key in ("core_tasks", "excluded_requirements"):
+        value = normalized.get(key)
+        normalized[key] = list(value) if isinstance(value, (list, tuple)) else []
+    normalized.setdefault("role_summary", "")
+    normalized.setdefault("background_evidence_guidance", "")
+    return normalized
+
+
 def jd_to_dict(row: JdEntryORM) -> dict[str, Any]:
     return {
         "id": row.id,
@@ -1067,7 +1078,7 @@ def jd_to_dict(row: JdEntryORM) -> dict[str, Any]:
         "track_key": row.track_key or "",
         "spec": json.loads(row.spec) if row.spec else None,
         "supplements": list(row.supplements or []),
-        "assessment_card": dict(row.assessment_card or {}),
+        "assessment_card": _normalize_assessment_card(row.assessment_card),
         "card_status": row.card_status or "generating",
         "card_error": row.card_error or "",
         "card_run_trace": list(row.card_run_trace or []),
@@ -1217,10 +1228,22 @@ def create_interview_assessment_batch(
     candidate_ids: list[str],
     jd_ids: list[str],
     owner_id: str | None = None,
+    *,
+    pairs: list[tuple[str, str]] | None = None,
+    request_id: str | None = None,
+    config_version: str = "",
+    force_reason: str = "",
 ) -> InterviewAssessmentBatchORM:
-    """创建批次和 N×M 个运行记录，不启动模型调用。"""
-    candidates = list(dict.fromkeys(candidate_ids))
-    jobs = list(dict.fromkeys(jd_ids))
+    """创建显式配对批次；旧调用未传 pairs 时保持 N×M 兼容。"""
+    normalized_pairs = list(dict.fromkeys(
+        pairs if pairs is not None else [
+            (candidate_id, jd_id)
+            for candidate_id in candidate_ids
+            for jd_id in jd_ids
+        ]
+    ))
+    candidates = list(dict.fromkeys(candidate_id for candidate_id, _ in normalized_pairs))
+    jobs = list(dict.fromkeys(jd_id for _, jd_id in normalized_pairs))
     if not candidates or not jobs:
         raise ValueError("候选人和 JD 均不能为空。")
     existing_candidates = {
@@ -1243,16 +1266,18 @@ def create_interview_assessment_batch(
 
     batch = InterviewAssessmentBatchORM(
         owner_id=owner_id,
+        request_id=request_id,
+        config_version=config_version,
+        force_reason=force_reason,
         candidate_ids=candidates,
         jd_ids=jobs,
-        total_pairs=len(candidates) * len(jobs),
+        total_pairs=len(normalized_pairs),
     )
     session.add(batch)
     session.flush()
     runs = [
         InterviewAssessmentRunORM(batch_id=batch.id, candidate_id=candidate_id, jd_id=jd_id)
-        for candidate_id in candidates
-        for jd_id in jobs
+        for candidate_id, jd_id in normalized_pairs
     ]
     session.add_all(runs)
     session.flush()

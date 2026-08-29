@@ -1,4 +1,6 @@
 export default {
+  "最后更新：{time} · {user}": "Last updated: {time} · {user}",
+  "未知用户": "Unknown user",
   "设置": "Settings",
   "外观": "Appearance",
   "检测中…": "Checking…",
@@ -17,6 +19,7 @@ export default {
   "必需": "Required",
   "外部服务 Key": "External Service Keys",
   "{key} 已更新": "{key} updated",
+  "{key} 已更新，但审计记录失败，请联系管理员": "{key} updated, but the audit record failed. Contact an administrator.",
   "{key} 更新失败": "Failed to update {key}",
   "智谱开放平台": "Zhipu Open Platform",
   "一把 Key 通吃：GLM-5.3-Flash 主模型（文本与多模态），以及 Web Search、Embedding 与云端 OCR": "One key for everything: GLM-5.3-Flash for text and multimodal calls, plus Web Search, Embedding, and cloud OCR",

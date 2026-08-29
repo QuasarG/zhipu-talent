@@ -19,16 +19,19 @@ const variantClass: Record<Variant, string> = {
 
 /** MD3 Button：full 圆角 + state layer */
 export default function Button({ variant = "filled", icon, children, className, ...rest }: ButtonProps) {
+  const accessibleLabel = rest["aria-label"] || (!children ? rest.title || icon : undefined);
   return (
     <button
+      {...rest}
+      aria-label={accessibleLabel}
+      title={rest.title || (!children ? accessibleLabel : undefined)}
       className={cn(
         "state-layer inline-flex items-center justify-center gap-2 h-10 px-5 rounded-full",
-        "text-sm font-medium cursor-pointer select-none transition-colors duration-150",
+        "text-sm font-medium cursor-pointer select-none transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.96]",
         "disabled:opacity-40 disabled:pointer-events-none",
         variantClass[variant],
         className
       )}
-      {...rest}
     >
       {icon && <Icon name={icon} size={18} />}
       {children}
@@ -51,15 +54,18 @@ const iconVariantClass: Record<NonNullable<IconButtonProps["variant"]>, string> 
 
 /** MD3 Icon Button：40px 圆形 */
 export function IconButton({ icon, variant = "standard", size = 20, className, ...rest }: IconButtonProps) {
+  const accessibleLabel = rest["aria-label"] || rest.title || icon;
   return (
     <button
+      {...rest}
+      aria-label={accessibleLabel}
+      title={rest.title || accessibleLabel}
       className={cn(
         "state-layer inline-flex items-center justify-center w-10 h-10 rounded-full",
-        "cursor-pointer select-none transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none",
+        "cursor-pointer select-none transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.96] disabled:opacity-40 disabled:pointer-events-none",
         iconVariantClass[variant],
         className
       )}
-      {...rest}
     >
       <Icon name={icon} size={size} />
     </button>

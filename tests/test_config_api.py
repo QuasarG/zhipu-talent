@@ -15,13 +15,57 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from agi_talent_radar.core.db.orm import Base, ConfigChangeAuditORM
 from agi_talent_radar.web.config_api import (
+    _list_config_audits,
+    _record_config_audits,
     update_env,
     test_llm_connection,
     build_config_blueprint,
 )
+
+
+class TestConfigAudit(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
+
+    def tearDown(self) -> None:
+        self.engine.dispose()
+
+    def test_records_only_key_actor_and_time(self) -> None:
+        with (
+            patch("agi_talent_radar.core.database.get_session", side_effect=self.Session),
+            patch(
+                "agi_talent_radar.web.auth.current_user",
+                return_value=SimpleNamespace(display_name="郭泽新", username="guozexin"),
+            ),
+        ):
+            result = _record_config_audits(["LLM_API_KEY"])
+
+        self.assertEqual(result["LLM_API_KEY"]["changed_by"], "郭泽新")
+        with self.Session() as session:
+            row = session.query(ConfigChangeAuditORM).one()
+            self.assertEqual(row.config_key, "LLM_API_KEY")
+            self.assertFalse(hasattr(row, "config_value"))
+
+    def test_lists_latest_change_per_key(self) -> None:
+        with self.Session() as session:
+            session.add_all([
+                ConfigChangeAuditORM(config_key="LLM_API_KEY", changed_by="旧用户"),
+                ConfigChangeAuditORM(config_key="LLM_API_KEY", changed_by="新用户"),
+            ])
+            session.commit()
+        with patch("agi_talent_radar.core.database.get_session", side_effect=self.Session):
+            result = _list_config_audits()
+        self.assertEqual(result["LLM_API_KEY"]["changed_by"], "新用户")
 
 
 class TestUpdateEnv(unittest.TestCase):
@@ -107,12 +151,24 @@ class TestConfigBlueprint(unittest.TestCase):
         )
         self._provider_patch.start()
         self._settings_patch.start()
+        self._record_audit_patch = patch(
+            "agi_talent_radar.web.config_api._record_config_audits",
+            return_value={"LLM_API_KEY": {"changed_by": "测试用户", "changed_at": "2026-08-29T12:00:00"}},
+        )
+        self._list_audit_patch = patch(
+            "agi_talent_radar.web.config_api._list_config_audits",
+            return_value={"LLM_API_KEY": {"changed_by": "测试用户", "changed_at": "2026-08-29T12:00:00"}},
+        )
+        self._record_audit_patch.start()
+        self._list_audit_patch.start()
         self.app.register_blueprint(build_config_blueprint(env_path=self.env_path))
         self.client = self.app.test_client()
 
     def tearDown(self) -> None:
         self._provider_patch.stop()
         self._settings_patch.stop()
+        self._record_audit_patch.stop()
+        self._list_audit_patch.stop()
         import shutil
 
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -140,11 +196,34 @@ class TestConfigBlueprint(unittest.TestCase):
         self.assertIn("LLM_API_KEY", applied)
         self.assertNotIn("sk-brand-new-secret", rv.data.decode("utf-8"))
         self.assertIn("*", applied["LLM_API_KEY"]["masked"])
+        self.assertEqual(data["audit"]["LLM_API_KEY"]["changed_by"], "测试用户")
+
+    def test_get_audit_returns_key_metadata_without_values(self) -> None:
+        rv = self.client.get("/api/config/audit")
+        self.assertEqual(rv.status_code, 200)
+        data = rv.get_json()
+        self.assertEqual(data["LLM_API_KEY"]["changed_by"], "测试用户")
+        self.assertNotIn("value", rv.data.decode("utf-8"))
 
     def test_put_rejects_unknown_keys(self) -> None:
         rv = self.client.put("/api/config", json={"HACKED_KEY": "x"})
         self.assertEqual(rv.status_code, 400)
         self.assertIn("HACKED_KEY", rv.get_json()["rejected"])
+
+    def test_put_reports_partial_success_when_audit_write_fails(self) -> None:
+        with patch(
+            "agi_talent_radar.web.config_api._record_config_audits",
+            side_effect=RuntimeError("db password leaked-in-exception"),
+        ):
+            rv = self.client.put("/api/config", json={"LLM_API_KEY": "sk-applied-secret"})
+
+        self.assertEqual(rv.status_code, 207)
+        data = rv.get_json()
+        self.assertEqual(data["audit_status"], "failed")
+        self.assertIn("配置已应用", data["warning"])
+        self.assertIn("LLM_API_KEY=sk-applied-secret", self.env_path.read_text(encoding="utf-8"))
+        self.assertNotIn("db password", rv.data.decode("utf-8"))
+        self.assertNotIn("sk-applied-secret", rv.data.decode("utf-8"))
 
 
 class TestLLMConnection(unittest.TestCase):

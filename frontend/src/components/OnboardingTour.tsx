@@ -43,7 +43,7 @@ const STEPS: TourStep[] = [
   },
   {
     selector: "[data-chat-input]",
-    route: "/",
+    route: "/chat",
     title: "问答输入框",
     desc: "回到问答页——在这里输入问题。Agent 会预告每一步操作，工具调用卡片实时弹出，回答带引用角标。",
     placement: "top",
@@ -129,8 +129,10 @@ export default function OnboardingTour() {
       navigate(s.route);
     }
 
-    // 3. 延迟定位高亮框（等路由渲染完）
-    timerRef.current = setTimeout(() => {
+    // 3. 等目标真实挂载后再定位。路由懒加载和接口回填速度不同，固定延时会
+    // 把引导气泡定位到短暂空态；最多等待 4 秒，再安全降级为居中说明。
+    const startedAt = Date.now();
+    const locateTarget = () => {
       if (!s.selector) {
         setRect(null);
         setBubbleVisible(true);
@@ -139,12 +141,17 @@ export default function OnboardingTour() {
       const el = document.querySelector(s.selector);
       if (el) {
         setRect(el.getBoundingClientRect());
+        timerRef.current = setTimeout(() => setBubbleVisible(true), 350);
+        return;
+      }
+      if (Date.now() - startedAt < 4000) {
+        timerRef.current = setTimeout(locateTarget, 100);
       } else {
         setRect(null);
+        setBubbleVisible(true);
       }
-      // 4. 再延迟一下让高亮框 transition 完成，然后气泡淡入
-      timerRef.current = setTimeout(() => setBubbleVisible(true), 350);
-    }, 300);
+    };
+    timerRef.current = setTimeout(locateTarget, 100);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);

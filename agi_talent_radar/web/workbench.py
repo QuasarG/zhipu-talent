@@ -435,6 +435,7 @@ def create_app() -> Flask:
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
+    @app.get("/api/candidates/<candidate_id>/original-file")
     @app.get("/api/candidates/<candidate_id>/pdf")
     def get_candidate_pdf(candidate_id: str):
         """流式返回候选人原始简历文件（PDF/图片/MD/TXT 等按实际后缀）。
@@ -455,9 +456,66 @@ def create_app() -> Flask:
                 ".md": "text/markdown", ".txt": "text/plain",
                 ".jsonl": "application/jsonl",
             }.get(original_path.suffix.lower(), "application/octet-stream")
-            return send_from_directory(_ROOT, original_path.name, mimetype=mimetype)
+            response = send_from_directory(
+                _ROOT,
+                original_path.name,
+                mimetype=mimetype,
+                as_attachment=request.args.get("download") == "1",
+                download_name=original_path.name,
+                conditional=True,
+            )
+            response.headers["Cache-Control"] = "private, no-store"
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
+            return response
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
+    @app.get("/api/candidates/<candidate_id>/original-metadata")
+    def get_candidate_original_metadata(candidate_id: str):
+        """返回原件展示元信息，不通过 HEAD 请求猜测文件能力。"""
+        import mimetypes
+
+        from agi_talent_radar.core.pdf_storage import get_resume_original_path
+
+        try:
+            original_path = get_resume_original_path(candidate_id)
+            if original_path is None:
+                return jsonify({
+                    "exists": False,
+                    "mime_type": "",
+                    "size": 0,
+                    "filename": "",
+                    "previewable": False,
+                    "preview_url": "",
+                    "download_url": "",
+                    "error": "该候选人没有可用的原始简历文件。",
+                })
+            size = original_path.stat().st_size
+            mime_type = mimetypes.guess_type(original_path.name)[0] or "application/octet-stream"
+            error = ""
+            previewable = size > 0
+            if size == 0:
+                error = "原始简历文件为空。"
+            elif original_path.suffix.lower() == ".pdf":
+                with original_path.open("rb") as stream:
+                    if stream.read(5) != b"%PDF-":
+                        previewable = False
+                        error = "PDF 文件头无效，无法安全预览。"
+            file_url = f"/api/candidates/{candidate_id}/original-file"
+            return jsonify({
+                "exists": True,
+                "mime_type": mime_type,
+                "size": size,
+                "filename": original_path.name,
+                "previewable": previewable,
+                "preview_url": file_url if previewable else "",
+                "download_url": f"{file_url}?download=1",
+                "error": error,
+            })
+        except OSError:
+            logger.exception("failed to inspect resume original metadata")
+            return jsonify({"detail": "原始简历文件暂时不可读取。"}), 503
 
     @app.patch("/api/candidates/<candidate_id>/engagement-status")
     def update_engagement_status(candidate_id: str):
@@ -589,7 +647,7 @@ def create_app() -> Flask:
                 if not person:
                     return jsonify({"detail": "人员不存在"}), 404
                 candidate = find_candidate_by_person(session, person.id)
-                return jsonify(_person_to_detail(person, candidate))
+                return jsonify(_person_to_detail(person, candidate, session=session))
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
 
@@ -694,7 +752,7 @@ def create_app() -> Flask:
                 if person is None:
                     return jsonify({"detail": "人员不存在"}), 404
                 candidate = find_candidate_by_person(session, person.id)
-                data = _person_to_detail(person, candidate)
+                data = _person_to_detail(person, candidate, session=session)
                 return jsonify(data)
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
@@ -727,6 +785,9 @@ def create_app() -> Flask:
                 latest_run = get_latest_evaluation_run(session, candidate.id)
                 if latest_run is not None and getattr(latest_run, "status", None) in {"running", "completed", "failed"}:
                     data["evaluation_run"] = evaluation_run_to_dict(latest_run)
+                from agi_talent_radar.services.person_assessment_view import get_person_assessment_view
+
+                data["assessment_view"] = get_person_assessment_view(session, person_id)
                 return jsonify(data)
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
@@ -742,6 +803,50 @@ def create_app() -> Flask:
                 return jsonify(list_person_resume_versions(session, person_id))
         except Exception as exc:
             logger.exception("route error in workbench"); return jsonify({"detail": "服务器内部错误，请稍后重试"}), 500
+
+    @app.post("/api/persons/resolve-deck")
+    def resolve_comparison_deck():
+        """批量校验对比滑轨 ID，并把旧 candidate ID 迁移到稳定 person ID。"""
+        from agi_talent_radar.core.database import get_session
+        from agi_talent_radar.core.db.orm import CandidateORM, PersonORM
+        from agi_talent_radar.core.db.repository import find_candidate_by_person
+        from agi_talent_radar.services.person_assessment_view import get_person_assessment_view
+
+        body = request.get_json(silent=True) or {}
+        raw_ids = body.get("ids") or []
+        if not isinstance(raw_ids, list) or any(not isinstance(item, str) for item in raw_ids):
+            return jsonify({"detail": "ids 必须是字符串数组"}), 400
+        ids = list(dict.fromkeys(item.strip() for item in raw_ids if item.strip()))
+        if len(ids) > 50:
+            return jsonify({"detail": "单次最多校验 50 个滑轨条目"}), 400
+
+        entries: list[dict[str, Any]] = []
+        invalid: list[dict[str, str]] = []
+        with get_session() as session:
+            for input_id in ids:
+                person = session.get(PersonORM, input_id)
+                migrated = False
+                if person is None:
+                    legacy_candidate = session.get(CandidateORM, input_id)
+                    if legacy_candidate is not None and legacy_candidate.person_id:
+                        person = session.get(PersonORM, legacy_candidate.person_id)
+                        migrated = person is not None
+                if person is None:
+                    invalid.append({"input_id": input_id, "reason": "人物不存在或已删除"})
+                    continue
+                candidate = find_candidate_by_person(session, person.id)
+                view = get_person_assessment_view(session, person.id)
+                if candidate is None or not view["resume"]["has_resume"]:
+                    invalid.append({"input_id": input_id, "reason": "人物没有关联简历"})
+                    continue
+                entries.append({
+                    "input_id": input_id,
+                    "person_id": person.id,
+                    "candidate_id": candidate.id,
+                    "name": person.name_note or person.name or candidate.name or "",
+                    "migrated": migrated,
+                })
+        return jsonify({"schema_version": "comparison-deck.v2", "entries": entries, "invalid": invalid})
 
     @app.get("/api/persons/<person_id>/reputation")
     def list_person_reputation(person_id: str):
@@ -1838,11 +1943,11 @@ def _person_to_brief(person, candidate=None) -> dict[str, Any]:
     }
 
 
-def _person_to_detail(person, candidate=None) -> dict[str, Any]:
+def _person_to_detail(person, candidate=None, session=None) -> dict[str, Any]:
     """人才详情：主档 + 评估历史 + 舆情报告列表。"""
     latest_eval = _latest_evaluation(person)
     latest_jd = _latest_jd_assessment(person)
-    return {
+    data = {
         "id": person.id,
         "name": person.name or person.id,
         "jd_evaluated": latest_jd is not None,
@@ -1861,6 +1966,11 @@ def _person_to_detail(person, candidate=None) -> dict[str, Any]:
         "reputation_reports": [_reputation_report_to_dict(r) for r in sorted(person.reputation_reports, key=lambda r: r.created_at, reverse=True)],
         **_person_candidate_fields(candidate, latest_eval),
     }
+    if session is not None:
+        from agi_talent_radar.services.person_assessment_view import get_person_assessment_view
+
+        data["assessment_view"] = get_person_assessment_view(session, person.id)
+    return data
 
 
 def _reputation_report_to_dict(report) -> dict[str, Any]:

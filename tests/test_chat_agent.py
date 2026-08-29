@@ -106,6 +106,17 @@ class TestSimpleAnswer(ChatAgentTestBase):
         # 历史不重复：system + user 两轮
         self.assertEqual(len(llm.calls[0]), 2)
 
+    def test_uncaught_agent_error_does_not_expose_raw_upstream_detail(self) -> None:
+        class FailingLLM:
+            def __call__(self, *args, **kwargs):
+                raise RuntimeError("500 https://provider.example/v1 secret-token stack trace")
+
+        self.run_with(FailingLLM())
+
+        error = next(payload for type_, payload in self.events if type_ == "error")
+        self.assertEqual(error["message"], "本次回答未能完成，请稍后重试")
+        self.assertNotIn("provider.example", error["message"])
+
 
 class TestToolCallThenAnswer(ChatAgentTestBase):
     def test_tool_call_loop(self) -> None:
@@ -238,6 +249,39 @@ class TestGatedInterruptAndResume(ChatAgentTestBase):
         self.assertIn("error", self.event_types())
         error_payload = next(p for t, p in self.events if t == "error")
         self.assertIn("不匹配", error_payload["message"])
+
+    def test_repeated_resume_of_add_action_does_not_create_second_person(self) -> None:
+        llm = ScriptedLLM(
+            [
+                {
+                    "tool_calls": [
+                        _tool_call(
+                            "call_add",
+                            "propose_add_person",
+                            '{"name":"李博杰","org":"智源研究院","direction":"多模态"}',
+                        )
+                    ],
+                    "finish_reason": "tool_calls",
+                },
+                {"text": "已完成入库。"},
+            ]
+        )
+        self.run_with(llm, "把李博杰加入人才库")
+        action = dict(self.events)["action_required"]
+
+        self.events.clear()
+        with patch("agi_talent_radar.knowledge_agent.agent.call_llm_tools", llm):
+            resume_agent(
+                self.session, self.conv.id, action["action_id"], {"approved": True}, self.emit
+            )
+        self.assertEqual(self.session.query(PersonORM).filter_by(name="李博杰").count(), 1)
+
+        self.events.clear()
+        resume_agent(
+            self.session, self.conv.id, action["action_id"], {"approved": True}, self.emit
+        )
+        self.assertIn("error", self.event_types())
+        self.assertEqual(self.session.query(PersonORM).filter_by(name="李博杰").count(), 1)
 
 
 if __name__ == "__main__":

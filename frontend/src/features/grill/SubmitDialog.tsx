@@ -4,6 +4,7 @@ import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import Progress from "@/components/ui/Progress";
 import { useI18n } from "@/lib/i18n";
+import { canSubmitProfile } from "./grillModel";
 
 interface Props {
   confirmed: number;
@@ -17,6 +18,7 @@ export default function SubmitDialog({ confirmed, total, onConfirm, onClose }: P
   const { t } = useI18n();
   const [done, setDone] = useState(false);
   const pct = total ? Math.round((confirmed / total) * 100) : 0;
+  const canSubmit = canSubmitProfile(confirmed, total);
 
   return (
     <div
@@ -64,7 +66,16 @@ export default function SubmitDialog({ confirmed, total, onConfirm, onClose }: P
               <Button variant="text" onClick={onClose}>
                 {t("再想想")}
               </Button>
-              <Button variant="filled" icon="send" onClick={() => { setDone(true); onConfirm(); }}>
+              <Button
+                variant="filled"
+                icon="send"
+                disabled={!canSubmit}
+                onClick={() => {
+                  if (!canSubmit) return;
+                  setDone(true);
+                  onConfirm();
+                }}
+              >
                 {t("确认提交")}
               </Button>
             </div>

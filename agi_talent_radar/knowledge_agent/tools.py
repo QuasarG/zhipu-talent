@@ -133,18 +133,20 @@ def _admission_view(session, assessment: CandidateJdAssessmentORM, jd_title: str
 def _person_citation_meta(session, person: PersonORM) -> dict[str, Any]:
     """人物引用的 meta：brief + 最新评估。前端凭 meta.person_id 渲染详细档案卡。"""
     meta = _person_brief(person, session)
-    evaluation = _latest_evaluation(session, person.id)
-    if evaluation is not None:
-        meta["overall_score"] = evaluation.overall_score
-        meta["level"] = evaluation.level
-        meta["tier"] = evaluation.tier
-    else:
-        # 旧评估表没有时看新准入表，取最高总分当快照（与人才库列表口径一致）
-        admissions = _person_jd_assessments(session, person.id)
-        if admissions:
-            best = max(admissions, key=lambda a: float(a.total_score or 0))
-            meta["overall_score"] = round(float(best.total_score or 0), 1)
-            meta["admission_decision"] = _ADMISSION_DECISION_LABELS.get(best.decision, best.decision)
+    from agi_talent_radar.services.person_assessment_view import get_person_assessment_view
+
+    view = get_person_assessment_view(session, person.id)
+    if view and view["latest"]:
+        latest = view["latest"]
+        meta["overall_score"] = latest["score"]
+        meta["assessment_source"] = latest["source_type"]
+        if latest["source_type"] == "interview_admission":
+            meta["admission_decision"] = _ADMISSION_DECISION_LABELS.get(
+                latest["decision"], latest["decision"]
+            )
+        elif view["general_evaluation"]:
+            meta["level"] = view["general_evaluation"]["level"]
+            meta["tier"] = view["general_evaluation"]["tier"]
     return meta
 
 
@@ -281,8 +283,11 @@ def tool_get_person_profile(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
     person = ctx.session.get(PersonORM, str(args.get("person_id") or ""))
     if person is None:
         return {"found": False, "summary": "人物不存在"}
-    submission = _latest_submission(ctx.session, person.id)
-    structured = (submission.structured or {}) if submission else {}
+    from agi_talent_radar.services.person_assessment_view import get_person_assessment_view
+
+    view = get_person_assessment_view(ctx.session, person.id)
+    resume = view["resume"] if view else {"has_resume": False, "structured": {}}
+    structured = resume.get("structured") or {}
     citation_id = ctx.register_source(
         "resume", f"{person.name} 的简历画像", status="confirmed",
         meta=_person_citation_meta(ctx.session, person),
@@ -291,7 +296,12 @@ def tool_get_person_profile(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
         "found": True,
         "citation_id": citation_id,
         "person": _person_brief(person, ctx.session),
-        "has_resume": submission is not None,
+        "has_resume": bool(resume.get("has_resume")),
+        "resume_source": {
+            "submission_id": resume.get("submission_id"),
+            "candidate_id": resume.get("candidate_id"),
+            "updated_at": resume.get("updated_at"),
+        },
         "education": structured.get("education") or [],
         "experiences": structured.get("experiences") or [],
         "skills": structured.get("skills") or [],
@@ -305,16 +315,34 @@ def tool_get_person_evaluation(ctx: ToolContext, args: dict[str, Any]) -> dict[s
     person = ctx.session.get(PersonORM, str(args.get("person_id") or ""))
     if person is None:
         return {"found": False, "summary": "人物不存在"}
-    # 新准入表优先（一岗一评），旧评估表兜底——两者数据不同源，别再只看旧表漏掉新评估
-    admissions = _person_jd_assessments(ctx.session, person.id)
+    from agi_talent_radar.services.person_assessment_view import get_person_assessment_view
+
+    view = get_person_assessment_view(ctx.session, person.id)
+    admissions = view["admissions"] if view else []
     if admissions:
-        jd_ids = {a.jd_id for a in admissions}
-        jd_titles = {
-            jd.id: jd.title
-            for jd in ctx.session.query(JdEntryORM).filter(JdEntryORM.id.in_(jd_ids))
-        }
-        views = [_admission_view(ctx.session, a, jd_titles.get(a.jd_id, "")) for a in admissions]
-        interview_count = sum(1 for v in views if v["decision"] == "进入面试")
+        views = [
+            {
+                "assessment_id": admission["id"],
+                "jd_id": admission["jd_id"],
+                "jd_title": admission["jd_title"],
+                "decision": _ADMISSION_DECISION_LABELS.get(
+                    admission["decision"], admission["decision"]
+                ),
+                "total_score": admission["total_score"],
+                "tasks": [
+                    {
+                        "task_id": str(task.get("task_id") or ""),
+                        "level": task.get("level"),
+                        "confidence": task.get("confidence"),
+                    }
+                    for task in admission["task_assessments"]
+                    if isinstance(task, dict)
+                ],
+                "evaluated_at": admission["updated_at"] or admission["created_at"],
+            }
+            for admission in admissions
+        ]
+        interview_count = sum(1 for item in admissions if item["decision"] == "interview")
         citation_id = ctx.register_source(
             "evaluation", f"{person.name} 的面试准入评估", status="confirmed",
             meta=_person_citation_meta(ctx.session, person),
@@ -327,38 +355,40 @@ def tool_get_person_evaluation(ctx: ToolContext, args: dict[str, Any]) -> dict[s
             "assessments": views,
             "interview_count": interview_count,
             "total_positions": len(views),
-            "latest_evaluated_at": str(admissions[0].created_at or ""),
+            "schema_version": view["schema_version"],
+            "latest_evaluated_at": admissions[0]["updated_at"] or admissions[0]["created_at"],
             "summary": (
                 f"已获取 {person.name} 的面试准入评估（{len(views)} 个岗位："
                 f"{interview_count} 进入面试 / {len(views) - interview_count} 不进入面试）"
             ),
         }
-    evaluation = _latest_evaluation(ctx.session, person.id)
-    if evaluation is None:
+    general = view["general_evaluation"] if view else None
+    if general is None:
         return {"found": True, "has_evaluation": False, "summary": f"{person.name} 暂无评估记录"}
     citation_id = ctx.register_source(
         "evaluation", f"{person.name} 的评估报告", status="confirmed",
         meta=_person_citation_meta(ctx.session, person),
     )
-    academic = evaluation.academic_report or {}
+    academic = general["academic_report"] or {}
     return {
         "found": True,
         "has_evaluation": True,
         "citation_id": citation_id,
-        "overall_score": evaluation.overall_score,
-        "level": evaluation.level,
-        "tier": evaluation.tier,
-        "one_liner": evaluation.one_liner,
-        "stage_profile": evaluation.stage_profile,
-        "core_strengths": evaluation.core_strengths or [],
-        "potential_risks": evaluation.potential_risks or [],
-        "recommended_tracks": evaluation.recommended_tracks or [],
+        "schema_version": view["schema_version"],
+        "overall_score": general["overall_score"],
+        "level": general["level"],
+        "tier": general["tier"],
+        "one_liner": general["one_liner"],
+        "stage_profile": general["stage_profile"],
+        "core_strengths": general["core_strengths"],
+        "potential_risks": general["potential_risks"],
+        "recommended_tracks": general["recommended_tracks"],
         "academic_summary": {
             "verdict": academic.get("verdict", ""),
             "warnings": (academic.get("warnings") or [])[:5],
         },
-        "evaluated_at": str(evaluation.completed_at or evaluation.created_at),
-        "summary": f"已获取 {person.name} 的评估（总分 {evaluation.overall_score}）",
+        "evaluated_at": general["completed_at"] or general["created_at"],
+        "summary": f"已获取 {person.name} 的评估（总分 {general['overall_score']}）",
     }
 
 
@@ -537,8 +567,11 @@ def tool_check_reputation(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
     def _collect(query: str) -> list[dict[str, Any]]:
         try:
             facts = search_web(query, count=8)
-        except ConnectorUnavailableError as exc:
-            errors.append(str(exc))
+        except ConnectorUnavailableError:
+            # 工具卡会把此字段展示给用户；只给可行动的业务摘要，原始 HTTP
+            # 响应、URL 和供应商堆栈不得沿工具结果泄漏到界面或下一轮模型。
+            if "网络搜索暂时不可用，请稍后重试" not in errors:
+                errors.append("网络搜索暂时不可用，请稍后重试")
             return []
         items = []
         for fact in facts:

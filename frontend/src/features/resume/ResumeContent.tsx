@@ -4,6 +4,7 @@ import type {
   AcademicReport,
   CandidateDetail,
   ClaimAlignment,
+  ResumeOriginalMetadata,
   VerificationCheckStatus,
 } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -223,94 +224,129 @@ export function OriginalPreview({ candidateId, sourceFormat, fallbackText }: {
   sourceFormat: string;
   fallbackText: string;
 }) {
-  const fmt = (sourceFormat || "").toLowerCase();
-  const fileUrl = `/api/candidates/${candidateId}/pdf`;
-  const [exists, setExists] = useState<boolean | null>(null);
-
-  useEffect(() => { setExists(null); }, [candidateId]);
-
   const { t } = useI18n();
+  const [metadata, setMetadata] = useState<ResumeOriginalMetadata | null>(null);
+  const [previewState, setPreviewState] = useState<"idle" | "loading" | "loaded" | "error" | "timeout">("idle");
+  const [error, setError] = useState("");
 
-  // PDF：探测原件是否存在，有则 iframe
-  if (fmt === "pdf" || fmt === "" ) {
-    if (exists === null) {
-      fetch(fileUrl, { method: "HEAD" })
-        .then((r) => setExists(r.ok))
-        .catch(() => setExists(false));
-      return <div className="flex items-center justify-center h-full"><LoadingIndicator size={28} label={t("正在加载原件...")} /></div>;
-    }
-    if (exists) {
-      return (
-        <iframe key={candidateId} src={fileUrl} title={t("简历原件")}
-          className="w-full h-full rounded-md border border-outline-variant bg-surface-lowest" />
-      );
-    }
-    return <FallbackText text={fallbackText} note={t("原始文件不可用，以下为提取文本")} />;
+  useEffect(() => {
+    let active = true;
+    setMetadata(null);
+    setError("");
+    setPreviewState("loading");
+    const timeout = window.setTimeout(() => {
+      if (active) setPreviewState((current) => current === "loading" ? "timeout" : current);
+    }, 9000);
+    api.candidates.originalMetadata(candidateId)
+      .then((next) => {
+        if (!active) return;
+        setMetadata(next);
+        if (!next.exists || !next.previewable) {
+          setError(next.error || t("原始文件不可用"));
+          setPreviewState("error");
+        }
+      })
+      .catch((reason) => {
+        if (!active) return;
+        setError(reason instanceof Error ? reason.message : t("原件元信息加载失败"));
+        setPreviewState("error");
+      });
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [candidateId, t]);
+
+  if (previewState === "idle" || (previewState === "loading" && !metadata)) {
+    return <div className="flex h-full items-center justify-center"><LoadingIndicator size={28} label={t("正在加载原件...")} /></div>;
   }
 
-  // 图片：直接展示
-  if (["png", "jpg", "jpeg", "webp", "image"].some((s) => fmt.includes(s))) {
-    if (exists === null) {
-      fetch(fileUrl, { method: "HEAD" }).then((r) => setExists(r.ok)).catch(() => setExists(false));
-      return <div className="flex items-center justify-center h-full"><LoadingIndicator size={28} label={t("正在加载图片...")} /></div>;
-    }
-    if (exists) {
-      return (
-        <div className="h-full overflow-y-auto flex justify-center bg-surface-lowest rounded-md border border-outline-variant p-4">
-          <img src={fileUrl} alt={t("简历原件")} className="max-w-full h-auto rounded-sm shadow-sm" />
-        </div>
-      );
-    }
-    return <FallbackText text={fallbackText} note={t("原始图片不可用，以下为提取文本")} />;
-  }
-
-  // Markdown：原件用 iframe 加载源码，回退用轻量渲染提取文本
-  if (fmt.includes("md") || fmt.includes("markdown")) {
-    if (exists === null) {
-      fetch(fileUrl, { method: "HEAD" }).then((r) => setExists(r.ok)).catch(() => setExists(false));
-      return <div className="flex items-center justify-center h-full"><LoadingIndicator size={28} label={t("正在加载...")} /></div>;
-    }
-    if (exists) {
-      return (
-        <iframe key={`${candidateId}-md`} src={fileUrl} title={t("简历原件 (Markdown)")}
-          className="w-full h-full rounded-md border border-outline-variant bg-surface-lowest" />
-      );
-    }
+  if (previewState === "error" || previewState === "timeout" || !metadata) {
     return (
-      <div className="h-full overflow-y-auto rounded-md border border-outline-variant bg-surface-lowest p-5">
-        <MarkdownLite text={fallbackText} />
-      </div>
+      <PreviewRecovery
+        metadata={metadata}
+        text={fallbackText}
+        note={previewState === "timeout" ? t("原件预览超时，请下载或在新窗口打开") : error}
+      />
     );
   }
 
-  // JSON / TXT / 其他：纯文本
-  return <FallbackText text={fallbackText} note="" />;
+  const fmt = `${metadata.mime_type} ${sourceFormat}`.toLowerCase();
+  const preview = ["image/png", "image/jpeg", "image/webp", "image"].some((value) => fmt.includes(value)) ? (
+    <div className="h-full overflow-y-auto bg-surface-lowest p-4 text-center">
+      <img
+        src={metadata.preview_url}
+        alt={t("简历原件")}
+        className="mx-auto max-w-full rounded-sm shadow-sm"
+        onLoad={() => setPreviewState("loaded")}
+        onError={() => { setError(t("图片原件加载失败")); setPreviewState("error"); }}
+      />
+    </div>
+  ) : (
+    <iframe
+      key={`${candidateId}-${metadata.filename}`}
+      src={metadata.preview_url}
+      title={fmt.includes("markdown") ? t("简历原件 (Markdown)") : t("简历原件")}
+      className="h-full w-full bg-surface-lowest"
+      onLoad={() => setPreviewState("loaded")}
+      onError={() => { setError(t("原件嵌入预览失败")); setPreviewState("error"); }}
+    />
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-outline-variant bg-surface-lowest">
+      <PreviewToolbar metadata={metadata} />
+      <div className="relative min-h-0 flex-1">
+        {preview}
+        {previewState === "loading" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-lowest/90">
+            <LoadingIndicator size={28} label={t("正在渲染原件...")} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
-/** Markdown 轻量内联渲染（不引外部依赖），支持标题/加粗/列表/代码。 */
-function MarkdownLite({ text }: { text: string }) {
-  const html = renderMarkdown(text);
-  return <div className="prose-custom text-body leading-relaxed text-on-surface" dangerouslySetInnerHTML={{ __html: html }} />;
+function PreviewToolbar({ metadata }: { metadata: ResumeOriginalMetadata }) {
+  const { t } = useI18n();
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-low px-3 py-2">
+      <Icon name="description" size={16} className="text-primary" />
+      <span className="min-w-0 flex-1 truncate text-label text-on-surface-variant">
+        {metadata.filename} · {Math.max(1, Math.ceil(metadata.size / 1024))} KB
+      </span>
+      <a href={metadata.preview_url} target="_blank" rel="noreferrer" className="text-label font-medium text-primary hover:underline">
+        {t("新窗口打开")}
+      </a>
+      <a href={metadata.download_url} download className="text-label font-medium text-primary hover:underline">
+        {t("下载原件")}
+      </a>
+    </div>
+  );
 }
 
-function renderMarkdown(src: string): string {
-  // 转义防 XSS
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  let lines = src.split("\n").map(esc);
-  const out: string[] = [];
-  let inList = false;
-  for (let line of lines) {
-    const h = line.match(/^(#{1,6})\s+(.*)$/);
-    if (h) { if (inList) { out.push("</ul>"); inList = false; } out.push(`<h${h[1].length}>${h[2]}</h${h[1].length}>`); continue; }
-    const li = line.match(/^\s*[-*]\s+(.*)$/);
-    if (li) { if (!inList) { out.push("<ul>"); inList = true; } out.push(`<li>${li[1]}</li>`); continue; }
-    if (line.trim() === "") { if (inList) { out.push("</ul>"); inList = false; } out.push(""); continue; }
-    if (inList) { out.push("</ul>"); inList = false; }
-    line = line.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    out.push(`<p>${line}</p>`);
-  }
-  if (inList) out.push("</ul>");
-  return out.join("\n");
+function PreviewRecovery({ metadata, text, note }: {
+  metadata: ResumeOriginalMetadata | null;
+  text: string;
+  note: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      <div className="flex shrink-0 items-center gap-2 rounded-md bg-warning-container px-3 py-2 text-body-sm text-on-warning-container">
+        <Icon name="warning" size={16} />
+        <span className="min-w-0 flex-1">{note || t("原始文件不可用，以下为提取文本")}</span>
+        {metadata?.download_url && (
+          <>
+            {metadata.preview_url && <a href={metadata.preview_url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{t("新窗口打开")}</a>}
+            <a href={metadata.download_url} download className="font-medium hover:underline">{t("下载原件")}</a>
+          </>
+        )}
+      </div>
+      <div className="min-h-0 flex-1"><FallbackText text={text} note="" /></div>
+    </div>
+  );
 }
 
 function FallbackText({ text, note }: { text: string; note: string }) {

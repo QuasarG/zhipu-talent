@@ -112,7 +112,7 @@ class CandidateORM(Base):
     evaluations = relationship("EvaluationORM", back_populates="candidate", cascade="all, delete-orphan")
     sources = relationship("CandidateSourceORM", back_populates="candidate", cascade="all, delete-orphan")
     # 姓名备注等 person 主档字段的懒加载通道（_orm_to_detail 依赖）
-    person = relationship("PersonORM")
+    person = relationship("PersonORM", back_populates="candidates")
     # 新准入评估（一岗一评）列表
     jd_assessments = relationship(
         "CandidateJdAssessmentORM", back_populates="candidate",
@@ -344,7 +344,11 @@ class PersonORM(Base):
     # 姓名备注：英文简历提取不出中文名时 HR 手动补，展示优先于 name
     name_note = Column(String(128), default="")
     # 关联候选人档案（导入即入库，正常 0..1 条）
-    candidates = relationship("CandidateORM", foreign_keys="CandidateORM.person_id")
+    candidates = relationship(
+        "CandidateORM",
+        foreign_keys="CandidateORM.person_id",
+        back_populates="person",
+    )
     org = Column(String(256), default="")
     direction = Column(String(256), default="")
     fingerprint = Column(String(64), unique=True, nullable=False, index=True)
@@ -733,6 +737,9 @@ class InterviewAssessmentBatchORM(Base):
     __tablename__ = "interview_assessment_batches"
 
     id = Column(String(36), primary_key=True, default=_new_uuid)
+    request_id = Column(String(64), nullable=True, unique=True, index=True)
+    config_version = Column(String(64), default="", nullable=False)
+    force_reason = Column(Text, default="", nullable=True)
     owner_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True)
     status = Column(String(24), default="queued", nullable=False, index=True)
     candidate_ids = Column(JSON, default=list)
@@ -886,6 +893,17 @@ class UserORM(Base):
     display_name = Column(String(64), default="")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+class ConfigChangeAuditORM(Base):
+    """配置变更审计：只记录键名与操作者，严禁保存配置值。"""
+
+    __tablename__ = "config_change_audit"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    config_key = Column(String(128), nullable=False, index=True)
+    changed_by = Column(String(128), default="", nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)
 
 
 # ---------------------------------------------------------------------------
