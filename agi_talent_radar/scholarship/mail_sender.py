@@ -1,26 +1,30 @@
-"""飞书用户身份邮件：问卷确认信自动发送（经 lark-cli，token/刷新由其托管）。
+"""飞书用户身份邮件 + 多维表格回写：问卷确认信自动发送。
 
-服务用户（talent-radar）需一次 device-flow 登录（HOME 下 keyring 持久化，
-refresh 自动轮换）。发信：mailbox=zpsy@aminer.cn + from=zpsy@zhipuai.cn。
-ponytail: 子进程调 CLI 比 HTTP+token 自管少 200 行刷新/回写逻辑，单机够用。
+经 lark-cli（服务用户 talent-radar 的 HOME keyring 托管 token，自动刷新）。
+发信：mailbox=zpsy@aminer.cn + from=zpsy@zhipuai.cn。
+邮件成功后按电子邮箱定位新表记录，回写「是否回复并提醒=是」。
+
+新表（tblAzD7mpEgvUSQ8）字段与问卷主表不同：
+中文姓名 / 手机号码 / 电子邮箱｜Email Address（全角｜）/ 导师是否发送邮件推荐信 /
+是否回复并提醒（select: 是/否）/ 自动编号 / 提交时间。
+ponytail: 子进程调 CLI 免去 token 自管；表字段再改只动下方常量。
 """
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 from datetime import date
 
 _LARK_CLI = "/usr/bin/lark-cli"
 _MAILBOX = "zpsy@aminer.cn"
 _FROM = "zpsy@zhipuai.cn"
+_BASE = "WMQxb6BhPar076sU40McQpYmnHg"
+_TABLE = "tblAzD7mpEgvUSQ8"
+_EMAIL_FIELD = "电子邮箱｜Email Address"
+_REPLY_FIELD = "是否回复并提醒"
 
 
 def mail_configured() -> bool:
-    return _probe_cli()
-
-
-def _probe_cli() -> bool:
     try:
         result = subprocess.run(
             [_LARK_CLI, "auth", "status"],
@@ -31,46 +35,107 @@ def _probe_cli() -> bool:
         return False
 
 
-def send_confirmation_email(to_email: str, applicant_name: str) -> dict:
-    """给申请人发确认邮件；返回 {sent: bool, message_id?, error?}。"""
-    to_email = (to_email or "").strip()
-    if not to_email or "@" not in to_email:
-        return {"sent": False, "error": f"申请人邮箱无效: {to_email!r}"}
-    subject = "【智谱 Z.AI 奖学金】申请材料已收到"
-    html = _render_template(applicant_name, date.today())
-    try:
-        result = subprocess.run(
-            [
-                _LARK_CLI, "mail", "+send",
-                "--mailbox", _MAILBOX,
-                "--from", _FROM,
-                "--to", to_email,
-                "--subject", subject,
-                "--body", html,
-                "--confirm-send",
-                "--format", "json",
-            ],
-            capture_output=True, text=True, timeout=120,
-        )
-    except subprocess.TimeoutExpired:
-        return {"sent": False, "error": "发送超时(120s)"}
+def _cli(args: list[str], timeout: int = 120) -> dict:
+    result = subprocess.run(
+        [_LARK_CLI, *args, "--format", "json"],
+        capture_output=True, text=True, timeout=timeout,
+    )
     out = result.stdout
     start = out.find("{")
     if start < 0:
-        return {"sent": False, "error": f"cli 输出异常: {out[:200]}"}
+        return {"ok": False, "error": {"message": f"cli 输出异常: {out[:200]}"}}
     try:
-        data = json.loads(out[start:])
+        return json.loads(out[start:])
     except json.JSONDecodeError:
-        return {"sent": False, "error": f"cli 返回不可解析: {out[:200]}"}
+        return {"ok": False, "error": {"message": f"cli 返回不可解析: {out[:200]}"}}
+
+
+def send_confirmation_email(to_email: str, applicant_name: str) -> dict:
+    """发确认邮件 → 成功后回写新表「是否回复并提醒=是」。
+
+    返回 {sent, message_id?, marked?, error?, mark_error?}；
+    邮件失败不回写；回写失败不影响邮件结果（journal 留痕）。
+    """
+    to_email = (to_email or "").strip()
+    if not to_email or "@" not in to_email:
+        return {"sent": False, "error": f"申请人邮箱无效: {to_email!r}"}
+    subject = "【Z.AI Scholarship 2026】申请已收到"
+    html = _render_template(applicant_name, date.today())
+    data = _cli([
+        "mail", "+send",
+        "--mailbox", _MAILBOX,
+        "--from", _FROM,
+        "--to", to_email,
+        "--subject", subject,
+        "--body", html,
+        "--confirm-send",
+    ])
+    if not data.get("ok"):
+        err = (data.get("error") or {}).get("message", "") or str(data.get("error", ""))[:200]
+        return {"sent": False, "error": err}
+    result = {
+        "sent": True,
+        "message_id": (data.get("data") or {}).get("message_id", ""),
+    }
+    marked, mark_err = mark_replied(to_email)
+    result["marked"] = marked
+    if not marked:
+        result["mark_error"] = mark_err
+    return result
+
+
+def mark_replied(email: str) -> tuple[bool, str]:
+    """按电子邮箱定位新表记录，回写 是否回复并提醒=是。"""
+    record_id = _find_record_id(email)
+    if not record_id:
+        return False, f"新表未找到邮箱 {email} 对应记录"
+    data = _cli([
+        "base", "+record-update", "--yes",
+        "--base-token", _BASE,
+        "--table-id", _TABLE,
+        "--record-id", record_id,
+        "--fields", json.dumps({_REPLY_FIELD: "是"}, ensure_ascii=False),
+    ], timeout=60)
     if data.get("ok"):
-        return {"sent": True, "message_id": (data.get("data") or {}).get("message_id", "")}
-    err = (data.get("error") or {}).get("message", "") or out[:200]
-    return {"sent": False, "error": err}
+        return True, ""
+    err = (data.get("error") or {}).get("message", "") or json.dumps(data.get("error", {}), ensure_ascii=False)[:150]
+    return False, err
+
+
+def _find_record_id(email: str) -> str:
+    """分页扫表，按电子邮箱字段精确匹配（去空格小写）。"""
+    page_token = ""
+    for _ in range(20):
+        args = [
+            "base", "+record-list",
+            "--base-token", _BASE,
+            "--table-id", _TABLE,
+            "--limit", "100",
+        ]
+        if page_token:
+            args += ["--page-token", page_token]
+        data = _cli(args, timeout=60)
+        if not data.get("ok"):
+            return ""
+        payload = data.get("data") or {}
+        fields = payload.get("fields") or []
+        email_idx = next((i for i, f in enumerate(fields) if f == _EMAIL_FIELD), -1)
+        rows = payload.get("data") or []
+        ids = payload.get("record_id_list") or []
+        if email_idx >= 0:
+            target = email.strip().lower()
+            for row_idx, row in enumerate(rows):
+                val = row[email_idx] if email_idx < len(row) else ""
+                if isinstance(val, str) and val.strip().lower() == target and row_idx < len(ids):
+                    return ids[row_idx]
+        if not payload.get("has_more"):
+            return ""
+        page_token = payload.get("page_token", "")
+    return ""
 
 
 def _render_template(name: str, today: date) -> str:
     deadline = "<strong>2026年9月28日 24:00</strong>"
-    # 手动去零（%-m 仅 Linux 支持，服务端与本地测试都要能跑）
     signed = f"{today.year}年{today.month}月{today.day}日"
     return f"""<div style="font-family:MiSans,system-ui,sans-serif;font-size:14px;line-height:1.9;color:#1a1a1a;max-width:640px">
 <p>{name}同学：</p>

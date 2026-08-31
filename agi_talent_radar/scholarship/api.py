@@ -212,6 +212,11 @@ def build_scholarship_blueprint() -> Blueprint:
                                 "confirmation mail failed: %s %s",
                                 app_row.name, email_result.get("error"),
                             )
+                        elif not email_result.get("marked"):
+                            logging.getLogger(__name__).warning(
+                                "table mark failed after mail sent: %s %s",
+                                app_row.name, email_result.get("mark_error"),
+                            )
                     except Exception as exc:  # noqa: BLE001
                         email_result = {"sent": False, "error": str(exc)}
                         logging.getLogger(__name__).warning("confirmation mail error: %s", exc)
@@ -223,6 +228,7 @@ def build_scholarship_blueprint() -> Blueprint:
             "application_id": app_row.id,
             "status": screen_result.get("status"),
             "email_sent": bool(email_result.get("sent")),
+            "table_marked": bool(email_result.get("marked")),
         }), 201 if created else 200
 
     @bp.post("/api/scholarship/applications")
