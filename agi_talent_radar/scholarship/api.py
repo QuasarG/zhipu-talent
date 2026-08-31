@@ -287,10 +287,58 @@ def build_scholarship_blueprint() -> Blueprint:
 
     # ---- 材料原件预览 / 下载（浏览器原生渲染 PDF/图片；docx 走下载） ----
     _PREVIEW_MIME = {
-        ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif",
-        ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
+        # 文档
+        ".pdf": "application/pdf", ".txt": "text/plain; charset=utf-8",
+        ".md": "text/plain; charset=utf-8", ".csv": "text/plain; charset=utf-8",
+        ".log": "text/plain; charset=utf-8",
+        # 图片
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp", ".svg": "image/svg+xml",
+        # 视频（iframe 原生播放）
+        ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+        # 音频
+        ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4",
+        # 代码/数据（text/plain 直显；json/jsonl/yaml/toml 也按文本）
+        ".py": "text/plain; charset=utf-8", ".sh": "text/plain; charset=utf-8",
+        ".ipynb": "text/plain; charset=utf-8", ".json": "text/plain; charset=utf-8",
+        ".jsonl": "text/plain; charset=utf-8", ".yaml": "text/plain; charset=utf-8",
+        ".yml": "text/plain; charset=utf-8", ".toml": "text/plain; charset=utf-8",
+        ".slurm": "text/plain; charset=utf-8", ".gitignore": "text/plain; charset=utf-8",
+        ".lock": "text/plain; charset=utf-8", ".html": "text/html; charset=utf-8",
     }
+
+    def _sniff_mime(path: str, filename: str) -> str:
+        """无/罕见扩展名按文件头嗅探。"""
+        try:
+            with open(path, "rb") as fp:
+                head = fp.read(16)
+        except OSError:
+            return "application/octet-stream"
+        if head.startswith(b"%PDF"):
+            return "application/pdf"
+        if head.startswith(b"PK" + bytes([3, 4])):
+            return "application/zip"
+        if head.startswith(bytes([0xFF, 0xD8, 0xFF])):
+            return "image/jpeg"
+        if head.startswith(bytes([0x89]) + b"PNG"):
+            return "image/png"
+        if head.startswith(b"GIF8"):
+            return "image/gif"
+        if head[4:8] == b"ftyp":
+            brand = head[8:12]
+            if brand in (b"M4A ", b"M4B "):
+                return "audio/mp4"
+            return "video/mp4"
+        if head.startswith(b"ID3") or head.startswith(bytes([0xFF, 0xFB])):
+            return "audio/mpeg"
+        if head.startswith(bytes([0x1A, 0x45, 0xDF, 0xA3])):
+            return "video/webm"
+        try:
+            with open(path, "rb") as fp:
+                fp.read(2048).decode("utf-8")
+            return "text/plain; charset=utf-8"
+        except (UnicodeDecodeError, OSError):
+            return "application/octet-stream"
 
     def _docx_preview_html(path: str, title: str) -> Response:
         """docx → HTML（mammoth 保格式转换），iframe 内直接渲染，不触发下载。"""
@@ -323,7 +371,7 @@ def build_scholarship_blueprint() -> Blueprint:
         # docx：预览走 mammoth 转 HTML（浏览器原生不认 docx，直出会变成下载）
         if ext == ".docx" and not as_attachment:
             return _docx_preview_html(path, material.filename or os.path.basename(path))
-        mime = _PREVIEW_MIME.get(ext, "application/octet-stream")
+        mime = _PREVIEW_MIME.get(ext) or _sniff_mime(path, material.filename or "")
         return send_file(
             path,
             mimetype=mime,

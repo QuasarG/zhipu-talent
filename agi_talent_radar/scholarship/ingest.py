@@ -296,8 +296,26 @@ def _store_material_file(material_id: int, filename: str, blob: bytes) -> str:
     return path
 
 
+def _fix_zip_filename(info) -> str:
+    """zip 内部文件名编码修正。
+
+    EFS 标志位（0x800）未设时 zipfile 按 CP437 解码；Windows 中文打包工具
+    实际写的是 GBK——先试 UTF-8 严格解码，失败则回 GBK（仍失败保底原名）。
+    """
+    name = info.filename
+    if info.flag_bits & 0x800:
+        return name
+    raw = name.encode("cp437", errors="replace")
+    for enc in ("utf-8", "gbk", "big5"):
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return name
+
+
 def _iter_zip_entries(zip_bytes: bytes) -> list[tuple[str, bytes]]:
-    """zip 解包（跳过目录/__MACOSX），返回 (文件名, 内容) 列表。"""
+    """zip 解包（跳过目录/__MACOSX），返回 (文件名, 内容) 列表；文件名做编码修正。"""
     import zipfile as _zf
 
     out: list[tuple[str, bytes]] = []
@@ -305,7 +323,8 @@ def _iter_zip_entries(zip_bytes: bytes) -> list[tuple[str, bytes]]:
         for info in zf.infolist():
             if info.is_dir() or info.filename.startswith("__MACOSX"):
                 continue
-            out.append((info.filename.split("/")[-1], zf.read(info)))
+            name = _fix_zip_filename(info).split("/")[-1]
+            out.append((name, zf.read(info)))
     return out
 
 
