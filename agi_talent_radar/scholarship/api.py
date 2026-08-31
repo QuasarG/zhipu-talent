@@ -2,6 +2,7 @@
 feishu-webhook 例外——凭 URL 内随机 token 自证）。"""
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 
@@ -153,7 +154,7 @@ def build_scholarship_blueprint() -> Blueprint:
                 payload["record_id"] = record_id
             except Exception as exc:  # noqa: BLE001 — 反查失败降级平铺，不阻断推送
                 payload = {}
-                app.logger.warning("feishu pull failed, fallback to flat body: %s", exc)
+                logging.getLogger(__name__).warning("feishu pull failed, fallback to flat body: %s", exc)
 
         if not payload:
             # 模式 A：平铺字段直收（自动化里把问卷字段原样放进 body）
@@ -194,7 +195,7 @@ def build_scholarship_blueprint() -> Blueprint:
                 screen_result = pipeline.screen_application(session, app_row)
             except Exception as exc:  # noqa: BLE001 — 筛选失败不回滚落库，细节留在状态里
                 screen_result = {"status": "imported", "missing": [], "reasons": [f"自动筛选失败: {exc}"]}
-                app.logger.warning("feishu webhook auto-screen failed: %s", exc)
+                logging.getLogger(__name__).warning("feishu webhook auto-screen failed: %s", exc)
             session.commit()
             # 新申请自动发确认邮件（姓名/邮箱取问卷记录）；失败不阻断同步，日志可查
             email_result = {"sent": False}
@@ -207,15 +208,15 @@ def build_scholarship_blueprint() -> Blueprint:
                             app_row.email or "", app_row.name or ""
                         )
                         if not email_result.get("sent"):
-                            app.logger.warning(
+                            logging.getLogger(__name__).warning(
                                 "confirmation mail failed: %s %s",
                                 app_row.name, email_result.get("error"),
                             )
                     except Exception as exc:  # noqa: BLE001
                         email_result = {"sent": False, "error": str(exc)}
-                        app.logger.warning("confirmation mail error: %s", exc)
+                        logging.getLogger(__name__).warning("confirmation mail error: %s", exc)
                 else:
-                    app.logger.info("confirmation mail skipped: FEISHU_USER_REFRESH_TOKEN 未配置")
+                    logging.getLogger(__name__).info("confirmation mail skipped: FEISHU_USER_REFRESH_TOKEN 未配置")
         return jsonify({
             "ok": True,
             "duplicate": not created,
