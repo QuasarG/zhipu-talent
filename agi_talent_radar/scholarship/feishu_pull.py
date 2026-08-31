@@ -60,6 +60,27 @@ def _http_bytes(url: str, headers: dict[str, str]) -> bytes:
         return resp.read()
 
 
+def _download_bitable_attachment(file_token: str, headers: dict[str, str], table_id: str) -> bytes:
+    """bitable 附件唯一可用下载路径：临时链接 + bitablePerm extra。
+
+    直接 /drive/v1/medias/{token}/download 对 bitable 附件恒 400；
+    不带 extra 的 tmp_download_url 返回空列表（易误判为权限缺失）。
+    """
+    import urllib.parse
+
+    extra = json.dumps({"bitablePerm": {"tableId": table_id, "rev": 0}})
+    query = urllib.parse.urlencode({"file_tokens": file_token, "extra": extra})
+    data = _http_json(
+        f"{_FEISHU_HOST}/open-apis/drive/v1/medias/batch_get_tmp_download_url?{query}",
+        None, headers, method="GET",
+    )
+    entries = ((data.get("data") or {}).get("tmp_download_urls")) or []
+    url = next((e.get("tmp_download_url") for e in entries if e.get("file_token") == file_token), None)
+    if not url:
+        raise RuntimeError(f"飞书未返回附件 {file_token} 的下载链接（检查 extra/tableId）")
+    return _http_bytes(url, {"Authorization": headers.get("Authorization", "")})
+
+
 _token_cache: dict[str, Any] = {"token": "", "expire_at": 0.0}
 
 
@@ -189,10 +210,7 @@ def fetch_record(record_id: str) -> dict[str, Any]:
         for file_meta in fields.get(zh) or []:
             if not isinstance(file_meta, dict) or not file_meta.get("file_token"):
                 continue
-            blob = _http_bytes(
-                f"{_FEISHU_HOST}/open-apis/drive/v1/medias/{file_meta['file_token']}/download",
-                headers,
-            )
+            blob = _download_bitable_attachment(file_meta["file_token"], headers, table)
             attachments.append({
                 "kind": kind,
                 "filename": str(file_meta.get("name") or f"{kind}_attachment"),
