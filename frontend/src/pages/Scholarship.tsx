@@ -30,13 +30,11 @@ function ScholarshipStatusChip({ status }: { status: string }) {
     </StatusChip>
   );
 }
-// 列表筛选：全部 + 状态机各档
+// 列表筛选：三态语义（待评估含未跑资格核验/材料暂缺的中间态）
 const FILTERS = [
   { key: "all", label: "全部" },
-  { key: "imported", label: "待筛选" },
-  { key: "material_incomplete", label: "材料不全" },
-  { key: "ineligible", label: "资格不符" },
-  { key: "eligible", label: "待评估" },
+  { key: "pending", label: "待评估" },
+  { key: "ineligible", label: "不符合申报条件" },
   { key: "scored", label: "已评分" },
   { key: "finalized", label: "已定稿" },
 ] as const;
@@ -104,8 +102,10 @@ export default function Scholarship() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const PENDING = new Set(["imported", "eligible", "material_incomplete"]);
     return apps.filter((a) => {
-      if (filter !== "all" && a.status !== filter) return false;
+      if (filter === "pending" && !PENDING.has(a.status)) return false;
+      if (!["all", "pending"].includes(filter) && a.status !== filter) return false;
       if (!q) return true;
       return [a.name, a.name_en, a.school, a.direction, a.email]
         .some((v) => (v || "").toLowerCase().includes(q));
@@ -113,8 +113,12 @@ export default function Scholarship() {
   }, [apps, filter, search]);
 
   const counts = useMemo(() => {
-    const map: Record<string, number> = { all: apps.length };
-    for (const a of apps) map[a.status] = (map[a.status] || 0) + 1;
+    const PENDING = new Set(["imported", "eligible", "material_incomplete"]);
+    const map: Record<string, number> = { all: apps.length, pending: 0 };
+    for (const a of apps) {
+      if (PENDING.has(a.status)) map.pending += 1;
+      else map[a.status] = (map[a.status] || 0) + 1;
+    }
     return map;
   }, [apps]);
 

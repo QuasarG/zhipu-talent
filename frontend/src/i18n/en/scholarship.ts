@@ -1,14 +1,11 @@
 export default {
-  "待筛选": "Pending Screening",
-  "待评估": "Awaiting Evaluation",
+    "待评估": "Awaiting Evaluation",
   "材料不全": "Materials Incomplete",
   "资格不符": "Ineligible",
   "已评分": "Scored",
   "已定稿": "Finalized",
   "全部": "All",
-  "已导入": "Imported",
-  "已筛选": "Screened",
-  "申请表": "Application Form",
+      "申请表": "Application Form",
   "简历": "Resume",
   "申请补充表": "Supplementary Form",
   "代表性成果": "Representative Achievements",
@@ -154,4 +151,5 @@ export default {
   "文本": "Text",
   "下载原件": "Download original",
   "推荐导师": "Nominating Advisor",
+  "不符合申报条件": "Not Eligible",
 } as Record<string, string>;

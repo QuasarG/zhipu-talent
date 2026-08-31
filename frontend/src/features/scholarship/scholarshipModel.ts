@@ -3,18 +3,18 @@
 export type ChipTone = "success" | "warning" | "error" | "info" | "neutral" | "primary";
 
 export const STATUS_LABELS: Record<string, string> = {
-  imported: "待筛选",
+  imported: "待评估",
   eligible: "待评估",
-  material_incomplete: "材料不全",
-  ineligible: "资格不符",
+  material_incomplete: "待评估",
+  ineligible: "不符合申报条件",
   scored: "已评分",
   finalized: "已定稿",
 };
 
 export const STATUS_TONES: Record<string, ChipTone> = {
-  imported: "neutral",
+  imported: "info",
   eligible: "info",
-  material_incomplete: "warning",
+  material_incomplete: "info",
   ineligible: "error",
   scored: "success",
   finalized: "primary",

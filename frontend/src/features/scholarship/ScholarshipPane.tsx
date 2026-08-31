@@ -1,5 +1,5 @@
 // 奖学金资料工作台：申请人信息 / 材料预览 / 评估与核验
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { ScholarshipApplication, ScholarshipMaterial } from "@/lib/types";
@@ -32,52 +32,6 @@ function StatusBadge({ status }: { status: string }) {
     <StatusChip tone={STATUS_TONES[status] ?? "neutral"}>
       {t(STATUS_LABELS[status] ?? status)}
     </StatusChip>
-  );
-}
-
-/** 紧凑状态条：保留进度上下文，不让流程抢占资料阅读空间。 */
-function StageBar({ status, pendingReputation }: { status: string; pendingReputation: number }) {
-  const { t } = useI18n();
-  const stages = [
-    { key: "imported", label: t("已导入") },
-    { key: "screened", label: t("已筛选") },
-    { key: "scored", label: t("已评分") },
-    { key: "reputed", label: t("舆情核验") },
-    { key: "finalized", label: t("已定稿") },
-  ];
-  const reached: Record<string, boolean> = {
-    imported: true,
-    screened: ["eligible", "scored", "finalized"].includes(status),
-    scored: ["scored", "finalized"].includes(status),
-    reputed: ["scored", "finalized"].includes(status) && pendingReputation === 0,
-    finalized: status === "finalized",
-  };
-  return (
-    <div className="flex items-center gap-1 overflow-x-auto">
-      {stages.map((s, i) => (
-        <Fragment key={s.key}>
-          {i > 0 && (
-            <span className={cn("h-px flex-1 min-w-3", reached[s.key] ? "bg-primary" : "bg-outline-variant")} />
-          )}
-          <span
-            className={cn(
-              "shrink-0 flex items-center gap-1 text-label",
-              reached[s.key] ? "text-primary" : "text-on-surface-variant",
-            )}
-          >
-            <span
-              className={cn(
-                "size-4 rounded-full flex items-center justify-center",
-                reached[s.key] ? "bg-primary text-on-primary" : "border border-outline-variant",
-              )}
-            >
-              {reached[s.key] && <Icon name="check" size={11} />}
-            </span>
-            {s.label}
-          </span>
-        </Fragment>
-      ))}
-    </div>
   );
 }
 
@@ -555,7 +509,7 @@ export default function ScholarshipPane({
             </div>
           </div>
           {(app.advisors?.length || app.advisor_title) && (
-            <div className="mt-2.5 flex items-center gap-2 rounded-md border border-outline-variant bg-surface-low/60 px-3 py-1.5">
+            <div className="mt-3 flex items-center gap-2 rounded-md border border-outline-variant bg-surface-low/60 px-3 py-1.5">
               <Icon name="supervisor_account" size={16} className="shrink-0 text-on-surface-variant" />
               <span className="shrink-0 text-label font-medium text-on-surface-variant">{t("推荐导师")}</span>
               <span className="min-w-0 truncate text-body-sm text-on-surface">
@@ -564,10 +518,6 @@ export default function ScholarshipPane({
               </span>
             </div>
           )}
-          <div className="mt-3 flex items-center gap-3 rounded-md bg-surface-low px-3 py-2.5">
-            <span className="shrink-0 text-label font-medium text-on-surface-variant">{t("申请进度")}</span>
-            <div className="min-w-0 flex-1"><StageBar status={app.status} pendingReputation={pendingReputation} /></div>
-          </div>
           {acting && <div className="mt-2 inline-flex items-center gap-1.5 text-label text-on-surface-variant"><LoadingIndicator size={13} />{acting === "evaluate" ? t("评估中…") : acting === "screen" ? t("筛选中…") : acting === "scan" ? t("扫描中…") : t("删除中…")}</div>}
           {error && <p className="mt-2 text-body-sm text-error">{error}</p>}
         </div>
