@@ -169,17 +169,17 @@ def fetch_record(record_id: str) -> dict[str, Any]:
     table = os.getenv("FEISHU_TABLE_ID", "").strip()
     token = _tenant_token()
     headers = {"Authorization": f"Bearer {token}"}
+    # 单条查询端点：list 端点会静默忽略无效 record_ids 返回全表首条（错档事故源头）
     url = (
-        f"{_FEISHU_HOST}/open-apis/bitable/v1/apps/{base}/tables/{table}/records"
-        f"?record_ids={urllib.request.quote(json.dumps([record_id]))}"
+        f"{_FEISHU_HOST}/open-apis/bitable/v1/apps/{base}/tables/{table}/records/{record_id}"
     )
     data = _http_json(url, None, headers, method="GET")
     if data.get("code") != 0:
         raise RuntimeError(f"飞书记录反查失败: {data.get('msg')}")
-    items = ((data.get("data") or {}).get("items") or [])
-    if not items:
+    record = ((data.get("data") or {}).get("record")) or {}
+    if not record or record.get("record_id") != record_id:
         raise RuntimeError(f"飞书记录 {record_id} 不存在或无权限")
-    fields = items[0].get("fields") or {}
+    fields = record.get("fields") or {}
 
     out: dict[str, Any] = {}
     for zh, en in FEISHU_FIELD_MAP.items():
