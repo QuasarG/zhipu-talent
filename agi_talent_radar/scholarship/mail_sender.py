@@ -50,17 +50,22 @@ def _cli(args: list[str], timeout: int = 120) -> dict:
         return {"ok": False, "error": {"message": f"cli 返回不可解析: {out[:200]}"}}
 
 
-def send_confirmation_email(to_email: str, applicant_name: str) -> dict:
+def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool = False) -> dict:
     """发确认邮件 → 成功后回写新表「是否回复并提醒=是」。
 
+    is_update：修改提交后的再确认（文案区分 首次收到/已更新）。
     返回 {sent, message_id?, marked?, error?, mark_error?}；
     邮件失败不回写；回写失败不影响邮件结果（journal 留痕）。
     """
     to_email = (to_email or "").strip()
     if not to_email or "@" not in to_email:
         return {"sent": False, "error": f"申请人邮箱无效: {to_email!r}"}
-    subject = "【Z.AI Scholarship 2026】申请已收到"
-    html = _render_template(applicant_name, date.today())
+    subject = (
+        "【Z.AI Scholarship 2026】申请材料已更新，确认已收到"
+        if is_update else
+        "【Z.AI Scholarship 2026】申请已收到"
+    )
+    html = _render_template(applicant_name, date.today(), is_update=is_update)
     data = _cli([
         "mail", "+send",
         "--mailbox", _MAILBOX,
@@ -134,13 +139,18 @@ def _find_record_id(email: str) -> str:
     return ""
 
 
-def _render_template(name: str, today: date) -> str:
+def _render_template(name: str, today: date, is_update: bool = False) -> str:
     deadline = "<strong>2026年9月28日 24:00</strong>"
     signed = f"{today.year}年{today.month}月{today.day}日"
+    opening = (
+        f"你修改后的申请材料已收到，本次评审将以最新提交为准。感谢你的关注与支持。"
+        if is_update else
+        f"你的申请材料已收到，感谢你的关注与支持。"
+    )
     return f"""<div style="font-family:MiSans,system-ui,sans-serif;font-size:14px;line-height:1.9;color:#1a1a1a;max-width:640px">
 <p>{name}同学：</p>
 <p>你好！</p>
-<p>你的申请材料已收到，感谢你的关注与支持。</p>
+<p>{opening}</p>
 <p><strong>特此提醒：</strong></p>
 <ol style="padding-left:20px;margin:8px 0">
 <li>请确保提交问卷时上传的材料完整无误，如有问题，可直接修改飞书问卷的提交记录，以最新的提交为准；</li>
