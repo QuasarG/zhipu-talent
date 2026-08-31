@@ -280,4 +280,6 @@ def total_score(session, app: ScholarshipApplicationORM) -> float | None:
     )
     if not completed:
         return None
-    return round(completed.blind_score + reputation_adjustment(session, app) + (app.brand_bonus or 0.0), 1)
+    # 现行奖学金分数只由脱敏评分和已确认舆情调整构成。
+    # brand_bonus 字段保留在旧数据库中，仅用于兼容历史数据，不再参与计算。
+    return round(completed.blind_score + reputation_adjustment(session, app), 1)

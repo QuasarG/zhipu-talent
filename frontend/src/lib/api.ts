@@ -301,12 +301,6 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reviewer: "hr" }),
       }),
-    setBrand: (id: string, bonus: number, note: string) =>
-      fetchJSON<ScholarshipApplication>(`/api/scholarship/applications/${id}/brand`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bonus, note }),
-      }),
   },
   personResume: (personId: string) =>
     fetchJSON<CandidateDetail>(`/api/persons/${personId}/resume`),

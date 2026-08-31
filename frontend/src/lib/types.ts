@@ -690,8 +690,6 @@ export interface ScholarshipApplication {
   advisors: string[];
   status: string;
   screening_detail: { missing?: string[]; reasons?: string[] };
-  brand_bonus: number;
-  brand_note: string;
   // 飞书问卷同步字段（空串/null = 非飞书来源或未推送）
   feishu_record_id: string;
   name_en: string;

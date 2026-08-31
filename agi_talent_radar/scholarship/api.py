@@ -60,8 +60,6 @@ def _app_to_dict(session, app: ScholarshipApplicationORM, detail: bool = False) 
         "advisors": app.advisors or [],
         "status": app.status,
         "screening_detail": app.screening_detail or {},
-        "brand_bonus": app.brand_bonus or 0.0,
-        "brand_note": app.brand_note or "",
         "feishu_record_id": app.feishu_record_id or "",
         "name_en": app.name_en or "",
         "phone": app.phone or "",
@@ -299,22 +297,5 @@ def build_scholarship_blueprint() -> Blueprint:
                 return jsonify(_rep_to_dict(item))
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 400
-
-    @bp.post("/api/scholarship/applications/<app_id>/brand")
-    def set_brand_bonus(app_id: str):
-        body = request.get_json(silent=True) or {}
-        with get_session() as session:
-            app = session.get(ScholarshipApplicationORM, app_id)
-            if not app:
-                return jsonify({"detail": "申请人不存在"}), 404
-            try:
-                app.brand_bonus = max(-10.0, min(10.0, float(body.get("bonus") or 0)))
-            except (TypeError, ValueError):
-                return jsonify({"detail": "bonus 必须是数字"}), 400
-            app.brand_note = str(body.get("note") or "")
-            if app.status == "scored":
-                app.status = "finalized"
-            session.commit()
-            return jsonify(_app_to_dict(session, app))
 
     return bp

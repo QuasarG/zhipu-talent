@@ -9,9 +9,10 @@ import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import SearchField from "@/components/ui/SearchField";
+import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import { StatusChip } from "@/components/ui/Chip";
 import { useSessionState } from "@/lib/sessionState";
-import ScholarshipPane from "@/features/scholarship/ScholarshipPane";
+import ScholarshipPane, { type ScholarshipView } from "@/features/scholarship/ScholarshipPane";
 import {
   DEGREE_LABELS,
   STATUS_LABELS,
@@ -52,6 +53,7 @@ export default function Scholarship() {
   const [selectedId, setSelectedId] = useSessionState<string | null>("scholarship.selected-id", null);
   const [search, setSearch] = useSessionState("scholarship.list-search", "");
   const [filter, setFilter] = useSessionState<string>("scholarship.list-filter", "all");
+  const [view, setView] = useSessionState<ScholarshipView>("scholarship.view", "overview");
 
   const load = useCallback(async () => {
     try {
@@ -120,9 +122,18 @@ export default function Scholarship() {
     <div className="w-full max-w-full min-w-0">
       <PageToolbar
         title={t("奖学金初筛")}
-        subtitle={t("Z.AI Scholarship 2026 · 飞书问卷同步 → 筛选 → 盲评 → 舆情核验")}
+        subtitle={t("申请资料工作台 · 飞书问卷同步")}
         right={
           <>
+            <SegmentedButtons
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "overview", label: t("申请资料"), icon: "badge" },
+                { value: "materials", label: t("材料预览"), icon: "description" },
+                { value: "assessment", label: t("评估与核验"), icon: "fact_check" },
+              ]}
+            />
             <IconButton icon="refresh" variant="outlined" onClick={refreshAll} title={t("刷新")} />
             <Button icon="person_add" onClick={() => setShowAdd(true)}>{t("添加申请人")}</Button>
           </>
@@ -139,7 +150,7 @@ export default function Scholarship() {
         </div>
       )}
 
-      <div className="app-workspace-frame grid w-full max-w-full grid-cols-1 gap-4 min-w-0 min-h-0 overflow-y-auto xl:grid-cols-[320px_minmax(0,1fr)] xl:overflow-hidden">
+      <div className="app-workspace-frame grid w-full max-w-full grid-cols-1 gap-3 min-w-0 min-h-0 overflow-y-auto xl:grid-cols-[288px_minmax(0,1fr)] xl:overflow-hidden">
         {/* 左：申请列表 */}
         <Card variant="filled" className="min-h-0 min-w-0 flex flex-col overflow-hidden">
           <div className="p-3 pb-2 flex flex-col gap-2.5 border-b border-outline-variant">
@@ -219,6 +230,8 @@ export default function Scholarship() {
             app={detail}
             loading={detailLoading}
             missingSelection={!selectedId}
+            view={view}
+            onViewChange={setView}
             onRefresh={refreshAll}
             onDeleted={() => { setSelectedId(null); void load(); }}
             addDialog={showAdd ? { onClose: () => setShowAdd(false), onDone: refreshAll } : null}

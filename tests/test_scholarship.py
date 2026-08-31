@@ -1,4 +1,4 @@
-"""奖学金初筛模块测试：资格门槛 / 完整性 / 脱敏 / 评分 / 舆情加减分。
+"""奖学金初筛模块测试：资格门槛 / 完整性 / 脱敏 / 评分 / 舆情调整。
 
 sqlite 内存库 + fake LLM/search，不打外网。
 """
@@ -9,7 +9,7 @@ import unittest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from agi_talent_radar.core.db.orm import Base
+from agi_talent_radar.core.db.orm import Base, ScholarshipEvaluationORM
 from agi_talent_radar.scholarship import ingest, pipeline
 from agi_talent_radar.scholarship.anonymize import anonymize_text, build_identities, check_leak
 
@@ -167,6 +167,18 @@ class TestReputation(ScholarshipTestBase):
         self.session.commit()
         self.session.refresh(app)
         self.assertEqual(pipeline.reputation_adjustment(self.session, app), -10.0)
+
+    def test_legacy_brand_bonus_does_not_affect_total(self) -> None:
+        app = self.make_app()
+        app.brand_bonus = 8.0
+        self.session.add(ScholarshipEvaluationORM(
+            application_id=app.id,
+            config_version="test",
+            status="completed",
+            blind_score=76.0,
+        ))
+        self.session.commit()
+        self.assertEqual(pipeline.total_score(self.session, app), 76.0)
 
 
 class TestIngest(ScholarshipTestBase):
