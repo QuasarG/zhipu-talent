@@ -28,3 +28,4 @@ tmp/
 frontend/src/assets/fonts/material-symbols-outlined.full.woff2
 all_resumes_review.txt
 dist_deploy.tar.gz
+uploads/
