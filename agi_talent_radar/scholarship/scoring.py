@@ -24,8 +24,9 @@ FOCUS_DIRECTIONS = [
     "Embodied Intelligence",
 ]
 
-# 材料完整性：resume / supplementary / achievement 各至少 1 份，letter 1-2 封
-REQUIRED_KINDS = ("resume", "supplementary", "achievement")
+# 材料完整性：resume / achievement 各至少 1 份，letter 1-2 封
+# （supplementary 申请补充表：问卷附件体系里不存在，不作为必需项）
+REQUIRED_KINDS = ("resume", "achievement")
 MIN_LETTERS = 1
 MAX_LETTERS = 2
 
