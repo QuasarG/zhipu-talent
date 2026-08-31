@@ -197,8 +197,15 @@ function isVideoFile(filename: string): boolean {
 function materialIcon(filename: string): string {
   const name = filename.toLowerCase();
   if (name.endsWith(".pdf")) return "picture_as_pdf";
-  if (/\.(png|jpe?g|gif|webp)$/i.test(name)) return "image";
-  if (/\.(docx?|pages)$/i.test(name)) return "article";
+  if (/\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name)) return "image";
+  if (/\.(docx?|pages|txt|md)$/i.test(name)) return "article";
+  if (/\.(mp4|webm|mov|m4v)$/i.test(name)) return "movie";
+  if (/\.(mp3|wav|m4a|flac)$/i.test(name)) return "music_note";
+  if (/\.(py|sh|ipynb|js|ts|c|cpp|java|go|rs)$/i.test(name)) return "code";
+  if (/\.(parquet|csv|json|jsonl|yaml|yml|toml)$/i.test(name)) return "dataset";
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(name)) return "folder_zip";
+  if (/\.(pptx?|key)$/i.test(name)) return "presentation";
+  if (/\.(xlsx?|numbers)$/i.test(name)) return "table_chart";
   return "description";
 }
 
@@ -506,7 +513,6 @@ export default function ScholarshipPane({
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
               {view === "assessment" ? (
                 <>
-                  <Button variant="outlined" icon="fact_check" className="h-8 px-3" disabled={!!acting} onClick={() => runAction("screen", async () => { await api.scholarship.screen(app.id); onRefresh(); })}>{t("重新筛选")}</Button>
                   <Button variant="tonal" icon="grade" className="h-8 px-3" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>{t("开始评估")}</Button>
                   <Button variant="text" icon="travel_explore" className="h-8 px-3" disabled={!!acting} onClick={() => runAction("scan", async () => { await api.scholarship.reputationScan(app.id); onRefresh(); })}>{t("舆情扫描")}</Button>
                 </>
@@ -532,7 +538,7 @@ export default function ScholarshipPane({
               </span>
             </div>
           )}
-          {acting && <div className="mt-2 inline-flex items-center gap-1.5 text-label text-on-surface-variant"><LoadingIndicator size={13} />{acting === "evaluate" ? t("评估中…") : acting === "screen" ? t("筛选中…") : acting === "scan" ? t("扫描中…") : t("删除中…")}</div>}
+          {acting && <div className="mt-2 inline-flex items-center gap-1.5 text-label text-on-surface-variant"><LoadingIndicator size={13} />{acting === "evaluate" ? t("评估中…") : acting === "scan" ? t("扫描中…") : t("删除中…")}</div>}
           {error && <p className="mt-2 text-body-sm text-error">{error}</p>}
         </div>
 

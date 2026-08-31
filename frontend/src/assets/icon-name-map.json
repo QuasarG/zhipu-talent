@@ -88,5 +88,17 @@
   "cloud_done": "cloud-check",
   "inbox": "inbox",
   "supervisor_account": "users",
-  "attach_file": "paperclip"
+  "attach_file": "paperclip",
+  "picture_as_pdf": "file-type-2",
+  "image": "image",
+  "article": "file-text",
+  "movie": "film",
+  "music_note": "music",
+  "code": "code",
+  "table_chart": "table-2",
+  "folder_zip": "folder-archive",
+  "dataset": "database",
+  "presentation": "presentation",
+  "trophy": "trophy",
+  "visibility_off": "eye-off"
 }
