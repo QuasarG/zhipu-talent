@@ -153,4 +153,5 @@ export default {
   "原件": "Original",
   "文本": "Text",
   "下载原件": "Download original",
+  "推荐导师": "Nominating Advisor",
 } as Record<string, string>;

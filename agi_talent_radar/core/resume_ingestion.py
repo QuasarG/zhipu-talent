@@ -152,6 +152,11 @@ def take_last_ocr_sections() -> list[dict[str, str]] | None:
     return sections
 
 
+def cloud_ocr_image(img_bytes: bytes) -> str | None:
+    """公开包装：云端 GLM 视觉 OCR（奖学金材料等外部调用方使用）。"""
+    return _recognize_via_cloud(img_bytes)
+
+
 def _recognize_via_cloud(img_bytes: bytes) -> str | None:
     """智谱 GLM-5V-Turbo 视觉模型 OCR（实测 1-3s/页、限流宽）；失败/未配置返回 None。
 

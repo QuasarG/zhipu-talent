@@ -202,28 +202,69 @@ def add_materials_from_zip(session, app: ScholarshipApplicationORM, zip_bytes: b
 _BINARY_SUFFIXES = {".zip", ".rar", ".7z", ".doc", ".xls", ".xlsx", ".ppt", ".pptx"}
 
 def _extract_text(filename: str, file_bytes: bytes) -> str:
+    """先直接提文字（文本层/内嵌 XML）；扫描件或提取失败走 GLM 视觉模型（与简历解析同链路）。"""
     suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    text = ""
     if suffix == ".pdf":
         from agi_talent_radar.core.resume_ingestion import extract_pdf_text
 
         try:
             text, _ = extract_pdf_text(file_bytes)
-        except Exception:  # noqa: BLE001 — 损坏/加密 PDF 留空文本，不阻断整包导入
-            return ""
-        return text
-    if suffix == ".docx":
-        return _extract_docx_text(file_bytes)
-    if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
+        except Exception:  # noqa: BLE001 — 损坏/加密 PDF 走视觉模型兜底
+            text = ""
+    elif suffix == ".docx":
+        text = _extract_docx_text(file_bytes)
+    elif suffix in {".png", ".jpg", ".jpeg", ".webp"}:
         from agi_talent_radar.core.resume_ingestion import extract_image_text
 
         try:
-            return extract_image_text(file_bytes)
+            text = extract_image_text(file_bytes)
         except Exception:  # noqa: BLE001
-            return ""
-    if suffix in _BINARY_SUFFIXES:
+            text = ""
+    elif suffix in _BINARY_SUFFIXES:
         return ""  # 二进制占位：zip 解包由 upsert 路径处理，其余留空待人工处理
-    # txt/md/json 等按文本读
-    return file_bytes.decode("utf-8", errors="ignore")
+    else:
+        # txt/md/json 等按文本读
+        return file_bytes.decode("utf-8", errors="ignore")
+
+    # 文字层太薄（扫描件）→ GLM 视觉模型逐页识别
+    if len(text.strip()) < MIN_VISUAL_TEXT_CHARS and suffix in _VISUAL_SUFFIXES:
+        visual = _extract_via_vision(file_bytes, suffix)
+        if visual:
+            text = visual
+    return text
+
+
+# 需要视觉兜底的格式与触发阈值（扫描 PDF 文字层常只有几行）
+_VISUAL_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
+MIN_VISUAL_TEXT_CHARS = 120
+
+
+def _extract_via_vision(file_bytes: bytes, suffix: str) -> str:
+    """GLM 视觉模型兜底（与简历 OCR 同一客户端/凭证）：PDF 按页渲染成图逐页识别。"""
+    try:
+        from agi_talent_radar.core.resume_ingestion import cloud_ocr_image
+    except ImportError:
+        return ""
+    try:
+        if suffix == ".pdf":
+            import fitz
+
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            try:
+                pages = []
+                for index, page in enumerate(doc, start=1):
+                    pixmap = page.get_pixmap(matrix=fitz.Matrix(200 / 72, 200 / 72), alpha=False)
+                    png = pixmap.tobytes("png")
+                    part = cloud_ocr_image(png)
+                    if part:
+                        pages.append(f"[第 {index} 页]\n{part}")
+                return "\n\n".join(pages)
+            finally:
+                doc.close()
+        return cloud_ocr_image(file_bytes)
+    except Exception:  # noqa: BLE001 — 视觉兜底也失败则留空，不阻断
+        return ""
 
 
 # MySQL TEXT 列 64KB 上限：统一截断（长论文 PDF 全文不落库，评分只看前段）

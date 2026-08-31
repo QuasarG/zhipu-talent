@@ -256,7 +256,7 @@ function InfoField({ icon, label, value, wide = false }: { icon: string; label: 
         <Icon name={icon} size={15} />
         {label}
       </dt>
-      <dd className="mt-1 truncate text-body-sm text-on-surface" title={value}>{value || "—"}</dd>
+      <dd className="mt-1 break-words text-body-sm leading-5 text-on-surface" title={value}>{value || "—"}</dd>
     </div>
   );
 }
@@ -332,8 +332,9 @@ function MaterialExplorer({
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-body-sm">{material.filename}</span>
-                            <span className="mt-0.5 block text-label opacity-70">
-                              {materialType(material.filename)} · {material.raw_text ? t("已解析") : t("待解析")}
+                            <span className="mt-0.5 flex items-center gap-1 text-label opacity-70">
+                              {materialType(material.filename)}
+                              {material.has_file && <Icon name="attach_file" size={11} />}
                             </span>
                           </span>
                           {active && <Icon name="chevron_right" size={16} className="shrink-0" />}
@@ -554,10 +555,10 @@ export default function ScholarshipPane({
                 {app.feishu_record_id && <span className="inline-flex items-center gap-1 text-label text-on-surface-variant"><Icon name="cloud_done" size={13} />{t("飞书同步")}</span>}
               </div>
               <p className="mt-1 truncate text-body-sm text-on-surface-variant">
-                {[app.name_en, app.school, app.lab, app.degree_type ? t(DEGREE_LABELS[app.degree_type] ?? app.degree_type) : "", app.grade, app.expected_graduation].filter(Boolean).join(" · ") || "—"}
+                {[app.school, app.lab, app.direction].filter(Boolean).join(" · ") || "—"}
               </p>
               <p className="mt-0.5 truncate text-label text-on-surface-variant">
-                {[app.direction, app.advisors?.length ? `${t("导师")}：${app.advisors.join(t("、"))}` : "", app.email].filter(Boolean).join(" · ") || "—"}
+                {[app.degree_type ? t(DEGREE_LABELS[app.degree_type] ?? app.degree_type) : "", app.grade, app.expected_graduation ? `${t("预计毕业")} ${app.expected_graduation}` : "", app.name_en].filter(Boolean).join(" · ") || "—"}
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
@@ -579,7 +580,17 @@ export default function ScholarshipPane({
               ) : <IconButton icon="delete" size={18} title={t("删除")} disabled={!!acting} onClick={() => setConfirmingDelete(true)} />}
             </div>
           </div>
-          <div className="mt-4 flex items-center gap-3 rounded-md bg-surface-low px-3 py-2.5">
+          {(app.advisors?.length || app.advisor_title) && (
+            <div className="mt-2.5 flex items-center gap-2 rounded-md border border-outline-variant bg-surface-low/60 px-3 py-1.5">
+              <Icon name="supervisor_account" size={16} className="shrink-0 text-on-surface-variant" />
+              <span className="shrink-0 text-label font-medium text-on-surface-variant">{t("推荐导师")}</span>
+              <span className="min-w-0 truncate text-body-sm text-on-surface">
+                {app.advisors?.join(t("、")) || "—"}
+                {app.advisor_title && <span className="ml-2 text-label text-on-surface-variant">{app.advisor_title}</span>}
+              </span>
+            </div>
+          )}
+          <div className="mt-3 flex items-center gap-3 rounded-md bg-surface-low px-3 py-2.5">
             <span className="shrink-0 text-label font-medium text-on-surface-variant">{t("申请进度")}</span>
             <div className="min-w-0 flex-1"><StageBar status={app.status} pendingReputation={pendingReputation} /></div>
           </div>

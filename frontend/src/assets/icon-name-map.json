@@ -86,5 +86,7 @@
   "work": "briefcase",
   "workspace_premium": "award",
   "cloud_done": "cloud-check",
-  "inbox": "inbox"
+  "inbox": "inbox",
+  "supervisor_account": "users",
+  "attach_file": "paperclip"
 }
