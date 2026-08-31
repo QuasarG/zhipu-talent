@@ -196,11 +196,32 @@ def build_scholarship_blueprint() -> Blueprint:
                 screen_result = {"status": "imported", "missing": [], "reasons": [f"自动筛选失败: {exc}"]}
                 app.logger.warning("feishu webhook auto-screen failed: %s", exc)
             session.commit()
+            # 新申请自动发确认邮件（姓名/邮箱取问卷记录）；失败不阻断同步，日志可查
+            email_result = {"sent": False}
+            if created:
+                from agi_talent_radar.scholarship import mail_sender
+
+                if mail_sender.mail_configured():
+                    try:
+                        email_result = mail_sender.send_confirmation_email(
+                            app_row.email or "", app_row.name or ""
+                        )
+                        if not email_result.get("sent"):
+                            app.logger.warning(
+                                "confirmation mail failed: %s %s",
+                                app_row.name, email_result.get("error"),
+                            )
+                    except Exception as exc:  # noqa: BLE001
+                        email_result = {"sent": False, "error": str(exc)}
+                        app.logger.warning("confirmation mail error: %s", exc)
+                else:
+                    app.logger.info("confirmation mail skipped: FEISHU_USER_REFRESH_TOKEN 未配置")
         return jsonify({
             "ok": True,
             "duplicate": not created,
             "application_id": app_row.id,
             "status": screen_result.get("status"),
+            "email_sent": bool(email_result.get("sent")),
         }), 201 if created else 200
 
     @bp.post("/api/scholarship/applications")
