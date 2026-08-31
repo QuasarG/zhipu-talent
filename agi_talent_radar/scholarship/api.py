@@ -83,6 +83,7 @@ def _app_to_dict(session, app: ScholarshipApplicationORM, detail: bool = False) 
                 "id": m.id, "kind": m.kind, "filename": m.filename,
                 "advisor_name": m.advisor_name or "",
                 "raw_text": m.raw_text or "",
+                "has_file": bool((m.file_path or "").strip() and os.path.isfile(m.file_path)),
             }
             for m in app.materials
         ]
@@ -283,6 +284,51 @@ def build_scholarship_blueprint() -> Blueprint:
                 return jsonify({"detail": "申请人不存在"}), 404
             items = pipeline.run_reputation_scan(session, app)
             return jsonify({"created": len(items), "items": [_rep_to_dict(i) for i in items]})
+
+    # ---- 材料原件预览 / 下载（浏览器原生渲染 PDF/图片；docx 走下载） ----
+    _PREVIEW_MIME = {
+        ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif",
+        ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
+    }
+
+    def _material_file_response(material, as_attachment: bool):
+        from flask import send_file
+
+        path = (material.file_path or "").strip()
+        if not path or not os.path.isfile(path):
+            return jsonify({"detail": "原始文件未保存（历史材料仅有提取文本）"}), 404
+        # 路径必须落在材料目录内（防穿越）
+        if os.path.commonpath([os.path.abspath(path), os.path.abspath(os.path.join(os.getcwd(), "uploads", "scholarship"))]) != os.path.abspath(os.path.join(os.getcwd(), "uploads", "scholarship")):
+            return jsonify({"detail": "非法文件路径"}), 400
+        ext = "." + path.rsplit(".", 1)[-1].lower() if "." in path else ""
+        mime = _PREVIEW_MIME.get(ext, "application/octet-stream")
+        return send_file(
+            path,
+            mimetype=mime,
+            as_attachment=as_attachment,
+            download_name=material.filename or os.path.basename(path),
+        )
+
+    @bp.get("/api/scholarship/materials/<int:material_id>/preview")
+    def material_preview(material_id: int):
+        from agi_talent_radar.core.db.orm import ScholarshipMaterialORM
+
+        with get_session() as session:
+            material = session.get(ScholarshipMaterialORM, material_id)
+            if not material:
+                return jsonify({"detail": "材料不存在"}), 404
+            return _material_file_response(material, as_attachment=False)
+
+    @bp.get("/api/scholarship/materials/<int:material_id>/download")
+    def material_download(material_id: int):
+        from agi_talent_radar.core.db.orm import ScholarshipMaterialORM
+
+        with get_session() as session:
+            material = session.get(ScholarshipMaterialORM, material_id)
+            if not material:
+                return jsonify({"detail": "材料不存在"}), 404
+            return _material_file_response(material, as_attachment=True)
 
     @bp.post("/api/scholarship/reputation-items/<int:item_id>/review")
     def review_reputation(item_id: int):

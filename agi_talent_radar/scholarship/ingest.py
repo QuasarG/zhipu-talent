@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import io
+import os
 import re
 import zipfile
 from datetime import datetime
@@ -134,19 +135,25 @@ def upsert_application_from_feishu(session, payload: dict[str, Any]) -> tuple[Sc
         if filename.lower().endswith(".zip"):
             # zip 成果包解包为多份材料（二进制本体不落 TEXT 列）
             for info_name, info_blob in _iter_zip_entries(blob):
-                session.add(ScholarshipMaterialORM(
+                m = ScholarshipMaterialORM(
                     application_id=app.id,
                     kind=classify_filename(info_name),
                     filename=info_name,
                     raw_text=_clamp_text(_extract_text(info_name, info_blob)),
-                ))
+                )
+                session.add(m)
+                session.flush()
+                m.file_path = _store_material_file(m.id, info_name, info_blob)
             continue
-        session.add(ScholarshipMaterialORM(
+        m = ScholarshipMaterialORM(
             application_id=app.id,
             kind=kind,
             filename=filename,
             raw_text=_clamp_text(_extract_text(filename, blob)),
-        ))
+        )
+        session.add(m)
+        session.flush()
+        m.file_path = _store_material_file(m.id, filename, blob)
     session.commit()
     session.expire(app, ["materials"])  # delete+重落后再读集合，避免拿到陈旧关系缓存
     return app, created
@@ -173,6 +180,8 @@ def add_material(
         application_id=app.id, kind=kind, filename=filename, raw_text=raw_text
     )
     session.add(material)
+    session.flush()
+    material.file_path = _store_material_file(material.id, filename, file_bytes)
     session.commit()
     return material
 
@@ -225,6 +234,25 @@ def _clamp_text(text: str) -> str:
     if len(text) <= _RAW_TEXT_MAX:
         return text
     return text[:_RAW_TEXT_MAX] + "\n…（内容过长已截断）"
+
+
+_MATERIAL_DIR = os.path.join(os.getcwd(), "uploads", "scholarship")
+
+
+def _store_material_file(material_id: int, filename: str, blob: bytes) -> str:
+    """原始文件落盘（预览/下载用）；失败仅记路径为空，不影响文本入库。
+
+    ponytail: 单机本地盘，多实例部署时换对象存储。
+    """
+    if not blob:
+        return ""
+    os.makedirs(_MATERIAL_DIR, exist_ok=True)
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    safe_ext = ext if ext and len(ext) <= 10 and ext[1:].replace(".", "").isalnum() else ""
+    path = os.path.join(_MATERIAL_DIR, f"{material_id}{safe_ext}")
+    with open(path, "wb") as fp:
+        fp.write(blob)
+    return path
 
 
 def _iter_zip_entries(zip_bytes: bytes) -> list[tuple[str, bytes]]:

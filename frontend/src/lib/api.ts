@@ -283,6 +283,8 @@ export const api = {
         { method: "POST", body: form },
       );
     },
+    materialPreviewUrl: (materialId: number) => `/api/scholarship/materials/${materialId}/preview`,
+    materialDownloadUrl: (materialId: number) => `/api/scholarship/materials/${materialId}/download`,
     screen: (id: string) =>
       fetchJSON<{ status: string; missing: string[]; reasons: string[] }>(
         `/api/scholarship/applications/${id}/screen`,

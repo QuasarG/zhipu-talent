@@ -272,12 +272,14 @@ function MaterialExplorer({
 }) {
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState<number | null>(materials[0]?.id ?? null);
+  const [viewFile, setViewFile] = useState(false);
 
   useEffect(() => {
     setSelectedId((current) => materials.some((material) => material.id === current) ? current : (materials[0]?.id ?? null));
   }, [materials]);
 
   const selected = materials.find((material) => material.id === selectedId) ?? null;
+  useEffect(() => { setViewFile(false); }, [selectedId]);
 
   return (
     <section className={cn(
@@ -348,25 +350,61 @@ function MaterialExplorer({
         <div className="flex min-h-0 flex-col bg-surface">
           {selected ? (
             <>
-              <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant px-4 py-3">
+              <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant px-4 py-2.5">
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary-container text-on-secondary-container">
                   <Icon name={materialIcon(selected.filename)} size={17} />
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-body-sm font-medium text-on-surface">{selected.filename}</p>
                   <p className="mt-0.5 text-label text-on-surface-variant">
                     {materialType(selected.filename)} · {t(MATERIAL_KIND_LABELS[selected.kind] ?? selected.kind)}
                     {selected.advisor_name ? ` · ${selected.advisor_name}` : ""}
                   </p>
                 </div>
+                {selected.has_file && (
+                  <div className="flex shrink-0 items-center rounded-full border border-outline-variant p-0.5">
+                    {([["original", t("原件")], ["text", t("文本")]] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setViewFile(key === "original")}
+                        className={cn(
+                          "h-7 rounded-full px-2.5 text-label cursor-pointer transition-colors",
+                          (key === "original") === viewFile
+                            ? "bg-primary text-on-primary"
+                            : "text-on-surface-variant hover:text-on-surface",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selected.has_file && (
+                  <a
+                    href={api.scholarship.materialDownloadUrl(selected.id)}
+                    download
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-low hover:text-on-surface"
+                    title={t("下载原件")}
+                  >
+                    <Icon name="download" size={17} />
+                  </a>
+                )}
               </div>
-              <div className="scholarship-preview-scroll min-h-0 flex-1 overflow-y-auto p-4">
-                {selected.raw_text ? (
-                  <div className="min-h-full rounded-md border border-outline-variant bg-surface-lowest p-4">
+              <div className="scholarship-preview-scroll min-h-0 flex-1 overflow-hidden p-0">
+                {viewFile && selected.has_file ? (
+                  <iframe
+                    key={selected.id}
+                    src={api.scholarship.materialPreviewUrl(selected.id)}
+                    title={selected.filename}
+                    className="h-full w-full border-0 bg-surface-lowest"
+                  />
+                ) : selected.raw_text ? (
+                  <div className="scholarship-preview-scroll min-h-full overflow-y-auto p-4">
                     <pre className="whitespace-pre-wrap break-words text-body-sm leading-6 text-on-surface">{selected.raw_text}</pre>
                   </div>
                 ) : (
-                  <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 rounded-md border border-dashed border-outline-variant px-5 text-center text-on-surface-variant">
+                  <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 px-5 text-center text-on-surface-variant">
                     <Icon name="visibility_off" size={26} />
                     <p className="text-body-sm">{t("当前文件暂无可预览文本")}</p>
                     <p className="text-label">{t("解析完成后会在这里即时展示内容")}</p>

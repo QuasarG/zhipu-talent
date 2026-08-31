@@ -984,6 +984,7 @@ class ScholarshipMaterialORM(Base):
     structured = Column(JSON, default=dict)                # 简历结构化等
     advisor_name = Column(String(128), default="")         # kind=letter 时的推荐导师
     anonymized_text = Column(Text, default="")             # 脱敏后的文本（评分只用它）
+    file_path = Column(String(512), default="")            # 原始文件落盘路径（预览/下载用）
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
     application = relationship("ScholarshipApplicationORM", back_populates="materials")

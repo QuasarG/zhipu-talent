@@ -678,6 +678,7 @@ export interface ScholarshipMaterial {
   filename: string;
   advisor_name: string;
   raw_text: string;
+  has_file?: boolean;
 }
 
 export interface ScholarshipApplication {

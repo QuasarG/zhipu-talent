@@ -307,6 +307,15 @@ def ensure_schema(engine) -> None:
             )
             _drop_index_if_exists(engine, "candidates", "uq_candidates_person_id")
         _record_version(engine, 29, "one person one candidate profile (unique partial index)")
+    if current_version < 27:
+        existing = {c["name"] for c in inspect(engine).get_columns("scholarship_materials")}
+        if "file_path" not in existing:
+            _add_columns(engine, "scholarship_materials", ["file_path VARCHAR(512) NOT NULL DEFAULT ''"])
+        _record_version(
+            engine,
+            27,
+            "phase 27: scholarship material original file path (preview/download)",
+        )
     _ensure_indexes(engine)
 
 

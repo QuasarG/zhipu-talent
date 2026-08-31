@@ -150,4 +150,7 @@ export default {
   "（无文本内容）": "(No text content)",
   "飞书提交时间：{v}": "Feishu submitted at: {v}",
   "关闭错误提示": "Dismiss error",
+  "原件": "Original",
+  "文本": "Text",
+  "下载原件": "Download original",
 } as Record<string, string>;
