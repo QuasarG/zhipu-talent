@@ -190,6 +190,10 @@ function formatDate(value: string | null | undefined): string {
   return value ? value.slice(0, 16).replace("T", " ") : "—";
 }
 
+function isVideoFile(filename: string): boolean {
+  return /\.(mp4|webm|mov|m4v)$/i.test(filename);
+}
+
 function materialIcon(filename: string): string {
   const name = filename.toLowerCase();
   if (name.endsWith(".pdf")) return "picture_as_pdf";
@@ -327,12 +331,22 @@ function MaterialExplorer({
               </div>
               <div className="min-h-0 flex-1 overflow-hidden">
                 {selected.has_file ? (
-                  <iframe
-                    key={selected.id}
-                    src={api.scholarship.materialPreviewUrl(selected.id)}
-                    title={selected.filename}
-                    className="h-full w-full border-0 bg-surface-lowest"
-                  />
+                  isVideoFile(selected.filename) ? (
+                    <video
+                      key={selected.id}
+                      src={api.scholarship.materialPreviewUrl(selected.id)}
+                      controls
+                      playsInline
+                      className="h-full w-full bg-surface-lowest object-contain"
+                    />
+                  ) : (
+                    <iframe
+                      key={selected.id}
+                      src={api.scholarship.materialPreviewUrl(selected.id)}
+                      title={selected.filename}
+                      className="h-full w-full border-0 bg-surface-lowest"
+                    />
+                  )
                 ) : (
                   <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 px-5 text-center text-on-surface-variant">
                     <Icon name="visibility_off" size={26} />
