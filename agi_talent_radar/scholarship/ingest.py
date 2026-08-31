@@ -86,7 +86,8 @@ def upsert_application_from_feishu(session, payload: dict[str, Any]) -> tuple[Sc
     更新策略：同步字段全覆盖、旧飞书附件清掉重落（材料内容以最新推送为准）。
     """
     record_id = str(payload.get("record_id") or "").strip()
-    name = str(payload.get("name") or "").strip()
+    # 中文名缺失时用英文名兜底（问卷里两列分开填，常有只填其一）
+    name = str(payload.get("name") or "").strip() or str(payload.get("name_en") or "").strip()
     if not name:
         raise ValueError("缺少中文姓名，无法创建申请")
 
