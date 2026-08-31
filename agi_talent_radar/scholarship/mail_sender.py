@@ -16,6 +16,8 @@ import subprocess
 from datetime import date
 
 _LARK_CLI = "/usr/bin/lark-cli"
+# 总开关：False 时 webhook 同步照常，但完全不发信（灰度/调试用）
+MAIL_ENABLED = False
 _MAILBOX = "zpsy@aminer.cn"
 _FROM = "zpsy@zhipuai.cn"
 _BASE = "WMQxb6BhPar076sU40McQpYmnHg"
@@ -30,7 +32,11 @@ def mail_configured() -> bool:
             [_LARK_CLI, "auth", "status"],
             capture_output=True, text=True, timeout=30,
         )
-        return '"tokenStatus": "valid"' in result.stdout or '"tokenStatus":"valid"' in result.stdout
+        # needs_refresh 表示 access token 过期但 refresh token 有效，lark-cli 调用时自动刷新
+        return ('"tokenStatus": "valid"' in result.stdout
+                or '"tokenStatus":"valid"' in result.stdout
+                or '"tokenStatus": "needs_refresh"' in result.stdout
+                or '"tokenStatus":"needs_refresh"' in result.stdout)
     except (OSError, subprocess.SubprocessError):
         return False
 
@@ -43,7 +49,7 @@ def _cli(args: list[str], timeout: int = 120) -> dict:
     out = result.stdout
     start = out.find("{")
     if start < 0:
-        return {"ok": False, "error": {"message": f"cli 输出异常: {out[:200]}"}}
+        return {"ok": False, "error": {"message": f"cli 输出异常[{result.returncode}]: {(out + result.stderr)[:200]}"}}
     try:
         return json.loads(out[start:])
     except json.JSONDecodeError:
@@ -58,6 +64,8 @@ def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool 
     邮件失败不回写；回写失败不影响邮件结果（journal 留痕）。
     """
     to_email = (to_email or "").strip()
+    if not MAIL_ENABLED:
+        return {"sent": False, "error": "邮件服务已停用（MAIL_ENABLED=False）"}
     if not to_email or "@" not in to_email:
         return {"sent": False, "error": f"申请人邮箱无效: {to_email!r}"}
     subject = (
@@ -95,11 +103,11 @@ def mark_replied(email: str) -> tuple[bool, str]:
     if not record_id:
         return False, f"新表未找到邮箱 {email} 对应记录"
     data = _cli([
-        "base", "+record-update", "--yes",
+        "base", "+record-upsert",
         "--base-token", _BASE,
         "--table-id", _TABLE,
         "--record-id", record_id,
-        "--fields", json.dumps({_REPLY_FIELD: "是"}, ensure_ascii=False),
+        "--json", json.dumps({_REPLY_FIELD: ["是"]}, ensure_ascii=False),
     ], timeout=60)
     if data.get("ok"):
         return True, ""
