@@ -138,14 +138,14 @@ def upsert_application_from_feishu(session, payload: dict[str, Any]) -> tuple[Sc
                     application_id=app.id,
                     kind=classify_filename(info_name),
                     filename=info_name,
-                    raw_text=_extract_text(info_name, info_blob),
+                    raw_text=_clamp_text(_extract_text(info_name, info_blob)),
                 ))
             continue
         session.add(ScholarshipMaterialORM(
             application_id=app.id,
             kind=kind,
             filename=filename,
-            raw_text=_extract_text(filename, blob),
+            raw_text=_clamp_text(_extract_text(filename, blob)),
         ))
     session.commit()
     session.expire(app, ["materials"])  # delete+重落后再读集合，避免拿到陈旧关系缓存
@@ -168,7 +168,7 @@ def add_material(
         )
         if existing >= MAX_LETTERS:
             raise ValueError(f"推荐信最多 {MAX_LETTERS} 封。")
-    raw_text = _extract_text(filename, file_bytes)
+    raw_text = _clamp_text(_extract_text(filename, file_bytes))
     material = ScholarshipMaterialORM(
         application_id=app.id, kind=kind, filename=filename, raw_text=raw_text
     )
@@ -215,6 +215,16 @@ def _extract_text(filename: str, file_bytes: bytes) -> str:
         return ""  # 二进制占位：zip 解包由 upsert 路径处理，其余留空待人工处理
     # txt/md/json 等按文本读
     return file_bytes.decode("utf-8", errors="ignore")
+
+
+# MySQL TEXT 列 64KB 上限：统一截断（长论文 PDF 全文不落库，评分只看前段）
+_RAW_TEXT_MAX = 60_000
+
+
+def _clamp_text(text: str) -> str:
+    if len(text) <= _RAW_TEXT_MAX:
+        return text
+    return text[:_RAW_TEXT_MAX] + "\n…（内容过长已截断）"
 
 
 def _iter_zip_entries(zip_bytes: bytes) -> list[tuple[str, bytes]]:
