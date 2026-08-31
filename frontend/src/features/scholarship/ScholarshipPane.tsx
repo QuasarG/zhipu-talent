@@ -272,14 +272,12 @@ function MaterialExplorer({
 }) {
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState<number | null>(materials[0]?.id ?? null);
-  const [viewFile, setViewFile] = useState(false);
 
   useEffect(() => {
     setSelectedId((current) => materials.some((material) => material.id === current) ? current : (materials[0]?.id ?? null));
   }, [materials]);
 
   const selected = materials.find((material) => material.id === selectedId) ?? null;
-  useEffect(() => { setViewFile(false); }, [selectedId]);
 
   return (
     <section className={cn(
@@ -363,25 +361,6 @@ function MaterialExplorer({
                   </p>
                 </div>
                 {selected.has_file && (
-                  <div className="flex shrink-0 items-center rounded-full border border-outline-variant p-0.5">
-                    {([["original", t("原件")], ["text", t("文本")]] as const).map(([key, label]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setViewFile(key === "original")}
-                        className={cn(
-                          "h-7 rounded-full px-2.5 text-label cursor-pointer transition-colors",
-                          (key === "original") === viewFile
-                            ? "bg-primary text-on-primary"
-                            : "text-on-surface-variant hover:text-on-surface",
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selected.has_file && (
                   <a
                     href={api.scholarship.materialDownloadUrl(selected.id)}
                     download
@@ -392,23 +371,18 @@ function MaterialExplorer({
                   </a>
                 )}
               </div>
-              <div className="scholarship-preview-scroll min-h-0 flex-1 overflow-hidden p-0">
-                {viewFile && selected.has_file ? (
+              <div className="min-h-0 flex-1 overflow-hidden">
+                {selected.has_file ? (
                   <iframe
                     key={selected.id}
                     src={api.scholarship.materialPreviewUrl(selected.id)}
                     title={selected.filename}
                     className="h-full w-full border-0 bg-surface-lowest"
                   />
-                ) : selected.raw_text ? (
-                  <div className="scholarship-preview-scroll min-h-full overflow-y-auto p-4">
-                    <pre className="whitespace-pre-wrap break-words text-body-sm leading-6 text-on-surface">{selected.raw_text}</pre>
-                  </div>
                 ) : (
                   <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 px-5 text-center text-on-surface-variant">
                     <Icon name="visibility_off" size={26} />
-                    <p className="text-body-sm">{t("当前文件暂无可预览文本")}</p>
-                    <p className="text-label">{t("解析完成后会在这里即时展示内容")}</p>
+                    <p className="text-body-sm">{t("该材料未保存原件（历史数据仅有提取文本）")}</p>
                   </div>
                 )}
               </div>

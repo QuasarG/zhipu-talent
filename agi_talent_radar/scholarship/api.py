@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import secrets
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
 from agi_talent_radar.core.db.runtime import get_session
 from agi_talent_radar.core.db.orm import ScholarshipApplicationORM
@@ -292,6 +292,24 @@ def build_scholarship_blueprint() -> Blueprint:
         ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
     }
 
+    def _docx_preview_html(path: str, title: str) -> Response:
+        """docx → HTML（mammoth 保格式转换），iframe 内直接渲染，不触发下载。"""
+        import mammoth
+
+        with open(path, "rb") as fp:
+            result = mammoth.convert_to_html(fp)
+        body = result.value or "<p>（文档为空）</p>"
+        html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            "<style>"
+            "body{font-family:MiSans,system-ui,sans-serif;margin:24px auto;max-width:760px;"
+            "color:#0F1115;line-height:1.7;font-size:14px}"
+            "img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:6px 10px}"
+            "</style></head>"
+            f"<title>{title}</title><body>{body}</body></html>"
+        )
+        return Response(html, mimetype="text/html; charset=utf-8")
+
     def _material_file_response(material, as_attachment: bool):
         from flask import send_file
 
@@ -302,6 +320,9 @@ def build_scholarship_blueprint() -> Blueprint:
         if os.path.commonpath([os.path.abspath(path), os.path.abspath(os.path.join(os.getcwd(), "uploads", "scholarship"))]) != os.path.abspath(os.path.join(os.getcwd(), "uploads", "scholarship")):
             return jsonify({"detail": "非法文件路径"}), 400
         ext = "." + path.rsplit(".", 1)[-1].lower() if "." in path else ""
+        # docx：预览走 mammoth 转 HTML（浏览器原生不认 docx，直出会变成下载）
+        if ext == ".docx" and not as_attachment:
+            return _docx_preview_html(path, material.filename or os.path.basename(path))
         mime = _PREVIEW_MIME.get(ext, "application/octet-stream")
         return send_file(
             path,

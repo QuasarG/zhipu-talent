@@ -15,3 +15,4 @@ Pillow>=10,<12     # pixmap → JPEG 转换，供云端 OCR 上传
 gunicorn>=22,<24
 mcp>=1.28,<2
 qdrant-client>=1.12,<2
+mammoth
