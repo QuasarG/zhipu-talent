@@ -113,28 +113,40 @@ def upsert_application_from_feishu(session, payload: dict[str, Any]) -> tuple[Sc
     submitted = payload.get("submitted_at")
     app.submitted_at = submitted if isinstance(submitted, datetime) else app.submitted_at
 
+    incoming_names = {str(a.get("filename") or "") for a in payload.get("attachments") or []}
     if created:
         session.flush()  # 拿 app.id 供附件外键
     elif payload.get("attachments"):
-        # 重复推送：清掉本次将重落的同名旧附件，避免重复堆叠
-        incoming = {str(a.get("filename") or "") for a in payload["attachments"]}
+        # 重复推送：清掉本次将重落的同名旧附件（zip 解包项按前缀清理），避免重复堆叠
         for m in (
             session.query(ScholarshipMaterialORM)
             .filter_by(application_id=app.id)
-            .filter(ScholarshipMaterialORM.filename.in_(incoming))
+            .filter(ScholarshipMaterialORM.filename.in_(incoming_names))
             .all()
         ):
             session.delete(m)
         session.flush()  # 让 DELETE 先生效，否则同事务内 in_ 查询仍看到旧行
 
     for att in payload.get("attachments") or []:
-        material = ScholarshipMaterialORM(
+        filename = str(att.get("filename") or "feishu_attachment")
+        kind = att.get("kind") or classify_filename(filename)
+        blob = att.get("bytes") or b""
+        if filename.lower().endswith(".zip"):
+            # zip 成果包解包为多份材料（二进制本体不落 TEXT 列）
+            for info_name, info_blob in _iter_zip_entries(blob):
+                session.add(ScholarshipMaterialORM(
+                    application_id=app.id,
+                    kind=classify_filename(info_name),
+                    filename=info_name,
+                    raw_text=_extract_text(info_name, info_blob),
+                ))
+            continue
+        session.add(ScholarshipMaterialORM(
             application_id=app.id,
-            kind=att.get("kind") or classify_filename(str(att.get("filename") or "")),
-            filename=str(att.get("filename") or "feishu_attachment"),
-            raw_text=_extract_text(str(att.get("filename") or ""), att["bytes"]),
-        )
-        session.add(material)
+            kind=kind,
+            filename=filename,
+            raw_text=_extract_text(filename, blob),
+        ))
     session.commit()
     session.expire(app, ["materials"])  # delete+重落后再读集合，避免拿到陈旧关系缓存
     return app, created
@@ -177,21 +189,45 @@ def add_materials_from_zip(session, app: ScholarshipApplicationORM, zip_bytes: b
     return materials
 
 
+# 二进制/归档格式：不塞 raw_text（TEXT 64KB 上限），由调用方解包或留占位
+_BINARY_SUFFIXES = {".zip", ".rar", ".7z", ".doc", ".xls", ".xlsx", ".ppt", ".pptx"}
+
 def _extract_text(filename: str, file_bytes: bytes) -> str:
     suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if suffix == ".pdf":
         from agi_talent_radar.core.resume_ingestion import extract_pdf_text
 
-        text, _ = extract_pdf_text(file_bytes)
+        try:
+            text, _ = extract_pdf_text(file_bytes)
+        except Exception:  # noqa: BLE001 — 损坏/加密 PDF 留空文本，不阻断整包导入
+            return ""
         return text
     if suffix == ".docx":
         return _extract_docx_text(file_bytes)
     if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
         from agi_talent_radar.core.resume_ingestion import extract_image_text
 
-        return extract_image_text(file_bytes)
+        try:
+            return extract_image_text(file_bytes)
+        except Exception:  # noqa: BLE001
+            return ""
+    if suffix in _BINARY_SUFFIXES:
+        return ""  # 二进制占位：zip 解包由 upsert 路径处理，其余留空待人工处理
     # txt/md/json 等按文本读
     return file_bytes.decode("utf-8", errors="ignore")
+
+
+def _iter_zip_entries(zip_bytes: bytes) -> list[tuple[str, bytes]]:
+    """zip 解包（跳过目录/__MACOSX），返回 (文件名, 内容) 列表。"""
+    import zipfile as _zf
+
+    out: list[tuple[str, bytes]] = []
+    with _zf.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        for info in zf.infolist():
+            if info.is_dir() or info.filename.startswith("__MACOSX"):
+                continue
+            out.append((info.filename.split("/")[-1], zf.read(info)))
+    return out
 
 
 _XML_TAG = re.compile(r"<[^>]+>")
