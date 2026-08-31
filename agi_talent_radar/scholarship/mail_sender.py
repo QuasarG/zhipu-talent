@@ -17,7 +17,7 @@ from datetime import date
 
 _LARK_CLI = "/usr/bin/lark-cli"
 # 总开关：False 时 webhook 同步照常，但完全不发信（灰度/调试用）
-MAIL_ENABLED = True
+MAIL_ENABLED = False
 _MAILBOX = "zpsy@aminer.cn"
 _FROM = "zpsy@zhipuai.cn"
 _BASE = "WMQxb6BhPar076sU40McQpYmnHg"
