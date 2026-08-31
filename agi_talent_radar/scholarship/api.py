@@ -72,13 +72,15 @@ def _app_to_dict(session, app: ScholarshipApplicationORM, detail: bool = False) 
         "research_summary": app.research_summary or "",
         "education_history": app.education_history or "",
         "submitted_at": app.submitted_at.isoformat() if app.submitted_at else None,
-        "materials_count": len(app.materials),
+        "materials_count": sum(1 for m in app.materials if m.kind != "code"),
         "blind_score": latest_eval.blind_score if latest_eval else None,
         "reputation_adjustment": pipeline.reputation_adjustment(session, app),
         "total_score": pipeline.total_score(session, app),
         "pending_reputation": sum(1 for i in app.reputation_items if i.review_status == "pending"),
     }
     if detail:
+        # code 类（工程文件）静默归档：不进前端列表，仅计数披露
+        visible_materials = [m for m in app.materials if m.kind != "code"]
         data["materials"] = [
             {
                 "id": m.id, "kind": m.kind, "filename": m.filename,
@@ -86,8 +88,9 @@ def _app_to_dict(session, app: ScholarshipApplicationORM, detail: bool = False) 
                 "raw_text": m.raw_text or "",
                 "has_file": bool((m.file_path or "").strip() and os.path.isfile(m.file_path)),
             }
-            for m in app.materials
+            for m in visible_materials
         ]
+        data["code_files_count"] = sum(1 for m in app.materials if m.kind == "code")
         data["evaluations"] = [_eval_to_dict(e) for e in app.evaluations]
         data["reputation_items"] = [_rep_to_dict(i) for i in app.reputation_items]
     return data

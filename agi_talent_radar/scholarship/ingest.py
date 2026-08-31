@@ -24,6 +24,18 @@ _KIND_RULES = [
 # 都不匹配默认代表性成果
 _DEFAULT_KIND = "achievement"
 
+# 代码/工程类文件：静默归档（落盘+文本供评估，前端不展示）
+_CODE_SUFFIXES = {
+    ".py", ".sh", ".ipynb", ".js", ".ts", ".c", ".cpp", ".java", ".go", ".rs",
+    ".parquet", ".jsonl", ".yaml", ".yml", ".toml", ".slurm", ".lock",
+    ".gitignore", ".gitmodules", ".python-version", ".ds_store", ".identifier",
+}
+
+
+def is_code_file(filename: str) -> bool:
+    suffix = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+    return suffix in _CODE_SUFFIXES or filename.lower() in {".ds_store", ".gitignore"}
+
 
 def classify_filename(filename: str) -> str:
     lowered = filename.lower()
@@ -131,14 +143,14 @@ def upsert_application_from_feishu(session, payload: dict[str, Any]) -> tuple[Sc
 
     for att in payload.get("attachments") or []:
         filename = str(att.get("filename") or "feishu_attachment")
-        kind = att.get("kind") or classify_filename(filename)
+        kind = att.get("kind") or ("code" if is_code_file(filename) else classify_filename(filename))
         blob = att.get("bytes") or b""
         if filename.lower().endswith(".zip"):
             # zip 成果包解包为多份材料（二进制本体不落 TEXT 列）
             for info_name, info_blob in _iter_zip_entries(blob):
                 m = ScholarshipMaterialORM(
                     application_id=app.id,
-                    kind=classify_filename(info_name),
+                    kind="code" if is_code_file(info_name) else classify_filename(info_name),
                     filename=info_name,
                     raw_text=_clamp_text(_extract_text(info_name, info_blob)),
                 )
@@ -167,7 +179,7 @@ def add_material(
     file_bytes: bytes,
     kind: str | None = None,
 ) -> ScholarshipMaterialORM:
-    kind = kind or classify_filename(filename)
+    kind = kind or ("code" if is_code_file(filename) else classify_filename(filename))
     if kind == "letter":
         existing = (
             session.query(ScholarshipMaterialORM)

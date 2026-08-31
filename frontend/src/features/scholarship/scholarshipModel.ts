@@ -29,7 +29,7 @@ export const MATERIAL_KIND_LABELS: Record<string, string> = {
 };
 
 // 材料分组展示顺序
-export const KIND_ORDER = ["form", "resume", "supplementary", "achievement", "letter"];
+export const KIND_ORDER = ["form", "resume", "supplementary", "achievement", "letter", "code"];
 
 export const DEGREE_LABELS: Record<string, string> = { master: "硕士", phd: "博士" };
 
