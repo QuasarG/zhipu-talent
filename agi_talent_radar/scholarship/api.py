@@ -210,6 +210,7 @@ def build_scholarship_blueprint() -> Blueprint:
                         email_result = mail_sender.send_confirmation_email(
                             app_row.email or "", app_row.name or "",
                             is_update=not created,
+                            country=getattr(app_row, "country", "") or "",
                         )
                         if not email_result.get("sent"):
                             logging.getLogger(__name__).warning(

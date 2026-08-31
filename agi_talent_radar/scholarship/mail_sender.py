@@ -17,7 +17,7 @@ from datetime import date
 
 _LARK_CLI = "/usr/bin/lark-cli"
 # 总开关：False 时 webhook 同步照常，但完全不发信（灰度/调试用）
-MAIL_ENABLED = False
+MAIL_ENABLED = True
 _MAILBOX = "zpsy@aminer.cn"
 _FROM = "zpsy@zhipuai.cn"
 _BASE = "WMQxb6BhPar076sU40McQpYmnHg"
@@ -56,10 +56,11 @@ def _cli(args: list[str], timeout: int = 120) -> dict:
         return {"ok": False, "error": {"message": f"cli 返回不可解析: {out[:200]}"}}
 
 
-def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool = False) -> dict:
+def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool = False, country: str = "") -> dict:
     """发确认邮件 → 成功后回写新表「是否回复并提醒=是」。
 
     is_update：修改提交后的再确认（文案区分 首次收到/已更新）。
+    country：所在国家/地区——中国发中文版，其他发英文版。
     返回 {sent, message_id?, marked?, error?, mark_error?}；
     邮件失败不回写；回写失败不影响邮件结果（journal 留痕）。
     """
@@ -68,12 +69,20 @@ def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool 
         return {"sent": False, "error": "邮件服务已停用（MAIL_ENABLED=False）"}
     if not to_email or "@" not in to_email:
         return {"sent": False, "error": f"申请人邮箱无效: {to_email!r}"}
-    subject = (
-        "【Z.AI Scholarship 2026】申请材料已更新，确认已收到"
-        if is_update else
-        "【Z.AI Scholarship 2026】申请已收到"
-    )
-    html = _render_template(applicant_name, date.today(), is_update=is_update)
+    is_china = _is_china(country)
+    if is_china:
+        subject = (
+            "【Z.AI Scholarship 2026】申请材料已更新，确认已收到"
+            if is_update else
+            "【Z.AI Scholarship 2026】申请已收到"
+        )
+    else:
+        subject = (
+            "【Z.AI Scholarship 2026】Your updated application has been received"
+            if is_update else
+            "【Z.AI Scholarship 2026】Application received"
+        )
+    html = _render_template(applicant_name, date.today(), is_update=is_update, country=country)
     data = _cli([
         "mail", "+send",
         "--mailbox", _MAILBOX,
@@ -147,13 +156,25 @@ def _find_record_id(email: str) -> str:
     return ""
 
 
-def _render_template(name: str, today: date, is_update: bool = False) -> str:
+def _is_china(country: str) -> bool:
+    c = (country or "").strip()
+    return "中国" in c or "china" in c.lower() or "PRC" in c.upper()
+
+
+def _render_template(name: str, today: date, is_update: bool = False, country: str = "") -> str:
+    """按所在国家/地区选语言：中国→中文，其他→英文。"""
+    if _is_china(country):
+        return _render_template_zh(name, today, is_update)
+    return _render_template_en(name, today, is_update)
+
+
+def _render_template_zh(name: str, today: date, is_update: bool) -> str:
     deadline = "<strong>2026年9月28日 24:00</strong>"
     signed = f"{today.year}年{today.month}月{today.day}日"
     opening = (
-        f"你修改后的申请材料已收到，本次评审将以最新提交为准。感谢你的关注与支持。"
+        "你修改后的申请材料已收到，本次评审将以最新提交为准。感谢你的关注与支持。"
         if is_update else
-        f"你的申请材料已收到，感谢你的关注与支持。"
+        "你的申请材料已收到，感谢你的关注与支持。"
     )
     return f"""<div style="font-family:MiSans,system-ui,sans-serif;font-size:14px;line-height:1.9;color:#1a1a1a;max-width:640px">
 <p>{name}同学：</p>
@@ -167,4 +188,26 @@ def _render_template(name: str, today: date, is_update: bool = False) -> str:
 </ol>
 <p>暑消秋至，祝安好！</p>
 <p style="margin-top:24px"><strong>Z.AI Scholarship 项目组</strong><br/><strong>{signed}</strong></p>
+</div>"""
+
+
+def _render_template_en(name: str, today: date, is_update: bool) -> str:
+    deadline = "<strong>September 28, 2026, 24:00 (UTC+8)</strong>"
+    signed = f"{today.year}-{today.month:02d}-{today.day:02d}"
+    opening = (
+        "We have received your revised application materials. The review will be based on "
+        "your latest submission. Thank you for your continued interest and support."
+        if is_update else
+        "We have received your application materials. Thank you for your interest and support."
+    )
+    return f"""<div style="font-family:MiSans,system-ui,sans-serif;font-size:14px;line-height:1.9;color:#1a1a1a;max-width:640px">
+<p>Dear {name},</p>
+<p>{opening}</p>
+<p><strong>Kind reminders:</strong></p>
+<ol style="padding-left:20px;margin:8px 0">
+<li>Please ensure the materials uploaded with your application are complete and correct. If there are any issues, you may edit your submission record in the Feishu form directly — the latest submission will be treated as final;</li>
+<li>In addition to uploading the recommendation letter with your application, your advisor should send the signed letter directly to the program mailbox at <strong>zpsy@zhipuai.cn</strong>. Please kindly remind your advisor to send it before <strong>{deadline}</strong>;</li>
+<li>Should you have any questions, feel free to contact us at <strong>zpsy@zhipuai.cn</strong>.</li>
+</ol>
+<p>Best regards,<br/><strong>Z.AI Scholarship Program Team</strong><br/>{signed}</p>
 </div>"""
