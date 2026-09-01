@@ -1,5 +1,5 @@
 // 奖学金资料工作台：申请人信息 / 材料预览 / 评估与核验
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { ScholarshipApplication, ScholarshipMaterial , ScorerTraceSegment } from "@/lib/types";
@@ -414,6 +414,9 @@ export default function ScholarshipPane({
   const [busyAction, setBusyAction] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [liveTrace, setLiveTrace] = useState<ScorerTraceSegment[] | null>(null);
+  // thinking 流式缓冲：rAF 帧合并，避开逐 token setState 闪烁
+  const pendingThink = useRef("");
+  const rafRef = useRef<number | null>(null);
   const [assessmentTab, setAssessmentTab] = useState<AssessmentTab>("score");
 
   const latestCompleted = useMemo(
@@ -461,15 +464,24 @@ export default function ScholarshipPane({
           const type = String(event.type ?? "");
           const payload = (event.payload ?? {}) as Record<string, unknown>;
           if (type === "thinking_delta") {
-            // 思考流：追加到尾部 thinking 段（工具卡出现即自然分段）
-            setLiveTrace((prev) => {
-              const trace = prev ?? [];
-              const last = trace[trace.length - 1];
-              if (last && last.type === "thinking") {
-                return [...trace.slice(0, -1), { type: "thinking", text: last.text + String(payload.text ?? "") }];
-              }
-              return [...trace, { type: "thinking", text: String(payload.text ?? "") }];
-            });
+            // 思考流：ref 缓冲 + rAF 帧合并（每帧最多一次 setState，避免逐 token 重建数组闪烁）
+            pendingThink.current += String(payload.text ?? "");
+            if (rafRef.current === null) {
+              rafRef.current = requestAnimationFrame(() => {
+                rafRef.current = null;
+                const chunk = pendingThink.current;
+                pendingThink.current = "";
+                if (!chunk) return;
+                setLiveTrace((prev) => {
+                  const trace = prev ?? [];
+                  const last = trace[trace.length - 1];
+                  if (last && last.type === "thinking") {
+                    return [...trace.slice(0, -1), { type: "thinking", text: last.text + chunk }];
+                  }
+                  return [...trace, { type: "thinking", text: chunk }];
+                });
+              });
+            }
           } else if (type === "tool_end") {
             setLiveTrace((prev) => [
               ...(prev ?? []),

@@ -7,6 +7,7 @@ import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
 import AgentWorkingBar from "@/components/ui/AgentWorkingBar";
 import ToolCallCard from "./ToolCallCard";
+import ThinkingCard from "@/components/ui/ThinkingCard";
 import ActionCard from "./ActionCard";
 import CitationBadge from "./CitationBadge";
 import { useI18n } from "@/lib/i18n";
@@ -149,47 +150,3 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
 
 /** 思考段与文本、工具卡按生成顺序持久展示；流式时展开，结束后收起。
  *  手动展开优先：一旦用户点开，后续 streaming 翻转不再劫持其状态。 */
-function ThinkingCard({ text, streaming }: { text: string; streaming: boolean }) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(streaming);
-  const [userToggled, setUserToggled] = useState(false);
-
-  useEffect(() => {
-    if (!userToggled) setOpen(streaming);
-  }, [streaming, userToggled]);
-
-  const toggle = () => {
-    setUserToggled(true);
-    setOpen((value) => !value);
-  };
-
-  if (!text) return null;
-  return (
-    <div className="mb-3 rounded-md border border-outline-variant bg-surface-low overflow-hidden">
-      <button
-        type="button"
-        onClick={toggle}
-        className="state-layer flex items-center gap-2 w-full px-3 h-9 text-left cursor-pointer"
-      >
-        {streaming ? (
-          <ThinkingOrb state="shaping" size={20} aria-label={t("正在思考")} />
-        ) : (
-          <Icon name="psychology" size={15} className="text-on-surface-variant" />
-        )}
-        <span className="text-label font-medium text-on-surface-variant truncate">
-          {streaming ? t("思考中…") : t("思考过程")}
-        </span>
-        <Icon
-          name={open ? "expand_less" : "expand_more"}
-          size={16}
-          className="ml-auto text-on-surface-variant"
-        />
-      </button>
-      {open && (
-        <pre className="px-3 pb-3 text-label leading-5 text-on-surface-variant whitespace-pre-wrap break-words max-h-56 overflow-y-auto select-text">
-          {text}
-        </pre>
-      )}
-    </div>
-  );
-}

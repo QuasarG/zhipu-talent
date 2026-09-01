@@ -1,68 +1,36 @@
-// 评分 agent 工作记录：对话流样式渲染 trace segments（复用问答的 ToolCallCard 动效）
+// 评分 agent 工作记录：对话流样式，组件层直接复用问答的 ThinkingCard / ToolCallCard
 import { useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
-import type { ScorerTraceSegment } from "@/lib/types";
+import type { ChatSegment, ScorerTraceSegment } from "@/lib/types";
 import Icon from "@/components/ui/Icon";
+import ThinkingCard from "@/components/ui/ThinkingCard";
+import ToolCallCard from "@/features/chat/ToolCallCard";
+import { StatusChip } from "@/components/ui/Chip";
 import { useI18n } from "@/lib/i18n";
-import { cn } from "@/lib/cn";
 
-const TOOL_ICONS: Record<string, string> = {
-  list_files: "folder_open",
-  read_file: "description",
-  verify_paper: "travel_explore",
-  web_search: "search",
-  submit_scores: "grade",
+const TOOL_LABELS: Record<string, string> = {
+  list_files: "盘点材料",
+  read_file: "读取材料",
+  verify_paper: "论文查证",
+  web_search: "全网检索",
+  submit_scores: "提交评分",
 };
 
-/** 单条轨迹卡片：完成态折叠成一行，运行中 shaping orb */
-function TraceToolCard({ segment }: { segment: Extract<ScorerTraceSegment, { type: "tool" }> }) {
-  const [expanded, setExpanded] = useState(false);
-  const { t } = useI18n();
-  const failed = segment.status === "error";
-
-  let pretty = segment.detail;
-  try {
-    pretty = JSON.stringify(JSON.parse(segment.detail), null, 2);
-  } catch {
-    /* 非 JSON 原样展示 */
-  }
-
-  return (
-    <div
-      className={cn(
-        "chat-enter my-2 rounded-md border text-body-sm overflow-hidden",
-        failed ? "border-error/40 bg-error-container/30" : "border-outline-variant bg-surface-low"
-      )}
-    >
-      <button
-        type="button"
-        onClick={() => segment.detail && setExpanded((v) => !v)}
-        className={cn("w-full flex items-center gap-2 px-3 py-2 text-left", segment.detail ? "cursor-pointer" : "cursor-default")}
-      >
-        <Icon name={TOOL_ICONS[segment.tool] ?? "build"} size={18} className="text-primary shrink-0" />
-        <span className="font-medium text-on-surface shrink-0">{segment.label || segment.tool}</span>
-        <span className="flex-1 min-w-0 truncate text-on-surface-variant">{segment.summary}</span>
-        {segment.detail && <Icon name={expanded ? "expand_less" : "expand_more"} size={18} className="text-on-surface-variant shrink-0" />}
-      </button>
-      {expanded && segment.detail && (
-        <pre className="px-3 pb-2.5 max-h-64 overflow-auto font-mono text-xs text-on-surface-variant whitespace-pre-wrap break-all">
-          {pretty}
-        </pre>
-      )}
-    </div>
-  );
+/** trace tool segment → ChatSegment.tool 适配（直接喂问答的 ToolCallCard） */
+function toChatToolSeg(seg: Extract<ScorerTraceSegment, { type: "tool" }>): Extract<ChatSegment, { type: "tool" }> {
+  return {
+    type: "tool",
+    call_id: seg.call_id,
+    tool: seg.tool,
+    label: seg.label || TOOL_LABELS[seg.tool] || seg.tool,
+    status: seg.status === "error" ? "error" : "ok",
+    summary: seg.summary,
+    detail: seg.detail,
+    args_summary: "",
+  };
 }
 
-/** 思考段：agent 调用工具前的目的说明（斜体弱化，紧贴其后的工具卡） */
-function ThinkingNote({ text }: { text: string }) {
-  return (
-    <p className="chat-enter my-1.5 px-1 text-body-sm italic leading-6 text-on-surface-variant/90 whitespace-pre-wrap">
-      {text}
-    </p>
-  );
-}
-
-/** 运行中占位：正在思考的 orb（对话 agent 同款动效） */
+/** 运行中占位（对话 agent 同款 orb） */
 function RunningOrb({ label }: { label: string }) {
   return (
     <div className="chat-enter my-2 flex items-center gap-2.5 rounded-md border border-outline-variant bg-surface-low px-3 py-2 text-body-sm text-on-surface-variant">
@@ -77,9 +45,11 @@ interface Props {
   running: boolean;
 }
 
-/** agent 工作记录（无用户输入的对话流）：读完 trace，running 时尾部挂 orb */
+/** agent 工作记录（无用户输入的对话流） */
 export default function ScorerTrace({ trace, running }: Props) {
   const { t } = useI18n();
+  const lastThinking = running ? trace.length - 1 : -1;
+  const [filter, setFilter] = useState<"all" | "thinking">("all");
   if (!trace.length && !running) {
     return (
       <div className="rounded-lg border border-dashed border-outline-variant px-4 py-8 text-body-sm text-on-surface-variant">
@@ -87,16 +57,47 @@ export default function ScorerTrace({ trace, running }: Props) {
       </div>
     );
   }
+  const hasThinking = trace.some((s) => s.type === "thinking");
+  const shown = filter === "all" ? trace : trace.filter((s) => s.type === "thinking");
   return (
     <div className="flex flex-col">
-      {trace.map((segment, i) => {
-        if (segment.type === "thinking") return <ThinkingNote key={`think-${i}`} text={segment.text} />;
-        if (segment.type === "tool") return <TraceToolCard key={`${segment.call_id}-${i}`} segment={segment} />;
+      {hasThinking && (
+        <div className="mb-2 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className={`state-layer h-7 rounded-full px-3 text-label cursor-pointer ${filter === "all" ? "bg-primary text-on-primary" : "text-on-surface-variant"}`}
+          >
+            {t("全部记录")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("thinking")}
+            className={`state-layer h-7 rounded-full px-3 text-label cursor-pointer ${filter === "thinking" ? "bg-primary text-on-primary" : "text-on-surface-variant"}`}
+          >
+            {t("仅思考")}
+          </button>
+        </div>
+      )}
+      {shown.map((segment, i) => {
+        if (segment.type === "thinking")
+          return (
+            <ThinkingCard
+              key={`think-${i}`}
+              text={segment.text}
+              streaming={running && i === lastThinking}
+            />
+          );
+        if (segment.type === "tool")
+          return <ToolCallCard key={`${segment.call_id}-${i}`} segment={toChatToolSeg(segment)} />;
         if (segment.type === "final")
           return (
-            <div key={i} className="chat-enter my-2 flex items-center gap-2 rounded-md border border-primary/40 bg-primary-container/40 px-3 py-2.5 text-body-sm text-on-surface">
+            <div key={i} className="chat-enter my-2 flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-primary-container/40 px-3 py-2.5 text-body-sm text-on-surface">
               <Icon name="verified" size={18} className="text-primary shrink-0" />
               <span className="font-medium">{segment.text}</span>
+              {segment.reputation_findings?.length ? (
+                <StatusChip tone="warning">{t("{n} 条舆情发现", { n: segment.reputation_findings.length })}</StatusChip>
+              ) : null}
             </div>
           );
         return (

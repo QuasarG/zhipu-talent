@@ -106,17 +106,29 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
             round_text: list[str] = []
             round_buffer: list[str] = []
             last_flush = [0.0]
+            # SSE 发送缓冲：token 级 delta 攒批（150ms）再发，避免前端逐 token 重渲染闪烁
+            emit_buffer: list[str] = []
+            emit_due = [0.0]
 
             def on_delta(text: str) -> None:
-                round_buffer.append(text)
-                emit("thinking_delta", {"text": text})
-                # 节流写 trace：每 0.8s 刷一次，前端能看到文字逐步出现
                 import time as _time
 
+                round_buffer.append(text)
+                emit_buffer.append(text)
                 now = _time.monotonic()
+                if now - emit_due[0] > 0.15:
+                    emit_due[0] = now
+                    emit("thinking_delta", {"text": "".join(emit_buffer)})
+                    emit_buffer.clear()
+                # 节流写 trace：每 0.8s 刷一次，刷新/切页后能从数据库恢复进度
                 if now - last_flush[0] > 0.8:
                     last_flush[0] = now
                     _flush_round_text()
+
+            def _drain_emit_buffer() -> None:
+                if emit_buffer:
+                    emit("thinking_delta", {"text": "".join(emit_buffer)})
+                    emit_buffer.clear()
 
             def _flush_round_text() -> None:
                 merged = "".join(round_buffer)
@@ -149,6 +161,7 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
                 on_delta=on_delta,
             )
             # 收尾定格：清掉 _open 标记，本轮 thinking 定型
+            _drain_emit_buffer()
             for s in segments:
                 s.pop("_open", None)
             round_text_val = "".join(round_buffer).strip()
@@ -194,6 +207,7 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
             save_trace()
             return evaluation
         _finalize(evaluation, ctx, segments)
+        app.status = "scored"  # 完成评分 → 状态机推进（旧管道有此步，agent 化时补回）
         save_trace()
         emit("final", {"evaluation_id": evaluation.id, "blind_score": evaluation.blind_score})
         return evaluation
@@ -210,8 +224,7 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
 
 
 def _finalize(evaluation: ScholarshipEvaluationORM, ctx: ScorerContext, segments: list[dict[str, Any]]) -> None:
-    final = ctx.final
-    by_key = {d["key"]: d for d in DIMENSIONS}
+    final = ctx.final    by_key = {d["key"]: d for d in DIMENSIONS}
     dims = []
     for d in final["dimensions"]:
         spec = by_key.get(str(d.get("key")))
