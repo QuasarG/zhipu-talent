@@ -1,5 +1,7 @@
 // 评分 agent 工作记录：对话流样式，组件层直接复用问答的 ThinkingCard / ToolCallCard
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { ThinkingOrb } from "thinking-orbs";
 import type { ChatSegment, ScorerTraceSegment } from "@/lib/types";
 import Icon from "@/components/ui/Icon";
@@ -100,10 +102,11 @@ export default function ScorerTrace({ trace, running }: Props) {
               ) : null}
             </div>
           );
+        // content 段：与问答正文同款 markdown 渲染（chat-markdown 字体/排版），不用卡片
         return (
-          <p key={i} className="chat-enter my-2 px-1 text-body-sm text-on-surface-variant">
-            {segment.text}
-          </p>
+          <div key={i} className="chat-enter chat-markdown text-on-surface my-2">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown>
+          </div>
         );
       })}
       {running && <RunningOrb label={t("评审 agent 工作中…")} />}
