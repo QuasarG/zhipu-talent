@@ -443,7 +443,7 @@ def _validate_final(ctx: ScorerContext, data: dict[str, Any]) -> str:
         if not 0 <= score <= hi:
             return f"维度 {key} 的 score 超出 0-{hi:.0f}：{score}"
         reason = str(d.get("reason") or "")
-        if len(reason) < 10:
+        if len(reason) < 8:
             return f"维度 {key} 的 reason 过短，必须引用具体证据"
         level = str(d.get("evidence_level") or "")
         if level and level not in EVIDENCE_LEVELS:

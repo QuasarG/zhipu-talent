@@ -80,9 +80,7 @@ def _app_to_dict(session, app: ScholarshipApplicationORM, detail: bool = False) 
         "submitted_at": app.submitted_at.isoformat() if app.submitted_at else None,
         "materials_count": sum(1 for m in app.materials if m.kind != "code"),
         "blind_score": latest_eval.blind_score if latest_eval else None,
-        "reputation_adjustment": pipeline.reputation_adjustment(session, app),
         "total_score": pipeline.total_score(session, app),
-        "pending_reputation": sum(1 for i in app.reputation_items if i.review_status == "pending"),
     }
     if detail:
         # code 类（工程文件）静默归档：不进前端列表，仅计数披露
@@ -497,16 +495,6 @@ def build_scholarship_blueprint() -> Blueprint:
             if not material:
                 return jsonify({"detail": "材料不存在"}), 404
             return _material_file_response(material, as_attachment=False)
-
-    @bp.get("/api/scholarship/materials/<int:material_id>/download")
-    def material_download(material_id: int):
-        from agi_talent_radar.core.db.orm import ScholarshipMaterialORM
-
-        with get_session() as session:
-            material = session.get(ScholarshipMaterialORM, material_id)
-            if not material:
-                return jsonify({"detail": "材料不存在"}), 404
-            return _material_file_response(material, as_attachment=True)
 
     @bp.get("/api/scholarship/materials/<int:material_id>/download")
     def material_download(material_id: int):

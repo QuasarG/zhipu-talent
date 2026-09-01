@@ -4,12 +4,13 @@ sqlite 内存库 + fake LLM/search，不打外网。
 """
 from __future__ import annotations
 
+import json
 import unittest
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from agi_talent_radar.core.db.orm import Base, ScholarshipEvaluationORM
+from agi_talent_radar.core.db.orm import Base, ScholarshipEvaluationORM, ScholarshipMaterialORM
 from agi_talent_radar.scholarship import ingest, pipeline
 from agi_talent_radar.scholarship.anonymize import anonymize_text, build_identities, check_leak
 
@@ -95,80 +96,81 @@ class TestAnonymize(ScholarshipTestBase):
         self.assertIn("张三", check_leak("张三的成绩单", identities))
 
 
-class TestEvaluate(ScholarshipTestBase):
-    def test_evaluate_with_fake_llm(self) -> None:
+class TestScorerAgent(ScholarshipTestBase):
+    def _fake_llm(self, calls, final_dims):
+        def llm(messages, tools, **kw):
+            n = len(calls); calls.append(n)
+            if n == 0:
+                return {"text": "", "tool_calls": [{"id": "c0", "name": "list_files", "arguments": "{}"}]}
+            materials = [m for m in self.session.query(ScholarshipMaterialORM).all()]
+            if n <= len(materials):
+                mid = materials[n - 1].id
+                return {"text": "", "tool_calls": [{"id": f"c{n}", "name": "read_file",
+                        "arguments": json.dumps({"file_id": mid})}]}
+            return {"text": "done", "tool_calls": [{"id": f"c{n}", "name": "submit_scores",
+                    "arguments": json.dumps({"dimensions": final_dims, "recommend_tier": "recommend"})}]}
+        return llm
+
+    def test_agent_scores_and_blind_total(self) -> None:
+        from unittest.mock import patch
+
+        from agi_talent_radar.core import llm_client
+        from agi_talent_radar.scholarship import scorer_agent
+
         app = self.make_app()
         self.add_kinds(app, ["resume", "supplementary", "achievement", "letter"])
-        pipeline.screen_application(self.session, app)
-        fake_llm = lambda prompt, payload: {
-            "dimensions": [
-                {"key": "research_capability", "score": 4, "reason": "ok"},
-                {"key": "originality", "score": 3, "reason": "ok"},
-                {"key": "achievement_quality", "score": 5, "reason": "ok"},
-                {"key": "engineering", "score": 2, "reason": "ok"},
-                {"key": "letter_endorsement", "score": 4, "reason": "ok"},
-                {"key": "direction_fit", "score": 5, "reason": "ok"},
-            ],
-            "highlights": ["强"],
-            "risks": ["弱"],
-        }
-        evaluation = pipeline.evaluate_application(self.session, app, llm=fake_llm)
-        self.assertEqual(evaluation.status, "completed")
-        # 4/5*25 + 3/5*20 + 5/5*20 + 2/5*15 + 4/5*10 + 5/5*10 = 20+12+20+6+8+10
-        self.assertEqual(evaluation.blind_score, 76.0)
-        self.assertEqual(app.status, "scored")
-        # 评分用的是脱敏文本
-        self.assertNotIn("张三", app.materials[0].anonymized_text)
-
-    def test_missing_dimension_zero_filled(self) -> None:
-        app = self.make_app()
-        self.add_kinds(app, ["resume", "supplementary", "achievement", "letter"])
-        fake_llm = lambda prompt, payload: {"dimensions": [], "highlights": [], "risks": []}
-        evaluation = pipeline.evaluate_application(self.session, app, llm=fake_llm)
-        self.assertEqual(len(evaluation.dimensions), 6)
-        self.assertEqual(evaluation.blind_score, 0.0)
-
-
-class _FakeFact:
-    def __init__(self, title, content, url):
-        self.payload = {"title": title, "content": content}
-        self.source_url = url
-
-
-class TestReputation(ScholarshipTestBase):
-    def _fake_search(self, query, count=5):
-        if "争议" in query:
-            return [_FakeFact("张三 被指数据造假", "张三 卷入争议", "http://x/1"),
-                    _FakeFact("无关新闻", "别人的事", "http://x/2")]
-        return [_FakeFact("张三 获优秀学生奖", "张三 被表彰", "http://x/3")]
-
-    def test_scan_review_and_total(self) -> None:
-        app = self.make_app()
-        items = pipeline.run_reputation_scan(self.session, app, search_fn=self._fake_search)
-        # 无关条目被降噪滤掉：申请人负面 1 + 正面 1；导师两轨无命中（fake 只认张三）
-        self.assertEqual(len(items), 2)
-        neg = next(i for i in items if i.sentiment == "negative")
-        pos = next(i for i in items if i.sentiment == "positive")
-        pipeline.review_reputation_item(self.session, neg.id, "confirmed", reviewer="hr")
-        pipeline.review_reputation_item(self.session, pos.id, "dismissed", reviewer="hr")
-        self.session.refresh(app)
-        self.assertEqual(pipeline.reputation_adjustment(self.session, app), -5.0)
-
-    def test_adjustment_capped(self) -> None:
-        app = self.make_app()
-        from agi_talent_radar.core.db.orm import ScholarshipReputationItemORM
-
-        for i in range(4):
-            item = ScholarshipReputationItemORM(
-                application_id=app.id, subject="张三", sentiment="negative",
-                title=f"负面{i}", review_status="confirmed", adjustment=-5.0,
-            )
-            self.session.add(item)
+        evaluation = ScholarshipEvaluationORM(application_id=app.id, status="running")
+        self.session.add(evaluation)
         self.session.commit()
-        self.session.refresh(app)
-        self.assertEqual(pipeline.reputation_adjustment(self.session, app), -10.0)
+        dims = [
+            {"key": "academic_impact", "score": 3.5, "reason": "论文经公开库查证存在", "evidence_level": "verified"},
+            {"key": "originality", "score": 3, "reason": "框架内改进有初步佐证", "evidence_level": "supported"},
+            {"key": "independence", "score": 3, "reason": "自主完成子课题闭环", "evidence_level": "supported"},
+            {"key": "engineering", "score": 2, "reason": "课程级系统无工件佐证", "evidence_level": "claimed"},
+            {"key": "letter_endorsement", "score": 3, "reason": "有具体事例与横向比较", "evidence_level": "supported"},
+            {"key": "integrity_risk", "score": 9, "reason": "材料一致时间线合理", "evidence_level": "supported"},
+        ]
+        calls: list[int] = []
+        with patch.object(llm_client, "call_llm_tools", self._fake_llm(calls, dims)):
+            out = scorer_agent.run_scorer_agent(self.session, app, evaluation, lambda t, p: None)
+        self.assertEqual(out.status, "completed")
+        # 17.5+12+12+6+6+9 = 62.5
+        self.assertEqual(out.blind_score, 62.5)
+        self.assertTrue(any(s.get("type") == "final" for s in out.trace))
+        # trace 不得泄漏申请人姓名
+        self.assertNotIn("张三", json.dumps(out.trace, ensure_ascii=False))
 
-    def test_legacy_brand_bonus_does_not_affect_total(self) -> None:
+    def test_agent_rejects_unread_materials(self) -> None:
+        from unittest.mock import patch
+
+        from agi_talent_radar.core import llm_client
+        from agi_talent_radar.scholarship import scorer_agent
+
+        app = self.make_app()
+        self.add_kinds(app, ["resume", "achievement"])
+        evaluation = ScholarshipEvaluationORM(application_id=app.id, status="running")
+        self.session.add(evaluation)
+        self.session.commit()
+        dims = [
+            {"key": "academic_impact", "score": 3, "reason": "ok 证据充分"},
+            {"key": "originality", "score": 3, "reason": "ok 证据充分"},
+            {"key": "independence", "score": 3, "reason": "ok 证据充分"},
+            {"key": "engineering", "score": 3, "reason": "ok 证据充分"},
+            {"key": "letter_endorsement", "score": 3, "reason": "ok 证据充分"},
+            {"key": "integrity_risk", "score": 8, "reason": "ok 证据充分"},
+        ]
+
+        def llm(messages, tools, **kw):
+            return {"text": "", "tool_calls": [{"id": "c1", "name": "list_files", "arguments": "{}"}]}
+
+        with patch.object(llm_client, "call_llm_tools", llm):
+            out = scorer_agent.run_scorer_agent(self.session, app, evaluation, lambda t, p: None)
+        # 全程没读任何材料就到预算 → 未提交终态 → failed
+        self.assertEqual(out.status, "failed")
+
+
+class TestTotal(ScholarshipTestBase):
+    def test_total_is_blind_score_only(self) -> None:
         app = self.make_app()
         app.brand_bonus = 8.0
         self.session.add(ScholarshipEvaluationORM(
