@@ -83,7 +83,12 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
         .all()
     )
     ctx = ScorerContext(app, materials)
-    messages: list[dict[str, Any]] = [{"role": "system", "content": _system_prompt(app, ctx)}]
+    # GLM 1214：messages 不能只含 system，必须有 user 起手
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": _system_prompt(app, ctx)},
+        {"role": "user", "content": "开始评审。请按工作方式逐步执行：先盘点并读完材料，"
+         "对核心产出查证定级，简要核查公开舆情，最后调用 submit_scores 提交。"},
+    ]
     segments: list[dict[str, Any]] = []
 
     def save_trace() -> None:

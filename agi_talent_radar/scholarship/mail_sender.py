@@ -1,12 +1,13 @@
-"""飞书用户身份邮件 + 多维表格回写：问卷确认信自动发送。
+"""飞书用户身份邮件草稿 + 多维表格回写：问卷确认信生成到草稿箱，人工审核后手点发送。
 
 经 lark-cli（服务用户 talent-radar 的 HOME keyring 托管 token，自动刷新）。
-发信：mailbox=zpsy@aminer.cn + from=zpsy@zhipuai.cn。
-邮件成功后按电子邮箱定位新表记录，回写「是否回复并提醒=是」。
+草稿：mailbox=zpsy@aminer.cn + from=zpsy@zhipuai.cn（别名）。
+2026-09-01 重复发信事故后改为草稿制：系统只生成草稿，绝不直接发送；
+草稿生成成功后回写「是否回复并提醒=已生成草稿箱，待发送」。
 
-新表（tblAzD7mpEgvUSQ8）字段与问卷主表不同：
+新表（tblAzD7mpEgvUSQ8）字段：
 中文姓名 / 手机号码 / 电子邮箱｜Email Address（全角｜）/ 导师是否发送邮件推荐信 /
-是否回复并提醒（select: 是/否）/ 自动编号 / 提交时间。
+是否回复并提醒（select: 否/是/已生成草稿箱，待发送）/ 自动编号 / 提交时间。
 ponytail: 子进程调 CLI 免去 token 自管；表字段再改只动下方常量。
 """
 from __future__ import annotations
@@ -16,7 +17,7 @@ import subprocess
 from datetime import date
 
 _LARK_CLI = "/usr/bin/lark-cli"
-# 总开关：False 时 webhook 同步照常，但完全不发信（灰度/调试用）
+# 总开关：False 时 webhook 同步照常，但不生成草稿（灰度/调试用）
 MAIL_ENABLED = True
 # 邮件字体栈：MiSans 是网站自载字体，邮件客户端没有 → 必须用各端预装字体兜底
 _MAIL_FONT = (
@@ -29,6 +30,8 @@ _BASE = "WMQxb6BhPar076sU40McQpYmnHg"
 _TABLE = "tblAzD7mpEgvUSQ8"
 _EMAIL_FIELD = "电子邮箱｜Email Address"
 _REPLY_FIELD = "是否回复并提醒"
+# 草稿制状态值（select 新选项）
+_STATUS_DRAFTED = "已生成草稿箱，待发送"
 
 
 def mail_configured() -> bool:
@@ -61,21 +64,21 @@ def _cli(args: list[str], timeout: int = 120) -> dict:
         return {"ok": False, "error": {"message": f"cli 返回不可解析: {out[:200]}"}}
 
 
-def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool = False, country: str = "", no_mark: bool = False, applicant_name_en: str = "") -> dict:
-    """发确认邮件 → 成功后回写新表「是否回复并提醒=是」。
+def create_confirmation_draft(to_email: str, applicant_name: str, is_update: bool = False, country: str = "", no_mark: bool = False, applicant_name_en: str = "") -> dict:
+    """生成确认邮件草稿（不发送）→ 成功后回写新表「已生成草稿箱，待发送」。
 
     is_update：修改提交后的再确认（文案区分 首次收到/已更新）。
     country：所在国家/地区——中国发中文版，其他发英文版。
     姓名随语言走：中文版用中文名（缺则英文名兜底），英文版用英文名（缺则中文名兜底）。
-    no_mark：只发信不回写（链路灰度测试用）。
-    返回 {sent, message_id?, marked?, error?, mark_error?}；
-    邮件失败不回写；回写失败不影响邮件结果（journal 留痕）。
+    no_mark：只生成草稿不回写表格（链路灰度测试用）。
+    返回 {drafted, draft_id?, marked?, error?, mark_error?}；
+    草稿失败不回写；回写失败不影响草稿结果（journal 留痕）。
     """
     to_email = (to_email or "").strip()
     if not MAIL_ENABLED:
-        return {"sent": False, "error": "邮件服务已停用（MAIL_ENABLED=False）"}
+        return {"drafted": False, "error": "草稿服务已停用（MAIL_ENABLED=False）"}
     if not to_email or "@" not in to_email:
-        return {"sent": False, "error": f"申请人邮箱无效: {to_email!r}"}
+        return {"drafted": False, "error": f"申请人邮箱无效: {to_email!r}"}
     is_china = _is_china(country)
     zh_name = (applicant_name or "").strip() or (applicant_name_en or "").strip()
     en_name = (applicant_name_en or "").strip() or (applicant_name or "").strip()
@@ -94,32 +97,32 @@ def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool 
         )
     html = _render_template(salutation, date.today(), is_update=is_update, country=country)
     data = _cli([
-        "mail", "+send",
+        "mail", "+draft-create",
         "--mailbox", _MAILBOX,
         "--from", _FROM,
         "--to", to_email,
         "--subject", subject,
         "--body", html,
-        "--confirm-send",
     ])
     if not data.get("ok"):
         err = (data.get("error") or {}).get("message", "") or str(data.get("error", ""))[:200]
-        return {"sent": False, "error": err}
-    result = {
-        "sent": True,
-        "message_id": (data.get("data") or {}).get("message_id", ""),
-    }
+        return {"drafted": False, "error": err}
+    draft_id = ""
+    d = data.get("data") or {}
+    if isinstance(d, dict):
+        draft_id = str(d.get("draft_id") or d.get("id") or d.get("message_id") or "")
+    result = {"drafted": True, "draft_id": draft_id}
     if no_mark:
         return result
-    marked, mark_err = mark_replied(to_email)
+    marked, mark_err = mark_drafted(to_email)
     result["marked"] = marked
     if not marked:
         result["mark_error"] = mark_err
     return result
 
 
-def mark_replied(email: str) -> tuple[bool, str]:
-    """按电子邮箱定位新表记录，回写 是否回复并提醒=是。"""
+def mark_drafted(email: str) -> tuple[bool, str]:
+    """按电子邮箱定位新表记录，回写 是否回复并提醒=已生成草稿箱，待发送。"""
     record_id = _find_record_id(email)
     if not record_id:
         return False, f"新表未找到邮箱 {email} 对应记录"
@@ -128,7 +131,7 @@ def mark_replied(email: str) -> tuple[bool, str]:
         "--base-token", _BASE,
         "--table-id", _TABLE,
         "--record-id", record_id,
-        "--json", json.dumps({_REPLY_FIELD: ["是"]}, ensure_ascii=False),
+        "--json", json.dumps({_REPLY_FIELD: [_STATUS_DRAFTED]}, ensure_ascii=False),
     ], timeout=60)
     if data.get("ok"):
         return True, ""

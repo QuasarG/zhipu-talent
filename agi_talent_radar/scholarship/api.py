@@ -18,6 +18,45 @@ from agi_talent_radar.scholarship.scoring import MAX_LETTERS
 
 SCHOLARSHIP_BP_NAME = "scholarship"
 
+# 发信门比对字段：问卷里申请人真正会改的东西（材料文件变化走 12h 冷却兜底）
+_MAIL_DIFF_FIELDS = (
+    "name", "name_en", "email", "country", "school", "lab", "direction",
+    "grade", "expected_graduation", "research_summary", "education_history",
+)
+_MAIL_COOLDOWN_HOURS = 12
+
+
+def _feishu_fields_changed(app: ScholarshipApplicationORM, payload: dict) -> bool:
+    """推送字段与库内存档是否有实质差异（None/缺键视为未变）。"""
+    for field in _MAIL_DIFF_FIELDS:
+        incoming = payload.get(field)
+        if incoming in (None, ""):
+            continue
+        stored = getattr(app, field, None)
+        if isinstance(stored, list):
+            stored = "、".join(str(x) for x in stored)
+        if str(incoming).strip() != str(stored or "").strip():
+            return True
+    incoming_advisors = payload.get("advisors")
+    if isinstance(incoming_advisors, list):
+        stored_advisors = "、".join(str(a) for a in (app.advisors or []))
+        if "、".join(str(a) for a in incoming_advisors).strip() != stored_advisors.strip():
+            return True
+    return False
+
+
+def _within_mail_cooldown(last_mail_at: str) -> bool:
+    """上次发信时间在冷却窗口内则 True（解析失败按无冷却处理）。"""
+    if not last_mail_at:
+        return False
+    from datetime import datetime, timedelta
+
+    try:
+        sent = datetime.fromisoformat(last_mail_at)
+    except ValueError:
+        return False
+    return datetime.now() - sent < timedelta(hours=_MAIL_COOLDOWN_HOURS)
+
 
 def _eval_to_dict(evaluation) -> dict:
     final_segment = next((s for s in reversed(evaluation.trace or []) if s.get("type") == "final"), None)
@@ -225,6 +264,16 @@ def build_scholarship_blueprint() -> Blueprint:
             logging.getLogger(__name__).warning("field parse failed, keep raw: %s", exc)
 
         with get_session() as session:
+            # 发信门用：upsert 前拍已有档字段快照（upsert 会覆盖，事后没法 diff）
+            pre_fields_changed = False
+            if payload.get("record_id"):
+                existing = (
+                    session.query(ScholarshipApplicationORM)
+                    .filter(ScholarshipApplicationORM.feishu_record_id == str(payload["record_id"]))
+                    .first()
+                )
+                if existing is not None:
+                    pre_fields_changed = _feishu_fields_changed(existing, payload)
             try:
                 app_row, created = ingest.upsert_application_from_feishu(session, payload)
             except ValueError as exc:
@@ -237,38 +286,56 @@ def build_scholarship_blueprint() -> Blueprint:
                 screen_result = {"status": "imported", "missing": [], "reasons": [f"自动筛选失败: {exc}"]}
                 logging.getLogger(__name__).warning("feishu webhook auto-screen failed: %s", exc)
             session.commit()
-            # 自动发确认邮件（姓名/邮箱/国家取问卷记录）；首次与修改提交都发，文案区分；
-            # MAIL_ENABLED=False 时只记日志不发送；失败不阻断同步
-            email_result = {"sent": False}
+            # 确认邮件草稿生成门（三重闸，2026-09-01 重复发信事故后加死）：
+            # ① 新档才生成首封；② 已有档仅在问卷字段有实质变化时生成更新版；
+            # ③ 12 小时冷却兜底。草稿只进草稿箱，人工审核后手动发送。
+            email_result = {"drafted": False, "skipped": "no-change"}
             from agi_talent_radar.scholarship import mail_sender
 
-            if mail_sender.mail_configured():
-                try:
-                    email_result = mail_sender.send_confirmation_email(
-                        app_row.email or "", app_row.name or "",
-                        is_update=not created,
-                        country=getattr(app_row, "country", "") or "",
-                        applicant_name_en=getattr(app_row, "name_en", "") or "",
-                    )
-                    if not email_result.get("sent"):
-                        logging.getLogger(__name__).warning(
-                            "confirmation mail failed: %s %s",
-                            app_row.name, email_result.get("error"),
+            if not created and pre_fields_changed:
+                email_result = {"drafted": False}
+            if (created or pre_fields_changed) and mail_sender.mail_configured():
+                last_draft_at = str(((app_row.screening_detail or {}).get("last_draft_at") or ""))
+                cooled = _within_mail_cooldown(last_draft_at)
+                if cooled:
+                    email_result = {"drafted": False, "skipped": "cooldown"}
+                    logging.getLogger(__name__).info(
+                        "confirmation draft cooldown skip: %s", app_row.name)
+                else:
+                    try:
+                        email_result = mail_sender.create_confirmation_draft(
+                            app_row.email or "", app_row.name or "",
+                            is_update=not created,
+                            country=getattr(app_row, "country", "") or "",
+                            applicant_name_en=getattr(app_row, "name_en", "") or "",
                         )
-                    elif not email_result.get("marked"):
-                        logging.getLogger(__name__).warning(
-                            "table mark failed after mail sent: %s %s",
-                            app_row.name, email_result.get("mark_error"),
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    email_result = {"sent": False, "error": str(exc)}
-                    logging.getLogger(__name__).warning("confirmation mail error: %s", exc)
+                        if not email_result.get("drafted"):
+                            logging.getLogger(__name__).warning(
+                                "confirmation draft failed: %s %s",
+                                app_row.name, email_result.get("error"),
+                            )
+                        elif not email_result.get("marked"):
+                            logging.getLogger(__name__).warning(
+                                "table mark failed after draft created: %s %s",
+                                app_row.name, email_result.get("mark_error"),
+                            )
+                    except Exception as exc:  # noqa: BLE001
+                        email_result = {"drafted": False, "error": str(exc)}
+                        logging.getLogger(__name__).warning("confirmation draft error: %s", exc)
+                    finally:
+                        if email_result.get("drafted"):
+                            from datetime import datetime as _dt
+
+                            detail = dict(app_row.screening_detail or {})
+                            detail["last_draft_at"] = _dt.now().isoformat(timespec="seconds")
+                            app_row.screening_detail = detail
+                            session.commit()
         return jsonify({
             "ok": True,
             "duplicate": not created,
             "application_id": app_row.id,
             "status": screen_result.get("status"),
-            "email_sent": bool(email_result.get("sent")),
+            "email_drafted": bool(email_result.get("drafted")),
             "table_marked": bool(email_result.get("marked")),
         }), 201 if created else 200
 
