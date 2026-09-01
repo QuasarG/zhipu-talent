@@ -701,7 +701,7 @@ export default function ScholarshipPane({
             )}
 
             {assessmentTab === "process" && (
-              <div className="max-w-3xl">
+              <div>
                 <div className="mb-5"><h2 className="text-title-lg">{t("评估过程")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("评审 agent 的工作记录：读了哪些材料、查证了什么、如何下结论")}</p></div>
                 <ScorerTrace trace={liveTrace ?? latestEval?.trace ?? []} running={!!liveTrace} />
               </div>
