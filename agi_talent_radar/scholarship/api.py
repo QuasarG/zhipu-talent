@@ -2,6 +2,7 @@
 feishu-webhook 例外——凭 URL 内随机 token 自证）。"""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -19,6 +20,7 @@ SCHOLARSHIP_BP_NAME = "scholarship"
 
 
 def _eval_to_dict(evaluation) -> dict:
+    final_segment = next((s for s in reversed(evaluation.trace or []) if s.get("type") == "final"), None)
     return {
         "id": evaluation.id,
         "config_version": evaluation.config_version,
@@ -29,6 +31,9 @@ def _eval_to_dict(evaluation) -> dict:
         "risks": evaluation.risks or [],
         "error_message": evaluation.error_message or "",
         "created_at": evaluation.created_at.isoformat() if evaluation.created_at else None,
+        "trace": evaluation.trace or [],
+        "recommend_tier": (final_segment or {}).get("recommend_tier") or "",
+        "reputation_findings": (final_segment or {}).get("reputation_findings") or [],
     }
 
 
@@ -333,23 +338,61 @@ def build_scholarship_blueprint() -> Blueprint:
 
     @bp.post("/api/scholarship/applications/<app_id>/evaluate")
     def evaluate(app_id: str):
+        """评分 ReAct agent 的 SSE 事件流：tool_start/tool_end/final/done。"""
+        from flask import Response, stream_with_context
+
+        from agi_talent_radar.core.db.orm import ScholarshipEvaluationORM
+
         with get_session() as session:
             app = session.get(ScholarshipApplicationORM, app_id)
             if not app:
                 return jsonify({"detail": "申请人不存在"}), 404
             if app.status not in ("eligible", "scored", "finalized"):
                 return jsonify({"detail": "请先通过资格与材料筛选再评估"}), 409
-            evaluation = pipeline.evaluate_application(session, app)
-            return jsonify(_eval_to_dict(evaluation))
+            evaluation = ScholarshipEvaluationORM(
+                application_id=app.id, config_version="", status="running"
+            )
+            session.add(evaluation)
+            session.commit()
+            eval_id = evaluation.id
 
-    @bp.post("/api/scholarship/applications/<app_id>/reputation-scan")
-    def reputation_scan(app_id: str):
-        with get_session() as session:
-            app = session.get(ScholarshipApplicationORM, app_id)
-            if not app:
-                return jsonify({"detail": "申请人不存在"}), 404
-            items = pipeline.run_reputation_scan(session, app)
-            return jsonify({"created": len(items), "items": [_rep_to_dict(i) for i in items]})
+        import queue
+        import threading
+
+        events: queue.Queue = queue.Queue()
+
+        def emit(type_: str, payload: dict) -> None:
+            events.put({"type": type_, "payload": payload})
+
+        def worker() -> None:
+            from agi_talent_radar.scholarship.scorer_agent import run_scorer_agent
+
+            try:
+                with get_session() as session:
+                    app = session.get(ScholarshipApplicationORM, app_id)
+                    evaluation = session.get(ScholarshipEvaluationORM, eval_id)
+                    run_scorer_agent(session, app, evaluation, emit)
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger(__name__).exception("评分 agent worker 失败")
+                emit("error", {"message": str(exc)[:200]})
+            finally:
+                events.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        def generate():
+            while True:
+                item = events.get()
+                if item is None:
+                    break
+                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+            # 结束时给前端最新评估快照（分数/维度/trace 已落库）
+            with get_session() as session:
+                evaluation = session.get(ScholarshipEvaluationORM, eval_id)
+                payload = _eval_to_dict(evaluation)
+            yield f"data: {json.dumps({'type': 'done', 'payload': payload}, ensure_ascii=False)}\n\n"
+
+        return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
     # ---- 材料原件预览 / 下载（浏览器原生渲染 PDF/图片；docx 走下载） ----
     _PREVIEW_MIME = {
@@ -465,18 +508,32 @@ def build_scholarship_blueprint() -> Blueprint:
                 return jsonify({"detail": "材料不存在"}), 404
             return _material_file_response(material, as_attachment=True)
 
-    @bp.post("/api/scholarship/reputation-items/<int:item_id>/review")
-    def review_reputation(item_id: int):
-        body = request.get_json(silent=True) or {}
-        try:
-            with get_session() as session:
-                item = pipeline.review_reputation_item(
-                    session, item_id, str(body.get("action") or ""), reviewer=str(body.get("reviewer") or "hr")
-                )
-                if not item:
-                    return jsonify({"detail": "舆情条目不存在"}), 404
-                return jsonify(_rep_to_dict(item))
-        except ValueError as exc:
-            return jsonify({"detail": str(exc)}), 400
+    @bp.get("/api/scholarship/materials/<int:material_id>/download")
+    def material_download(material_id: int):
+        from agi_talent_radar.core.db.orm import ScholarshipMaterialORM
+
+        with get_session() as session:
+            material = session.get(ScholarshipMaterialORM, material_id)
+            if not material:
+                return jsonify({"detail": "材料不存在"}), 404
+            return _material_file_response(material, as_attachment=True)
+
+    # 视觉 API 拉取视频用的公网素材端点：凭 SCHOLARSHIP_WEBHOOK_TOKEN 自证
+    # （同 webhook 的鉴权模型：URL 内随机 token；限视频/图片扩展名）
+    @bp.get("/api/scholarship/materials-file/<path:name>")
+    def materials_file_public(name: str):
+        from flask import send_file
+
+        allowed = {".mp4", ".webm", ".mov", ".mkv", ".png", ".jpg", ".jpeg", ".webp"}
+        token = request.args.get("token", "")
+        expected = os.getenv("SCHOLARSHIP_WEBHOOK_TOKEN", "").strip()
+        ext = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if not expected or not secrets.compare_digest(token, expected) or ext not in allowed:
+            return jsonify({"detail": "无效的素材访问 token"}), 404
+        base_dir = os.path.abspath(os.path.join(os.getcwd(), "uploads", "scholarship"))
+        path = os.path.abspath(os.path.join(base_dir, os.path.basename(name)))
+        if not path.startswith(base_dir + os.sep) or not os.path.isfile(path):
+            return jsonify({"detail": "文件不存在"}), 404
+        return send_file(path, mimetype="application/octet-stream")
 
     return bp

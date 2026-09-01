@@ -21,7 +21,7 @@ from agi_talent_radar.core.db.repository import _replace_evaluation_details
 logger = logging.getLogger(__name__)
 
 
-LATEST_SCHEMA_VERSION = 30
+LATEST_SCHEMA_VERSION = 31
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -313,6 +313,18 @@ def ensure_schema(engine) -> None:
             engine,
             30,
             "scholarship feishu_record_id unique: dedupe (keep newest) + empty-to-NULL",
+        )
+    if current_version < 31:
+        existing = {
+            column["name"]
+            for column in inspect(engine).get_columns("scholarship_evaluations")
+        }
+        if "trace" not in existing:
+            _add_columns(engine, "scholarship_evaluations", ["trace JSON"])
+        _record_version(
+            engine,
+            31,
+            "scholarship scorer agent: evaluation trace segments (thinking/tool/final)",
         )
     if current_version < 27:
         existing = {c["name"] for c in inspect(engine).get_columns("scholarship_materials")}

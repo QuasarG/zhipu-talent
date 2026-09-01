@@ -1011,6 +1011,7 @@ class ScholarshipEvaluationORM(Base):
     highlights = Column(JSON, default=list)
     risks = Column(JSON, default=list)
     error_message = Column(Text, default="")
+    trace = Column(JSON, default=list)   # 评分 agent 轨迹 segments（thinking/tool/final）
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     completed_at = Column(DateTime)
 
