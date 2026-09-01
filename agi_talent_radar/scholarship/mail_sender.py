@@ -18,6 +18,11 @@ from datetime import date
 _LARK_CLI = "/usr/bin/lark-cli"
 # 总开关：False 时 webhook 同步照常，但完全不发信（灰度/调试用）
 MAIL_ENABLED = False
+# 邮件字体栈：MiSans 是网站自载字体，邮件客户端没有 → 必须用各端预装字体兜底
+_MAIL_FONT = (
+    "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',"
+    "'Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Arial,sans-serif"
+)
 _MAILBOX = "zpsy@aminer.cn"
 _FROM = "zpsy@zhipuai.cn"
 _BASE = "WMQxb6BhPar076sU40McQpYmnHg"
@@ -183,7 +188,7 @@ def _render_template_zh(name: str, today: date, is_update: bool) -> str:
         if is_update else
         "你的申请材料已收到，感谢你的关注与支持。"
     )
-    return f"""<div style="font-family:MiSans,system-ui,sans-serif;font-size:14px;line-height:1.9;color:#1a1a1a;max-width:640px">
+    return f"""<div style="font-family:{_MAIL_FONT};font-size:14px;line-height:1.9;color:#1a1a1a;max-width:640px">
 <p>{name}同学：</p>
 <p>你好！</p>
 <p>{opening}</p>
@@ -207,7 +212,7 @@ def _render_template_en(name: str, today: date, is_update: bool) -> str:
         if is_update else
         "We have received your application materials. Thank you for your interest and support."
     )
-    return f"""<div style="font-family:MiSans,system-ui,sans-serif;font-size:14px;line-height:1.9;color:#1a1a1a;max-width:640px">
+    return f"""<div style="font-family:{_MAIL_FONT};font-size:14px;line-height:1.9;color:#1a1a1a;max-width:640px">
 <p>Dear {name},</p>
 <p>{opening}</p>
 <p><strong>Kind reminders:</strong></p>
