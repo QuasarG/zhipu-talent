@@ -2,11 +2,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import type { ScholarshipApplication, ScholarshipMaterial } from "@/lib/types";
+import type { ScholarshipApplication, ScholarshipMaterial , ScorerTraceSegment } from "@/lib/types";
 import Button, { IconButton } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
+import { parseSSE } from "@/lib/api";
+import ScorerTrace from "@/features/scholarship/ScorerTrace";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import Progress from "@/components/ui/Progress";
 import Tabs from "@/components/ui/Tabs";
@@ -15,11 +17,8 @@ import {
   DEGREE_LABELS,
   KIND_ORDER,
   MATERIAL_KIND_LABELS,
-  REVIEW_LABELS,
   STATUS_LABELS,
   STATUS_TONES,
-  SUBJECT_ROLE_LABELS,
-  fmtAdjust,
   fmtScore,
 } from "./scholarshipModel";
 
@@ -172,7 +171,21 @@ function AddApplicantDialog({ onClose, onDone }: AddDialogProps) {
 }
 
 export type ScholarshipView = "overview" | "materials" | "assessment";
-type AssessmentTab = "score" | "process" | "reputation";
+
+const TOOL_LABELS_ZH: Record<string, string> = {
+  list_files: "盘点材料",
+  read_file: "读取材料",
+  verify_paper: "论文查证",
+  web_search: "全网检索",
+  submit_scores: "提交评分",
+};
+const TIER_LABELS: Record<string, string> = {
+  strong: "强推荐",
+  recommend: "推荐",
+  borderline: "边缘",
+  not_recommend: "不推荐",
+};
+type AssessmentTab = "score" | "process";
 const EMPTY_MATERIALS: ScholarshipMaterial[] = [];
 
 export interface ScholarshipPaneProps {
@@ -400,7 +413,7 @@ export default function ScholarshipPane({
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [reviewing, setReviewing] = useState<Record<number, boolean>>({});
+  const [liveTrace, setLiveTrace] = useState<ScorerTraceSegment[] | null>(null);
   const [assessmentTab, setAssessmentTab] = useState<AssessmentTab>("score");
 
   const latestCompleted = useMemo(
@@ -440,29 +453,39 @@ export default function ScholarshipPane({
 
   const handleEvaluate = () =>
     runAction("evaluate", async () => {
-      await api.scholarship.evaluate(app!.id);
-      for (let i = 0; i < 30; i++) {
-        const detail = await api.scholarship.get(app!.id);
-        const latest = detail.evaluations?.[detail.evaluations.length - 1];
-        if (!latest || latest.status !== "running") break;
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+      setLiveTrace([]);
+      setAssessmentTab("process");
+      try {
+        const response = await api.scholarship.evaluateStream(app!.id);
+        for await (const event of parseSSE(response)) {
+          const type = String(event.type ?? "");
+          const payload = (event.payload ?? {}) as Record<string, unknown>;
+          if (type === "tool_end") {
+            setLiveTrace((prev) => [
+              ...(prev ?? []),
+              {
+                type: "tool",
+                call_id: String(payload.call_id ?? ""),
+                tool: String(payload.tool ?? ""),
+                label: TOOL_LABELS_ZH[String(payload.tool ?? "")] ?? String(payload.tool ?? ""),
+                status: String(payload.status ?? "ok"),
+                summary: String(payload.summary ?? ""),
+                detail: String(payload.detail ?? ""),
+              },
+            ]);
+          } else if (type === "error") {
+            throw new Error(String(payload.message ?? t("评估失败")));
+          } else if (type === "done") {
+            const final = payload as unknown as ScholarshipEvaluation;
+            setLiveTrace(final.trace ?? []);
+          }
+        }
+      } finally {
+        setLiveTrace(null);
+        onRefresh();
       }
-      onRefresh();
     });
-
-  const review = async (itemId: number, action: "confirmed" | "dismissed") => {
-    if (reviewing[itemId]) return;
-    setReviewing((previous) => ({ ...previous, [itemId]: true }));
-    setError("");
-    try {
-      await api.scholarship.reviewReputation(itemId, action);
-      onRefresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("操作失败"));
-    } finally {
-      setReviewing((previous) => ({ ...previous, [itemId]: false }));
-    }
-  };
+;
 
   if (addDialog) {
     return (
@@ -487,8 +510,7 @@ export default function ScholarshipPane({
 
     const acting = busyAction;
     const canEvaluate = !["imported", "material_incomplete", "ineligible"].includes(app.status);
-    const pendingReputation = app.pending_reputation;
-    const reputationItems = app.reputation_items ?? [];
+    const findings = latestCompleted?.reputation_findings ?? [];
 
     return (
       <Card variant="filled" className="min-h-0 flex-1 min-w-0 overflow-hidden flex flex-col">
@@ -514,7 +536,6 @@ export default function ScholarshipPane({
               {view === "assessment" ? (
                 <>
                   <Button variant="tonal" icon="grade" className="h-8 px-3" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>{t("开始评估")}</Button>
-                  <Button variant="text" icon="travel_explore" className="h-8 px-3" disabled={!!acting} onClick={() => runAction("scan", async () => { await api.scholarship.reputationScan(app.id); onRefresh(); })}>{t("舆情扫描")}</Button>
                 </>
               ) : (
                 <Button variant="tonal" icon="fact_check" className="h-8 px-3" onClick={() => onViewChange("assessment")}>{t("评估与核验")}</Button>
@@ -538,7 +559,7 @@ export default function ScholarshipPane({
               </span>
             </div>
           )}
-          {acting && <div className="mt-2 inline-flex items-center gap-1.5 text-label text-on-surface-variant"><LoadingIndicator size={13} />{acting === "evaluate" ? t("评估中…") : acting === "scan" ? t("扫描中…") : t("删除中…")}</div>}
+          {acting && <div className="mt-2 inline-flex items-center gap-1.5 text-label text-on-surface-variant"><LoadingIndicator size={13} />{acting === "evaluate" ? t("评估中…") : t("删除中…")}</div>}
           {error && <p className="mt-2 text-body-sm text-error">{error}</p>}
         </div>
 
@@ -550,7 +571,6 @@ export default function ScholarshipPane({
             items={[
               { value: "score", label: t("评分结果"), badge: latestCompleted ? "✓" : undefined },
               { value: "process", label: t("评估过程") },
-              { value: "reputation", label: t("舆情核验"), badge: pendingReputation || undefined },
             ]}
           />
         )}
@@ -627,10 +647,10 @@ export default function ScholarshipPane({
                   <div className="rounded-lg bg-primary px-4 py-3 text-on-primary">
                     <p className="text-label opacity-75">{t("当前总分")}</p>
                     <p className="mt-1 font-mono text-display leading-none tabular-nums">{fmtScore(app.total_score)}</p>
-                    <p className="mt-2 text-label opacity-75">{t("脱敏分 + 舆情调整")}</p>
+                    <p className="mt-2 text-label opacity-75">{t("脱敏盲评分")}</p>
                   </div>
                   <ScoreMetric label={t("脱敏分")} value={fmtScore(app.blind_score)} />
-                  <ScoreMetric label={t("舆情调整")} value={fmtAdjust(app.reputation_adjustment)} tone={app.reputation_adjustment < 0 ? "warning" : "default"} />
+                  <ScoreMetric label={t("推荐档位")} value={latestCompleted?.recommend_tier ? t(TIER_LABELS[latestCompleted.recommend_tier] ?? latestCompleted.recommend_tier) : "—"} />
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <div><h2 className="text-title-lg">{t("评分明细")}</h2><p className="mt-0.5 text-label text-on-surface-variant">{latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : t("尚未生成评分结果")}</p></div>
@@ -651,6 +671,20 @@ export default function ScholarshipPane({
                       <div><p className="mb-2 text-label text-on-surface-variant">{t("亮点")}</p><ul className="flex flex-col gap-1.5">{latestCompleted.highlights.map((highlight) => <li key={highlight} className="flex items-start gap-2 text-body-sm"><Icon name="check_circle" size={16} className="mt-0.5 shrink-0 text-success" />{highlight}</li>)}{!latestCompleted.highlights.length && <li className="text-body-sm text-on-surface-variant">—</li>}</ul></div>
                       <div><p className="mb-2 text-label text-on-surface-variant">{t("风险")}</p><ul className="flex flex-col gap-1.5">{latestCompleted.risks.map((risk) => <li key={risk} className="flex items-start gap-2 text-body-sm"><Icon name="warning" size={16} className="mt-0.5 shrink-0 text-warning" />{risk}</li>)}{!latestCompleted.risks.length && <li className="text-body-sm text-on-surface-variant">—</li>}</ul></div>
                     </div>
+                    {findings.length > 0 && (
+                      <div className="rounded-lg border border-error/40 bg-error-container/30 px-4 py-3">
+                        <p className="flex items-center gap-2 text-body-sm font-medium text-error"><Icon name="report" size={16} />{t("舆情发现（供人工参考，不计入自动分）")}</p>
+                        <ul className="mt-2 flex flex-col gap-2">
+                          {findings.map((f, i) => (
+                            <li key={i} className="flex flex-wrap items-center gap-2 text-body-sm">
+                              <StatusChip tone={f.sentiment === "negative" ? "error" : "success"} variant="dot">{f.sentiment === "negative" ? t("负面") : t("正面")}</StatusChip>
+                              <a href={f.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">{f.title || f.url}</a>
+                              {f.note && <span className="text-label text-on-surface-variant">{f.note}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -658,30 +692,11 @@ export default function ScholarshipPane({
 
             {assessmentTab === "process" && (
               <div className="max-w-3xl">
-                <div className="mb-5"><h2 className="text-title-lg">{t("评估过程")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("查看本次评估的实际状态与结果")}</p></div>
-                <div className="flex flex-col">
-                  {[
-                    { label: t("评估任务"), detail: latestEval ? t("已创建评估记录") : t("尚未发起评估"), status: latestEval?.status === "running" ? "running" : latestEval?.status === "failed" ? "failed" : latestEval ? "completed" : "pending" },
-                    { label: t("评分结果"), detail: latestCompleted ? t("已生成各维度评分与依据") : t("等待评估完成"), status: latestCompleted ? "completed" : latestEval?.status === "failed" ? "failed" : "pending" },
-                    { label: t("总分汇总"), detail: app.total_score != null ? t("已按脱敏分与舆情调整汇总") : t("等待评分结果"), status: app.total_score != null ? "completed" : "pending" },
-                    { label: t("人工核验"), detail: pendingReputation ? t("{n} 条舆情待核验", { n: pendingReputation }) : reputationItems.length ? t("舆情条目已处理") : t("尚未发起舆情扫描"), status: pendingReputation ? "running" : reputationItems.length ? "completed" : "pending" },
-                  ].map((step, index, steps) => (
-                    <div key={step.label} className="relative flex gap-3 pb-6 last:pb-0">
-                      {index < steps.length - 1 && <span className="absolute left-3.5 top-8 bottom-0 w-px bg-outline-variant" />}
-                      <TraceStatus status={step.status as "completed" | "running" | "failed" | "pending"} />
-                      <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-3"><p className="text-body-sm font-medium text-on-surface">{step.label}</p><span className="text-label text-on-surface-variant">{step.status === "completed" ? t("已完成") : step.status === "running" ? t("处理中") : step.status === "failed" ? t("失败") : t("未开始")}</span></div><p className="mt-1 text-label leading-5 text-on-surface-variant">{step.detail}</p></div>
-                    </div>
-                  ))}
-                </div>
+                <div className="mb-5"><h2 className="text-title-lg">{t("评估过程")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("评审 agent 的工作记录：读了哪些材料、查证了什么、如何下结论")}</p></div>
+                <ScorerTrace trace={liveTrace ?? latestEval?.trace ?? []} running={!!liveTrace} />
               </div>
             )}
 
-            {assessmentTab === "reputation" && (
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-title-lg">{t("舆情核验")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("只对扫描结果进行人工确认，不改变申请资料")}</p></div><span className="text-label text-warning">{t("{n} 条待人工核验", { n: pendingReputation })}</span></div>
-                {reputationItems.length === 0 ? <div className="rounded-lg border border-dashed border-outline-variant px-4 py-8 text-body-sm text-on-surface-variant">{t("暂无舆情条目，点上方「舆情扫描」发起")}</div> : <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">{reputationItems.map((item) => <div key={item.id} className="rounded-lg border border-outline-variant px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span className="text-body-sm font-medium">{item.subject}</span><span className="text-label text-on-surface-variant">{t(SUBJECT_ROLE_LABELS[item.subject_role] ?? item.subject_role)}</span><StatusChip tone={item.sentiment === "negative" ? "error" : "success"} variant={item.sentiment === "negative" ? "filled" : "dot"}>{item.sentiment === "negative" ? t("负面") : t("正面")}</StatusChip>{item.review_status !== "pending" && <StatusChip tone={item.review_status === "confirmed" ? "warning" : "neutral"}>{t(REVIEW_LABELS[item.review_status] ?? item.review_status)} {fmtAdjust(item.adjustment)}</StatusChip>}</div><a href={item.url} target="_blank" rel="noreferrer" className="mt-2 block text-body-sm text-primary hover:underline">{item.title || item.url}</a>{item.snippet && <p className="mt-1 text-label leading-5 text-on-surface-variant">{item.snippet}</p>}{item.concern && <p className="mt-2 text-body-sm text-error">{t("风险点：{concern}", { concern: item.concern })}</p>}{item.review_status === "pending" && <div className="mt-3 flex items-center gap-2"><Button variant="tonal" icon="check" className="h-8 px-3" disabled={reviewing[item.id]} onClick={() => review(item.id, "confirmed")}>{t("确认")}</Button><Button variant="outlined" icon="close" className="h-8 px-3" disabled={reviewing[item.id]} onClick={() => review(item.id, "dismissed")}>{t("驳回")}</Button></div>}</div>)}</div>}
-              </div>
-            )}
           </div>
         )}
       </Card>

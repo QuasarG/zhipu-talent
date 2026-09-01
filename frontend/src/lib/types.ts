@@ -660,16 +660,33 @@ export interface ScholarshipReputationItem {
   reviewer: string;
 }
 
+/** 评分 agent 轨迹 segment：tool=工具调用卡，text=系统提示，final=终态 */
+export type ScorerTraceSegment =
+  | { type: "tool"; call_id: string; tool: string; label: string; status: string; summary: string; detail: string }
+  | { type: "text"; text: string }
+  | { type: "final"; text: string; blind_score: number; recommend_tier: string; reputation_findings: ReputationFinding[] };
+
+export interface ReputationFinding {
+  subject: string;
+  sentiment: string;
+  title: string;
+  url: string;
+  note: string;
+}
+
 export interface ScholarshipEvaluation {
   id: number;
   config_version: string;
   status: string;
   blind_score: number;
-  dimensions: { key: string; label: string; score: number; max_points: number; reason: string }[];
+  dimensions: { key: string; label: string; score: number; max_points: number; reason: string; evidence_level?: string }[];
   highlights: string[];
   risks: string[];
   error_message: string;
   created_at: string | null;
+  trace?: ScorerTraceSegment[];
+  recommend_tier?: string;
+  reputation_findings?: ReputationFinding[];
 }
 
 export interface ScholarshipMaterial {
@@ -705,13 +722,10 @@ export interface ScholarshipApplication {
   submitted_at: string | null;
   materials_count: number;
   blind_score: number | null;
-  reputation_adjustment: number;
   total_score: number | null;
-  pending_reputation: number;
   // detail 才有
   materials?: ScholarshipMaterial[];
   evaluations?: ScholarshipEvaluation[];
-  reputation_items?: ScholarshipReputationItem[];
 }
 
 // 健康检查

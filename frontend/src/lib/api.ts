@@ -290,19 +290,9 @@ export const api = {
         `/api/scholarship/applications/${id}/screen`,
         { method: "POST" },
       ),
-    evaluate: (id: string) =>
-      fetchJSON<ScholarshipEvaluation>(`/api/scholarship/applications/${id}/evaluate`, { method: "POST" }),
-    reputationScan: (id: string) =>
-      fetchJSON<{ created: number; items: ScholarshipReputationItem[] }>(
-        `/api/scholarship/applications/${id}/reputation-scan`,
-        { method: "POST" },
-      ),
-    reviewReputation: (itemId: number, action: "confirmed" | "dismissed") =>
-      fetchJSON<ScholarshipReputationItem>(`/api/scholarship/reputation-items/${itemId}/review`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, reviewer: "hr" }),
-      }),
+    /** 评分 agent SSE 流：tool_start/tool_end/final/done（done 载最新评估快照） */
+    evaluateStream: (id: string) =>
+      authedFetch(`/api/scholarship/applications/${id}/evaluate`, { method: "POST" }),
   },
   personResume: (personId: string) =>
     fetchJSON<CandidateDetail>(`/api/persons/${personId}/resume`),
