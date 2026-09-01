@@ -464,7 +464,7 @@ export default function ScholarshipPane({
           const type = String(event.type ?? "");
           const payload = (event.payload ?? {}) as Record<string, unknown>;
           if (type === "thinking_delta") {
-            // 思考流：ref 缓冲 + rAF 帧合并（每帧最多一次 setState，避免逐 token 重建数组闪烁）
+            // 思考/说明流共用：ref 缓冲 + rAF 帧合并（每帧最多一次 setState，避免闪烁）
             pendingThink.current += String(payload.text ?? "");
             if (rafRef.current === null) {
               rafRef.current = requestAnimationFrame(() => {
@@ -479,6 +479,25 @@ export default function ScholarshipPane({
                     return [...trace.slice(0, -1), { type: "thinking", text: last.text + chunk }];
                   }
                   return [...trace, { type: "thinking", text: chunk }];
+                });
+              });
+            }
+          } else if (type === "note_delta") {
+            // 评审说明流（content）：与思考同机制，rAF 帧合并后追加到尾部 text 段
+            pendingThink.current += String(payload.text ?? "");
+            if (rafRef.current === null) {
+              rafRef.current = requestAnimationFrame(() => {
+                rafRef.current = null;
+                const chunk = pendingThink.current;
+                pendingThink.current = "";
+                if (!chunk) return;
+                setLiveTrace((prev) => {
+                  const trace = prev ?? [];
+                  const last = trace[trace.length - 1];
+                  if (last && last.type === "text") {
+                    return [...trace.slice(0, -1), { type: "text", text: last.text + chunk }];
+                  }
+                  return [...trace, { type: "text", text: chunk }];
                 });
               });
             }

@@ -102,71 +102,67 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
     try:
         submitted = False
         for round_no in range(MAX_ROUNDS):
-            # 本轮的思考文本（LLM 在调用工具前说明目的）流式累积进 trace
-            round_text: list[str] = []
-            round_buffer: list[str] = []
-            last_flush = [0.0]
+            # 每轮双流：reasoning_content=真思考（thinking 卡），content=评审说明（note 段）
             # SSE 发送缓冲：token 级 delta 攒批（150ms）再发，避免前端逐 token 重渲染闪烁
-            emit_buffer: list[str] = []
+            buffers: dict[str, list[str]] = {"thinking": [], "note": []}
             emit_due = [0.0]
+            last_flush = [0.0]
 
-            def on_delta(text: str) -> None:
+            def _push(kind: str, text: str) -> None:
                 import time as _time
 
-                round_buffer.append(text)
-                emit_buffer.append(text)
+                buffers[kind].append(text)
                 now = _time.monotonic()
                 if now - emit_due[0] > 0.15:
                     emit_due[0] = now
-                    emit("thinking_delta", {"text": "".join(emit_buffer)})
-                    emit_buffer.clear()
+                    _drain()
                 # 节流写 trace：每 0.8s 刷一次，刷新/切页后能从数据库恢复进度
                 if now - last_flush[0] > 0.8:
                     last_flush[0] = now
-                    _flush_round_text()
+                    _flush_open_segments()
 
-            def _drain_emit_buffer() -> None:
-                if emit_buffer:
-                    emit("thinking_delta", {"text": "".join(emit_buffer)})
-                    emit_buffer.clear()
+            def _drain() -> None:
+                for kind in ("thinking", "note"):
+                    if buffers[kind]:
+                        emit(f"{kind}_delta", {"text": "".join(buffers[kind])})
+                        buffers[kind].clear()
 
-            def _flush_round_text() -> None:
-                merged = "".join(round_buffer)
-                if not merged.strip():
-                    return
-                round_text.clear()
-                round_text.append(merged)
-                _sync_round_segment()
+            def on_reasoning(text: str) -> None:
+                _push("thinking", text)
 
-            def _sync_round_segment() -> None:
-                # thinking segment 放在本轮工具卡之前：先目的，后动作
-                merged = "".join(round_text).strip()
-                if not merged:
-                    return
-                seg = {"type": "thinking", "text": merged}
-                idx = next((i for i, s in enumerate(segments)
-                            if s.get("type") == "thinking" and s.get("_open")), None)
-                if idx is None:
-                    seg["_open"] = True
-                    # 插到末尾（本轮尚未执行工具）
-                    segments.append(seg)
-                else:
-                    seg["_open"] = True
-                    segments[idx] = seg
+            def on_delta(text: str) -> None:
+                _push("note", text)
+
+            def _flush_open_segments() -> None:
+                for kind in ("thinking", "note"):
+                    merged = "".join(buffers[kind]).strip()
+                    if not merged:
+                        continue
+                    seg = {"type": "thinking" if kind == "thinking" else "text", "text": merged}
+                    idx = next((i for i, s in enumerate(segments)
+                                if s.get("type") == seg["type"] and s.get("_open")), None)
+                    if idx is None:
+                        seg["_open"] = True
+                        segments.append(seg)
+                    else:
+                        seg["_open"] = True
+                        segments[idx] = seg
                 save_trace()
 
             result = call_llm_tools(
                 messages, tools_schema(), temperature=0.2,
                 reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"),
                 on_delta=on_delta,
+                on_reasoning=on_reasoning,
             )
-            # 收尾定格：清掉 _open 标记，本轮 thinking 定型
-            _drain_emit_buffer()
+            # 收尾定格：残余 delta 全部冲刷，清掉 _open 标记
+            _drain()
+            _flush_open_segments()
             for s in segments:
                 s.pop("_open", None)
-            round_text_val = "".join(round_buffer).strip()
+            round_note = "".join(buffers.get("note") or []).strip() or (result.get("text") or "").strip()
             tool_calls = result.get("tool_calls") or []
-            if not round_text_val and not tool_calls:
+            if not round_note and not tool_calls and not "".join(buffers.get("thinking") or []).strip():
                 break
             messages.append({
                 "role": "assistant",
