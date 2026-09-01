@@ -2,7 +2,6 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ThinkingOrb } from "thinking-orbs";
 import type { ChatSegment, ScorerTraceSegment } from "@/lib/types";
 import Icon from "@/components/ui/Icon";
 import ThinkingCard from "@/components/ui/ThinkingCard";
@@ -30,16 +29,6 @@ function toChatToolSeg(seg: Extract<ScorerTraceSegment, { type: "tool" }>): Extr
     detail: seg.detail,
     args_summary: "",
   };
-}
-
-/** 运行中占位（对话 agent 同款 orb） */
-function RunningOrb({ label }: { label: string }) {
-  return (
-    <div className="chat-enter my-2 flex items-center gap-2.5 rounded-md border border-outline-variant bg-surface-low px-3 py-2 text-body-sm text-on-surface-variant">
-      <ThinkingOrb state="shaping" size={20} aria-label={label} />
-      <span>{label}</span>
-    </div>
-  );
 }
 
 interface Props {
@@ -123,7 +112,6 @@ export default function ScorerTrace({ live, trace, running }: Props) {
           </div>
         );
       })}
-      {running && <RunningOrb label={t("评审 agent 工作中…")} />}
     </div>
   );
 }
