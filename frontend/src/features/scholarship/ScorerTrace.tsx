@@ -84,17 +84,20 @@ export default function ScorerTrace({ live, trace, running }: Props) {
           </button>
         </div>
       )}
-      {shown.map((segment, i) => {
+      {shown.map((segment, i, arr) => {
+        // 稳定 key：同类段内的次序（在段创建时即确定，后续追加不会漂移），
+        // 避免 applyEvent 更新尾部文本时整列 remount 重放 chat-enter 动画（闪烁根因）
+        const orderOf = (type: string) => arr.slice(0, i).filter((s) => s.type === type).length;
         if (segment.type === "thinking")
           return (
             <ThinkingCard
-              key={`think-${i}`}
+              key={`think-${orderOf("thinking")}`}
               text={segment.text}
               streaming={running && i === lastThinking}
             />
           );
         if (segment.type === "tool")
-          return <ToolCallCard key={`${segment.call_id}-${i}`} segment={toChatToolSeg(segment)} />;
+          return <ToolCallCard key={`tool-${segment.call_id}`} segment={toChatToolSeg(segment)} />;
         if (segment.type === "final")
           return (
             <div key={i} className="chat-enter my-2 flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-primary-container/40 px-3 py-2.5 text-body-sm text-on-surface">

@@ -459,7 +459,17 @@ export default function ScholarshipPane({
         status: "running",
         created_at: new Date().toISOString(),
       };
-      const commit = () => setLiveTrace([...live.content.segments]);
+      // 微任务合并：SSE 事件可能成批到达（150ms 攒批后一次多条），
+      // 每帧只 commit 一次，减少整列 diff 频率
+      let commitQueued = false;
+      const commit = () => {
+        if (commitQueued) return;
+        commitQueued = true;
+        queueMicrotask(() => {
+          commitQueued = false;
+          setLiveTrace([...live.content.segments]);
+        });
+      };
       try {
         const response = await api.scholarship.evaluateStream(app!.id);
         for await (const event of parseSSE(response)) {
