@@ -21,7 +21,7 @@ from agi_talent_radar.core.db.repository import _replace_evaluation_details
 logger = logging.getLogger(__name__)
 
 
-LATEST_SCHEMA_VERSION = 29
+LATEST_SCHEMA_VERSION = 30
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -307,6 +307,13 @@ def ensure_schema(engine) -> None:
             )
             _drop_index_if_exists(engine, "candidates", "uq_candidates_person_id")
         _record_version(engine, 29, "one person one candidate profile (unique partial index)")
+    if current_version < 30:
+        _migrate_scholarship_feishu_unique(engine)
+        _record_version(
+            engine,
+            30,
+            "scholarship feishu_record_id unique: dedupe (keep newest) + empty-to-NULL",
+        )
     if current_version < 27:
         existing = {c["name"] for c in inspect(engine).get_columns("scholarship_materials")}
         if "file_path" not in existing:
@@ -567,6 +574,81 @@ def _add_columns(engine, table_name: str, definitions: list[str]) -> None:
     with engine.begin() as connection:
         for definition in definitions:
             connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {definition}"))
+
+
+def _migrate_scholarship_feishu_unique(engine) -> None:
+    """v30：飞书幂等键收紧为唯一。
+    1) 重复 rec id 组：材料并入最新档（同名去重）后删旧档；
+    2) 空串转 NULL（MySQL 唯一索引下多个 '' 会撞）；
+    3) 旧普通索引 ix_scholarship_applications_feishu_record_id 删除，
+       唯一索引 uq_scholarship_applications_feishu_rec 由 _ensure_indexes 创建。
+    """
+    if "scholarship_applications" not in inspect(engine).get_table_names():
+        return
+    with engine.begin() as conn:
+        dupes = conn.execute(
+            text(
+                "SELECT feishu_record_id FROM scholarship_applications "
+                "WHERE feishu_record_id IS NOT NULL AND feishu_record_id != '' "
+                "GROUP BY feishu_record_id HAVING COUNT(*) > 1"
+            )
+        ).fetchall()
+        for (rec_id,) in dupes:
+            keep_id = conn.execute(
+                text(
+                    "SELECT id FROM scholarship_applications WHERE feishu_record_id = :rid "
+                    "ORDER BY created_at DESC, id DESC LIMIT 1"
+                ),
+                {"rid": rec_id},
+            ).scalar()
+            stale_ids = [
+                row[0]
+                for row in conn.execute(
+                    text(
+                        "SELECT id FROM scholarship_applications WHERE feishu_record_id = :rid AND id != :keep"
+                    ),
+                    {"rid": rec_id, "keep": keep_id},
+                ).fetchall()
+            ]
+            for stale_id in stale_ids:
+                # 两步迁移：先查出 keep 档没有的同名材料，再按 id 批量改挂
+                keep_names = {
+                    row[0]
+                    for row in conn.execute(
+                        text("SELECT filename FROM scholarship_materials WHERE application_id = :keep"),
+                        {"keep": keep_id},
+                    ).fetchall()
+                }
+                move_ids = [
+                    row[0]
+                    for row in conn.execute(
+                        text(
+                            "SELECT id, filename FROM scholarship_materials WHERE application_id = :stale"
+                        ),
+                        {"stale": stale_id},
+                    ).fetchall()
+                    if row[1] not in keep_names
+                ]
+                for mid in move_ids:
+                    conn.execute(
+                        text("UPDATE scholarship_materials SET application_id = :keep WHERE id = :mid"),
+                        {"keep": keep_id, "mid": mid},
+                    )
+                # 同名重复材料显式删除：不依赖 FK 级联（SQLite 默认不级联，方言无关兜底）
+                conn.execute(
+                    text("DELETE FROM scholarship_materials WHERE application_id = :stale"),
+                    {"stale": stale_id},
+                )
+                conn.execute(
+                    text("DELETE FROM scholarship_applications WHERE id = :sid"),
+                    {"sid": stale_id},
+                )
+            if stale_ids:
+                logger.warning("feishu_record_id=%s 存在 %d 个重复档，已合并保留 %s", rec_id, len(stale_ids), keep_id)
+        conn.execute(
+            text("UPDATE scholarship_applications SET feishu_record_id = NULL WHERE feishu_record_id = ''")
+        )
+    _drop_index_if_exists(engine, "scholarship_applications", "ix_scholarship_applications_feishu_record_id")
 
 
 def _drop_index_if_exists(engine, table_name: str, index_name: str) -> None:

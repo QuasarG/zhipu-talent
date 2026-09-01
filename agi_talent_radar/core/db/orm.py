@@ -927,6 +927,10 @@ class ScholarshipApplicationORM(Base):
     """
 
     __tablename__ = "scholarship_applications"
+    # rec id 唯一（v30 迁移清重复 + 空串转 NULL 后建）；NULL 不受限，手工建档不受影响
+    __table_args__ = (
+        Index("uq_scholarship_applications_feishu_rec", "feishu_record_id", unique=True),
+    )
 
     id = Column(String(36), primary_key=True, default=_new_uuid)
     name = Column(String(128), nullable=False)
@@ -939,8 +943,8 @@ class ScholarshipApplicationORM(Base):
     screening_detail = Column(JSON, default=dict)          # 缺项/资格原因 + feishu 元信息
     brand_bonus = Column(Float, default=0.0)               # 手动品牌加分（不进 LLM 评分）
     brand_note = Column(Text, default="")
-    # 飞书问卷同步字段（webhook/反查写入；为空表示非飞书来源）
-    feishu_record_id = Column(String(64), default="", index=True)  # rec 开头，幂等去重键
+    # 飞书问卷同步字段（webhook/反查写入；NULL 表示非飞书来源——空串已迁移为 NULL 以便唯一索引）
+    feishu_record_id = Column(String(64), default=None, index=True)  # rec 开头，幂等去重键
     name_en = Column(String(128), default="")
     phone = Column(String(64), default="")
     email = Column(String(256), default="")

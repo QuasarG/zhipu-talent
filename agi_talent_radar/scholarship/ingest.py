@@ -106,16 +106,37 @@ def upsert_application_from_feishu(session, payload: dict[str, Any]) -> tuple[Sc
 
     app = None
     if record_id:
-        app = (
+        dupes = (
             session.query(ScholarshipApplicationORM)
             .filter(ScholarshipApplicationORM.feishu_record_id == record_id)
-            .first()
+            .order_by(ScholarshipApplicationORM.created_at.desc())
+            .all()
         )
+        if dupes:
+            # 重复档防御：取最新一条为准，旧档独有材料并入后删除（历史 bug 残留自愈）
+            app = dupes[0]
+            for stale in dupes[1:]:
+                kept_names = {
+                    m.filename
+                    for m in session.query(ScholarshipMaterialORM)
+                    .filter_by(application_id=app.id)
+                    .all()
+                }
+                for m in (
+                    session.query(ScholarshipMaterialORM)
+                    .filter_by(application_id=stale.id)
+                    .all()
+                ):
+                    if m.filename not in kept_names:
+                        m.application_id = app.id
+                session.delete(stale)
     if app is None and legacy_key and legacy_key != record_id:
         # 早期推送以「自动编号」为幂等键建档；反解出真实 rec id 后迁移旧档，避免同一人两档
+        # （legacy 键无唯一索引兜底，这里按同名去重：只取最新一条迁移）
         app = (
             session.query(ScholarshipApplicationORM)
             .filter(ScholarshipApplicationORM.feishu_record_id == legacy_key)
+            .order_by(ScholarshipApplicationORM.created_at.desc())
             .first()
         )
     created = app is None
