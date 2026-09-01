@@ -17,7 +17,7 @@ from datetime import date
 
 _LARK_CLI = "/usr/bin/lark-cli"
 # 总开关：False 时 webhook 同步照常，但完全不发信（灰度/调试用）
-MAIL_ENABLED = True
+MAIL_ENABLED = False
 _MAILBOX = "zpsy@aminer.cn"
 _FROM = "zpsy@zhipuai.cn"
 _BASE = "WMQxb6BhPar076sU40McQpYmnHg"
@@ -56,11 +56,12 @@ def _cli(args: list[str], timeout: int = 120) -> dict:
         return {"ok": False, "error": {"message": f"cli 返回不可解析: {out[:200]}"}}
 
 
-def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool = False, country: str = "", no_mark: bool = False) -> dict:
+def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool = False, country: str = "", no_mark: bool = False, applicant_name_en: str = "") -> dict:
     """发确认邮件 → 成功后回写新表「是否回复并提醒=是」。
 
     is_update：修改提交后的再确认（文案区分 首次收到/已更新）。
     country：所在国家/地区——中国发中文版，其他发英文版。
+    姓名随语言走：中文版用中文名（缺则英文名兜底），英文版用英文名（缺则中文名兜底）。
     no_mark：只发信不回写（链路灰度测试用）。
     返回 {sent, message_id?, marked?, error?, mark_error?}；
     邮件失败不回写；回写失败不影响邮件结果（journal 留痕）。
@@ -71,6 +72,9 @@ def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool 
     if not to_email or "@" not in to_email:
         return {"sent": False, "error": f"申请人邮箱无效: {to_email!r}"}
     is_china = _is_china(country)
+    zh_name = (applicant_name or "").strip() or (applicant_name_en or "").strip()
+    en_name = (applicant_name_en or "").strip() or (applicant_name or "").strip()
+    salutation = zh_name if is_china else en_name
     if is_china:
         subject = (
             "【Z.AI Scholarship 2026】申请材料已更新，确认已收到"
@@ -83,7 +87,7 @@ def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool 
             if is_update else
             "【Z.AI Scholarship 2026】Application received"
         )
-    html = _render_template(applicant_name, date.today(), is_update=is_update, country=country)
+    html = _render_template(salutation, date.today(), is_update=is_update, country=country)
     data = _cli([
         "mail", "+send",
         "--mailbox", _MAILBOX,
