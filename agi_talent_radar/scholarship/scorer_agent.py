@@ -224,7 +224,8 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
 
 
 def _finalize(evaluation: ScholarshipEvaluationORM, ctx: ScorerContext, segments: list[dict[str, Any]]) -> None:
-    final = ctx.final    by_key = {d["key"]: d for d in DIMENSIONS}
+    final = ctx.final
+    by_key = {d["key"]: d for d in DIMENSIONS}
     dims = []
     for d in final["dimensions"]:
         spec = by_key.get(str(d.get("key")))
