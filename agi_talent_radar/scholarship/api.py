@@ -201,6 +201,26 @@ def build_scholarship_blueprint() -> Blueprint:
             elif "硕士" in grade or "master" in grade.lower():
                 payload["degree_type"] = "master"
 
+        # LLM 语义解析层：导师连写拆分/职务重排/方向分隔符清洗/年级毕业时间规范化。
+        # 只对原文做重排（字符多重集校验防幻觉），失败逐字段降级，永不阻断入库
+        try:
+            from agi_talent_radar.scholarship import field_parser
+
+            raw_fields = {
+                "advisors_raw": "、".join(payload.get("advisors") or []),
+                "advisor_title_raw": payload.get("advisor_title") or "",
+                "direction_raw": payload.get("direction") or "",
+                "grade_raw": payload.get("grade") or "",
+                "school_raw": payload.get("school") or "",
+                "lab_raw": payload.get("lab") or "",
+                "grad_raw": payload.get("expected_graduation") or "",
+            }
+            if field_parser.wants_parsing(raw_fields):
+                patch = field_parser.parse_fields(raw_fields)
+                payload.update(patch)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning("field parse failed, keep raw: %s", exc)
+
         with get_session() as session:
             try:
                 app_row, created = ingest.upsert_application_from_feishu(session, payload)
