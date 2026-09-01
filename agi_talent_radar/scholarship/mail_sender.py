@@ -17,7 +17,7 @@ from datetime import date
 
 _LARK_CLI = "/usr/bin/lark-cli"
 # 总开关：False 时 webhook 同步照常，但完全不发信（灰度/调试用）
-MAIL_ENABLED = False
+MAIL_ENABLED = True
 # 邮件字体栈：MiSans 是网站自载字体，邮件客户端没有 → 必须用各端预装字体兜底
 _MAIL_FONT = (
     "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',"
