@@ -460,7 +460,17 @@ export default function ScholarshipPane({
         for await (const event of parseSSE(response)) {
           const type = String(event.type ?? "");
           const payload = (event.payload ?? {}) as Record<string, unknown>;
-          if (type === "tool_end") {
+          if (type === "thinking_delta") {
+            // 思考流：追加到尾部 thinking 段（工具卡出现即自然分段）
+            setLiveTrace((prev) => {
+              const trace = prev ?? [];
+              const last = trace[trace.length - 1];
+              if (last && last.type === "thinking") {
+                return [...trace.slice(0, -1), { type: "thinking", text: last.text + String(payload.text ?? "") }];
+              }
+              return [...trace, { type: "thinking", text: String(payload.text ?? "") }];
+            });
+          } else if (type === "tool_end") {
             setLiveTrace((prev) => [
               ...(prev ?? []),
               {

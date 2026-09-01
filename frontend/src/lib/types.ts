@@ -660,8 +660,9 @@ export interface ScholarshipReputationItem {
   reviewer: string;
 }
 
-/** 评分 agent 轨迹 segment：tool=工具调用卡，text=系统提示，final=终态 */
+/** 评分 agent 轨迹 segment：thinking=本轮目的说明，tool=工具调用卡，text=系统提示，final=终态 */
 export type ScorerTraceSegment =
+  | { type: "thinking"; text: string }
   | { type: "tool"; call_id: string; tool: string; label: string; status: string; summary: string; detail: string }
   | { type: "text"; text: string }
   | { type: "final"; text: string; blind_score: number; recommend_tier: string; reputation_findings: ReputationFinding[] };

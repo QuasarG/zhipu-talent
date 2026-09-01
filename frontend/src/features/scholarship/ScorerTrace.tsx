@@ -53,6 +53,15 @@ function TraceToolCard({ segment }: { segment: Extract<ScorerTraceSegment, { typ
   );
 }
 
+/** 思考段：agent 调用工具前的目的说明（斜体弱化，紧贴其后的工具卡） */
+function ThinkingNote({ text }: { text: string }) {
+  return (
+    <p className="chat-enter my-1.5 px-1 text-body-sm italic leading-6 text-on-surface-variant/90 whitespace-pre-wrap">
+      {text}
+    </p>
+  );
+}
+
 /** 运行中占位：正在思考的 orb（对话 agent 同款动效） */
 function RunningOrb({ label }: { label: string }) {
   return (
@@ -81,6 +90,7 @@ export default function ScorerTrace({ trace, running }: Props) {
   return (
     <div className="flex flex-col">
       {trace.map((segment, i) => {
+        if (segment.type === "thinking") return <ThinkingNote key={`think-${i}`} text={segment.text} />;
         if (segment.type === "tool") return <TraceToolCard key={`${segment.call_id}-${i}`} segment={segment} />;
         if (segment.type === "final")
           return (
