@@ -43,24 +43,38 @@ function RunningOrb({ label }: { label: string }) {
 }
 
 interface Props {
+  /** 进行中的实时流（问答原生 ChatSegment 形状，来自 applyEvent） */
+  live?: ChatSegment[];
+  /** 落库的回放轨迹（含 final 段） */
   trace: ScorerTraceSegment[];
   running: boolean;
 }
 
 /** agent 工作记录（无用户输入的对话流） */
-export default function ScorerTrace({ trace, running }: Props) {
+export default function ScorerTrace({ live, trace, running }: Props) {
   const { t } = useI18n();
-  const lastThinking = running ? trace.length - 1 : -1;
   const [filter, setFilter] = useState<"all" | "thinking">("all");
-  if (!trace.length && !running) {
+  // 实时流优先（进行中）；结束后切到落库 trace（含 final 横幅）
+  const active: ScorerTraceSegment[] =
+    live && live.length
+      ? live.map((s) =>
+          s.type === "tool"
+            ? { type: "tool", call_id: s.call_id, tool: s.tool, label: s.label, status: s.status ?? "", summary: s.summary ?? "", detail: s.detail ?? "" }
+            : s.type === "text"
+              ? { type: "text", text: s.text }
+              : { type: "thinking", text: s.text }
+        )
+      : trace;
+  const lastThinking = running ? active.length - 1 : -1;
+  if (!active.length && !running) {
     return (
       <div className="rounded-lg border border-dashed border-outline-variant px-4 py-8 text-body-sm text-on-surface-variant">
         {t("暂无评估过程记录，点上方「开始评估」生成")}
       </div>
     );
   }
-  const hasThinking = trace.some((s) => s.type === "thinking");
-  const shown = filter === "all" ? trace : trace.filter((s) => s.type === "thinking");
+  const hasThinking = active.some((s) => s.type === "thinking");
+  const shown = filter === "all" ? active : active.filter((s) => s.type === "thinking");
   return (
     <div className="flex flex-col">
       {hasThinking && (

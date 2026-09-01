@@ -1,13 +1,14 @@
 // 奖学金资料工作台：申请人信息 / 材料预览 / 评估与核验
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import type { ScholarshipApplication, ScholarshipMaterial , ScorerTraceSegment } from "@/lib/types";
+import type { ChatEvent, ChatSegment, ScholarshipApplication, ScholarshipEvaluation, ScholarshipMaterial } from "@/lib/types";
 import Button, { IconButton } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 import { parseSSE } from "@/lib/api";
+import { applyEvent, type LocalMessage as LocalChatMessage } from "@/pages/TalentChat";
 import ScorerTrace from "@/features/scholarship/ScorerTrace";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import Progress from "@/components/ui/Progress";
@@ -172,13 +173,6 @@ function AddApplicantDialog({ onClose, onDone }: AddDialogProps) {
 
 export type ScholarshipView = "overview" | "materials" | "assessment";
 
-const TOOL_LABELS_ZH: Record<string, string> = {
-  list_files: "盘点材料",
-  read_file: "读取材料",
-  verify_paper: "论文查证",
-  web_search: "全网检索",
-  submit_scores: "提交评分",
-};
 const TIER_LABELS: Record<string, string> = {
   strong: "强推荐",
   recommend: "推荐",
@@ -413,10 +407,7 @@ export default function ScholarshipPane({
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [liveTrace, setLiveTrace] = useState<ScorerTraceSegment[] | null>(null);
-  // thinking 流式缓冲：rAF 帧合并，避开逐 token setState 闪烁
-  const pendingThink = useRef("");
-  const rafRef = useRef<number | null>(null);
+  const [liveTrace, setLiveTrace] = useState<ChatSegment[] | null>(null);
   const [assessmentTab, setAssessmentTab] = useState<AssessmentTab>("score");
 
   const latestCompleted = useMemo(
@@ -456,77 +447,42 @@ export default function ScholarshipPane({
 
   const handleEvaluate = () =>
     runAction("evaluate", async () => {
-      setLiveTrace([]);
       setAssessmentTab("process");
+      // 直接复用问答的流式消息模型：SSE 事件 → applyEvent → segments，
+      // 渲染层 ScorerTrace 吃的就是 ChatSegment 形状（问答同款组件）
+      let live: LocalChatMessage = {
+        id: `scoring-${app!.id}`,
+        conversation_id: "",
+        role: "assistant",
+        content: { segments: [] },
+        citations: [],
+        status: "running",
+        created_at: new Date().toISOString(),
+      };
+      const commit = () => setLiveTrace([...live.content.segments]);
       try {
         const response = await api.scholarship.evaluateStream(app!.id);
         for await (const event of parseSSE(response)) {
           const type = String(event.type ?? "");
           const payload = (event.payload ?? {}) as Record<string, unknown>;
-          if (type === "thinking_delta") {
-            // 思考/说明流共用：ref 缓冲 + rAF 帧合并（每帧最多一次 setState，避免闪烁）
-            pendingThink.current += String(payload.text ?? "");
-            if (rafRef.current === null) {
-              rafRef.current = requestAnimationFrame(() => {
-                rafRef.current = null;
-                const chunk = pendingThink.current;
-                pendingThink.current = "";
-                if (!chunk) return;
-                setLiveTrace((prev) => {
-                  const trace = prev ?? [];
-                  const last = trace[trace.length - 1];
-                  if (last && last.type === "thinking") {
-                    return [...trace.slice(0, -1), { type: "thinking", text: last.text + chunk }];
-                  }
-                  return [...trace, { type: "thinking", text: chunk }];
-                });
-              });
-            }
-          } else if (type === "note_delta") {
-            // 评审说明流（content）：与思考同机制，rAF 帧合并后追加到尾部 text 段
-            pendingThink.current += String(payload.text ?? "");
-            if (rafRef.current === null) {
-              rafRef.current = requestAnimationFrame(() => {
-                rafRef.current = null;
-                const chunk = pendingThink.current;
-                pendingThink.current = "";
-                if (!chunk) return;
-                setLiveTrace((prev) => {
-                  const trace = prev ?? [];
-                  const last = trace[trace.length - 1];
-                  if (last && last.type === "text") {
-                    return [...trace.slice(0, -1), { type: "text", text: last.text + chunk }];
-                  }
-                  return [...trace, { type: "text", text: chunk }];
-                });
-              });
-            }
-          } else if (type === "tool_end") {
-            setLiveTrace((prev) => [
-              ...(prev ?? []),
-              {
-                type: "tool",
-                call_id: String(payload.call_id ?? ""),
-                tool: String(payload.tool ?? ""),
-                label: TOOL_LABELS_ZH[String(payload.tool ?? "")] ?? String(payload.tool ?? ""),
-                status: String(payload.status ?? "ok"),
-                summary: String(payload.summary ?? ""),
-                detail: String(payload.detail ?? ""),
-              },
-            ]);
-          } else if (type === "error") {
-            throw new Error(String(payload.message ?? t("评估失败")));
-          } else if (type === "done") {
+          if (type === "done") {
             const final = payload as unknown as ScholarshipEvaluation;
             setLiveTrace(final.trace ?? []);
+            break;
           }
+          if (type === "error") throw new Error(String(payload.message ?? t("评估失败")));
+          live = applyEvent(live, {
+            type,
+            payload: payload as never,
+          } as ChatEvent);
+          commit();
         }
       } finally {
         setLiveTrace(null);
         onRefresh();
       }
     });
-;
+
 
   if (addDialog) {
     return (
@@ -734,7 +690,7 @@ export default function ScholarshipPane({
             {assessmentTab === "process" && (
               <div>
                 <div className="mb-5"><h2 className="text-title-lg">{t("评估过程")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("评审 agent 的工作记录：读了哪些材料、查证了什么、如何下结论")}</p></div>
-                <ScorerTrace trace={liveTrace ?? latestEval?.trace ?? []} running={!!liveTrace} />
+                <ScorerTrace live={liveTrace ?? undefined} trace={latestEval?.trace ?? []} running={!!liveTrace} />
               </div>
             )}
 

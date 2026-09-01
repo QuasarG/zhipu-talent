@@ -15,9 +15,10 @@ import GrillWorkbench, { type ChatMode } from "@/features/grill/GrillWorkbench";
 import { markdownHeadings } from "@/features/chat/chatNavigationModel";
 
 type LocalMessage = ChatMessage & { error?: string };
+export type { LocalMessage };
 
 /** 逐事件更新正在流式生成的 assistant 消息 */
-function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
+export function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
   const segments = [...msg.content.segments];
   switch (e.type) {
     case "meta":

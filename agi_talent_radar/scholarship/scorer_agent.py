@@ -102,67 +102,90 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
     try:
         submitted = False
         for round_no in range(MAX_ROUNDS):
-            # 每轮双流：reasoning_content=真思考（thinking 卡），content=评审说明（note 段）
-            # SSE 发送缓冲：token 级 delta 攒批（150ms）再发，避免前端逐 token 重渲染闪烁
-            buffers: dict[str, list[str]] = {"thinking": [], "note": []}
+            # 双流对齐问答 SSE 协议：reasoning→thinking_delta（思考卡）、content→answer_delta（正文）。
+            # 两类 buffer 职责严格分离：emit_pending 只管发增量（发完即清），
+            # trace_acc 是本轮全文累积（落库用）——之前共用一个 buffer 导致 trace 段反复重置、
+            # SSE 与落库内容错位（chunk 碎片 bug 的根因）。
+            emit_pending: dict[str, list[str]] = {"thinking": [], "answer": []}
+            trace_acc: dict[str, str] = {"thinking": "", "answer": ""}
             emit_due = [0.0]
             last_flush = [0.0]
+            # 重试轮保护：首轮流出的文本若整轮作废（流中途异常），丢弃已发内容并重置缓冲
+            emitted_any = [False]
 
-            def _push(kind: str, text: str) -> None:
+            def _on(kind: str, text: str) -> None:
                 import time as _time
 
-                buffers[kind].append(text)
+                emitted_any[0] = True
+                emit_pending[kind].append(text)
+                trace_acc[kind] += text
                 now = _time.monotonic()
                 if now - emit_due[0] > 0.15:
                     emit_due[0] = now
                     _drain()
-                # 节流写 trace：每 0.8s 刷一次，刷新/切页后能从数据库恢复进度
                 if now - last_flush[0] > 0.8:
                     last_flush[0] = now
                     _flush_open_segments()
 
-            def _drain() -> None:
-                for kind in ("thinking", "note"):
-                    if buffers[kind]:
-                        emit(f"{kind}_delta", {"text": "".join(buffers[kind])})
-                        buffers[kind].clear()
-
             def on_reasoning(text: str) -> None:
-                _push("thinking", text)
+                _on("thinking", text)
 
             def on_delta(text: str) -> None:
-                _push("note", text)
+                _on("answer", text)
+
+            def _drain() -> None:
+                for kind in ("thinking", "answer"):
+                    if emit_pending[kind]:
+                        emit(f"{kind}_delta", {"text": "".join(emit_pending[kind])})
+                        emit_pending[kind].clear()
 
             def _flush_open_segments() -> None:
-                for kind in ("thinking", "note"):
-                    merged = "".join(buffers[kind]).strip()
+                # trace 段 = 本轮到目前为止的全文（幂等覆盖同一段），落库可恢复
+                for kind in ("thinking", "answer"):
+                    merged = trace_acc[kind].strip()
                     if not merged:
                         continue
-                    seg = {"type": "thinking" if kind == "thinking" else "text", "text": merged}
+                    seg_type = "thinking" if kind == "thinking" else "text"
+                    seg = {"type": seg_type, "text": merged}
                     idx = next((i for i, s in enumerate(segments)
-                                if s.get("type") == seg["type"] and s.get("_open")), None)
+                                if s.get("type") == seg_type and s.get("_open")), None)
+                    seg["_open"] = True
                     if idx is None:
-                        seg["_open"] = True
                         segments.append(seg)
                     else:
-                        seg["_open"] = True
                         segments[idx] = seg
                 save_trace()
 
+            def _reset_round_streams() -> None:
+                """重试轮作废：撤回本轮 open 段、清空累积（SSE 已发的碎片前端会随整轮覆盖）。"""
+                for kind in ("thinking", "answer"):
+                    emit_pending[kind].clear()
+                    trace_acc[kind] = ""
+                segments[:] = [s for s in segments if not s.get("_open")]
+                emitted_any[0] = False
+
+            # llm_client 重试轮不传回调（静默收集），SSE 侧只有首轮流出；
+            # 首轮流中途作废重试时，下方以 result 完整文本覆盖 open 段兜底。
+
+            # llm_client 内部只在 attempt==0 传回调，这里直接传（重试轮由其静默）；
+            # 但首轮流中途异常重试时，已回调过的文本无法撤回 —— 用 emitted_any 检测
+            # 并在结果返回后校正 trace 段为最终完整文本。
             result = call_llm_tools(
                 messages, tools_schema(), temperature=0.2,
                 reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"),
                 on_delta=on_delta,
                 on_reasoning=on_reasoning,
             )
-            # 收尾定格：残余 delta 全部冲刷，清掉 _open 标记
+            # 收尾：以 result 的完整文本为准覆盖 open 段（消除流中途重发/碎片）
+            final_text = (result.get("text") or "").strip()
+            if final_text:
+                trace_acc["answer"] = final_text
             _drain()
             _flush_open_segments()
             for s in segments:
                 s.pop("_open", None)
-            round_note = "".join(buffers.get("note") or []).strip() or (result.get("text") or "").strip()
             tool_calls = result.get("tool_calls") or []
-            if not round_note and not tool_calls and not "".join(buffers.get("thinking") or []).strip():
+            if not trace_acc["answer"] and not trace_acc["thinking"] and not tool_calls:
                 break
             messages.append({
                 "role": "assistant",
@@ -175,7 +198,7 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
             })
             for tc in tool_calls:
                 args = _parse_args(tc.get("arguments"))
-                emit("tool_start", {"call_id": tc["id"], "tool": tc["name"], "args_summary": _brief(args)})
+                emit("tool_start", {"call_id": tc["id"], "tool": tc["name"], "label": _TOOL_LABELS.get(tc["name"], tc["name"]), "args_summary": _brief(args)})
                 output = execute_tool(ctx, tc["name"], args)
                 summary = str(output.get("summary") or "完成")
                 detail = json.dumps(output.get("detail"), ensure_ascii=False, default=str)
