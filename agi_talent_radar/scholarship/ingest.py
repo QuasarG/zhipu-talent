@@ -98,6 +98,7 @@ def upsert_application_from_feishu(session, payload: dict[str, Any]) -> tuple[Sc
     更新策略：同步字段全覆盖、旧飞书附件清掉重落（材料内容以最新推送为准）。
     """
     record_id = str(payload.get("record_id") or "").strip()
+    legacy_key = str(payload.get("legacy_record_id") or "").strip()
     # 中文名缺失时用英文名兜底（问卷里两列分开填，常有只填其一）
     name = str(payload.get("name") or "").strip() or str(payload.get("name_en") or "").strip()
     if not name:
@@ -108,6 +109,13 @@ def upsert_application_from_feishu(session, payload: dict[str, Any]) -> tuple[Sc
         app = (
             session.query(ScholarshipApplicationORM)
             .filter(ScholarshipApplicationORM.feishu_record_id == record_id)
+            .first()
+        )
+    if app is None and legacy_key and legacy_key != record_id:
+        # 早期推送以「自动编号」为幂等键建档；反解出真实 rec id 后迁移旧档，避免同一人两档
+        app = (
+            session.query(ScholarshipApplicationORM)
+            .filter(ScholarshipApplicationORM.feishu_record_id == legacy_key)
             .first()
         )
     created = app is None

@@ -56,11 +56,12 @@ def _cli(args: list[str], timeout: int = 120) -> dict:
         return {"ok": False, "error": {"message": f"cli 返回不可解析: {out[:200]}"}}
 
 
-def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool = False, country: str = "") -> dict:
+def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool = False, country: str = "", no_mark: bool = False) -> dict:
     """发确认邮件 → 成功后回写新表「是否回复并提醒=是」。
 
     is_update：修改提交后的再确认（文案区分 首次收到/已更新）。
     country：所在国家/地区——中国发中文版，其他发英文版。
+    no_mark：只发信不回写（链路灰度测试用）。
     返回 {sent, message_id?, marked?, error?, mark_error?}；
     邮件失败不回写；回写失败不影响邮件结果（journal 留痕）。
     """
@@ -99,6 +100,8 @@ def send_confirmation_email(to_email: str, applicant_name: str, is_update: bool 
         "sent": True,
         "message_id": (data.get("data") or {}).get("message_id", ""),
     }
+    if no_mark:
+        return result
     marked, mark_err = mark_replied(to_email)
     result["marked"] = marked
     if not marked:

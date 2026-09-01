@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 
 from flask import Blueprint, Response, jsonify, request
@@ -149,14 +150,27 @@ def build_scholarship_blueprint() -> Blueprint:
 
         # 模式 B：record_id 反查（凭证齐备时优先，能顺带拉附件）
         payload: dict = {}
+        real_id = ""
         if record_id and feishu_configured():
             try:
                 from agi_talent_radar.scholarship import feishu_pull
 
-                payload = feishu_pull.fetch_record(record_id)
-                payload["record_id"] = record_id
+                real_id = record_id
+                if not re.fullmatch(r"rec[A-Za-z0-9]+", real_id):
+                    # 自动化变量里没有「记录ID」，body 只带「自动编号」业务键，先反解
+                    resolved = feishu_pull.resolve_auto_number(real_id)
+                    if resolved:
+                        real_id = resolved
+                        logging.getLogger(__name__).info(
+                            "auto-number %s resolved to %s", record_id, real_id)
+                payload = feishu_pull.fetch_record(real_id)
+                payload["record_id"] = real_id
+                if real_id != record_id:
+                    # 旧档可能以「自动编号」为幂等键存过，带上让 upsert 迁移，避免重复建档
+                    payload["legacy_record_id"] = record_id
             except Exception as exc:  # noqa: BLE001 — 反查失败降级平铺，不阻断推送
                 payload = {}
+                real_id = ""
                 logging.getLogger(__name__).warning("feishu pull failed, fallback to flat body: %s", exc)
 
         if not payload:
@@ -200,33 +214,31 @@ def build_scholarship_blueprint() -> Blueprint:
                 screen_result = {"status": "imported", "missing": [], "reasons": [f"自动筛选失败: {exc}"]}
                 logging.getLogger(__name__).warning("feishu webhook auto-screen failed: %s", exc)
             session.commit()
-            # 新申请自动发确认邮件（姓名/邮箱取问卷记录）；失败不阻断同步，日志可查
+            # 自动发确认邮件（姓名/邮箱/国家取问卷记录）；首次与修改提交都发，文案区分；
+            # MAIL_ENABLED=False 时只记日志不发送；失败不阻断同步
             email_result = {"sent": False}
-            if created:
-                from agi_talent_radar.scholarship import mail_sender
+            from agi_talent_radar.scholarship import mail_sender
 
-                if mail_sender.mail_configured():
-                    try:
-                        email_result = mail_sender.send_confirmation_email(
-                            app_row.email or "", app_row.name or "",
-                            is_update=not created,
-                            country=getattr(app_row, "country", "") or "",
+            if mail_sender.mail_configured():
+                try:
+                    email_result = mail_sender.send_confirmation_email(
+                        app_row.email or "", app_row.name or "",
+                        is_update=not created,
+                        country=getattr(app_row, "country", "") or "",
+                    )
+                    if not email_result.get("sent"):
+                        logging.getLogger(__name__).warning(
+                            "confirmation mail failed: %s %s",
+                            app_row.name, email_result.get("error"),
                         )
-                        if not email_result.get("sent"):
-                            logging.getLogger(__name__).warning(
-                                "confirmation mail failed: %s %s",
-                                app_row.name, email_result.get("error"),
-                            )
-                        elif not email_result.get("marked"):
-                            logging.getLogger(__name__).warning(
-                                "table mark failed after mail sent: %s %s",
-                                app_row.name, email_result.get("mark_error"),
-                            )
-                    except Exception as exc:  # noqa: BLE001
-                        email_result = {"sent": False, "error": str(exc)}
-                        logging.getLogger(__name__).warning("confirmation mail error: %s", exc)
-                else:
-                    logging.getLogger(__name__).info("confirmation mail skipped: FEISHU_USER_REFRESH_TOKEN 未配置")
+                    elif not email_result.get("marked"):
+                        logging.getLogger(__name__).warning(
+                            "table mark failed after mail sent: %s %s",
+                            app_row.name, email_result.get("mark_error"),
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    email_result = {"sent": False, "error": str(exc)}
+                    logging.getLogger(__name__).warning("confirmation mail error: %s", exc)
         return jsonify({
             "ok": True,
             "duplicate": not created,

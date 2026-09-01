@@ -157,6 +157,52 @@ def _normalize_grade(grade_raw: str) -> str:
     return ""
 
 
+def _auto_no_text(value: Any) -> str:
+    """自动编号字段值 → 干净字符串（13.0/13 → "13"）。"""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, int):
+        return str(value)
+    return _normalize_text(value)
+
+
+def resolve_auto_number(auto_no: Any) -> str:
+    """自动编号 → 真实 record_id：分页扫问卷表精确匹配「自动编号」字段。
+
+    飞书自动化推送 body 里没有「记录ID」变量，只有「自动编号」业务键，
+    直接拿去 /records/{id} 反查必失败（如 "13" 不是 rec id），这里补一层反解。
+    自动编号在表内唯一，命中即返回；找不到返回空串。
+    """
+    target = _auto_no_text(auto_no)
+    if not target:
+        return ""
+    base = os.getenv("FEISHU_BASE_TOKEN", "").strip()
+    table = os.getenv("FEISHU_TABLE_ID", "").strip()
+    token = _tenant_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    page_token = ""
+    for _ in range(50):
+        query = "page_size=500"
+        if page_token:
+            query += f"&page_token={page_token}"
+        data = _http_json(
+            f"{_FEISHU_HOST}/open-apis/bitable/v1/apps/{base}/tables/{table}/records?{query}",
+            None, headers, method="GET",
+        )
+        if data.get("code") != 0:
+            raise RuntimeError(f"飞书记录列表失败: {data.get('msg')}")
+        page = data.get("data") or {}
+        for rec in page.get("items") or []:
+            if _auto_no_text((rec.get("fields") or {}).get("自动编号")) == target:
+                return str(rec.get("record_id") or "")
+        if not page.get("has_more"):
+            return ""
+        page_token = page.get("page_token") or ""
+        if not page_token:
+            return ""
+    return ""
+
+
 def fetch_record(record_id: str) -> dict[str, Any]:
     """反查一条问卷记录，返回归一化后的平铺 payload。
 
