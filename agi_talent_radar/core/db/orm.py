@@ -944,7 +944,7 @@ class ScholarshipApplicationORM(Base):
     brand_bonus = Column(Float, default=0.0)               # 手动品牌加分（不进 LLM 评分）
     brand_note = Column(Text, default="")
     # 飞书问卷同步字段（webhook/反查写入；NULL 表示非飞书来源——空串已迁移为 NULL 以便唯一索引）
-    feishu_record_id = Column(String(64), default=None, index=True)  # rec 开头，幂等去重键
+    feishu_record_id = Column(String(64), default=None)  # rec 开头，幂等去重键（唯一索引见 table_args）
     name_en = Column(String(128), default="")
     phone = Column(String(64), default="")
     email = Column(String(256), default="")
