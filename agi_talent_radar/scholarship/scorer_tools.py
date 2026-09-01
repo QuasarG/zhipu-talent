@@ -20,6 +20,8 @@ from agi_talent_radar.scholarship.scoring import DIMENSIONS, EVIDENCE_LEVELS, RE
 
 logger = logging.getLogger(__name__)
 
+# 视觉转译模型：实测该 key 上 GLM-5.3-Flash 可用（驼峰名 1214 不存在），可 env 覆盖
+_VISION_MODEL = os.getenv("SCORER_VISION_MODEL", "GLM-5.3-Flash")
 PAGE_CHARS = 4000          # read_file 文本分页
 TOOL_RESULT_MAX_CHARS = 6000
 MAX_ROUNDS = 20
@@ -113,7 +115,7 @@ def _vision_image(path: str) -> str:
     with open(path, "rb") as fp:
         b64 = base64.b64encode(fp.read()).decode()
     resp = _vision_client().chat.completions.create(
-        model="GLM-5.3-Highspeed-fusion-flash",
+        model=_VISION_MODEL,
         messages=[{"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": b64}},
             {"type": "text", "text": _VISION_PROMPT},
@@ -140,7 +142,7 @@ def _vision_pdf(path: str) -> str:
             import base64
 
             resp = _vision_client().chat.completions.create(
-                model="GLM-5.3-Highspeed-fusion-flash",
+                model=_VISION_MODEL,
                 messages=[{"role": "user", "content": [
                     {"type": "image_url", "image_url": {"url": base64.b64encode(b64).decode()}},
                     {"type": "text", "text": f"第 {i + 1}/{total} 页。{_VISION_PROMPT}"},
@@ -157,7 +159,7 @@ def _vision_video(path: str, filename: str) -> str:
     """视频 → 视觉模型 video_url。本机文件经签名临时 URL 供 API 拉取。"""
     url = _video_url(path)
     resp = _vision_client().chat.completions.create(
-        model="GLM-5.3-Highspeed-fusion-flash",
+        model=_VISION_MODEL,
         messages=[{"role": "user", "content": [
             {"type": "video_url", "video_url": {"url": url}},
             {"type": "text", "text": _VISION_PROMPT},
