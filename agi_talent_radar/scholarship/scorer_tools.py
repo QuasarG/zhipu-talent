@@ -429,6 +429,18 @@ def _tool_submit(ctx: ScorerContext, args: dict[str, Any]) -> dict[str, Any]:
     return {"summary": "评分已受理", "detail": {"accepted": True}}
 
 
+
+def _coerce_score(raw: Any) -> float | None:
+    """LLM 有时把 score 写成字符串或带回车等脏字符；容错转 float，失败 None。"""
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    text = str(raw or "").strip()
+    text = "".join(text.split())  # 去掉所有空白（含 \r\n\t）
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
 def _validate_final(ctx: ScorerContext, data: dict[str, Any]) -> str:
     """终态硬校验：返回错误文案（空串=通过）。"""
     dims = data.get("dimensions") or []
@@ -436,10 +448,10 @@ def _validate_final(ctx: ScorerContext, data: dict[str, Any]) -> str:
     for d in dims:
         key = str(d.get("key") or "")
         spec = next((x for x in DIMENSIONS if x["key"] == key), None)
-        try:
-            score = float(d.get("score"))
-        except (TypeError, ValueError):
-            return f"维度 {key} 的 score 不是数字"
+        score = _coerce_score(d.get("score"))
+        if score is None:
+            return f"维度 {key} 的 score 不是数字（收到 {d.get('score')!r}，请提交纯数字如 4.5）"
+        d["score"] = score  # 回写清洗后的值，_finalize 直接可用
         # 诚信维度按锚点用 0-10，其余 0-5
         hi = 10.0 if spec and spec["key"] == "integrity_risk" else 5.0
         if not 0 <= score <= hi:
