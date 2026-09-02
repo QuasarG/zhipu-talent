@@ -10,7 +10,6 @@ import { StatusChip } from "@/components/ui/Chip";
 import { parseSSE } from "@/lib/api";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import { applyEvent, type LocalMessage as LocalChatMessage } from "@/pages/TalentChat";
-import ScorerTrace from "@/features/scholarship/ScorerTrace";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import Progress from "@/components/ui/Progress";
 import Tabs from "@/components/ui/Tabs";
@@ -501,7 +500,6 @@ export default function ScholarshipPane({
     runAction("evaluate", async () => {
       setAssessmentTab("process");
       // 直接复用问答的流式消息模型：SSE 事件 → applyEvent → segments，
-      // 渲染层 ScorerTrace 吃的就是 ChatSegment 形状（问答同款组件）
       let live: LocalChatMessage = {
         id: `scoring-${app!.id}`,
         conversation_id: "",
