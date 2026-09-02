@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ThinkingOrb } from "thinking-orbs";
 import type { ChatCitation, ChatMessage, ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
-import Icon from "@/components/ui/Icon";
 import AgentWorkingBar from "@/components/ui/AgentWorkingBar";
 import ToolCallCard from "./ToolCallCard";
 import ThinkingCard from "@/components/ui/ThinkingCard";
 import ActionCard from "./ActionCard";
 import CitationBadge from "./CitationBadge";
-import { useI18n } from "@/lib/i18n";
 import { markdownHeadings } from "./chatNavigationModel";
 
 interface Props {

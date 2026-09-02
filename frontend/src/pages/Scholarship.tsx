@@ -14,7 +14,6 @@ import { StatusChip } from "@/components/ui/Chip";
 import { useSessionState } from "@/lib/sessionState";
 import ScholarshipPane, { type ScholarshipView } from "@/features/scholarship/ScholarshipPane";
 import {
-  DEGREE_LABELS,
   STATUS_LABELS,
   STATUS_TONES,
   fmtScore,

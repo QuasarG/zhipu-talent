@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import type { ChatEvent, ChatSegment, ScholarshipApplication, ScholarshipEvaluation, ScholarshipMaterial } from "@/lib/types";
+import type { ChatEvent, ChatMessage, ChatSegment, ScholarshipApplication, ScholarshipEvaluation, ScholarshipMaterial, ScorerTraceSegment } from "@/lib/types";
 import Button, { IconButton } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
@@ -406,20 +406,27 @@ function ScoreMetric({ label, value, tone = "default" }: { label: string; value:
   );
 }
 
-function TraceStatus({ status }: { status: "completed" | "running" | "failed" | "pending" }) {
-  const icon = status === "completed" ? "check" : status === "running" ? "progress_activity" : status === "failed" ? "error" : "radio_button_unchecked";
-  const tone = status === "completed" ? "bg-success text-on-primary" : status === "running" ? "bg-primary text-on-primary" : status === "failed" ? "bg-error text-on-error" : "bg-surface-high text-on-surface-variant";
-  return <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", tone)}><Icon name={icon} size={15} /></span>;
+/** 回放路径：后端存的旧 trace 段 → 问答 ChatSegment（与 live 流式同构，AssistantMessage 统一渲染） */
+function traceToChatSegments(trace: ScorerTraceSegment[]): ChatSegment[] {
+  const segs: ChatSegment[] = [];
+  for (const seg of trace) {
+    if (seg.type === "tool")
+      segs.push({ type: "tool", call_id: seg.call_id, tool: seg.tool, label: seg.label || TOOL_LABELS[seg.tool] || seg.tool, status: seg.status === "error" ? "error" : "ok", summary: seg.summary, detail: seg.detail, args_summary: "" });
+    else if (seg.type === "thinking") segs.push({ type: "thinking", text: seg.text });
+    else if (seg.type === "text") segs.push({ type: "text", text: seg.text });
+  }
+  return segs;
 }
 
 export default function ScholarshipPane({
-  app, loading, missingSelection, view, onViewChange, onRefresh, onDeleted, addDialog,
+  app, loading, missingSelection, view, onRefresh, onDeleted, addDialog,
 }: ScholarshipPaneProps) {
   const { t } = useI18n();
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [liveTrace, setLiveTrace] = useState<ChatSegment[] | null>(null);
+  const latestEval = app?.evaluations?.[app.evaluations.length - 1];
   /** 评估过程页渲染源：live 流式时直接是 applyEvent 维护的消息；回放时由 trace 转换 */
   const processMessage: ChatMessage = useMemo(() => {
     if (liveTrace) {
@@ -433,18 +440,11 @@ export default function ScholarshipPane({
         created_at: new Date().toISOString(),
       };
     }
-    const segs: ChatSegment[] = [];
-    for (const seg of latestEval?.trace ?? []) {
-      if (seg.type === "tool")
-        segs.push({ type: "tool", call_id: seg.call_id, tool: seg.tool, label: seg.label || TOOL_LABELS[seg.tool] || seg.tool, status: seg.status === "error" ? "error" : "ok", summary: seg.summary, detail: seg.detail, args_summary: "" });
-      else if (seg.type === "thinking") segs.push({ type: "thinking", text: seg.text });
-      else if (seg.type === "text") segs.push({ type: "text", text: seg.text });
-    }
     return {
       id: `trace-${latestEval?.id ?? "none"}`,
       conversation_id: "",
       role: "assistant",
-      content: { segments: segs },
+      content: { segments: traceToChatSegments(latestEval?.trace ?? []) },
       citations: [],
       status: "completed",
       created_at: latestEval?.created_at ?? new Date().toISOString(),
@@ -458,7 +458,6 @@ export default function ScholarshipPane({
     () => [...(app?.evaluations ?? [])].reverse().find((e) => e.status === "completed"),
     [app],
   );
-  const latestEval = app?.evaluations?.[app.evaluations.length - 1];
   const materials = app?.materials ?? EMPTY_MATERIALS;
   const groupedMaterials = useMemo(() => {
     const groups = new Map<string, ScholarshipMaterial[]>();
@@ -528,7 +527,7 @@ export default function ScholarshipPane({
           const payload = (event.payload ?? {}) as Record<string, unknown>;
           if (type === "done") {
             const final = payload as unknown as ScholarshipEvaluation;
-            setLiveTrace(final.trace ?? []);
+            setLiveTrace(traceToChatSegments(final.trace ?? []));
             break;
           }
           if (type === "error") throw new Error(String(payload.message ?? t("评估失败")));
@@ -705,7 +704,10 @@ export default function ScholarshipPane({
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <div><h2 className="text-title-lg">{t("评分明细")}</h2><p className="mt-0.5 text-label text-on-surface-variant">{latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : t("尚未生成评分结果")}</p></div>
-                  <StatusChip tone={latestEval?.status === "failed" ? "error" : latestCompleted ? "success" : "neutral"}>{latestEval?.status === "running" ? t("评估中…") : latestEval?.status === "failed" ? t("评估失败") : latestCompleted ? t("已完成") : t("未开始")}</StatusChip>
+                  <div className="flex items-center gap-2">
+                    <StatusChip tone={latestEval?.status === "failed" ? "error" : latestCompleted ? "success" : "neutral"}>{latestEval?.status === "running" ? t("评估中…") : latestEval?.status === "failed" ? t("评估失败") : latestCompleted ? t("已完成") : t("未开始")}</StatusChip>
+                    {latestEval && <Button variant="tonal" icon="grade" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>{latestEval?.status === "failed" ? t("重新评估") : t("再次评估")}</Button>}
+                  </div>
                 </div>
                 {latestEval?.status === "running" ? <div className="rounded-lg border border-outline-variant px-4 py-6"><LoadingIndicator size={20} label={t("评估中…")} /></div> : latestEval?.status === "failed" ? <p className="rounded-lg border border-error/40 bg-error-container px-4 py-3 text-body-sm text-error">{t("评估失败：{msg}", { msg: latestEval.error_message || t("未知错误") })}</p> : !latestCompleted ? <div className="rounded-lg border border-dashed border-outline-variant px-4 py-6 text-center"><p className="text-body-sm text-on-surface-variant">{t("暂无评估结果")}</p><Button variant="tonal" icon="grade" className="mt-3" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>{t("开始评估")}</Button></div> : (
                   <>

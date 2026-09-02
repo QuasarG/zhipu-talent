@@ -17,8 +17,6 @@ import type {
   ResumeVersionEntry,
   ResumeOriginalMetadata,
   ScholarshipApplication,
-  ScholarshipEvaluation,
-  ScholarshipReputationItem,
   TalentGroup,
 } from "./types";
 
