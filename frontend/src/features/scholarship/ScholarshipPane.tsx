@@ -1,5 +1,6 @@
 // 奖学金资料工作台：申请人信息 / 材料预览 / 评估与核验
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { ChatEvent, ChatMessage, ChatSegment, ScholarshipApplication, ScholarshipEvaluation, ScholarshipMaterial, ScorerTraceSegment } from "@/lib/types";
@@ -10,6 +11,7 @@ import { StatusChip } from "@/components/ui/Chip";
 import { parseSSE } from "@/lib/api";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import { applyEvent, type LocalMessage as LocalChatMessage } from "@/pages/TalentChat";
+import { RecordSection, MetaField, RecordIndex } from "@/features/resume/ResumeContent";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import Progress from "@/components/ui/Progress";
 import Tabs from "@/components/ui/Tabs";
@@ -32,6 +34,22 @@ function StatusBadge({ status }: { status: string }) {
     <StatusChip tone={STATUS_TONES[status] ?? "neutral"}>
       {t(STATUS_LABELS[status] ?? status)}
     </StatusChip>
+  );
+}
+
+/** 评分总览统计带单元格：对齐结构化简历的 MetaField 语系（小标签在上，值在下），数字用等宽 */
+function StatCell({ label, value, emphasis = false }: { label: string; value: ReactNode; emphasis?: boolean }) {
+  const numeric = typeof value === "string";
+  return (
+    <div className="min-w-0 bg-surface-lowest px-4 py-3">
+      <p className="text-label text-on-surface-variant">{label}</p>
+      <div className={cn(
+        "mt-1.5 flex min-h-7 items-center",
+        numeric ? cn("font-mono tabular-nums leading-none text-on-surface", emphasis ? "text-display" : "text-headline") : "",
+      )}>
+        {value}
+      </div>
+    </div>
   );
 }
 
@@ -191,6 +209,12 @@ const TIER_LABELS: Record<string, string> = {
   borderline: "边缘",
   not_recommend: "不推荐",
 };
+const TIER_TONES: Record<string, "success" | "primary" | "warning" | "error"> = {
+  strong: "success",
+  recommend: "primary",
+  borderline: "warning",
+  not_recommend: "error",
+};
 type AssessmentTab = "score" | "process";
 const EMPTY_MATERIALS: ScholarshipMaterial[] = [];
 
@@ -232,19 +256,6 @@ function materialType(filename: string): string {
   const suffix = filename.split(".").pop()?.toUpperCase();
   return suffix && suffix.length <= 5 ? suffix : "FILE";
 }
-
-function InfoField({ icon, label, value, wide = false }: { icon: string; label: string; value: string; wide?: boolean }) {
-  return (
-    <div className={cn("min-w-0", wide && "sm:col-span-2")}>
-      <dt className="flex items-center gap-1.5 text-label text-on-surface-variant">
-        <Icon name={icon} size={15} />
-        {label}
-      </dt>
-      <dd className="mt-1 break-words text-body-sm leading-5 text-on-surface" title={value}>{value || "—"}</dd>
-    </div>
-  );
-}
-
 function MaterialExplorer({
   materials,
   groupedMaterials,
@@ -390,19 +401,6 @@ function MaterialExplorer({
         </div>
       </div>
     </section>
-  );
-}
-
-function ScoreMetric({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "primary" | "warning" }) {
-  return (
-    <div className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-3">
-      <p className="text-label text-on-surface-variant">{label}</p>
-      <p className={cn(
-        "mt-1 font-mono text-title-lg tabular-nums",
-        tone === "primary" && "text-primary",
-        tone === "warning" && "text-warning",
-      )}>{value}</p>
-    </div>
   );
 }
 
@@ -577,17 +575,25 @@ export default function ScholarshipPane({
               {(app.name || t("未命名")).charAt(0)}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-headline leading-tight">{app.name || t("未命名")}</h1>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <h1 className="truncate text-headline font-bold leading-tight text-on-surface">{app.name || t("未命名")}</h1>
+                {app.name_en && <span className="truncate text-body-sm text-on-surface-variant">{app.name_en}</span>}
                 <StatusBadge status={app.status} />
                 {app.feishu_record_id && <span className="inline-flex items-center gap-1 text-label text-on-surface-variant"><Icon name="cloud_done" size={13} />{t("飞书同步")}</span>}
               </div>
-              <p className="mt-1 truncate text-body-sm text-on-surface-variant">
-                {[app.school, app.lab, app.direction].filter(Boolean).join(" · ") || "—"}
-              </p>
-              <p className="mt-0.5 truncate text-label text-on-surface-variant">
-                {[app.degree_type ? t(DEGREE_LABELS[app.degree_type] ?? app.degree_type) : "", app.grade, app.expected_graduation ? `${t("预计毕业")} ${app.expected_graduation}` : "", app.name_en].filter(Boolean).join(" · ") || "—"}
-              </p>
+              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 xl:grid-cols-4">
+                <MetaField label={t("学校")} value={app.school} />
+                <MetaField label={t("实验室")} value={app.lab} />
+                <MetaField label={t("研究方向")} value={app.direction} />
+                <MetaField label={t("学位与年级")} value={[app.degree_type ? t(DEGREE_LABELS[app.degree_type] ?? app.degree_type) : "", app.grade].filter(Boolean).join(" · ")} />
+                <MetaField label={t("预计毕业")} value={app.expected_graduation} />
+                <MetaField label={t("推荐导师")} wide value={
+                  <>
+                    {app.advisors?.join(t("、")) || "—"}
+                    {app.advisor_title && <span className="ml-2 text-label text-on-surface-variant">{app.advisor_title}</span>}
+                  </>
+                } />
+              </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
               {confirmingDelete ? (
@@ -599,16 +605,6 @@ export default function ScholarshipPane({
               ) : <IconButton icon="delete" size={18} title={t("删除")} disabled={!!acting} onClick={() => setConfirmingDelete(true)} />}
             </div>
           </div>
-          {(app.advisors?.length || app.advisor_title) && (
-            <div className="mt-3 flex items-center gap-2 rounded-md border border-outline-variant bg-surface-low/60 px-3 py-1.5">
-              <Icon name="supervisor_account" size={16} className="shrink-0 text-on-surface-variant" />
-              <span className="shrink-0 text-label font-medium text-on-surface-variant">{t("推荐导师")}</span>
-              <span className="min-w-0 truncate text-body-sm text-on-surface">
-                {app.advisors?.join(t("、")) || "—"}
-                {app.advisor_title && <span className="ml-2 text-label text-on-surface-variant">{app.advisor_title}</span>}
-              </span>
-            </div>
-          )}
           {acting && <div className="mt-2 inline-flex items-center gap-1.5 text-label text-on-surface-variant"><LoadingIndicator size={13} />{acting === "evaluate" ? t("评估中…") : t("删除中…")}</div>}
           {error && <p className="mt-2 text-body-sm text-error">{error}</p>}
         </div>
@@ -619,7 +615,7 @@ export default function ScholarshipPane({
             onChange={setAssessmentTab}
             className="shrink-0 px-2"
             items={[
-              { value: "score", label: t("评分结果"), badge: latestCompleted ? "✓" : undefined },
+              { value: "score", label: t("评分结果") },
               { value: "process", label: t("评估过程") },
             ]}
           />
@@ -627,57 +623,51 @@ export default function ScholarshipPane({
 
         {view === "overview" && (
           <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.62fr)]">
-            <div className="min-h-0 overflow-y-auto px-5 py-4 space-y-4">
+            <div className="min-h-0 overflow-y-auto px-5 py-4">
               {(app.status === "material_incomplete" || app.status === "ineligible") && (
-                <section className="mb-5 rounded-lg border border-warning/40 bg-warning-container/40 px-4 py-3">
+                <section className="mb-4 rounded-md border border-warning/40 bg-warning-container/40 px-4 py-3">
                   <div className="flex items-center gap-2 text-body-sm font-medium text-warning"><Icon name="warning" size={17} />{t("筛选需要处理")}</div>
                   {(app.screening_detail?.missing ?? []).length > 0 && <p className="mt-1 text-body-sm text-on-surface">{t("缺少材料：")}{(app.screening_detail.missing ?? []).map((kind) => t(MATERIAL_KIND_LABELS[kind] ?? kind)).join(t("、"))}</p>}
                   {(app.screening_detail?.reasons ?? []).map((reason) => <p key={reason} className="mt-1 text-body-sm text-error">{reason}</p>)}
                 </section>
               )}
 
-              <section className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-title-lg">{t("研究方向简述")}</h2>
-                  <span className="text-label text-on-surface-variant">{t("申请人自述")}</span>
+              <RecordSection title={t("研究方向简述")} icon="edit_note" meta={t("申请人自述")} className="mb-4">
+                <div className="px-4 py-3">
+                  <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-body-sm leading-6 text-on-surface">
+                    {app.research_summary || t("暂无研究方向简述")}
+                  </p>
                 </div>
-                <p className="mt-3 max-h-40 overflow-y-auto border-l-2 border-primary-container pl-3 text-body-sm leading-6 text-on-surface whitespace-pre-wrap">
-                  {app.research_summary || t("暂无研究方向简述")}
-                </p>
-              </section>
+              </RecordSection>
 
-              <section className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-4">
-                <h2 className="text-title-lg">{t("关键资料")}</h2>
-                <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
-                  <InfoField icon="school" label={t("学校")} value={app.school} />
-                  <InfoField icon="science" label={t("实验室")} value={app.lab} />
-                  <InfoField icon="explore" label={t("研究方向")} value={app.direction} />
-                  <InfoField icon="school" label={t("学位与年级")} value={[app.degree_type ? t(DEGREE_LABELS[app.degree_type] ?? app.degree_type) : "", app.grade].filter(Boolean).join(" · ")} />
-                  <InfoField icon="event" label={t("预计毕业")} value={app.expected_graduation} />
-                  <InfoField icon="cloud_done" label={t("申请来源")} value={app.feishu_record_id ? t("飞书问卷") : t("手动添加")} />
-                  <InfoField icon="person" label={t("导师")} value={app.advisors?.join(t("、")) || "—"} wide />
-                </dl>
-              </section>
-
-              <section className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-title-lg">{t("教育与科研经历")}</h2>
-                  {app.submitted_at && <span className="text-label text-on-surface-variant">{t("提交于 {v}", { v: formatDate(app.submitted_at) })}</span>}
+              <RecordSection title={t("关键资料")} icon="badge" className="mb-4">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
+                  <MetaField label={t("学校")} value={app.school} />
+                  <MetaField label={t("实验室")} value={app.lab} />
+                  <MetaField label={t("研究方向")} value={app.direction} />
+                  <MetaField label={t("学位与年级")} value={[app.degree_type ? t(DEGREE_LABELS[app.degree_type] ?? app.degree_type) : "", app.grade].filter(Boolean).join(" · ")} />
+                  <MetaField label={t("预计毕业")} value={app.expected_graduation} />
+                  <MetaField label={t("申请来源")} value={app.feishu_record_id ? t("飞书问卷") : t("手动添加")} />
+                  <MetaField label={t("导师")} wide value={app.advisors?.join(t("、"))} />
                 </div>
-                <p className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap text-body-sm leading-6 text-on-surface">
-                  {app.education_history || t("暂无教育与科研经历")}
-                </p>
-              </section>
+              </RecordSection>
 
-              <section className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-4">
-                <h2 className="text-title-lg">{t("联系方式")}</h2>
-                <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
-                  <InfoField icon="mail" label={t("邮箱")} value={app.email} />
-                  <InfoField icon="phone" label={t("电话")} value={app.phone} />
-                  <InfoField icon="public" label={t("所在地区")} value={app.country} />
-                  <InfoField icon="schedule" label={t("材料数量")} value={t("{n} 份", { n: materials.length })} />
-                </dl>
-              </section>
+              <RecordSection title={t("教育与科研经历")} icon="school" className="mb-4" meta={app.submitted_at ? t("提交于 {v}", { v: formatDate(app.submitted_at) }) : undefined}>
+                <div className="px-4 py-3">
+                  <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-body-sm leading-6 text-on-surface">
+                    {app.education_history || t("暂无教育与科研经历")}
+                  </p>
+                </div>
+              </RecordSection>
+
+              <RecordSection title={t("联系方式")} icon="contact_mail">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
+                  <MetaField label={t("邮箱")} value={app.email} />
+                  <MetaField label={t("电话")} value={app.phone} />
+                  <MetaField label={t("所在地区")} value={app.country} />
+                  <MetaField label={t("材料数量")} value={t("{n} 份", { n: materials.length })} />
+                </div>
+              </RecordSection>
             </div>
             <div className="min-h-0 border-t border-outline-variant p-4 lg:border-l lg:border-t-0">
               <MaterialExplorer materials={materials} groupedMaterials={groupedMaterials} compact />
@@ -692,64 +682,117 @@ export default function ScholarshipPane({
         {view === "assessment" && (
           <div ref={processRef} className="min-h-0 flex-1 overflow-y-auto">
             {assessmentTab === "score" && (
-              <div className="mx-auto w-full max-w-4xl flex-col gap-5 flex px-5 py-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.2fr_repeat(2,minmax(0,1fr))]">
-                  <div className="rounded-lg bg-primary px-4 py-3 text-on-primary">
-                    <p className="text-label opacity-75">{t("当前总分")}</p>
-                    <p className="mt-1 font-mono text-display leading-none tabular-nums">{fmtScore(app.total_score)}</p>
-                    <p className="mt-2 text-label opacity-75">{t("脱敏盲评分")}</p>
-                  </div>
-                  <ScoreMetric label={t("脱敏分")} value={fmtScore(app.blind_score)} />
-                  <ScoreMetric label={t("推荐档位")} value={latestCompleted?.recommend_tier ? t(TIER_LABELS[latestCompleted.recommend_tier] ?? latestCompleted.recommend_tier) : "—"} />
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div><h2 className="text-title-lg">{t("评分明细")}</h2><p className="mt-0.5 text-label text-on-surface-variant">{latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : t("尚未生成评分结果")}</p></div>
-                  <div className="flex items-center gap-2">
-                    <StatusChip tone={latestEval?.status === "failed" ? "error" : latestCompleted ? "success" : "neutral"}>{latestEval?.status === "running" ? t("评估中…") : latestEval?.status === "failed" ? t("评估失败") : latestCompleted ? t("已完成") : t("未开始")}</StatusChip>
-                    {latestEval && <Button variant="tonal" icon="grade" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>{latestEval?.status === "failed" ? t("重新评估") : t("再次评估")}</Button>}
-                  </div>
-                </div>
-                {latestEval?.status === "running" ? <div className="rounded-lg border border-outline-variant px-4 py-6"><LoadingIndicator size={20} label={t("评估中…")} /></div> : latestEval?.status === "failed" ? <p className="rounded-lg border border-error/40 bg-error-container px-4 py-3 text-body-sm text-error">{t("评估失败：{msg}", { msg: latestEval.error_message || t("未知错误") })}</p> : !latestCompleted ? <div className="rounded-lg border border-dashed border-outline-variant px-4 py-6 text-center"><p className="text-body-sm text-on-surface-variant">{t("暂无评估结果")}</p><Button variant="tonal" icon="grade" className="mt-3" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>{t("开始评估")}</Button></div> : (
-                  <>
-                    <div className="flex flex-col gap-2">
-                      {latestCompleted.dimensions.map((dimension) => {
+              <div className="mx-auto w-full max-w-4xl px-5 py-4">
+                <RecordSection
+                  title={t("评分总览")}
+                  icon="workspace_premium"
+                  className="mb-4"
+                  meta={latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : undefined}
+                  action={
+                    <Button variant={latestCompleted || latestEval?.status === "failed" ? "tonal" : "filled"} icon="refresh" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>
+                      {latestCompleted || latestEval?.status === "failed" ? t("重新评估") : t("开始评估")}
+                    </Button>
+                  }
+                >
+                  {latestEval?.status === "running" ? (
+                    <div className="flex items-center justify-center px-4 py-10"><LoadingIndicator size={22} label={t("评估中…")} /></div>
+                  ) : (
+                    <>
+                      {latestEval?.status === "failed" && (
+                        <p className="border-b border-outline-variant bg-error-container/40 px-4 py-3 text-body-sm text-error">
+                          {t("评估失败：{msg}", { msg: latestEval.error_message || t("未知错误") })}
+                        </p>
+                      )}
+                      {latestCompleted ? (
+                        <>
+                          <div className="grid grid-cols-2 gap-px bg-outline-variant sm:grid-cols-4">
+                            <StatCell label={t("当前总分")} emphasis value={fmtScore(app.total_score)} />
+                            <StatCell label={t("脱敏盲评分")} value={fmtScore(app.blind_score)} />
+                            <StatCell label={t("推荐档位")} value={
+                              latestCompleted.recommend_tier
+                                ? <StatusChip tone={TIER_TONES[latestCompleted.recommend_tier] ?? "neutral"} variant="filled">{t(TIER_LABELS[latestCompleted.recommend_tier] ?? latestCompleted.recommend_tier)}</StatusChip>
+                                : "—"
+                            } />
+                            <StatCell label={t("评估状态")} value={
+                              <StatusChip tone={latestEval?.status === "failed" ? "error" : "success"}>{latestEval?.status === "failed" ? t("评估失败") : t("已完成")}</StatusChip>
+                            } />
+                          </div>
+                          <p className="border-t border-outline-variant px-4 py-2 text-label text-on-surface-variant">{t("已按脱敏分与舆情调整汇总")}</p>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1 px-4 py-10 text-center">
+                          <p className="text-body-sm text-on-surface-variant">{t("尚未生成评分结果")}</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </RecordSection>
+
+                {latestCompleted && (
+                  <RecordSection title={t("评分明细")} icon="checklist" count={latestCompleted.dimensions.length} className="mb-4">
+                    <div className="divide-y divide-outline-variant">
+                      {latestCompleted.dimensions.map((dimension, index) => {
                         const max = dimension.key === "integrity_risk" ? 10 : 5;
                         return (
-                          <div key={dimension.key} className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-body font-medium text-on-surface">{dimension.label}</span>
-                              {dimension.evidence_level && (
-                                <StatusChip tone={dimension.evidence_level === "verified" ? "success" : dimension.evidence_level === "supported" ? "info" : "neutral"}>
-                                  {t(EVIDENCE_LABELS[dimension.evidence_level] ?? dimension.evidence_level)}
-                                </StatusChip>
-                              )}
-                              <span className="ml-auto font-mono text-label tabular-nums text-on-surface-variant">{dimension.score}/{max} · 满分 {dimension.max_points}</span>
+                          <article key={dimension.key} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 px-4 py-3.5">
+                            <RecordIndex value={index + 1} />
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <h4 className="text-title font-bold text-on-surface">{dimension.label}</h4>
+                                {dimension.evidence_level && (
+                                  <StatusChip tone={dimension.evidence_level === "verified" ? "success" : dimension.evidence_level === "supported" ? "info" : "neutral"}>
+                                    {t(EVIDENCE_LABELS[dimension.evidence_level] ?? dimension.evidence_level)}
+                                  </StatusChip>
+                                )}
+                                <span className="ml-auto shrink-0 font-mono text-body font-medium tabular-nums text-on-surface">
+                                  {fmtScore(dimension.score)}<span className="text-on-surface-variant">/{max}</span>
+                                </span>
+                                <span className="shrink-0 text-label text-on-surface-variant">{t("满分 {n}", { n: dimension.max_points })}</span>
+                              </div>
+                              <Progress value={(dimension.score / max) * 100} className="mt-2.5" />
+                              {dimension.reason && <p className="mt-2 text-body-sm leading-6 text-on-surface-variant">{dimension.reason}</p>}
                             </div>
-                            <Progress value={(dimension.score / max) * 100} className="my-2" />
-                            {dimension.reason && <p className="text-body-sm leading-6 text-on-surface-variant">{dimension.reason}</p>}
-                          </div>
+                          </article>
                         );
                       })}
                     </div>
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                      <div><p className="mb-2 text-label text-on-surface-variant">{t("亮点")}</p><ul className="flex flex-col gap-1.5">{latestCompleted.highlights.map((highlight) => <li key={highlight} className="flex items-start gap-2 text-body-sm"><Icon name="check_circle" size={16} className="mt-0.5 shrink-0 text-success" />{highlight}</li>)}{!latestCompleted.highlights.length && <li className="text-body-sm text-on-surface-variant">—</li>}</ul></div>
-                      <div><p className="mb-2 text-label text-on-surface-variant">{t("风险")}</p><ul className="flex flex-col gap-1.5">{latestCompleted.risks.map((risk) => <li key={risk} className="flex items-start gap-2 text-body-sm"><Icon name="warning" size={16} className="mt-0.5 shrink-0 text-warning" />{risk}</li>)}{!latestCompleted.risks.length && <li className="text-body-sm text-on-surface-variant">—</li>}</ul></div>
-                    </div>
-                    {findings.length > 0 && (
-                      <div className="rounded-lg border border-error/40 bg-error-container/30 px-4 py-3">
-                        <p className="flex items-center gap-2 text-body-sm font-medium text-error"><Icon name="report" size={16} />{t("舆情发现（供人工参考，不计入自动分）")}</p>
-                        <ul className="mt-2 flex flex-col gap-2">
-                          {findings.map((f, i) => (
-                            <li key={i} className="flex flex-wrap items-center gap-2 text-body-sm">
-                              <StatusChip tone={f.sentiment === "negative" ? "error" : "success"} variant="dot">{f.sentiment === "negative" ? t("负面") : t("正面")}</StatusChip>
-                              <a href={f.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">{f.title || f.url}</a>
-                              {f.note && <span className="text-label text-on-surface-variant">{f.note}</span>}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
+                  </RecordSection>
+                )}
+
+                {latestCompleted && (
+                  <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <RecordSection title={t("亮点")} icon="auto_awesome">
+                      <ul className="divide-y divide-outline-variant">
+                        {latestCompleted.highlights.map((highlight) => (
+                          <li key={highlight} className="flex items-start gap-2 px-4 py-2.5 text-body-sm text-on-surface"><Icon name="check_circle" size={16} className="mt-0.5 shrink-0 text-success" />{highlight}</li>
+                        ))}
+                        {!latestCompleted.highlights.length && <li className="px-4 py-3 text-body-sm text-on-surface-variant">—</li>}
+                      </ul>
+                    </RecordSection>
+                    <RecordSection title={t("风险")} icon="warning">
+                      <ul className="divide-y divide-outline-variant">
+                        {latestCompleted.risks.map((risk) => (
+                          <li key={risk} className="flex items-start gap-2 px-4 py-2.5 text-body-sm text-on-surface"><Icon name="warning" size={16} className="mt-0.5 shrink-0 text-warning" />{risk}</li>
+                        ))}
+                        {!latestCompleted.risks.length && <li className="px-4 py-3 text-body-sm text-on-surface-variant">—</li>}
+                      </ul>
+                    </RecordSection>
+                  </div>
+                )}
+
+                {findings.length > 0 && (
+                  <RecordSection title={t("舆情发现")} icon="public" count={findings.length}>
+                    <ul className="divide-y divide-outline-variant">
+                      {findings.map((f, i) => (
+                        <li key={i} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-body-sm">
+                          <StatusChip tone={f.sentiment === "negative" ? "error" : "success"} variant="dot">{f.sentiment === "negative" ? t("负面") : t("正面")}</StatusChip>
+                          <a href={f.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">{f.title || f.url}</a>
+                          {f.note && <span className="text-label text-on-surface-variant">{f.note}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="border-t border-outline-variant px-4 py-2 text-label text-on-surface-variant">{t("舆情发现（供人工参考，不计入自动分）")}</p>
+                  </RecordSection>
                 )}
               </div>
             )}

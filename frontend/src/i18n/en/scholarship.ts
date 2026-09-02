@@ -161,4 +161,12 @@ export default {
   "下载原件": "Download original",
   "推荐导师": "Nominating Advisor",
   "不符合申报条件": "Not Eligible",
+  "评分总览": "Score Summary",
+  "重新评估": "Re-evaluate",
+  "评估状态": "Status",
+  "评估失败": "Failed",
+  "满分 {n}": "Max {n} pts",
+  "舆情发现": "Reputation Findings",
+  "邮箱": "Email",
+  "电话": "Phone",
 } as Record<string, string>;

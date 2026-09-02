@@ -374,16 +374,22 @@ interface RecordSectionProps {
   children: ReactNode;
   /** 导入预览态：无内容时显示等待骨架而非"暂无数据" */
   importing?: boolean;
+  /** 标题行右侧主操作（如「重新评估」）；无 meta 时靠右 */
+  action?: ReactNode;
+  /** 标题行右侧次要说明（如版本 · 时间），有 action 时排在它前面 */
+  meta?: string;
 }
 
-function RecordSection({ title, icon, count, className, children, importing }: RecordSectionProps) {
+export function RecordSection({ title, icon, count, className, children, importing, action, meta }: RecordSectionProps) {
   const { t } = useI18n();
   return (
     <section className={`border border-outline-variant rounded-md overflow-hidden bg-surface-lowest ${className || ""}`}>
       <div className="flex items-center gap-2 min-h-11 px-4 py-2.5 border-b border-outline-variant bg-surface-low">
         <Icon name={icon} size={18} className="text-primary" />
         <h3 className="text-title-lg font-bold text-on-surface">{title}</h3>
-        {count !== undefined && <span className="ml-auto text-label text-on-surface-variant">{t("{n} 条", { n: count })}</span>}
+        {count !== undefined && <span className="text-label text-on-surface-variant">{t("{n} 条", { n: count })}</span>}
+        {meta && <span className="ml-auto min-w-0 truncate text-label text-on-surface-variant">{meta}</span>}
+        {action && <div className={`flex shrink-0 items-center gap-2 ${meta ? "ml-3" : "ml-auto"}`}>{action}</div>}
       </div>
       <div>{children || (importing ? <SkeletonRows /> : <EmptyText />)}</div>
     </section>
@@ -409,7 +415,7 @@ function EmptyText() {
   return <p className="px-4 py-4 text-body-sm text-on-surface-variant">{t("暂无数据")}</p>;
 }
 
-function MetaField({ label, value, wide = false }: { label: string; value?: ReactNode; wide?: boolean }) {
+export function MetaField({ label, value, wide = false }: { label: string; value?: ReactNode; wide?: boolean }) {
   const { t } = useI18n();
   return (
     <div className={wide ? "col-span-2 min-w-0" : "min-w-0"}>
@@ -497,7 +503,7 @@ function ProjectList({ detail, importing }: { detail: CandidateDetail; importing
   );
 }
 
-function DetailLines({ items }: { items?: string[] }) {
+export function DetailLines({ items }: { items?: string[] }) {
   if (!items?.length) return null;
   return (
     <ul className="mt-2 space-y-1">
@@ -511,7 +517,7 @@ function DetailLines({ items }: { items?: string[] }) {
   );
 }
 
-function RecordIndex({ value }: { value: number }) {
+export function RecordIndex({ value }: { value: number }) {
   return (
     <span className="flex items-center justify-center w-7 h-7 rounded-sm bg-surface-high text-label font-bold text-on-surface-variant tabular-nums">
       {String(value).padStart(2, "0")}
