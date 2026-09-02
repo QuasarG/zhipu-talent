@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { ChatSegment } from "@/lib/types";
 import Icon from "@/components/ui/Icon";
 import { ThinkingOrb } from "thinking-orbs";
@@ -16,8 +16,9 @@ function prettyDetail(detail: string): string {
   }
 }
 
-/** 工具调用卡片：运行中 = shaping orb 轨迹形变动效；完成后折叠成一行摘要 */
-export default function ToolCallCard({ segment }: { segment: ToolSegment }) {
+/** 工具调用卡片：运行中 = shaping orb 轨迹形变动效；完成后折叠成一行摘要。
+ *  memo：流式时段对象引用稳定，已完成卡片不随每 token 重渲染（防闪烁）。 */
+export default memo(function ToolCallCard({ segment }: { segment: ToolSegment }) {
   const [expanded, setExpanded] = useState(false);
   const { t } = useI18n();
   const running = !segment.status;
@@ -64,4 +65,4 @@ export default function ToolCallCard({ segment }: { segment: ToolSegment }) {
       )}
     </div>
   );
-}
+});

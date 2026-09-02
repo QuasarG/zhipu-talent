@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import type { ChatEvent, ChatMessage, ChatSegment, ScholarshipApplication, ScholarshipEvaluation, ScholarshipMaterial, ScorerTraceSegment } from "@/lib/types";
+import type { ChatCitation, ChatEvent, ChatMessage, ChatSegment, ScholarshipApplication, ScholarshipEvaluation, ScholarshipMaterial, ScorerTraceSegment } from "@/lib/types";
 import Button, { IconButton } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
@@ -217,6 +217,9 @@ const TIER_TONES: Record<string, "success" | "primary" | "warning" | "error"> = 
 };
 type AssessmentTab = "score" | "process";
 const EMPTY_MATERIALS: ScholarshipMaterial[] = [];
+/** 稳定空引用数组：每 tick 新建会让 AssistantMessage 的 plugins 重建，触发全量 markdown 重解析（闪烁） */
+const EMPTY_CITATIONS: ChatCitation[] = [];
+const NO_ON_DECIDE = () => {};
 
 export interface ScholarshipPaneProps {
   app: ScholarshipApplication | null;
@@ -433,7 +436,7 @@ export default function ScholarshipPane({
         conversation_id: "",
         role: "assistant",
         content: { segments: liveTrace },
-        citations: [],
+        citations: EMPTY_CITATIONS,
         status: "running",
         created_at: new Date().toISOString(),
       };
@@ -443,13 +446,14 @@ export default function ScholarshipPane({
       conversation_id: "",
       role: "assistant",
       content: { segments: traceToChatSegments(latestEval?.trace ?? []) },
-      citations: [],
+      citations: EMPTY_CITATIONS,
       status: "completed",
       created_at: latestEval?.created_at ?? new Date().toISOString(),
     };
   }, [liveTrace, latestEval]);
-  // 过程容器自动滚底（问答 convRef 同款）：流式追加时视口钉在底部，上面的卡不因滚动锚点跳
+  // 过程容器自动滚底：仅当用户本就贴在底部时跟随；上翻阅读即放手（否则每 token 被拽回=无法滚动）
   const processRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const [assessmentTab, setAssessmentTab] = useState<AssessmentTab>("score");
 
   const latestCompleted = useMemo(
@@ -474,9 +478,10 @@ export default function ScholarshipPane({
   }, [app?.id]);
 
   useEffect(() => {
-    // 流式期间钉住底部（问答自动滚底同款）
-    if (liveTrace && processRef.current) {
-      processRef.current.scrollTo(0, processRef.current.scrollHeight);
+    // 流式期间贴底跟随（用户上翻超过阈值即停止拽底）
+    const el = processRef.current;
+    if (liveTrace && el && stickToBottomRef.current) {
+      el.scrollTo(0, el.scrollHeight);
     }
   }, [liveTrace]);
 
@@ -496,6 +501,7 @@ export default function ScholarshipPane({
   const handleEvaluate = () =>
     runAction("evaluate", async () => {
       setAssessmentTab("process");
+      stickToBottomRef.current = true;
       // 直接复用问答的流式消息模型：SSE 事件 → applyEvent → segments，
       let live: LocalChatMessage = {
         id: `scoring-${app!.id}`,
@@ -797,10 +803,17 @@ export default function ScholarshipPane({
         )}
 
         {view === "assessment" && assessmentTab === "process" && (
-          <div ref={processRef} className="min-h-0 flex-1 overflow-y-auto">
+          <div
+            ref={processRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+            }}
+            className="min-h-0 flex-1 overflow-y-auto"
+          >
             <div className="mx-auto w-full max-w-4xl px-5 py-4">
               <div className="mb-5"><h2 className="text-title-lg">{t("评估过程")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("评审 agent 的工作记录：读了哪些材料、查证了什么、如何下结论")}</p></div>
-              <AssistantMessage message={processMessage} busy={!!liveTrace} onDecide={() => {}} />
+              <AssistantMessage message={processMessage} busy={!!liveTrace} onDecide={NO_ON_DECIDE} />
             </div>
           </div>
         )}

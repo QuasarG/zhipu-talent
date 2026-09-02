@@ -92,6 +92,8 @@ export default function TalentChat() {
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [busy, setBusy] = useState(false);
   const convRef = useRef<HTMLDivElement>(null);
+  // 贴底跟随开关：流式期间用户上翻（离底>120px）即停止拽底，回到底部自动恢复
+  const stickToBottomRef = useRef(true);
   const activeIdRef = useRef<string>("");
   // 发送时新建会话会触发 currentId 变化，跳过一次消息加载（否则会清掉刚追加的消息）
   const skipNextLoad = useRef(false);
@@ -182,6 +184,7 @@ export default function TalentChat() {
 
   useEffect(() => {
     currentIdRef.current = currentId;
+    stickToBottomRef.current = true;
     if (!currentId) {
       setMessages([]);
       return;
@@ -195,7 +198,10 @@ export default function TalentChat() {
   }, [currentId]);
 
   useEffect(() => {
-    convRef.current?.scrollTo(0, convRef.current.scrollHeight);
+    const el = convRef.current;
+    if (el && stickToBottomRef.current) {
+      el.scrollTo(0, el.scrollHeight);
+    }
   }, [messages]);
 
   const reportHeadings = useMemo(() => {
@@ -375,7 +381,14 @@ export default function TalentChat() {
         />
 
         <div className="flex-1 min-w-0 flex flex-col w-full max-w-5xl mx-auto">
-          <div ref={convRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-5 pr-1 pb-2">
+          <div
+            ref={convRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+            }}
+            className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-5 pr-1 pb-2"
+          >
             {reportHeadings.length >= 2 && (
               <nav className="sticky top-0 z-10 flex min-h-10 items-center gap-1.5 overflow-x-auto rounded-md border border-outline-variant bg-surface/95 px-2 shadow-sm backdrop-blur-sm" aria-label={t("本回答目录")}>
                 <span className="flex shrink-0 items-center gap-1 text-label font-medium text-on-surface-variant">

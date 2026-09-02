@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { PluggableList } from "unified";
 import type { ChatCitation, ChatMessage, ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
 import AgentWorkingBar from "@/components/ui/AgentWorkingBar";
@@ -25,6 +26,52 @@ interface MdNode {
 }
 
 const CITE_RE = /\[\^(c\d+)\]/g;
+
+/** message.citations 缺省时的稳定空数组：身份抖动会导致下方 plugins/citationMap 反复重建，
+ *  连锁触发所有 ReactMarkdown 每 tick 全量重解析（= 流式闪烁），必须钉住 */
+const NO_CITATIONS: ChatCitation[] = [];
+
+/** 单个 markdown 文本段，memo 化：完成后 text/plugins/citationMap 恒定，
+ *  流式追加只重解析正在增长的最后一段，历史段零重渲染 */
+const MarkdownBlock = memo(function MarkdownBlock({ text, plugins, citationMap, docId }: {
+  text: string;
+  plugins: PluggableList;
+  citationMap: Map<string, ChatCitation>;
+  docId: string;
+}) {
+  const headings = useMemo(() => markdownHeadings(text, docId), [text, docId]);
+  const components = useMemo(() => {
+    let headingIndex = 0;
+    const renderHeading = (level: 1 | 2 | 3) => ({ children }: { children?: React.ReactNode }) => {
+      const heading = headings[headingIndex++];
+      const Tag = `h${level}` as "h1" | "h2" | "h3";
+      return <Tag id={heading?.id} className="scroll-mt-14 text-wrap-balance">{children}</Tag>;
+    };
+    return {
+      h1: renderHeading(1),
+      h2: renderHeading(2),
+      h3: renderHeading(3),
+      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+        const id = href?.startsWith("#cite-") ? href.slice(6) : "";
+        const citation = id ? citationMap.get(id) : undefined;
+        if (citation) return <CitationBadge citation={citation} />;
+        return (
+          <a href={href} target="_blank" rel="noreferrer">
+            {children}
+          </a>
+        );
+      },
+    };
+  }, [headings, citationMap]);
+  if (!text.trim()) return null;
+  return (
+    <div className="chat-markdown text-on-surface">
+      <ReactMarkdown remarkPlugins={plugins} components={components}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+});
 
 /** 把已注册引用的 [^cN] 转成 #cite-cN 链接节点；未注册的原样保留（防模型幻觉角标） */
 function citePlugin(citations: ChatCitation[]) {
@@ -68,48 +115,26 @@ function citePlugin(citations: ChatCitation[]) {
 
 /** assistant 消息：按 segments 顺序渲染 文本(markdown) / 工具卡片 / 决策卡片 */
 export default function AssistantMessage({ message, error, busy, onDecide }: Props) {
+  const citations = message.citations ?? NO_CITATIONS;
   const citationMap = useMemo(
-    () => new Map((message.citations || []).map((c) => [c.id, c])),
-    [message.citations]
+    () => new Map(citations.map((c) => [c.id, c])),
+    [citations]
   );
-  const plugins = useMemo(
-    () => [remarkGfm, citePlugin(message.citations || [])],
-    [message.citations]
+  const plugins = useMemo<PluggableList>(
+    () => [remarkGfm, citePlugin(citations)],
+    [citations]
   );
 
   const renderSegment = (seg: ChatSegment, i: number) => {
     if (seg.type === "text") {
-      if (!seg.text.trim()) return null;
-      const headings = markdownHeadings(seg.text, `${message.id}-${i}`);
-      let headingIndex = 0;
-      const renderHeading = (level: 1 | 2 | 3) => ({ children }: { children?: React.ReactNode }) => {
-        const heading = headings[headingIndex++];
-        const Tag = `h${level}` as "h1" | "h2" | "h3";
-        return <Tag id={heading?.id} className="scroll-mt-14 text-wrap-balance">{children}</Tag>;
-      };
       return (
-        <div key={i} className="chat-markdown text-on-surface">
-          <ReactMarkdown
-            remarkPlugins={plugins}
-            components={{
-              h1: renderHeading(1),
-              h2: renderHeading(2),
-              h3: renderHeading(3),
-              a: ({ href, children }) => {
-                const id = href?.startsWith("#cite-") ? href.slice(6) : "";
-                const citation = id ? citationMap.get(id) : undefined;
-                if (citation) return <CitationBadge citation={citation} />;
-                return (
-                  <a href={href} target="_blank" rel="noreferrer">
-                    {children}
-                  </a>
-                );
-              },
-            }}
-          >
-            {seg.text}
-          </ReactMarkdown>
-        </div>
+        <MarkdownBlock
+          key={i}
+          text={seg.text}
+          plugins={plugins}
+          citationMap={citationMap}
+          docId={`${message.id}-${i}`}
+        />
       );
     }
     if (seg.type === "thinking") {

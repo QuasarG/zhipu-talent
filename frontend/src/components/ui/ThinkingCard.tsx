@@ -1,10 +1,11 @@
 // 思考过程折叠卡：流式展开 + 用户可收起（问答/奖学金评分 agent 共用）
-import { useEffect, useState } from "react";
+// memo：流式时已完成思考段 text/streaming 恒定，不随每 token 重渲染（防闪烁）
+import { memo, useEffect, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import Icon from "@/components/ui/Icon";
 import { useI18n } from "@/lib/i18n";
 
-export default function ThinkingCard({ text, streaming }: { text: string; streaming: boolean }) {
+export default memo(function ThinkingCard({ text, streaming }: { text: string; streaming: boolean }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(streaming);
   const [userToggled, setUserToggled] = useState(false);
@@ -47,4 +48,4 @@ export default function ThinkingCard({ text, streaming }: { text: string; stream
       )}
     </div>
   );
-}
+});
