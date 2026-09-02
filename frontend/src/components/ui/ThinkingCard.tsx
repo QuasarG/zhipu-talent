@@ -10,11 +10,8 @@ export default function ThinkingCard({ text, streaming }: { text: string; stream
   const [userToggled, setUserToggled] = useState(false);
 
   useEffect(() => {
-    // 只跟随「开始流式」自动展开；流式结束不自动收起——
-    // 评分 agent 每轮产生多个 thinking/text 交替段，自动收起会让折叠高度
-    // 在流式期间反复变化，把整列布局顶得跳（闪烁）。收起交给用户手动。
-    if (!userToggled && streaming && !open) setOpen(true);
-  }, [streaming, userToggled, open]);
+    if (!userToggled) setOpen(streaming);
+  }, [streaming, userToggled]);
 
   const toggle = () => {
     setUserToggled(true);

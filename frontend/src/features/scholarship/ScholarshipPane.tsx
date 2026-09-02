@@ -1,5 +1,5 @@
 // 奖学金资料工作台：申请人信息 / 材料预览 / 评估与核验
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { ChatEvent, ChatSegment, ScholarshipApplication, ScholarshipEvaluation, ScholarshipMaterial } from "@/lib/types";
@@ -408,6 +408,8 @@ export default function ScholarshipPane({
   const [busyAction, setBusyAction] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [liveTrace, setLiveTrace] = useState<ChatSegment[] | null>(null);
+  // 过程容器自动滚底（问答 convRef 同款）：流式追加时视口钉在底部，上面的卡不因滚动锚点跳
+  const processRef = useRef<HTMLDivElement>(null);
   const [assessmentTab, setAssessmentTab] = useState<AssessmentTab>("score");
 
   const latestCompleted = useMemo(
@@ -431,6 +433,13 @@ export default function ScholarshipPane({
     setError("");
     setConfirmingDelete(false);
   }, [app?.id]);
+
+  useEffect(() => {
+    // 流式期间钉住底部（问答自动滚底同款）
+    if (liveTrace && processRef.current) {
+      processRef.current.scrollTo(0, processRef.current.scrollHeight);
+    }
+  }, [liveTrace]);
 
   const runAction = async (action: string, fn: () => Promise<void>) => {
     if (busyAction) return;
@@ -648,7 +657,7 @@ export default function ScholarshipPane({
         )}
 
         {view === "assessment" && (
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div ref={processRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             {assessmentTab === "score" && (
               <div className="flex flex-col gap-5">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.2fr_repeat(2,minmax(0,1fr))]">

@@ -1,8 +1,8 @@
-// 评分 agent 工作记录：对话流样式，组件层直接复用问答的 ThinkingCard / ToolCallCard。
-// 防闪烁三原则：
-// 1. 稳定 key（同类段次序 / call_id），追加不漂移；
-// 2. 段级 memo：列表项按 props 内容记忆化，尾部流式追加只重渲染最后一项；
-// 3. chat-enter 只给「一次性出现」的元素（工具卡/终态横幅），流式正文不带。
+// 评分 agent 工作记录：结构与问答 AssistantMessage 完全一致——
+// segments 按顺序渲染 thinking 卡 / 工具卡 / markdown 正文，无中间归一化层。
+// 防闪烁的关键（从问答照搬）：
+// 1. live 段对象身份跨事件稳定（applyEvent 只替换尾部），memo 按 seg 身份生效；
+// 2. streaming = 最后一个段（问答同款判定），思考结束即收起，视口由外层自动滚底钉住。
 import { memo, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -21,32 +21,39 @@ const TOOL_LABELS: Record<string, string> = {
   submit_scores: "提交评分",
 };
 
-/** trace tool segment → ChatSegment.tool 适配（直接喂问答的 ToolCallCard） */
-function toChatToolSeg(seg: Extract<ScorerTraceSegment, { type: "tool" }>): Extract<ChatSegment, { type: "tool" }> {
-  return {
-    type: "tool",
-    call_id: seg.call_id,
-    tool: seg.tool,
-    label: seg.label || TOOL_LABELS[seg.tool] || seg.tool,
-    status: seg.status === "error" ? "error" : "ok",
-    summary: seg.summary,
-    detail: seg.detail,
-    args_summary: "",
-  };
+/** 落库 trace（回放）→ ChatSegment 形状；只在 trace 变化时算一次，不在流式路径上 */
+function traceToChatSegments(trace: ScorerTraceSegment[]): ChatSegment[] {
+  const out: ChatSegment[] = [];
+  for (const seg of trace) {
+    if (seg.type === "tool")
+      out.push({
+        type: "tool",
+        call_id: seg.call_id,
+        tool: seg.tool,
+        label: seg.label || TOOL_LABELS[seg.tool] || seg.tool,
+        status: seg.status === "error" ? "error" : "ok",
+        summary: seg.summary,
+        detail: seg.detail,
+        args_summary: "",
+      });
+    else if (seg.type === "thinking") out.push({ type: "thinking", text: seg.text });
+    else if (seg.type === "text") out.push({ type: "text", text: seg.text });
+    // final 段单独渲染，不进 ChatSegment 流
+  }
+  return out;
 }
 
-// ---- 段级 memo 组件：props 不变就不重渲染（流式追加时前面的卡纹丝不动） ----
+// ---- 段组件：memo 按 props 身份短路（live 路径段对象身份稳定，前面的卡完全不重渲染） ----
 
 const ThinkingItem = memo(function ThinkingItem({ text, streaming }: { text: string; streaming: boolean }) {
   return <ThinkingCard text={text} streaming={streaming} />;
 });
 
-const ToolItem = memo(function ToolItem({ seg, animate }: { seg: Extract<ScorerTraceSegment, { type: "tool" }>; animate: boolean }) {
-  return <ToolCallCard segment={toChatToolSeg(seg)} animate={animate} />;
+const ToolItem = memo(function ToolItem({ seg }: { seg: Extract<ChatSegment, { type: "tool" }> }) {
+  return <ToolCallCard segment={seg} />;
 });
 
 const TextItem = memo(function TextItem({ text }: { text: string }) {
-  // content 段：与问答正文同款 markdown 渲染（chat-markdown 字体/排版），不用卡片
   return (
     <div className="chat-markdown text-on-surface my-2">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
@@ -54,21 +61,10 @@ const TextItem = memo(function TextItem({ text }: { text: string }) {
   );
 });
 
-const FinalItem = memo(function FinalItem({ text, findings }: { text: string; findings: number }) {
-  const { t } = useI18n();
-  return (
-    <div className="chat-enter my-2 flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-primary-container/40 px-3 py-2.5 text-body-sm text-on-surface">
-      <Icon name="verified" size={18} className="text-primary shrink-0" />
-      <span className="font-medium">{text}</span>
-      {findings > 0 ? <StatusChip tone="warning">{t("{n} 条舆情发现", { n: findings })}</StatusChip> : null}
-    </div>
-  );
-});
-
 interface Props {
-  /** 进行中的实时流（问答原生 ChatSegment 形状，来自 applyEvent） */
+  /** 进行中的实时流（applyEvent 产物，段身份稳定）；优先使用 */
   live?: ChatSegment[];
-  /** 落库的回放轨迹（含 final 段） */
+  /** 落库的回放轨迹（结束后切换，含 final 横幅） */
   trace: ScorerTraceSegment[];
   running: boolean;
 }
@@ -77,40 +73,27 @@ interface Props {
 export default function ScorerTrace({ live, trace, running }: Props) {
   const { t } = useI18n();
   const [filter, setFilter] = useState<"all" | "thinking">("all");
-  // 归一化：live（问答 ChatSegment）→ 本组件的 ScorerTraceSegment 形状
-  const active: ScorerTraceSegment[] = useMemo(
-    () =>
-      live && live.length
-        ? live.map((s) =>
-            s.type === "tool"
-              ? { type: "tool", call_id: s.call_id, tool: s.tool, label: s.label, status: s.status ?? "", summary: s.summary ?? "", detail: s.detail ?? "" }
-              : s.type === "text"
-                ? { type: "text", text: s.text }
-                : { type: "thinking", text: s.text }
-          )
-        : trace,
+  const finalSeg = useMemo(
+    () => trace.find((s) => s.type === "final") as Extract<ScorerTraceSegment, { type: "final" }> | undefined,
+    [trace],
+  );
+  // live 优先（流式中，段身份稳定）；否则回放 trace 转换（一次性 useMemo）
+  const segments = useMemo(
+    () => (live && live.length ? live : traceToChatSegments(trace)),
     [live, trace],
   );
-  const hasThinking = active.some((s) => s.type === "thinking");
-  const shown = useMemo(
-    () => (filter === "all" ? active : active.filter((s) => s.type === "thinking")),
-    [active, filter],
-  );
-  // streaming 标记：running 时最后一个 thinking 段在思考。
-  // 曾用 active.length-1：reasoning/content 交替追加导致折叠卡反复收起/展开（闪烁根因之一）。
-  const lastThinkingIndex = running
-    ? shown.reduce((last, s, idx) => (s.type === "thinking" ? idx : last), -1)
-    : -1;
-  if (!active.length && !running) {
+  if (!segments.length && !running && !finalSeg) {
     return (
       <div className="rounded-lg border border-dashed border-outline-variant px-4 py-8 text-body-sm text-on-surface-variant">
         {t("暂无评估过程记录，点上方「开始评估」生成")}
       </div>
     );
   }
+  const shown = filter === "all" ? segments : segments.filter((s) => s.type === "thinking");
+  const lastIdx = segments.length - 1; // streaming 判定与问答一致：最后一个段
   return (
     <div className="flex flex-col">
-      {hasThinking && (
+      {segments.some((s) => s.type === "thinking") && (
         <div className="mb-2 flex items-center gap-1.5">
           <button
             type="button"
@@ -128,22 +111,23 @@ export default function ScorerTrace({ live, trace, running }: Props) {
           </button>
         </div>
       )}
-      {shown.map((segment, i, arr) => {
-        // 稳定 key：同类段内的次序（段创建时即确定，后续追加不漂移）
+      {shown.map((seg, i, arr) => {
         const orderOf = (type: string) => arr.slice(0, i).filter((s) => s.type === type).length;
-        if (segment.type === "thinking")
-          return (
-            <ThinkingItem
-              key={`think-${orderOf("thinking")}`}
-              text={segment.text}
-              streaming={i === lastThinkingIndex}
-            />
-          );
-        if (segment.type === "tool") return <ToolItem key={`tool-${segment.call_id}`} seg={segment} animate={!running} />;
-        if (segment.type === "final")
-          return <FinalItem key="final" text={segment.text} findings={segment.reputation_findings?.length ?? 0} />;
-        return <TextItem key={`text-${orderOf("text")}`} text={segment.text} />;
+        if (seg.type === "thinking")
+          return <ThinkingItem key={`think-${orderOf("thinking")}`} text={seg.text} streaming={running && i === lastIdx} />;
+        if (seg.type === "tool") return <ToolItem key={`tool-${seg.call_id}`} seg={seg} />;
+        if (!seg.text.trim()) return null;
+        return <TextItem key={`text-${orderOf("text")}`} text={seg.text} />;
       })}
+      {finalSeg && (
+        <div className="chat-enter my-2 flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-primary-container/40 px-3 py-2.5 text-body-sm text-on-surface">
+          <Icon name="verified" size={18} className="text-primary shrink-0" />
+          <span className="font-medium">{finalSeg.text}</span>
+          {finalSeg.reputation_findings?.length ? (
+            <StatusChip tone="warning">{t("{n} 条舆情发现", { n: finalSeg.reputation_findings.length })}</StatusChip>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

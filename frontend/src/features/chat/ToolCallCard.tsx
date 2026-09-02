@@ -17,20 +17,16 @@ function prettyDetail(detail: string): string {
 }
 
 /** 工具调用卡片：运行中 = shaping orb 轨迹形变动效；完成后折叠成一行摘要 */
-export default function ToolCallCard({ segment, animate = true }: { segment: ToolSegment; animate?: boolean }) {
+export default function ToolCallCard({ segment }: { segment: ToolSegment }) {
   const [expanded, setExpanded] = useState(false);
   const { t } = useI18n();
   const running = !segment.status;
   const failed = segment.status === "error";
-  // 入场动画可选关闭：评分流式期间新卡不断插入 + 尾部文字持续追加，
-  // 250ms 入场动画会让整列布局在动画期间反复重排（灰卡跳动闪烁的根因）。
-  // 回放（非流式）场景保留动画。
-  const enterClass = animate ? "chat-enter" : "";
 
   return (
     <div
       className={cn(
-        `${enterClass} my-2 rounded-md border text-body-sm overflow-hidden`,
+        "chat-enter my-2 rounded-md border text-body-sm overflow-hidden",
         failed ? "border-error/40 bg-error-container/30" : "border-outline-variant bg-surface-low"
       )}
     >
