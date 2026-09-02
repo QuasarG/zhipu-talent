@@ -516,7 +516,8 @@ export default function ScholarshipPane({
     }
 
     const acting = busyAction;
-    const canEvaluate = !["imported", "material_incomplete", "ineligible"].includes(app.status);
+    const evaluating = latestEval?.status === "running";
+    const canEvaluate = !["imported", "material_incomplete", "ineligible"].includes(app.status) && !evaluating;
     const findings = latestCompleted?.reputation_findings ?? [];
 
     return (

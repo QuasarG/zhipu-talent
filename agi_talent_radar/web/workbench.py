@@ -220,6 +220,27 @@ def create_app() -> Flask:
     app.register_blueprint(build_grill_blueprint())
     install_auth_middleware(app)
 
+    # 启动自愈：上次进程死掉（部署重启/OOM）时正在跑的评分会永远停在 running，
+    # 前端就永远显示"评估中"（王豪僵尸评估事故）。启动时统一标 failed。
+    try:
+        from agi_talent_radar.core.database import get_session as _get_session
+        from agi_talent_radar.core.db.orm import ScholarshipEvaluationORM
+
+        with _get_session() as session:
+            zombies = (
+                session.query(ScholarshipEvaluationORM)
+                .filter_by(status="running")
+                .all()
+            )
+            for z in zombies:
+                z.status = "failed"
+                z.error_message = "服务重启导致评估中断，请重新发起评估"
+            if zombies:
+                session.commit()
+                _logger.warning("启动自愈：%d 条僵尸 running 评估已标 failed", len(zombies))
+    except Exception:  # noqa: BLE001 — 自愈失败不阻断启动
+        _logger.warning("评分僵尸自愈失败", exc_info=True)
+
     # SPA 页面路由：所有前端页面统一返回 React SPA shell。
     # React Router 接管 / /knowledge /talent-pool /review /settings。
     import os

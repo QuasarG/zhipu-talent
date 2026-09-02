@@ -414,6 +414,16 @@ def build_scholarship_blueprint() -> Blueprint:
                 return jsonify({"detail": "申请人不存在"}), 404
             if app.status not in ("eligible", "scored", "finalized"):
                 return jsonify({"detail": "请先通过资格与材料筛选再评估"}), 409
+            # 防重复锁：同档已有 running 评估（进程内线程在跑）时拒绝，防止并行双跑+重复扣费
+            from agi_talent_radar.core.db.orm import ScholarshipEvaluationORM as _EvalORM
+
+            running = (
+                session.query(_EvalORM)
+                .filter_by(application_id=app.id, status="running")
+                .first()
+            )
+            if running is not None:
+                return jsonify({"detail": "该申请人已有评估正在进行中，请等待完成后再发起"}), 409
             evaluation = ScholarshipEvaluationORM(
                 application_id=app.id, config_version="", status="running"
             )
