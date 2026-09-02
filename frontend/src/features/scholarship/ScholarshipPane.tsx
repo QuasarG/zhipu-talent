@@ -682,7 +682,7 @@ export default function ScholarshipPane({
         {view === "assessment" && (
           <div ref={processRef} className="min-h-0 flex-1 overflow-y-auto">
             {assessmentTab === "score" && (
-              <div className="mx-auto w-full max-w-4xl px-5 py-4">
+              <div className="w-full px-5 py-4">
                 <RecordSection
                   title={t("评分总览")}
                   icon="workspace_premium"
