@@ -54,7 +54,13 @@ export default function ScorerTrace({ live, trace, running }: Props) {
               : { type: "thinking", text: s.text }
         )
       : trace;
-  const lastThinking = running ? active.length - 1 : -1;
+  const hasThinking = active.some((s) => s.type === "thinking");
+  const shown = filter === "all" ? active : active.filter((s) => s.type === "thinking");
+  // streaming 标记基于 shown（map 遍历的就是它）：running 时最后一个 thinking 段在思考。
+  // 曾用 active.length-1：reasoning/content 交替追加导致折叠卡反复收起/展开（闪烁根因）。
+  const lastThinkingIndex = running
+    ? shown.reduce((last, s, idx) => (s.type === "thinking" ? idx : last), -1)
+    : -1;
   if (!active.length && !running) {
     return (
       <div className="rounded-lg border border-dashed border-outline-variant px-4 py-8 text-body-sm text-on-surface-variant">
@@ -93,14 +99,14 @@ export default function ScorerTrace({ live, trace, running }: Props) {
             <ThinkingCard
               key={`think-${orderOf("thinking")}`}
               text={segment.text}
-              streaming={running && i === lastThinking}
+              streaming={i === lastThinkingIndex}
             />
           );
         if (segment.type === "tool")
           return <ToolCallCard key={`tool-${segment.call_id}`} segment={toChatToolSeg(segment)} />;
         if (segment.type === "final")
           return (
-            <div key={i} className="chat-enter my-2 flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-primary-container/40 px-3 py-2.5 text-body-sm text-on-surface">
+            <div key="final" className="chat-enter my-2 flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-primary-container/40 px-3 py-2.5 text-body-sm text-on-surface">
               <Icon name="verified" size={18} className="text-primary shrink-0" />
               <span className="font-medium">{segment.text}</span>
               {segment.reputation_findings?.length ? (
@@ -110,7 +116,7 @@ export default function ScorerTrace({ live, trace, running }: Props) {
           );
         // content 段：与问答正文同款 markdown 渲染（chat-markdown 字体/排版），不用卡片
         return (
-          <div key={i} className="chat-enter chat-markdown text-on-surface my-2">
+          <div key={`text-${orderOf("text")}`} className="chat-markdown text-on-surface my-2">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown>
           </div>
         );
