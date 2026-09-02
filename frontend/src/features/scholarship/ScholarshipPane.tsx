@@ -548,17 +548,20 @@ export default function ScholarshipPane({
     });
 
 
+  // 注意：这里必须「调用函数」而不是渲染 <Body /> 组件——Body 定义在本组件内部，
+  // 每次渲染都是新函数类型，React 会把整个详情面板拆掉重挂（每个 token 闪一次、
+  // 入场动画重播、滚动位置归零=闪烁+无法滚动的总根因）。函数调用则内联进本组件树，无重挂载。
   if (addDialog) {
     return (
       <>
         <AddApplicantDialog onClose={addDialog.onClose} onDone={addDialog.onDone} />
-        <Body />
+        {renderBody()}
       </>
     );
   }
-  return <Body />;
+  return renderBody();
 
-  function Body() {
+  function renderBody() {
     if (missingSelection || !app) {
       return (
         <Card variant="filled" className="min-h-0 flex-1 min-w-0 overflow-hidden flex flex-col">
@@ -686,12 +689,13 @@ export default function ScholarshipPane({
         )}
 
         {view === "assessment" && assessmentTab === "score" && (
-          // 一页式布局：外层不滚动，各卡在剩余高度内排布，长内容在卡片体内部滚动
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4">
+          // 常规滚动视图：整页随内容增高滚动（不强制一页内滚，避免不同分辨率下显示问题）
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="w-full px-5 py-4">
             <RecordSection
               title={t("评分总览")}
               icon="workspace_premium"
-              className="mb-4 shrink-0"
+              className="mb-4"
               meta={latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : undefined}
               action={
                 <Button variant={latestCompleted || latestEval?.status === "failed" ? "tonal" : "filled"} icon="refresh" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>
@@ -734,7 +738,7 @@ export default function ScholarshipPane({
                 </RecordSection>
 
                 {latestCompleted && (
-                  <RecordSection title={t("评分明细")} icon="checklist" count={latestCompleted.dimensions.length} className="mb-4 flex min-h-0 flex-1 flex-col" bodyClassName="min-h-0 flex-1 overflow-y-auto">
+                  <RecordSection title={t("评分明细")} icon="checklist" count={latestCompleted.dimensions.length} className="mb-4">
                     <div className="divide-y divide-outline-variant">
                       {latestCompleted.dimensions.map((dimension, index) => {
                         const max = dimension.key === "integrity_risk" ? 10 : 5;
@@ -765,8 +769,8 @@ export default function ScholarshipPane({
                 )}
 
                 {latestCompleted && (
-                  <div className="mb-4 grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2">
-                    <RecordSection title={t("亮点")} icon="auto_awesome" bodyClassName="max-h-60 overflow-y-auto">
+                  <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <RecordSection title={t("亮点")} icon="auto_awesome">
                       <ul className="divide-y divide-outline-variant">
                         {latestCompleted.highlights.map((highlight) => (
                           <li key={highlight} className="flex items-start gap-2 px-4 py-2.5 text-body-sm text-on-surface"><Icon name="check_circle" size={16} className="mt-0.5 shrink-0 text-success" />{highlight}</li>
@@ -774,7 +778,7 @@ export default function ScholarshipPane({
                         {!latestCompleted.highlights.length && <li className="px-4 py-3 text-body-sm text-on-surface-variant">—</li>}
                       </ul>
                     </RecordSection>
-                    <RecordSection title={t("风险")} icon="warning" bodyClassName="max-h-60 overflow-y-auto">
+                    <RecordSection title={t("风险")} icon="warning">
                       <ul className="divide-y divide-outline-variant">
                         {latestCompleted.risks.map((risk) => (
                           <li key={risk} className="flex items-start gap-2 px-4 py-2.5 text-body-sm text-on-surface"><Icon name="warning" size={16} className="mt-0.5 shrink-0 text-warning" />{risk}</li>
@@ -786,7 +790,7 @@ export default function ScholarshipPane({
                 )}
 
                 {findings.length > 0 && (
-                  <RecordSection title={t("舆情发现")} icon="public" count={findings.length} className="shrink-0" bodyClassName="max-h-48 overflow-y-auto">
+                  <RecordSection title={t("舆情发现")} icon="public" count={findings.length}>
                     <ul className="divide-y divide-outline-variant">
                       {findings.map((f, i) => (
                         <li key={i} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-body-sm">
@@ -799,6 +803,7 @@ export default function ScholarshipPane({
                     <p className="border-t border-outline-variant px-4 py-2 text-label text-on-surface-variant">{t("舆情发现（供人工参考，不计入自动分）")}</p>
                   </RecordSection>
                 )}
+            </div>
           </div>
         )}
 
