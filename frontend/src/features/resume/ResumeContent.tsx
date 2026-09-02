@@ -378,20 +378,22 @@ interface RecordSectionProps {
   action?: ReactNode;
   /** 标题行右侧次要说明（如版本 · 时间），有 action 时排在它前面 */
   meta?: string;
+  /** 体部附加类（如 flex 布局下 "min-h-0 flex-1 overflow-y-auto" 实现卡片内滚动） */
+  bodyClassName?: string;
 }
 
-export function RecordSection({ title, icon, count, className, children, importing, action, meta }: RecordSectionProps) {
+export function RecordSection({ title, icon, count, className, children, importing, action, meta, bodyClassName }: RecordSectionProps) {
   const { t } = useI18n();
   return (
     <section className={`border border-outline-variant rounded-md overflow-hidden bg-surface-lowest ${className || ""}`}>
-      <div className="flex items-center gap-2 min-h-11 px-4 py-2.5 border-b border-outline-variant bg-surface-low">
+      <div className="flex shrink-0 items-center gap-2 min-h-11 px-4 py-2.5 border-b border-outline-variant bg-surface-low">
         <Icon name={icon} size={18} className="text-primary" />
         <h3 className="text-title-lg font-bold text-on-surface">{title}</h3>
         {count !== undefined && <span className="text-label text-on-surface-variant">{t("{n} 条", { n: count })}</span>}
         {meta && <span className="ml-auto min-w-0 truncate text-label text-on-surface-variant">{meta}</span>}
         {action && <div className={`flex shrink-0 items-center gap-2 ${meta ? "ml-3" : "ml-auto"}`}>{action}</div>}
       </div>
-      <div>{children || (importing ? <SkeletonRows /> : <EmptyText />)}</div>
+      <div className={bodyClassName}>{children || (importing ? <SkeletonRows /> : <EmptyText />)}</div>
     </section>
   );
 }

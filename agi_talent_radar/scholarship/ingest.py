@@ -319,7 +319,15 @@ def _clamp_text(text: str) -> str:
     return text[:_RAW_TEXT_MAX] + "\n…（内容过长已截断）"
 
 
-_MATERIAL_DIR = os.path.join(os.getcwd(), "uploads", "scholarship")
+def material_dir() -> str:
+    """材料原始文件存储根：落盘与预览/下载防穿越校验共用的唯一基准。
+
+    服务工作目录随 release 切换（current → 新 release 目录），把文件存进
+    release 目录会导致切版后历史材料全部失效。生产必须落在固定数据目录
+    （/etc/zhipu-talent.env 配 SCHOLARSHIP_UPLOAD_DIR），本地开发回退 cwd/uploads。
+    """
+    configured = os.getenv("SCHOLARSHIP_UPLOAD_DIR", "").strip()
+    return os.path.abspath(configured) if configured else os.path.abspath(os.path.join(os.getcwd(), "uploads", "scholarship"))
 
 
 def _store_material_file(material_id: int, filename: str, blob: bytes) -> str:
@@ -329,10 +337,11 @@ def _store_material_file(material_id: int, filename: str, blob: bytes) -> str:
     """
     if not blob:
         return ""
-    os.makedirs(_MATERIAL_DIR, exist_ok=True)
+    material_root = material_dir()
+    os.makedirs(material_root, exist_ok=True)
     ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     safe_ext = ext if ext and len(ext) <= 10 and ext[1:].replace(".", "").isalnum() else ""
-    path = os.path.join(_MATERIAL_DIR, f"{material_id}{safe_ext}")
+    path = os.path.join(material_root, f"{material_id}{safe_ext}")
     with open(path, "wb") as fp:
         fp.write(blob)
     return path

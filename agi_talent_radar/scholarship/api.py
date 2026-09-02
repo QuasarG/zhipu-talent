@@ -611,8 +611,9 @@ def build_scholarship_blueprint() -> Blueprint:
         path = (material.file_path or "").strip()
         if not path or not os.path.isfile(path):
             return jsonify({"detail": "原始文件未保存（历史材料仅有提取文本）"}), 404
-        # 路径必须落在材料目录内（防穿越）
-        if os.path.commonpath([os.path.abspath(path), os.path.abspath(os.path.join(os.getcwd(), "uploads", "scholarship"))]) != os.path.abspath(os.path.join(os.getcwd(), "uploads", "scholarship")):
+        # 路径必须落在材料存储根内（防穿越；基准与落盘同源，不随 release 切换漂移）
+        material_root = ingest.material_dir()
+        if os.path.commonpath([os.path.abspath(path), material_root]) != material_root:
             return jsonify({"detail": "非法文件路径"}), 400
         ext = "." + path.rsplit(".", 1)[-1].lower() if "." in path else ""
         # docx：预览走 mammoth 转 HTML（浏览器原生不认 docx，直出会变成下载）
@@ -658,7 +659,7 @@ def build_scholarship_blueprint() -> Blueprint:
         ext = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
         if not expected or not secrets.compare_digest(token, expected) or ext not in allowed:
             return jsonify({"detail": "无效的素材访问 token"}), 404
-        base_dir = os.path.abspath(os.path.join(os.getcwd(), "uploads", "scholarship"))
+        base_dir = ingest.material_dir()
         path = os.path.abspath(os.path.join(base_dir, os.path.basename(name)))
         if not path.startswith(base_dir + os.sep) or not os.path.isfile(path):
             return jsonify({"detail": "文件不存在"}), 404

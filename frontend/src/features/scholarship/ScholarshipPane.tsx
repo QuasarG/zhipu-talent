@@ -679,21 +679,20 @@ export default function ScholarshipPane({
           <div className="flex min-h-0 flex-1 p-4"><MaterialExplorer materials={materials} groupedMaterials={groupedMaterials} /></div>
         )}
 
-        {view === "assessment" && (
-          <div ref={processRef} className="min-h-0 flex-1 overflow-y-auto">
-            {assessmentTab === "score" && (
-              <div className="w-full px-5 py-4">
-                <RecordSection
-                  title={t("评分总览")}
-                  icon="workspace_premium"
-                  className="mb-4"
-                  meta={latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : undefined}
-                  action={
-                    <Button variant={latestCompleted || latestEval?.status === "failed" ? "tonal" : "filled"} icon="refresh" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>
-                      {latestCompleted || latestEval?.status === "failed" ? t("重新评估") : t("开始评估")}
-                    </Button>
-                  }
-                >
+        {view === "assessment" && assessmentTab === "score" && (
+          // 一页式布局：外层不滚动，各卡在剩余高度内排布，长内容在卡片体内部滚动
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4">
+            <RecordSection
+              title={t("评分总览")}
+              icon="workspace_premium"
+              className="mb-4 shrink-0"
+              meta={latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : undefined}
+              action={
+                <Button variant={latestCompleted || latestEval?.status === "failed" ? "tonal" : "filled"} icon="refresh" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>
+                  {latestCompleted || latestEval?.status === "failed" ? t("重新评估") : t("开始评估")}
+                </Button>
+              }
+            >
                   {latestEval?.status === "running" ? (
                     <div className="flex items-center justify-center px-4 py-10"><LoadingIndicator size={22} label={t("评估中…")} /></div>
                   ) : (
@@ -729,7 +728,7 @@ export default function ScholarshipPane({
                 </RecordSection>
 
                 {latestCompleted && (
-                  <RecordSection title={t("评分明细")} icon="checklist" count={latestCompleted.dimensions.length} className="mb-4">
+                  <RecordSection title={t("评分明细")} icon="checklist" count={latestCompleted.dimensions.length} className="mb-4 flex min-h-0 flex-1 flex-col" bodyClassName="min-h-0 flex-1 overflow-y-auto">
                     <div className="divide-y divide-outline-variant">
                       {latestCompleted.dimensions.map((dimension, index) => {
                         const max = dimension.key === "integrity_risk" ? 10 : 5;
@@ -760,8 +759,8 @@ export default function ScholarshipPane({
                 )}
 
                 {latestCompleted && (
-                  <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <RecordSection title={t("亮点")} icon="auto_awesome">
+                  <div className="mb-4 grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2">
+                    <RecordSection title={t("亮点")} icon="auto_awesome" bodyClassName="max-h-60 overflow-y-auto">
                       <ul className="divide-y divide-outline-variant">
                         {latestCompleted.highlights.map((highlight) => (
                           <li key={highlight} className="flex items-start gap-2 px-4 py-2.5 text-body-sm text-on-surface"><Icon name="check_circle" size={16} className="mt-0.5 shrink-0 text-success" />{highlight}</li>
@@ -769,7 +768,7 @@ export default function ScholarshipPane({
                         {!latestCompleted.highlights.length && <li className="px-4 py-3 text-body-sm text-on-surface-variant">—</li>}
                       </ul>
                     </RecordSection>
-                    <RecordSection title={t("风险")} icon="warning">
+                    <RecordSection title={t("风险")} icon="warning" bodyClassName="max-h-60 overflow-y-auto">
                       <ul className="divide-y divide-outline-variant">
                         {latestCompleted.risks.map((risk) => (
                           <li key={risk} className="flex items-start gap-2 px-4 py-2.5 text-body-sm text-on-surface"><Icon name="warning" size={16} className="mt-0.5 shrink-0 text-warning" />{risk}</li>
@@ -781,7 +780,7 @@ export default function ScholarshipPane({
                 )}
 
                 {findings.length > 0 && (
-                  <RecordSection title={t("舆情发现")} icon="public" count={findings.length}>
+                  <RecordSection title={t("舆情发现")} icon="public" count={findings.length} className="shrink-0" bodyClassName="max-h-48 overflow-y-auto">
                     <ul className="divide-y divide-outline-variant">
                       {findings.map((f, i) => (
                         <li key={i} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-body-sm">
@@ -794,16 +793,15 @@ export default function ScholarshipPane({
                     <p className="border-t border-outline-variant px-4 py-2 text-label text-on-surface-variant">{t("舆情发现（供人工参考，不计入自动分）")}</p>
                   </RecordSection>
                 )}
-              </div>
-            )}
+          </div>
+        )}
 
-            {assessmentTab === "process" && (
-              <div className="mx-auto w-full max-w-4xl px-5 py-4">
-                <div className="mb-5"><h2 className="text-title-lg">{t("评估过程")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("评审 agent 的工作记录：读了哪些材料、查证了什么、如何下结论")}</p></div>
-                <AssistantMessage message={processMessage} busy={!!liveTrace} onDecide={() => {}} />
-              </div>
-            )}
-
+        {view === "assessment" && assessmentTab === "process" && (
+          <div ref={processRef} className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-4xl px-5 py-4">
+              <div className="mb-5"><h2 className="text-title-lg">{t("评估过程")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("评审 agent 的工作记录：读了哪些材料、查证了什么、如何下结论")}</p></div>
+              <AssistantMessage message={processMessage} busy={!!liveTrace} onDecide={() => {}} />
+            </div>
           </div>
         )}
       </Card>
