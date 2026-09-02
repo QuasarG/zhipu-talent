@@ -41,8 +41,8 @@ const ThinkingItem = memo(function ThinkingItem({ text, streaming }: { text: str
   return <ThinkingCard text={text} streaming={streaming} />;
 });
 
-const ToolItem = memo(function ToolItem({ seg }: { seg: Extract<ScorerTraceSegment, { type: "tool" }> }) {
-  return <ToolCallCard segment={toChatToolSeg(seg)} />;
+const ToolItem = memo(function ToolItem({ seg, animate }: { seg: Extract<ScorerTraceSegment, { type: "tool" }>; animate: boolean }) {
+  return <ToolCallCard segment={toChatToolSeg(seg)} animate={animate} />;
 });
 
 const TextItem = memo(function TextItem({ text }: { text: string }) {
@@ -139,7 +139,7 @@ export default function ScorerTrace({ live, trace, running }: Props) {
               streaming={i === lastThinkingIndex}
             />
           );
-        if (segment.type === "tool") return <ToolItem key={`tool-${segment.call_id}`} seg={segment} />;
+        if (segment.type === "tool") return <ToolItem key={`tool-${segment.call_id}`} seg={segment} animate={!running} />;
         if (segment.type === "final")
           return <FinalItem key="final" text={segment.text} findings={segment.reputation_findings?.length ?? 0} />;
         return <TextItem key={`text-${orderOf("text")}`} text={segment.text} />;

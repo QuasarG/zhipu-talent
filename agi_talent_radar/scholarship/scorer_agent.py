@@ -101,7 +101,11 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
 
     try:
         submitted = False
-        for round_no in range(MAX_ROUNDS):
+        # 弹性轮数：基础 20 + 每份材料预留 1 轮读取，上限 60 防跑飞。
+        # 材料多的人（如 19 份）不会没读完就被掐；真耗尽时注入强制收尾指令再给最后机会。
+        max_rounds = min(60, MAX_ROUNDS + len(materials))
+        forced_final = False
+        for round_no in range(max_rounds):
             # 双流对齐问答 SSE 协议：reasoning→thinking_delta（思考卡）、content→answer_delta（正文）。
             # 两类 buffer 职责严格分离：emit_pending 只管发增量（发完即清），
             # trace_acc 是本轮全文累积（落库用）——之前共用一个 buffer 导致 trace 段反复重置、
@@ -218,8 +222,18 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
                     break
             if submitted:
                 break
+            # 接近预算：最后一轮注入强制收尾指令（对齐问答的 budget_exhausted 语义），
+            # 让 agent 基于已收集信息立即提交评分，而不是戛然而止判失败
+            if round_no >= max_rounds - 2 and ctx.final is None and not forced_final:
+                forced_final = True
+                ctx.force_submit = True
+                unread = [m.filename for m in ctx.materials if m.id not in ctx.read_ids]
+                note = "工具预算即将耗尽。请立即基于已收集的信息调用 submit_scores 提交评分，不要再调用任何其他工具。"
+                if unread:
+                    note += f"（未读材料：{('、'.join(unread[:5]))}{'等' if len(unread) > 5 else ''}，按已读内容评估并在理由中注明材料未读完）"
+                messages.append({"role": "user", "content": note})
         if ctx.final is None:
-            # 未走到终态：预算耗尽/循环提前结束 → 失败留痕（不发无效分）
+            # 注入收尾指令后仍未提交 → 失败留痕（不发无效分）
             evaluation.status = "failed"
             evaluation.error_message = f"agent 未提交终态评分（{round_no + 1} 轮）"
             segments.append({"type": "text", "text": "⚠ 评分未完成：agent 未能在预算内提交评分。"})

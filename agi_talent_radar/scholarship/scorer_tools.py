@@ -42,6 +42,7 @@ class ScorerContext:
         self.identities = build_identities(app)
         self.public_base_url = public_base_url.rstrip("/")
         self.final: dict[str, Any] | None = None
+        self.force_submit = False  # 预算耗尽强制收尾时置 True，豁免「必须读完」校验
         self.read_ids: set[int] = set()
 
 
@@ -470,6 +471,6 @@ def _validate_final(ctx: ScorerContext, data: dict[str, Any]) -> str:
     if tier not in RECOMMEND_TIERS:
         return f"recommend_tier 非法：{tier}"
     unread = [m.filename for m in ctx.materials if m.id not in ctx.read_ids]
-    if unread:
+    if unread and not ctx.force_submit:
         return "以下材料尚未读取，读完才能提交：" + "、".join(unread[:6]) + ("等" if len(unread) > 6 else "")
     return ""
