@@ -564,8 +564,7 @@ export default function ScholarshipPane({
     }
 
     const acting = busyAction;
-    const evaluating = latestEval?.status === "running";
-    const canEvaluate = !["imported", "material_incomplete", "ineligible"].includes(app.status) && !evaluating;
+    const canEvaluate = !["imported", "material_incomplete", "ineligible"].includes(app.status) && latestEval?.status !== "running";
     const findings = latestCompleted?.reputation_findings ?? [];
 
     return (
@@ -589,11 +588,7 @@ export default function ScholarshipPane({
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-              {view === "assessment" ? (
-                <>
-                  <Button variant="tonal" icon="grade" className="h-8 px-3" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>{t("开始评估")}</Button>
-                </>
-              ) : (
+              {view !== "assessment" && (
                 <Button variant="tonal" icon="fact_check" className="h-8 px-3" onClick={() => onViewChange("assessment")}>{t("评估与核验")}</Button>
               )}
               {confirmingDelete ? (
@@ -712,7 +707,7 @@ export default function ScholarshipPane({
                   <div><h2 className="text-title-lg">{t("评分明细")}</h2><p className="mt-0.5 text-label text-on-surface-variant">{latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : t("尚未生成评分结果")}</p></div>
                   <StatusChip tone={latestEval?.status === "failed" ? "error" : latestCompleted ? "success" : "neutral"}>{latestEval?.status === "running" ? t("评估中…") : latestEval?.status === "failed" ? t("评估失败") : latestCompleted ? t("已完成") : t("未开始")}</StatusChip>
                 </div>
-                {latestEval?.status === "running" ? <div className="rounded-lg border border-outline-variant px-4 py-6"><LoadingIndicator size={20} label={t("评估中…")} /></div> : latestEval?.status === "failed" ? <p className="rounded-lg border border-error/40 bg-error-container px-4 py-3 text-body-sm text-error">{t("评估失败：{msg}", { msg: latestEval.error_message || t("未知错误") })}</p> : !latestCompleted ? <p className="rounded-lg border border-dashed border-outline-variant px-4 py-6 text-body-sm text-on-surface-variant">{t("暂无评估结果，点上方「开始评估」生成")}</p> : (
+                {latestEval?.status === "running" ? <div className="rounded-lg border border-outline-variant px-4 py-6"><LoadingIndicator size={20} label={t("评估中…")} /></div> : latestEval?.status === "failed" ? <p className="rounded-lg border border-error/40 bg-error-container px-4 py-3 text-body-sm text-error">{t("评估失败：{msg}", { msg: latestEval.error_message || t("未知错误") })}</p> : !latestCompleted ? <div className="rounded-lg border border-dashed border-outline-variant px-4 py-6 text-center"><p className="text-body-sm text-on-surface-variant">{t("暂无评估结果")}</p><Button variant="tonal" icon="grade" className="mt-3" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>{t("开始评估")}</Button></div> : (
                   <>
                     <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                       {latestCompleted.dimensions.map((dimension) => (
