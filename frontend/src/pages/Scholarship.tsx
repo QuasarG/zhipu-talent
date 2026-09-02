@@ -21,6 +21,16 @@ import {
 } from "@/features/scholarship/scholarshipModel";
 import { cn } from "@/lib/cn";
 
+// 行右侧时间（人才库 fmtTime 同款）
+function fmtTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+  if (Number.isNaN(d.getTime())) return "—";
+  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  if (d.toDateString() === new Date().toDateString()) return hm;
+  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // 列表行/详情头共用的状态徽章
 function ScholarshipStatusChip({ status }: { status: string }) {
   const { t } = useI18n();
@@ -182,7 +192,7 @@ export default function Scholarship() {
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto p-1 space-y-0.5">
             {loading ? (
               <div className="flex justify-center py-10"><LoadingIndicator size={24} /></div>
             ) : filtered.length === 0 ? (
@@ -196,33 +206,43 @@ export default function Scholarship() {
               </div>
             ) : (
               filtered.map((a) => (
-                <button
+                <div
                   key={a.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedId(a.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedId(a.id); } }}
                   className={cn(
-                    "w-full text-left px-3 py-2.5 flex flex-col gap-1 border-b border-outline-variant/60 cursor-pointer transition-colors",
-                    selectedId === a.id ? "bg-secondary-container/60" : "hover:bg-surface-low",
+                    "group flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left cursor-pointer transition-colors duration-100 outline-none",
+                    "focus-visible:ring-2 focus-visible:ring-primary",
+                    selectedId === a.id ? "bg-secondary-container" : "hover:bg-surface-low",
                   )}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-body-sm font-medium text-on-surface truncate">{a.name || t("未命名")}</span>
-                    {a.degree_type && (
-                      <span className="text-label text-on-surface-variant shrink-0">{t(DEGREE_LABELS[a.degree_type] ?? a.degree_type)}</span>
-                    )}
-                    {a.feishu_record_id && (
-                      <Icon name="cloud_done" size={13} className="text-on-surface-variant shrink-0" />
-                    )}
-                    <span className="ml-auto shrink-0"><ScholarshipStatusChip status={a.status} /></span>
-                  </div>
-                  <div className="flex items-center gap-2 min-w-0 text-label text-on-surface-variant">
-                    <span className="truncate">{a.school || "—"}</span>
-                    <span className="truncate flex-1">{a.direction || ""}</span>
-                    <span className={cn("shrink-0 tabular-nums font-medium", a.total_score != null ? "text-primary" : "")}>
-                      {fmtScore(a.total_score)}
+                  <span className="flex items-center justify-center w-9 h-9 rounded-full bg-primary-container text-on-primary-container text-title shrink-0">
+                    {(a.name || "?").slice(0, 1)}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-body font-medium text-on-surface truncate">{a.name || t("未命名")}</span>
+                      <span className="text-label text-on-surface-variant shrink-0">{fmtTime(a.updated_at)}</span>
                     </span>
-                  </div>
-                </button>
+                    <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                      {a.evaluating ? (
+                        <StatusChip tone="primary" className="shrink-0">{t("评估中")}</StatusChip>
+                      ) : (
+                        <ScholarshipStatusChip status={a.status} />
+                      )}
+                      <span className="text-body-sm text-on-surface-variant truncate">
+                        {[a.school, a.direction?.split("；")[0]].filter(Boolean).join(" · ") || "—"}
+                      </span>
+                      {a.total_score != null && (
+                        <span className="ml-auto shrink-0 text-label font-medium tabular-nums text-primary">
+                          {fmtScore(a.total_score)}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                </div>
               ))
             )}
           </div>

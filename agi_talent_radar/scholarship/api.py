@@ -117,6 +117,8 @@ def _app_to_dict(session, app: ScholarshipApplicationORM, detail: bool = False) 
         "research_summary": app.research_summary or "",
         "education_history": app.education_history or "",
         "submitted_at": app.submitted_at.isoformat() if app.submitted_at else None,
+        "updated_at": app.updated_at.isoformat() if app.updated_at else None,
+        "evaluating": any(e.status == "running" for e in app.evaluations),
         "materials_count": sum(1 for m in app.materials if m.kind != "code"),
         "blind_score": latest_eval.blind_score if latest_eval else None,
         "total_score": pipeline.total_score(session, app),
@@ -330,6 +332,17 @@ def build_scholarship_blueprint() -> Blueprint:
                             detail["last_draft_at"] = _dt.now().isoformat(timespec="seconds")
                             app_row.screening_detail = detail
                             session.commit()
+        # 自动评估：资格筛过（eligible/scored）即自动发起后台评分 agent，
+        # 不等人工点「开始评估」。材料不齐/不合格的档跳过；失败可人工重发。
+        auto_eval_id = None
+        if screen_result.get("status") in ("eligible", "scored"):
+            try:
+                auto_eval_id = _launch_background_evaluation(app_row.id)
+                if auto_eval_id:
+                    logging.getLogger(__name__).info(
+                        "auto evaluation launched: %s (eval=%s)", app_row.name, auto_eval_id)
+            except Exception as exc:  # noqa: BLE001 — 自动评估失败不影响同步
+                logging.getLogger(__name__).warning("auto evaluation launch failed: %s", exc)
         return jsonify({
             "ok": True,
             "duplicate": not created,
@@ -337,6 +350,7 @@ def build_scholarship_blueprint() -> Blueprint:
             "status": screen_result.get("status"),
             "email_drafted": bool(email_result.get("drafted")),
             "table_marked": bool(email_result.get("marked")),
+            "evaluation_started": auto_eval_id is not None,
         }), 201 if created else 200
 
     @bp.post("/api/scholarship/applications")
@@ -400,6 +414,55 @@ def build_scholarship_blueprint() -> Blueprint:
             if not app:
                 return jsonify({"detail": "申请人不存在"}), 404
             return jsonify(pipeline.screen_application(session, app))
+
+    # ---- 后台评估调度：webhook 自动触发 & 并发评估共用 ----
+    # 独立 daemon 线程跑 agent（gunicorn gthread 单进程内，跨档并发天然支持，
+    # LLM 信号量 50 封顶限流；同档去重由 evaluate 端点的 running 锁保证）
+    def _launch_background_evaluation(app_id: str) -> int | None:
+        """发起后台评估，返回 evaluation_id；已有 running（重复触发）返回 None。"""
+        import threading as _threading
+
+        from agi_talent_radar.core.db.orm import ScholarshipEvaluationORM as _EvalORM
+
+        with get_session() as session:
+            app = session.get(ScholarshipApplicationORM, app_id)
+            if not app:
+                return None
+            if app.status not in ("eligible", "scored", "finalized"):
+                return None
+            running = (
+                session.query(_EvalORM)
+                .filter_by(application_id=app_id, status="running")
+                .first()
+            )
+            if running is not None:
+                return None
+            evaluation = _EvalORM(application_id=app_id, config_version="", status="running")
+            session.add(evaluation)
+            session.commit()
+            eval_id = evaluation.id
+
+        def _bg_worker() -> None:
+            from agi_talent_radar.scholarship.scorer_agent import run_scorer_agent
+
+            try:
+                with get_session() as session:
+                    app = session.get(ScholarshipApplicationORM, app_id)
+                    evaluation = session.get(_EvalORM, eval_id)
+                    run_scorer_agent(session, app, evaluation, lambda t, p: None)
+            except Exception:  # noqa: BLE001
+                logging.getLogger(__name__).exception("后台评分失败 eval=%s", eval_id)
+                try:
+                    with get_session() as session:
+                        evaluation = session.get(_EvalORM, eval_id)
+                        evaluation.status = "failed"
+                        evaluation.error_message = "后台评估线程异常"
+                        session.commit()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        _threading.Thread(target=_bg_worker, daemon=True).start()
+        return eval_id
 
     @bp.post("/api/scholarship/applications/<app_id>/evaluate")
     def evaluate(app_id: str):

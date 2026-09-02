@@ -721,6 +721,8 @@ export interface ScholarshipApplication {
   research_summary: string;
   education_history: string;
   submitted_at: string | null;
+  updated_at?: string | null;
+  evaluating?: boolean;
   materials_count: number;
   blind_score: number | null;
   total_score: number | null;

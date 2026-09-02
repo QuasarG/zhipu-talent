@@ -181,6 +181,11 @@ const TOOL_LABELS: Record<string, string> = {
   web_search: "全网检索",
   submit_scores: "提交评分",
 };
+const EVIDENCE_LABELS: Record<string, string> = {
+  verified: "已验证",
+  supported: "佐证可信",
+  claimed: "仅自述",
+};
 const TIER_LABELS: Record<string, string> = {
   strong: "强推荐",
   recommend: "推荐",
@@ -588,9 +593,6 @@ export default function ScholarshipPane({
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-              {view !== "assessment" && (
-                <Button variant="tonal" icon="fact_check" className="h-8 px-3" onClick={() => onViewChange("assessment")}>{t("评估与核验")}</Button>
-              )}
               {confirmingDelete ? (
                 <>
                   <span className="text-label text-error">{t("确认删除？")}</span>
@@ -628,7 +630,7 @@ export default function ScholarshipPane({
 
         {view === "overview" && (
           <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.62fr)]">
-            <div className="min-h-0 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 overflow-y-auto px-5 py-4 space-y-4">
               {(app.status === "material_incomplete" || app.status === "ineligible") && (
                 <section className="mb-5 rounded-lg border border-warning/40 bg-warning-container/40 px-4 py-3">
                   <div className="flex items-center gap-2 text-body-sm font-medium text-warning"><Icon name="warning" size={17} />{t("筛选需要处理")}</div>
@@ -637,17 +639,17 @@ export default function ScholarshipPane({
                 </section>
               )}
 
-              <section className="border-b border-outline-variant pb-5">
+              <section className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-title-lg">{t("研究方向简述")}</h2>
                   <span className="text-label text-on-surface-variant">{t("申请人自述")}</span>
                 </div>
-                <p className="mt-3 max-h-32 overflow-y-auto border-l-2 border-primary-container pl-3 text-body-sm leading-6 text-on-surface whitespace-pre-wrap">
+                <p className="mt-3 max-h-40 overflow-y-auto border-l-2 border-primary-container pl-3 text-body-sm leading-6 text-on-surface whitespace-pre-wrap">
                   {app.research_summary || t("暂无研究方向简述")}
                 </p>
               </section>
 
-              <section className="border-b border-outline-variant py-5">
+              <section className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-4">
                 <h2 className="text-title-lg">{t("关键资料")}</h2>
                 <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
                   <InfoField icon="school" label={t("学校")} value={app.school} />
@@ -660,7 +662,7 @@ export default function ScholarshipPane({
                 </dl>
               </section>
 
-              <section className="border-b border-outline-variant py-5">
+              <section className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-title-lg">{t("教育与科研经历")}</h2>
                   {app.submitted_at && <span className="text-label text-on-surface-variant">{t("提交于 {v}", { v: formatDate(app.submitted_at) })}</span>}
@@ -670,7 +672,7 @@ export default function ScholarshipPane({
                 </p>
               </section>
 
-              <section className="pt-5">
+              <section className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-4">
                 <h2 className="text-title-lg">{t("联系方式")}</h2>
                 <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
                   <InfoField icon="mail" label={t("邮箱")} value={app.email} />
@@ -691,9 +693,9 @@ export default function ScholarshipPane({
         )}
 
         {view === "assessment" && (
-          <div ref={processRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div ref={processRef} className="min-h-0 flex-1 overflow-y-auto">
             {assessmentTab === "score" && (
-              <div className="flex flex-col gap-5">
+              <div className="mx-auto w-full max-w-4xl flex-col gap-5 flex px-5 py-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.2fr_repeat(2,minmax(0,1fr))]">
                   <div className="rounded-lg bg-primary px-4 py-3 text-on-primary">
                     <p className="text-label opacity-75">{t("当前总分")}</p>
@@ -709,14 +711,25 @@ export default function ScholarshipPane({
                 </div>
                 {latestEval?.status === "running" ? <div className="rounded-lg border border-outline-variant px-4 py-6"><LoadingIndicator size={20} label={t("评估中…")} /></div> : latestEval?.status === "failed" ? <p className="rounded-lg border border-error/40 bg-error-container px-4 py-3 text-body-sm text-error">{t("评估失败：{msg}", { msg: latestEval.error_message || t("未知错误") })}</p> : !latestCompleted ? <div className="rounded-lg border border-dashed border-outline-variant px-4 py-6 text-center"><p className="text-body-sm text-on-surface-variant">{t("暂无评估结果")}</p><Button variant="tonal" icon="grade" className="mt-3" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>{t("开始评估")}</Button></div> : (
                   <>
-                    <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-                      {latestCompleted.dimensions.map((dimension) => (
-                        <div key={dimension.key} className="rounded-lg border border-outline-variant px-4 py-3">
-                          <div className="flex items-center justify-between gap-3"><span className="text-body-sm font-medium text-on-surface">{dimension.label}</span><span className="font-mono text-label tabular-nums text-on-surface-variant">{dimension.score}/5 · {dimension.max_points}</span></div>
-                          <Progress value={(dimension.score / 5) * 100} className="my-2" />
-                          {dimension.reason && <p className="text-label leading-5 text-on-surface-variant">{dimension.reason}</p>}
-                        </div>
-                      ))}
+                    <div className="flex flex-col gap-2">
+                      {latestCompleted.dimensions.map((dimension) => {
+                        const max = dimension.key === "integrity_risk" ? 10 : 5;
+                        return (
+                          <div key={dimension.key} className="rounded-lg border border-outline-variant bg-surface-lowest px-4 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-body font-medium text-on-surface">{dimension.label}</span>
+                              {dimension.evidence_level && (
+                                <StatusChip tone={dimension.evidence_level === "verified" ? "success" : dimension.evidence_level === "supported" ? "info" : "neutral"}>
+                                  {t(EVIDENCE_LABELS[dimension.evidence_level] ?? dimension.evidence_level)}
+                                </StatusChip>
+                              )}
+                              <span className="ml-auto font-mono text-label tabular-nums text-on-surface-variant">{dimension.score}/{max} · 满分 {dimension.max_points}</span>
+                            </div>
+                            <Progress value={(dimension.score / max) * 100} className="my-2" />
+                            {dimension.reason && <p className="text-body-sm leading-6 text-on-surface-variant">{dimension.reason}</p>}
+                          </div>
+                        );
+                      })}
                     </div>
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                       <div><p className="mb-2 text-label text-on-surface-variant">{t("亮点")}</p><ul className="flex flex-col gap-1.5">{latestCompleted.highlights.map((highlight) => <li key={highlight} className="flex items-start gap-2 text-body-sm"><Icon name="check_circle" size={16} className="mt-0.5 shrink-0 text-success" />{highlight}</li>)}{!latestCompleted.highlights.length && <li className="text-body-sm text-on-surface-variant">—</li>}</ul></div>
@@ -742,7 +755,7 @@ export default function ScholarshipPane({
             )}
 
             {assessmentTab === "process" && (
-              <div>
+              <div className="mx-auto w-full max-w-4xl px-5 py-4">
                 <div className="mb-5"><h2 className="text-title-lg">{t("评估过程")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("评审 agent 的工作记录：读了哪些材料、查证了什么、如何下结论")}</p></div>
                 <AssistantMessage message={processMessage} busy={!!liveTrace} onDecide={() => {}} />
               </div>
