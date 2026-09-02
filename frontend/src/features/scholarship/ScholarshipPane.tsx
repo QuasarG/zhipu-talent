@@ -8,6 +8,7 @@ import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 import { parseSSE } from "@/lib/api";
+import AssistantMessage from "@/features/chat/AssistantMessage";
 import { applyEvent, type LocalMessage as LocalChatMessage } from "@/pages/TalentChat";
 import ScorerTrace from "@/features/scholarship/ScorerTrace";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
@@ -173,6 +174,13 @@ function AddApplicantDialog({ onClose, onDone }: AddDialogProps) {
 
 export type ScholarshipView = "overview" | "materials" | "assessment";
 
+const TOOL_LABELS: Record<string, string> = {
+  list_files: "盘点材料",
+  read_file: "读取材料",
+  verify_paper: "论文查证",
+  web_search: "全网检索",
+  submit_scores: "提交评分",
+};
 const TIER_LABELS: Record<string, string> = {
   strong: "强推荐",
   recommend: "推荐",
@@ -408,6 +416,36 @@ export default function ScholarshipPane({
   const [busyAction, setBusyAction] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [liveTrace, setLiveTrace] = useState<ChatSegment[] | null>(null);
+  /** 评估过程页渲染源：live 流式时直接是 applyEvent 维护的消息；回放时由 trace 转换 */
+  const processMessage: ChatMessage = useMemo(() => {
+    if (liveTrace) {
+      return {
+        id: `scoring-${app?.id ?? ""}`,
+        conversation_id: "",
+        role: "assistant",
+        content: { segments: liveTrace },
+        citations: [],
+        status: "running",
+        created_at: new Date().toISOString(),
+      };
+    }
+    const segs: ChatSegment[] = [];
+    for (const seg of latestEval?.trace ?? []) {
+      if (seg.type === "tool")
+        segs.push({ type: "tool", call_id: seg.call_id, tool: seg.tool, label: seg.label || TOOL_LABELS[seg.tool] || seg.tool, status: seg.status === "error" ? "error" : "ok", summary: seg.summary, detail: seg.detail, args_summary: "" });
+      else if (seg.type === "thinking") segs.push({ type: "thinking", text: seg.text });
+      else if (seg.type === "text") segs.push({ type: "text", text: seg.text });
+    }
+    return {
+      id: `trace-${latestEval?.id ?? "none"}`,
+      conversation_id: "",
+      role: "assistant",
+      content: { segments: segs },
+      citations: [],
+      status: "completed",
+      created_at: latestEval?.created_at ?? new Date().toISOString(),
+    };
+  }, [liveTrace, latestEval]);
   // 过程容器自动滚底（问答 convRef 同款）：流式追加时视口钉在底部，上面的卡不因滚动锚点跳
   const processRef = useRef<HTMLDivElement>(null);
   const [assessmentTab, setAssessmentTab] = useState<AssessmentTab>("score");
@@ -468,6 +506,7 @@ export default function ScholarshipPane({
         status: "running",
         created_at: new Date().toISOString(),
       };
+      setLiveTrace(live.content.segments);
       // 微任务合并：SSE 事件可能成批到达（150ms 攒批后一次多条），
       // 每帧只 commit 一次，减少整列 diff 频率
       let commitQueued = false;
@@ -710,7 +749,7 @@ export default function ScholarshipPane({
             {assessmentTab === "process" && (
               <div>
                 <div className="mb-5"><h2 className="text-title-lg">{t("评估过程")}</h2><p className="mt-1 text-body-sm text-on-surface-variant">{t("评审 agent 的工作记录：读了哪些材料、查证了什么、如何下结论")}</p></div>
-                <ScorerTrace live={liveTrace ?? undefined} trace={latestEval?.trace ?? []} running={!!liveTrace} />
+                <AssistantMessage message={processMessage} busy={!!liveTrace} onDecide={() => {}} />
               </div>
             )}
 
