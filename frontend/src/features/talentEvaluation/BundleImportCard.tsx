@@ -68,10 +68,9 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       let candidateId = "";
       for await (const event of parseSSE(response)) {
-        const e = event as { type: string; message?: string };
+        const e = event as { type: string; message?: string; candidate?: { id?: string }; payload?: Record<string, unknown> };
         if (e.type === "candidate") {
-          const payload = (event.payload ?? {}) as Record<string, unknown>;
-          candidateId = String(payload.id ?? "");
+          candidateId = String(e.candidate?.id ?? e.payload?.id ?? "");
         }
         if (e.type === "stage" && e.message) pushLog(bundle.id, String(e.message));
         if (e.type === "done") break;
@@ -146,10 +145,10 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
                   <StatusChip tone={STATUS_TONES[bundle.status] ?? "neutral"}>
                     {t(STATUS_LABELS[bundle.status] ?? bundle.status)}
                   </StatusChip>
-                  {bundle.status === "unpacked" && bundle.resume_file && (
+                  {(bundle.status === "unpacked" || bundle.status === "failed") && bundle.resume_file && (
                     <Button variant="outlined" className="h-7 px-2 text-xs shrink-0"
                       onClick={() => void importBundle(bundle, bundle.resume_file)}>
-                      {t("解析入档")}
+                      {t(bundle.status === "failed" ? "重试解析" : "解析入档")}
                     </Button>
                   )}
                 </div>

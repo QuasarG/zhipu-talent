@@ -1396,7 +1396,7 @@ def _stream_import_upload(
                 file_total,
                 stage=current_stage,
                 status="running",
-                message="正在提取 PDF 文本，扫描页自动走本地 OCR。",
+                message="正在提取 PDF 文本，扫描页自动走云端视觉转译。",
             )
             raw_text, ocr_pages = extract_pdf_text(file_bytes)
             if not raw_text.strip():
@@ -1415,6 +1415,36 @@ def _stream_import_upload(
                 status="done",
                 message=message,
             )
+        elif suffix == ".docx":
+            current_stage = "extracting"
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="running",
+                message="正在提取 Word 简历文本。",
+            )
+            import io as _io
+
+            import mammoth
+
+            raw_text = str(mammoth.extract_raw_text(_io.BytesIO(file_bytes)).value or "")
+            if not raw_text.strip():
+                raise ValueError("Word 文档未能提取到任何文字内容。")
+            resumes = [text_resume(raw_text, filename)]
+            yield _file_event(
+                "stage",
+                file_id,
+                filename,
+                file_index,
+                file_total,
+                stage=current_stage,
+                status="done",
+                message=f"已提取 {len(raw_text)} 字文本。",
+            )
         elif suffix in IMAGE_SUFFIXES:
             current_stage = "extracting"
             yield _file_event(
@@ -1425,7 +1455,7 @@ def _stream_import_upload(
                 file_total,
                 stage=current_stage,
                 status="running",
-                message="正在对图片简历进行本地 OCR。",
+                message="正在对图片简历进行视觉转译。",
             )
             raw_text = extract_image_text(file_bytes)
             if not raw_text.strip():
@@ -1439,7 +1469,7 @@ def _stream_import_upload(
                 file_total,
                 stage=current_stage,
                 status="done",
-                message="图片 OCR 完成。",
+                message="图片视觉转译完成。",
             )
         else:
             with tempfile.TemporaryDirectory() as temp_dir:
