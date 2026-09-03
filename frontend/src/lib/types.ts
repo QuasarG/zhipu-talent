@@ -886,9 +886,10 @@ export interface InterviewAssessment {
 export interface TalentBundleSummary {
   id: string;
   filename: string;
-  status: "unpacked" | "profiling" | "profiled" | "failed";
+  status: "unpacked" | "importing" | "imported" | "failed";
   person_id: string | null;
   candidate_id: string | null;
+  resume_file: string;
   error_message: string;
   file_count: number;
   total_bytes: number;

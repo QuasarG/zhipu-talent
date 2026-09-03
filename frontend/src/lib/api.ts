@@ -306,9 +306,12 @@ export const api = {
         { method: "POST", body: form },
       );
     },
-    /** 双 agent SSE 流：tool/thinking/answer/observer 事件 + done 载最新包快照 */
-    evaluateStream: (id: string) =>
-      authedFetch(`/api/talent-bundles/${id}/evaluate`, { method: "POST" }),
+    link: (id: string, candidateId: string) =>
+      fetchJSON<TalentBundleSummary>(`/api/talent-bundles/${id}/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_id: candidateId }),
+      }),
   },
   personResume: (personId: string) =>
     fetchJSON<CandidateDetail>(`/api/persons/${personId}/resume`),

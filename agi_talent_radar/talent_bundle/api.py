@@ -4,13 +4,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-import queue
-import threading
 import urllib.parse
 
-from flask import Blueprint, Response, jsonify, request, stream_with_context
+from flask import Blueprint, jsonify, request
 
 from agi_talent_radar.core.db.orm import TalentBundleORM
+from agi_talent_radar.talent_bundle.ingest import locate_resume
 
 logger = logging.getLogger(__name__)
 
@@ -108,50 +107,23 @@ def build_bundle_blueprint() -> Blueprint:
                 return jsonify({"detail": "材料包不存在"}), 404
             return jsonify(_to_dict(bundle, with_trace=True))
 
-    @bp.post("/api/talent-bundles/<bundle_id>/evaluate")
-    def evaluate_bundle(bundle_id: str):
-        """SSE：双 agent（评估+督导）解析过程直播。重复请求时若已在跑直接拒绝。"""
+    @bp.post("/api/talent-bundles/<bundle_id>/link")
+    def link_bundle(bundle_id: str):
+        """导入链路完成后把候选人与包关联（status=imported）。"""
         from agi_talent_radar.core.db.runtime import get_session
 
+        body = request.get_json(silent=True) or {}
+        candidate_id = str(body.get("candidate_id") or "").strip()
+        if not candidate_id:
+            return jsonify({"detail": "candidate_id 必填"}), 400
         with get_session() as session:
             bundle = session.get(TalentBundleORM, bundle_id)
             if bundle is None:
                 return jsonify({"detail": "材料包不存在"}), 404
-            if bundle.status == "profiling":
-                return jsonify({"detail": "该包正在解析中"}), 409
-
-        events: queue.Queue = queue.Queue()
-
-        def emit(type_: str, payload: dict) -> None:
-            events.put({"type": type_, "payload": payload})
-
-        def worker() -> None:
-            from agi_talent_radar.talent_bundle.agent import run_bundle_agent
-
-            try:
-                with get_session() as session:
-                    bundle = session.get(TalentBundleORM, bundle_id)
-                    run_bundle_agent(session, bundle, emit)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("材料包解析 worker 失败")
-                emit("error", {"message": str(exc)[:200]})
-            finally:
-                events.put(None)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-        def generate():
-            while True:
-                item = events.get()
-                if item is None:
-                    break
-                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-            with get_session() as session:
-                bundle = session.get(TalentBundleORM, bundle_id)
-                payload = _to_dict(bundle, with_trace=True) if bundle else {"status": "failed"}
-            yield f"data: {json.dumps({'type': 'done', 'payload': payload}, ensure_ascii=False)}\n\n"
-
-        return Response(stream_with_context(generate()), mimetype="text/event-stream")
+            bundle.candidate_id = candidate_id
+            bundle.status = "imported"
+            session.commit()
+            return jsonify(_to_dict(bundle))
 
     return bp
 
@@ -164,6 +136,7 @@ def _to_dict(bundle: TalentBundleORM, with_trace: bool = False) -> dict:
         "person_id": bundle.person_id,
         "candidate_id": bundle.candidate_id,
         "error_message": bundle.error_message or "",
+        "resume_file": locate_resume(bundle.id) if bundle.status == "unpacked" else "",
         "file_count": bundle.file_count or 0,
         "total_bytes": bundle.total_bytes or 0,
         "created_at": bundle.created_at.isoformat() if bundle.created_at else None,

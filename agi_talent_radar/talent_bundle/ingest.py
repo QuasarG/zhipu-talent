@@ -99,6 +99,40 @@ def create_bundle(filename: str, blob: bytes) -> TalentBundleORM:
     return bundle
 
 
+_RESUME_KEYWORDS = ("简历", "resume", "cv")
+
+
+def locate_resume(bundle_id: str) -> str:
+    """定位包内简历文件：文件名关键词（简历/resume/cv）优先 pdf，其次 docx；
+    无关键词命中时，整包恰好只有一个 pdf 也认定。找不到返回空串。"""
+    from agi_talent_radar.talent_bundle.tools import BundleContext, walk_files
+
+    ctx = BundleContext(bundle_id)
+    rels = walk_files(ctx)
+    keyword_hits: list[str] = []
+    pdfs: list[str] = []
+    docx: list[str] = []
+    for rel in rels:
+        lowered = rel.lower()
+        base = os.path.basename(lowered)
+        suffix = ("." + base.rsplit(".", 1)[-1]) if "." in base else ""
+        if any(k in base for k in _RESUME_KEYWORDS):
+            keyword_hits.append(rel)
+            if suffix == ".pdf":
+                keyword_hits.append(rel)  # 关键词+pdf 权重翻倍（排序靠前）
+        if suffix == ".pdf":
+            pdfs.append(rel)
+        elif suffix == ".docx":
+            docx.append(rel)
+    if keyword_hits:
+        return sorted(keyword_hits, key=lambda r: (not r.lower().endswith(".pdf"), r))[0]
+    if len(pdfs) == 1:
+        return pdfs[0]
+    if not pdfs and len(docx) == 1:
+        return docx[0]
+    return ""
+
+
 def _safe_member(name: str) -> str | None:
     """zip-slip 防护：绝对路径 / 盘符 / .. 穿越一律拒收；macOS 垃圾目录跳过。"""
     normalized = name.replace("\\", "/")
