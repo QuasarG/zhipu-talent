@@ -36,7 +36,7 @@ from agi_talent_radar.web.spa_assets import list_dist_assets as _list_dist_asset
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
-VALID_IMPORT_SUFFIXES = {".pdf", ".jsonl", ".md", ".txt"} | IMAGE_SUFFIXES
+VALID_IMPORT_SUFFIXES = {".pdf", ".jsonl", ".md", ".txt", ".docx"} | IMAGE_SUFFIXES
 MAX_BATCH_FILES = 50
 MAX_BATCH_BYTES = 200 * 1024 * 1024
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -1371,7 +1371,7 @@ def _stream_import_upload(
     current_stage = "validation"
     try:
         if suffix not in VALID_IMPORT_SUFFIXES:
-            raise ValueError("仅支持 .pdf / .jsonl / .md / .txt / .png / .jpg / .jpeg / .webp 文件")
+            raise ValueError("仅支持 .pdf / .docx / .jsonl / .md / .txt / .png / .jpg / .jpeg / .webp 文件")
         if not file_bytes:
             raise ValueError("文件内容为空")
         yield _file_event(
