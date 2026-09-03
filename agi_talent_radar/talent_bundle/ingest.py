@@ -35,43 +35,59 @@ def workspace_root(bundle_id: str) -> str:
 
 
 def create_bundle(filename: str, blob: bytes) -> TalentBundleORM:
-    """保存 zip → 解最外层到工作区 → 建包记录（status=unpacked）。"""
+    """保存上传 → 建包记录。zip = 一人一包（解最外层）；单文件 = 一人一文件的退化包。
+
+    存量导入（单份简历）与包上传在此收敛为同一结构。
+    """
     if not blob:
-        raise ValueError("压缩包内容为空。")
+        raise ValueError("上传内容为空。")
     if len(blob) > MAX_BUNDLE_BYTES:
-        raise ValueError(f"压缩包超过 {MAX_BUNDLE_BYTES // 1024 // 1024} MB 限制。")
+        raise ValueError(f"上传超过 {MAX_BUNDLE_BYTES // 1024 // 1024} MB 限制。")
     bundle_id = uuid.uuid4().hex[:16]
     bdir = bundle_dir(bundle_id)
     ws = workspace_root(bundle_id)
     os.makedirs(ws, exist_ok=True)
-    archive_path = os.path.join(bdir, "original.zip")
-    with open(archive_path, "wb") as fp:
-        fp.write(blob)
-    if not zipfile.is_zipfile(archive_path):
-        raise ValueError("仅支持 zip 格式（一人一包）。")
 
-    from agi_talent_radar.scholarship.ingest import _fix_zip_filename
-
-    total_bytes = 0
     count = 0
-    with zipfile.ZipFile(archive_path) as zf:
-        infos = [zi for zi in zf.infolist() if not zi.is_dir()]
-        if len(infos) > MAX_ENTRIES:
-            raise ValueError(f"压缩包条目数超过 {MAX_ENTRIES}，疑似打包异常。")
-        for info in infos:
-            fixed = _fix_zip_filename(info)
-            name = _safe_member(fixed)
-            if name is None:
-                continue
-            target = os.path.join(ws, *name.split("/"))
-            data = zf.read(info)
-            total_bytes += len(data)
-            if total_bytes > MAX_EXTRACT_BYTES:
-                raise ValueError("解压后总大小超限，疑似压缩炸弹。")
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            with open(target, "wb") as fp:
-                fp.write(data)
-            count += 1
+    total_bytes = 0
+    if (filename or "").lower().endswith(".zip"):
+        archive_path = os.path.join(bdir, "original.zip")
+        os.makedirs(bdir, exist_ok=True)
+        with open(archive_path, "wb") as fp:
+            fp.write(blob)
+        if not zipfile.is_zipfile(archive_path):
+            raise ValueError("仅支持 zip 格式（一人一包）。")
+
+        from agi_talent_radar.scholarship.ingest import _fix_zip_filename
+
+        with zipfile.ZipFile(archive_path) as zf:
+            infos = [zi for zi in zf.infolist() if not zi.is_dir()]
+            if len(infos) > MAX_ENTRIES:
+                raise ValueError(f"压缩包条目数超过 {MAX_ENTRIES}，疑似打包异常。")
+            for info in infos:
+                fixed = _fix_zip_filename(info)
+                name = _safe_member(fixed)
+                if name is None:
+                    continue
+                target = os.path.join(ws, *name.split("/"))
+                data = zf.read(info)
+                total_bytes += len(data)
+                if total_bytes > MAX_EXTRACT_BYTES:
+                    raise ValueError("解压后总大小超限，疑似压缩炸弹。")
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with open(target, "wb") as fp:
+                    fp.write(data)
+                count += 1
+    else:
+        # 单文件退化包：目录里只有一个简历/论文等
+        parts = _safe_member(filename or "material.bin")
+        if parts is None:
+            raise ValueError("文件名非法。")
+        target = os.path.join(ws, *parts.split("/"))
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as fp:
+            fp.write(blob)
+        count, total_bytes = 1, len(blob)
 
     bundle = TalentBundleORM(
         id=bundle_id,

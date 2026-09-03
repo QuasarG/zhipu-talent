@@ -134,9 +134,9 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
     <div className="shrink-0">
       <Card variant="outlined" className="p-3 max-h-[60vh] overflow-y-auto border-primary/40">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-title">{t("导入材料包")}</span>
+          <span className="text-title">{t("导入材料")}</span>
           <div className="flex items-center gap-1.5">
-            <input ref={inputRef} type="file" accept=".zip" multiple hidden
+            <input ref={inputRef} type="file" accept=".zip,.pdf,.docx,.png,.jpg,.jpeg,.webp,.txt,.md" multiple hidden
               onChange={(e) => void upload(e.target.files)} />
             <Button variant="tonal" icon="upload" className="h-8 px-3 text-xs" disabled={uploading}
               onClick={() => inputRef.current?.click()}>
@@ -146,13 +146,13 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
           </div>
         </div>
         <p className="mb-2 text-label text-on-surface-variant">
-          {t("一人一 zip（简历/论文/推荐信/视频等均可），双 agent 解析后直接入人才档案")}
+          {t("zip 材料包（一人一包）或单份文件均可；双 agent 解析后直接入人才档案")}
         </p>
         {error && <p className="mb-2 text-body-sm text-error">{error}</p>}
 
         {!bundles.length ? (
           <p className="py-4 text-center text-body-sm text-on-surface-variant">
-            {t("还没有材料包；上传 zip 后自动按人拆包")}
+            {t("还没有材料；上传 zip（一人一包）或单份文件")}
           </p>
         ) : (
           <div className="flex flex-col gap-1">

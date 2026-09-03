@@ -19,7 +19,6 @@ import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowG
 import CandidateFolderTree from "@/features/talentEvaluation/CandidateFolderTree";
 import AdmissionPane from "@/features/talentEvaluation/AdmissionPane";
 import { BatchQueueCard } from "@/features/talentEvaluation/BatchViews";
-import ImportOverlay from "@/features/resume/ImportOverlay";
 import BundleImportCard from "@/features/talentEvaluation/BundleImportCard";
 import {
   buildCandidateFolders,
@@ -66,7 +65,6 @@ export default function TalentEvaluation() {
 
   // ---- 临时态 ----
   const [creating, setCreating] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
   const [bundleOpen, setBundleOpen] = useState(false);
   const [importRecovering, setImportRecovering] = useState(() => {
     try {
@@ -413,30 +411,7 @@ export default function TalentEvaluation() {
     clearNode();
   }, [clearNode, setActiveRunId, setSelectedCandidateId, setSelectedJdId]);
 
-  // ---- 导入简历（共用动作，位于左侧候选人卡片底部） ----
-  const openImport = useCallback(() => {
-    setImportOpen(true);
-    try {
-      sessionStorage.setItem(sessionKey(IMPORT_FLAG), "1");
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const closeImport = useCallback(() => {
-    setImportOpen(false);
-    setImportRecovering(false);
-    try {
-      sessionStorage.removeItem(sessionKey(IMPORT_FLAG));
-    } catch {
-      /* ignore */
-    }
-    void loadShell();
-  }, [loadShell]);
-
-  const runningCard = importOpen ? (
-    <ImportOverlay onCandidate={() => void loadShell()} onClose={closeImport} />
-  ) : importRecovering ? (
+  const runningCard = importRecovering ? (
     <div className="shrink-0 border-t border-outline-variant p-3">
       <div className="rounded-md border border-outline-variant bg-surface-low px-3 py-2.5 text-label text-on-surface-variant">
         <p className="flex items-center gap-1.5">
@@ -548,7 +523,6 @@ export default function TalentEvaluation() {
               onCancelBatch={() => void cancelBatch()}
             />
           ) : undefined}
-          onImport={openImport}
           onImportBundles={() => setBundleOpen(true)}
         />
 

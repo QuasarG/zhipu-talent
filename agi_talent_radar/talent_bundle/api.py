@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import threading
 
@@ -45,6 +46,44 @@ def build_bundle_blueprint() -> Blueprint:
                     logger.warning("材料包 %s 入库失败：%s", storage.filename, exc)
                     errors.append({"filename": storage.filename, "error": str(exc)[:200]})
         return jsonify({"created": created, "errors": errors}), 201
+
+    @bp.get("/api/talent-bundles/by-candidate/<candidate_id>")
+    def bundle_by_candidate(candidate_id: str):
+        """按候选人查材料包文件清单（无包返回空列表——存量单简历候选人走原件预览）。"""
+        from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.talent_bundle.tools import BundleContext, walk_files
+
+        with get_session() as session:
+            bundle = (
+                session.query(TalentBundleORM)
+                .filter_by(candidate_id=candidate_id)
+                .order_by(TalentBundleORM.id.desc())
+                .first()
+            )
+        if bundle is None:
+            return jsonify({"bundle_id": None, "files": []})
+        ctx = BundleContext(bundle.id)
+        files = []
+        for rel in walk_files(ctx):
+            path = ctx.resolve(rel)
+            files.append({
+                "file": rel,
+                "size_kb": max(1, os.path.getsize(path) // 1024) if path and os.path.isfile(path) else 0,
+            })
+        return jsonify({"bundle_id": bundle.id, "status": bundle.status, "files": files})
+
+    @bp.get("/api/talent-bundles/<bundle_id>/file")
+    def bundle_file(bundle_id: str):
+        """包内文件预览/下载（path 相对工作区，防穿越）。"""
+        from flask import send_file
+
+        from agi_talent_radar.talent_bundle.tools import BundleContext
+
+        ctx = BundleContext(bundle_id)
+        path = ctx.resolve(request.args.get("path", ""))
+        if not path or not os.path.isfile(path):
+            return jsonify({"detail": "文件不存在"}), 404
+        return send_file(path)
 
     @bp.get("/api/talent-bundles/<bundle_id>")
     def get_bundle(bundle_id: str):

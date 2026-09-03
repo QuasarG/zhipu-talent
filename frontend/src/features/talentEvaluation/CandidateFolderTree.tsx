@@ -25,7 +25,6 @@ interface Props {
   bundleCard?: ReactNode;
   /** 评估队列卡（批次进度 + 配对列表），展示在人才树与导入按钮之间 */
   queueCard?: ReactNode;
-  onImport: () => void;
   onImportBundles: () => void;
 }
 
@@ -55,7 +54,6 @@ export default function CandidateFolderTree({
   runningCard,
   bundleCard,
   queueCard,
-  onImport,
   onImportBundles,
 }: Props) {
   const { t } = useI18n();
@@ -123,12 +121,9 @@ export default function CandidateFolderTree({
       {bundleCard}
       {queueCard}
 
-      <div className="border-t border-outline-variant grid grid-cols-2 gap-2 p-2 shrink-0">
-        <Button variant="outlined" icon="upload_file" className="w-full" onClick={onImport}>
-          {t("导入简历")}
-        </Button>
-        <Button variant="outlined" icon="folder_zip" className="w-full" onClick={onImportBundles}>
-          {t("导入材料包")}
+      <div className="border-t border-outline-variant p-2 shrink-0">
+        <Button variant="outlined" icon="upload_file" className="w-full" onClick={onImportBundles}>
+          {t("导入材料")}
         </Button>
       </div>
     </Card>

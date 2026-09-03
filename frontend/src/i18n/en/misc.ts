@@ -29,4 +29,8 @@ export default {
   "尚未解析；点上方「开始解析」启动双 agent": "Not parsed yet — start the dual-agent above",
   "已入档": "Profiled",
   "待解析": "Pending",
+  "导入材料": "Import Materials",
+  "材料文件": "Materials",
+  "zip 材料包（一人一包）或单份文件均可；双 agent 解析后直接入人才档案": "A zip bundle (one person) or single files; dual-agent parsing straight into the roster",
+  "还没有材料；上传 zip（一人一包）或单份文件": "No materials yet — upload a zip (one per person) or single files",
 } as Record<string, string>;

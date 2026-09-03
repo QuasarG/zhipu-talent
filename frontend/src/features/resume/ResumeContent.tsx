@@ -17,6 +17,7 @@ import { getSchoolLogo } from "@/lib/schoolLogos";
 import { useSessionState } from "@/lib/sessionState";
 import { useI18n } from "@/lib/i18n";
 import TypewriterText from "@/features/resume/TypewriterText";
+import CandidateMaterials from "@/features/resume/CandidateMaterials";
 
 interface Props {
   detail: CandidateDetail;
@@ -158,6 +159,8 @@ export default function ResumeContent({ detail, onReviewed, hideTabs }: Props) {
             >
               <PublicationList detail={detail} academicReport={academicReport} importing={importing} onReviewed={onReviewed} />
             </RecordSection>
+
+            <CandidateMaterials candidateId={detail.id} />
 
             <RecordSection title={t("技能")} icon="bolt" importing={importing}>
               <SkillsList detail={detail} importing={importing} />

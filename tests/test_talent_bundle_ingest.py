@@ -28,6 +28,9 @@ def main() -> None:
         "../escape.txt": b"evil",                            # zip-slip：拒收
         "/abs/path.txt": b"evil",                            # 绝对路径：拒收
     })
+    single = create_bundle("李四_简历.pdf", b"%PDF-1.4 single")
+    assert single.file_count == 1
+    assert os.path.isfile(os.path.join(workspace_root(single.id), "李四_简历.pdf"))
     bundle = create_bundle("张三.zip", blob)
     ws = workspace_root(bundle.id)
     assert bundle.status == "unpacked" and bundle.file_count == 3, bundle.file_count

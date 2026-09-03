@@ -65,6 +65,11 @@ def _suffix(name: str) -> str:
     return ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
 
 
+def walk_files(ctx: BundleContext) -> list[str]:
+    """工作区文件清单（相对路径，排序截断）。供工具与 API 共用。"""
+    return _walk(ctx)
+
+
 def _walk(ctx: BundleContext) -> list[str]:
     out: list[str] = []
     for root, _dirs, files in os.walk(ctx.ws):
