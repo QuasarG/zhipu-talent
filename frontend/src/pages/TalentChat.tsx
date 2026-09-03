@@ -52,6 +52,10 @@ export function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
         args_summary: e.payload.args_summary,
       });
       return { ...msg, content: { segments } };
+    case "observer":
+      // 督导泳道（材料包双 agent）：观察 agent 的方向性指令，独立类型供差异化渲染
+      segments.push({ type: "observer", action: e.payload.action, text: e.payload.text });
+      return { ...msg, content: { segments } };
     case "tool_end": {
       const idx = segments.findIndex((s) => s.type === "tool" && s.call_id === e.payload.call_id);
       if (idx >= 0) {

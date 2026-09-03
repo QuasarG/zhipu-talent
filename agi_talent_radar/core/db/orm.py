@@ -1071,3 +1071,31 @@ class GrillSessionORM(Base):
     running = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# 人才材料包：一人一 zip 批量导入，双 agent（评估+观察）解析进档
+# ---------------------------------------------------------------------------
+
+
+class TalentBundleORM(Base):
+    """一份申请人材料包（zip）。系统只解最外层（=分人），包内嵌套压缩包由 agent 自行解。
+
+    status: unpacked → profiling → profiled / failed
+    trace:  双 agent 过程段（评估+督导双泳道，segments 结构同奖学金评分）
+    """
+
+    __tablename__ = "talent_bundles"
+
+    id = Column(String(16), primary_key=True)
+    filename = Column(String(256), default="")
+    status = Column(String(24), default="unpacked", index=True)
+    person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"), nullable=True)
+    candidate_id = Column(String(64), nullable=True)
+    profile = Column(JSON, default=None)                   # submit_profile 受理后的结构化档案
+    trace = Column(JSON, default=list)
+    error_message = Column(Text, default="")
+    file_count = Column(Integer, default=0)
+    total_bytes = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

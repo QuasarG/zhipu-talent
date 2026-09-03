@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import type { PluggableList } from "unified";
 import type { ChatCitation, ChatMessage, ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
+import Icon from "@/components/ui/Icon";
 import AgentWorkingBar from "@/components/ui/AgentWorkingBar";
 import ToolCallCard from "./ToolCallCard";
 import ThinkingCard from "@/components/ui/ThinkingCard";
@@ -144,6 +145,20 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
           text={seg.text}
           streaming={busy && message.status === "running" && i === message.content.segments.length - 1}
         />
+      );
+    }
+    if (seg.type === "observer") {
+      return (
+        <div
+          key={`obs-${i}`}
+          className="my-2 flex items-start gap-2 rounded-md border border-secondary/40 bg-secondary-container/40 px-3 py-2 text-body-sm text-on-surface"
+        >
+          <Icon name="supervisor_account" size={16} className="mt-0.5 shrink-0 text-secondary" />
+          <span className="min-w-0 break-words">
+            <span className="font-medium text-secondary">[督导]{seg.action && seg.action !== "guide" ? `·${seg.action}` : ""}</span>{" "}
+            {seg.text}
+          </span>
+        </div>
       );
     }
     if (seg.type === "tool") return <ToolCallCard key={seg.call_id || i} segment={seg} />;

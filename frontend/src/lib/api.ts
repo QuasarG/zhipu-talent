@@ -17,6 +17,8 @@ import type {
   ResumeVersionEntry,
   ResumeOriginalMetadata,
   ScholarshipApplication,
+  TalentBundle,
+  TalentBundleSummary,
   TalentGroup,
 } from "./types";
 
@@ -291,6 +293,22 @@ export const api = {
     /** 评分 agent SSE 流：tool_start/tool_end/final/done（done 载最新评估快照） */
     evaluateStream: (id: string) =>
       authedFetch(`/api/scholarship/applications/${id}/evaluate`, { method: "POST" }),
+  },
+  // ---- 人才材料包（一人一 zip，双 agent 解析进档）----
+  talentBundle: {
+    list: () => fetchJSON<TalentBundleSummary[]>("/api/talent-bundles"),
+    get: (id: string) => fetchJSON<TalentBundle>(`/api/talent-bundles/${id}`),
+    upload: (files: File[]) => {
+      const form = new FormData();
+      files.forEach((f) => form.append("files", f));
+      return fetchJSON<{ created: TalentBundleSummary[]; errors: { filename: string; error: string }[] }>(
+        "/api/talent-bundles",
+        { method: "POST", body: form },
+      );
+    },
+    /** 双 agent SSE 流：tool/thinking/answer/observer 事件 + done 载最新包快照 */
+    evaluateStream: (id: string) =>
+      authedFetch(`/api/talent-bundles/${id}/evaluate`, { method: "POST" }),
   },
   personResume: (personId: string) =>
     fetchJSON<CandidateDetail>(`/api/persons/${personId}/resume`),

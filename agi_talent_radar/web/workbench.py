@@ -196,6 +196,7 @@ def create_app() -> Flask:
     from agi_talent_radar.web.interview_assessment_api import build_interview_assessment_blueprint
     from agi_talent_radar.scholarship.api import build_scholarship_blueprint
     from agi_talent_radar.grill.api import build_grill_blueprint
+    from agi_talent_radar.talent_bundle.api import build_bundle_blueprint
 
     configure_app_session(app)
 
@@ -218,6 +219,7 @@ def create_app() -> Flask:
     app.register_blueprint(build_interview_assessment_blueprint())
     app.register_blueprint(build_scholarship_blueprint())
     app.register_blueprint(build_grill_blueprint())
+    app.register_blueprint(build_bundle_blueprint())
     install_auth_middleware(app)
 
     # 启动自愈：上次进程死掉（部署重启/OOM）时正在跑的评分会永远停在 running，

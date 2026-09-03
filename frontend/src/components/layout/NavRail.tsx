@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
   { to: "/chat", icon: "forum", label: "人才问答" },
   { to: "/jd-pool", icon: "work", label: "JD 池" },
   { to: "/scholarship", icon: "workspace_premium", label: "奖学金" },
+  { to: "/talent-bundles", icon: "folder_zip", label: "材料包" },
   { to: "/settings", icon: "settings", label: "设置" },
 ];
 

@@ -503,6 +503,7 @@ export type ChatActionKind = "select_person" | "propose_add_person" | "resolve_f
 export type ChatSegment =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
+  | { type: "observer"; action?: string; text: string }
   | {
       type: "tool";
       call_id: string;
@@ -538,6 +539,7 @@ export type ChatEvent =
   | { type: "thinking_delta"; payload: { text: string } }
   | { type: "tool_start"; payload: { call_id: string; tool: string; label: string; args_summary: string } }
   | { type: "tool_end"; payload: { call_id: string; tool: string; status: "ok" | "error"; summary: string; detail: string } }
+  | { type: "observer"; payload: { action: string; text: string } }
   | { type: "action_required"; payload: { action_id: string; kind: ChatActionKind; payload: Record<string, unknown> } }
   | { type: "sources"; payload: { items: ChatCitation[] } }
   | { type: "message_done"; payload: { message_id: string } }
@@ -878,4 +880,22 @@ export interface InterviewAssessment {
   model_usage: ModelUsage[];
   run_trace: WorkflowNodeEvent[];
   updated_at: string;
+}
+
+// ---- 人才材料包（一人一 zip，双 agent 解析进档）----
+export interface TalentBundleSummary {
+  id: string;
+  filename: string;
+  status: "unpacked" | "profiling" | "profiled" | "failed";
+  person_id: string | null;
+  candidate_id: string | null;
+  error_message: string;
+  file_count: number;
+  total_bytes: number;
+  created_at: string | null;
+}
+
+export interface TalentBundle extends TalentBundleSummary {
+  trace: ChatSegment[];
+  profile: Record<string, unknown> | null;
 }

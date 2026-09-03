@@ -7,6 +7,7 @@ import NavRail from "./components/layout/NavRail";
 import LoadingIndicator from "./components/ui/LoadingIndicator";
 import Login from "./pages/Login";
 import Scholarship from "./pages/Scholarship";
+import TalentBundles from "./pages/TalentBundles";
 import OnboardingTour from "./components/OnboardingTour";
 
 const TalentChat = lazy(() => import("./pages/TalentChat"));
@@ -89,6 +90,7 @@ function App() {
             <Route path="/talent-pool/:personId" element={<TalentProfile />} />
             <Route path="/jd-pool" element={<JdPool />} />
             <Route path="/scholarship" element={<Scholarship />} />
+            <Route path="/talent-bundles" element={<TalentBundles />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
