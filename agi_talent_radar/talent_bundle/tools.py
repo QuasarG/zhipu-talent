@@ -342,6 +342,7 @@ _PROFILE_SCHEMA: dict[str, Any] = {
         },
         "publications": {"type": "array", "items": {"type": "string"}, "description": "论文标题列表"},
         "skills": {"type": "array", "items": {"type": "string"}},
+        "resume_file": {"type": "string", "description": "包内主简历的相对路径（list_files 结果里的 file），用于简历原件预览"},
         "notes": {"type": "string", "description": "解析过程说明/存疑点，供人工抽查"},
     },
     "required": ["name"],

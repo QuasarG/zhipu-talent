@@ -239,6 +239,19 @@ def _admit(session, bundle: TalentBundleORM, ctx: BundleContext) -> None:
     saved.group = "pending"
     direction = resume.directions[0] if resume.directions else ""
     person_id = talent_service.admit_candidate_from_import(session, saved, direction)
+    # 原始简历落盘到统一位置（data/resume_pdfs/），与旧导入完全一致——
+    # 存量候选人 = 目录里只有一份简历的材料包，档案页「简历原件」预览不区分来源
+    resume_rel = str(p.get("resume_file") or "").strip()
+    if resume_rel:
+        path = ctx.resolve(resume_rel)
+        if path and os.path.isfile(path):
+            try:
+                from agi_talent_radar.core.pdf_storage import save_resume_original
+
+                with open(path, "rb") as fp:
+                    save_resume_original(saved.id, fp.read(), os.path.splitext(path)[1])
+            except Exception:  # noqa: BLE001 — 原件落盘失败不影响进档
+                logger.warning("材料包原始简历落盘失败 bundle=%s", bundle.id, exc_info=True)
     bundle.candidate_id = saved.id
     bundle.person_id = person_id
     bundle.profile = p
