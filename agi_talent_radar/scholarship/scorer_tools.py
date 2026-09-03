@@ -45,6 +45,9 @@ class ScorerContext:
         self.final: dict[str, Any] | None = None
         self.force_submit = False  # 预算耗尽强制收尾时置 True，豁免「必须读完」校验
         self.read_ids: set[int] = set()
+        # 转译缓存（入库不再抽文本，全部延迟到评估时）：文字层按材料缓存；视觉转译按材料缓存
+        self.text_cache: dict[int, str] = {}
+        self.vision_cache: dict[int, str] = {}
 
 
 def _suffix(filename: str) -> str:
@@ -321,6 +324,43 @@ def execute_tool(ctx: ScorerContext, name: str, args: dict[str, Any]) -> dict[st
     return {"summary": f"未知工具 {name}", "detail": {}}
 
 
+def _lazy_material_text(ctx: ScorerContext, m) -> str:
+    """评估时惰性提取文字层（pdf 文字层/docx/txt），按材料缓存。
+    入库已不做任何转译；扫描件/图片此函数返回近空，由视觉路径在评估时转译。"""
+    if m.id in ctx.text_cache:
+        return ctx.text_cache[m.id]
+    text = (m.raw_text or "").strip()
+    path = (m.file_path or "").strip()
+    if not text and path and os.path.isfile(path):
+        suffix = _suffix(m.filename or "")
+        try:
+            if suffix == ".pdf":
+                import fitz
+
+                doc = fitz.open(path)
+                try:
+                    pages = []
+                    for index, page in enumerate(doc, start=1):
+                        part = page.get_text("text").strip()
+                        if part:
+                            pages.append(f"[第 {index} 页]\n{part}")
+                    text = "\n\n".join(pages)
+                finally:
+                    doc.close()
+            elif suffix == ".docx":
+                import mammoth
+
+                with open(path, "rb") as fp:
+                    text = str(mammoth.extract_raw_text(fp).value or "")
+            elif suffix in {".txt", ".md", ".csv", ".json", ".log", ".html"}:
+                with open(path, "rb") as fp:
+                    text = fp.read(2_000_000).decode("utf-8", errors="replace")
+        except Exception as exc:  # noqa: BLE001 — 提取失败按空文本走视觉路径
+            logger.warning("评估时文字层提取失败 %s：%s", m.filename, exc)
+    ctx.text_cache[m.id] = text
+    return text
+
+
 def _tool_read_file(ctx: ScorerContext, args: dict[str, Any]) -> dict[str, Any]:
     try:
         file_id = int(args.get("file_id"))
@@ -332,14 +372,18 @@ def _tool_read_file(ctx: ScorerContext, args: dict[str, Any]) -> dict[str, Any]:
     ctx.read_ids.add(file_id)
     suffix = _suffix(m.filename or "")
     page = int(args.get("page") or 0)
-    raw = m.raw_text or ""
+    raw = _lazy_material_text(ctx, m)
     if suffix in _VIDEO_SUFFIXES or (suffix in _IMAGE_SUFFIXES) or (
         suffix in _VISUAL_DOC_SUFFIXES and len(raw.strip()) < 120
     ):
         path = (m.file_path or "").strip()
         if not path or not os.path.isfile(path):
             return {"summary": "原始文件缺失", "detail": {"error": "该材料没有原始文件，仅有提取文本", "text": _scrub(raw, ctx)[:PAGE_CHARS]}}
-        described = _scrub(_vision_describe(path, m.filename or "", ctx), ctx)
+        if m.id in ctx.vision_cache:
+            described = ctx.vision_cache[m.id]
+        else:
+            described = _scrub(_vision_describe(path, m.filename or "", ctx), ctx)
+            ctx.vision_cache[m.id] = described
         return {
             "summary": f"{m.filename}（视觉转译）",
             "detail": {"kind": m.kind, "filename": m.filename, "vision_description": described[:TOOL_RESULT_MAX_CHARS]},
