@@ -16,8 +16,7 @@ Restart=on-failure
 RestartSec=5
 Nice=10
 CPUQuota=60%
-# OCR（rapidocr-onnxruntime）首次触发时懒加载 onnxruntime+opencv，峰值多约 400M；
-# 2C4G 机器 1.2G 上限安全，2C2G 机器务必加 2-4G swap
+# 视觉转译走云端 GLM（无本地 OCR）；2C4G 机器 1.2G 上限安全，2C2G 机器务必加 2-4G swap
 MemoryHigh=900M
 MemoryMax=1200M
 OOMScoreAdjust=300

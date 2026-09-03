@@ -15,9 +15,6 @@ MIN_PAGE_TEXT_CHARS = 30
 # 混合页：文本层有一点内容（如几个链接）但关键信息在图片里，也补 OCR
 MIXED_PAGE_TEXT_CHARS = 200
 
-_ocr_engine = None
-
-
 def load_pdf_resume(file_bytes: bytes, filename: str) -> CandidateResume:
     """PDF 提取为纯文本简历，结构化交给下游文本 LLM（ensure_structured_resume）。"""
     if not file_bytes:
@@ -40,7 +37,7 @@ def text_resume(raw_text: str, filename: str, ocr_pages: list[int] | None = None
 
 
 def extract_pdf_text(file_bytes: bytes) -> tuple[str, list[int]]:
-    """优先读文本层；字符过少的页面视为扫描件，用本地 RapidOCR 兜底。返回 (全文, OCR 页码)。"""
+    """优先读文本层；字符过少的页面（扫描件）用 GLM 视觉模型转译。返回 (全文, 转译页码)。"""
     try:
         import fitz
     except ImportError as exc:
@@ -92,7 +89,7 @@ def extract_image_text(file_bytes: bytes) -> str:
     return _recognize_pixmap(pixmap)
 
 
-# 智谱云端 OCR 客户端（GLM-5.3-Flash 多模态，复用 LLM_API_KEY），失败回退本地 RapidOCR
+# 智谱视觉转译客户端（GLM-5.3-Flash 多模态，复用 LLM_API_KEY）——唯一的页面转译者
 _ocr_client = None
 
 
@@ -111,12 +108,10 @@ def _cloud_ocr_client():
 
 
 def _recognize_pixmap(pixmap) -> str:
-    """统一 OCR：优先云端（快、准、免本地依赖），失败回退本地 RapidOCR。"""
+    """页面转译：只走 GLM 视觉模型（按指令不再保留本地 OCR 兜底）。
+    失败返回空串——该页无文本，评分 agent 仍可在评估时用 read_pages 视觉读取。"""
     img_bytes = _pixmap_to_jpeg(pixmap)
-    text = _recognize_via_cloud(img_bytes)
-    if text is not None:
-        return text
-    return _recognize_via_local(pixmap)
+    return _recognize_via_cloud(img_bytes) or ""
 
 
 def _pixmap_to_jpeg(pixmap) -> bytes:
@@ -196,7 +191,7 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
             **kwargs,
         )
     except Exception:
-        return None  # 静默回退本地 RapidOCR
+        return None  # 视觉调用失败：该页无文本（评分时可 read_pages 重试）
     text = (resp.choices[0].message.content or "").strip()
     if not text:
         return None
@@ -216,30 +211,7 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
     return text
 
 
-def _recognize_via_local(pixmap) -> str:
-    """回退方案：本地 RapidOCR（onnxruntime）。"""
-    import fitz
-    import numpy as np
 
-    image = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(pixmap.height, pixmap.width, pixmap.n)
-    engine = _get_ocr_engine()
-    if engine is None:
-        return ""
-    result, _ = engine(image)
-    if not result:
-        return ""
-    return "\n".join(str(line[1]) for line in result if len(line) >= 2)
-
-
-def _get_ocr_engine():
-    global _ocr_engine
-    if _ocr_engine is None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR
-        except ImportError:
-            return None  # 本地兜底可选，云端可用时不需要
-        _ocr_engine = RapidOCR()
-    return _ocr_engine
 
 
 def _candidate_id(filename: str) -> str:
