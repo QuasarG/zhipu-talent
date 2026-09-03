@@ -99,12 +99,36 @@ def create_bundle(filename: str, blob: bytes) -> TalentBundleORM:
     return bundle
 
 
-_RESUME_KEYWORDS = ("简历", "resume", "cv")
+_RESUME_KEYWORDS = ("简历", "resume", "cv", "grzs")   # grzs=个人简历 拼音缩写
+# 内容嗅探的简历特征词（中文命名被打包工具毁成 ??? 时靠内容识别）
+_SNIFF_MARKERS = ("教育", "经历", "技能", "学历", "联系方式", "邮箱", "电话", "求职", "籍贯")
+
+
+def _sniff_first_page_text(path: str, suffix: str) -> str:
+    try:
+        if suffix == ".pdf":
+            import fitz
+
+            doc = fitz.open(path)
+            try:
+                return doc[0].get_text("text")[:1500] if doc.page_count else ""
+            finally:
+                doc.close()
+        if suffix == ".docx":
+            import mammoth
+
+            with open(path, "rb") as fp:
+                return str(mammoth.extract_raw_text(fp).value or "")[:1500]
+    except Exception:  # noqa: BLE001
+        return ""
+    return ""
 
 
 def locate_resume(bundle_id: str) -> str:
-    """定位包内简历文件：文件名关键词（简历/resume/cv）优先 pdf，其次 docx；
-    无关键词命中时，整包恰好只有一个 pdf 也认定。找不到返回空串。"""
+    """定位包内简历文件。三级策略：
+    ① 文件名关键词（简历/resume/cv/grzs，优先 pdf）
+    ② 内容嗅探：首页文字命中简历特征词 ≥2 项（应对中文名被打包工具毁坏）
+    ③ 整包恰好一个 pdf。找不到返回空串。"""
     from agi_talent_radar.talent_bundle.tools import BundleContext, walk_files
 
     ctx = BundleContext(bundle_id)
@@ -112,9 +136,9 @@ def locate_resume(bundle_id: str) -> str:
     keyword_hits: list[str] = []
     pdfs: list[str] = []
     docx: list[str] = []
+    sniff_candidates: list[str] = []
     for rel in rels:
-        lowered = rel.lower()
-        base = os.path.basename(lowered)
+        base = os.path.basename(rel.lower())
         suffix = ("." + base.rsplit(".", 1)[-1]) if "." in base else ""
         if any(k in base for k in _RESUME_KEYWORDS):
             keyword_hits.append(rel)
@@ -124,8 +148,20 @@ def locate_resume(bundle_id: str) -> str:
             pdfs.append(rel)
         elif suffix == ".docx":
             docx.append(rel)
+            sniff_candidates.append(rel)
+        elif suffix == ".pdf":
+            sniff_candidates.append(rel)
     if keyword_hits:
         return sorted(keyword_hits, key=lambda r: (not r.lower().endswith(".pdf"), r))[0]
+    best, best_score = "", 0
+    for rel in sniff_candidates[:8]:
+        path = ctx.resolve(rel)
+        text = _sniff_first_page_text(path, _suffix(rel)) if path else ""
+        score = sum(1 for m in _SNIFF_MARKERS if m in text)
+        if score > best_score:
+            best, best_score = rel, score
+    if best_score >= 2:
+        return best
     if len(pdfs) == 1:
         return pdfs[0]
     if not pdfs and len(docx) == 1:

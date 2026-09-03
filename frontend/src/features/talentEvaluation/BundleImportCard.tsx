@@ -141,6 +141,12 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
                   <StatusChip tone={STATUS_TONES[bundle.status] ?? "neutral"}>
                     {t(bundle.status === "importing" ? "解析中…" : bundle.status === "imported" ? "已入档" : bundle.status === "failed" ? "解析失败" : "待解析")}
                   </StatusChip>
+                  {bundle.status === "unpacked" && bundle.resume_file && (
+                    <Button variant="outlined" className="h-7 px-2 text-xs shrink-0"
+                      onClick={() => void importBundle(bundle)}>
+                      {t("解析入档")}
+                    </Button>
+                  )}
                 </div>
                 {(logs[bundle.id]?.length || bundle.status === "failed") && (
                   <div className="mt-1.5 pl-6">

@@ -38,7 +38,20 @@ def build_bundle_blueprint() -> Blueprint:
         with get_session() as session:
             for storage in files:
                 try:
+                    duplicate = (
+                        session.query(TalentBundleORM)
+                        .filter_by(filename=storage.filename)
+                        .filter(TalentBundleORM.status != "failed")
+                        .first()
+                    )
+                    if duplicate is not None:
+                        errors.append({"filename": storage.filename, "error": "同名材料包已存在，请先处理或改名后再传"})
+                        continue
                     bundle = create_bundle(storage.filename or "bundle.zip", storage.read())
+                    resume_rel = locate_resume(bundle.id)
+                    if not resume_rel:
+                        bundle.status = "failed"
+                        bundle.error_message = "未定位到简历文件（文件名无 简历/resume/cv/grzs 特征，内容识别也未命中）"
                     session.add(bundle)
                     session.commit()
                     created.append(_to_dict(bundle))
