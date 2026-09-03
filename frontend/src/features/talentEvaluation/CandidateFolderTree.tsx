@@ -22,9 +22,11 @@ interface Props {
   onSelectPair: (candidateId: string, jdId: string) => void;
   /** 导入运行卡（插入列表底部，运行期间不可关闭） */
   runningCard?: ReactNode;
+  bundleCard?: ReactNode;
   /** 评估队列卡（批次进度 + 配对列表），展示在人才树与导入按钮之间 */
   queueCard?: ReactNode;
   onImport: () => void;
+  onImportBundles: () => void;
 }
 
 const CHILD_STATUS_META: Record<FolderChildStatus, { tone: "primary" | "success" | "error" | "warning" | "neutral"; label: string }> = {
@@ -51,8 +53,10 @@ export default function CandidateFolderTree({
   onSelectCandidate,
   onSelectPair,
   runningCard,
+  bundleCard,
   queueCard,
   onImport,
+  onImportBundles,
 }: Props) {
   const { t } = useI18n();
   const visible = filterFolders(folders, search);
@@ -116,11 +120,15 @@ export default function CandidateFolderTree({
       </div>
 
       {runningCard}
+      {bundleCard}
       {queueCard}
 
-      <div className="border-t border-outline-variant p-2 shrink-0">
+      <div className="border-t border-outline-variant grid grid-cols-2 gap-2 p-2 shrink-0">
         <Button variant="outlined" icon="upload_file" className="w-full" onClick={onImport}>
           {t("导入简历")}
+        </Button>
+        <Button variant="outlined" icon="folder_zip" className="w-full" onClick={onImportBundles}>
+          {t("导入材料包")}
         </Button>
       </div>
     </Card>

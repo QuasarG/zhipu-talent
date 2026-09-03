@@ -61,8 +61,30 @@ EXTERNAL_FACTS_NEW_COLUMNS = (
 )
 
 
+def _ensure_material_longtext(engine) -> None:
+    """奖学金材料正文列升 MEDIUMTEXT：TEXT 只有 64KB 字节，中文长论文
+    （如 26 页代表论文 4.6 万字符）直接撑爆列导致 webhook 500。幂等。"""
+    from sqlalchemy import text as _sql_text
+
+    with engine.begin() as connection:
+        for column in ("raw_text", "anonymized_text"):
+            row = connection.execute(
+                _sql_text(
+                    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'scholarship_materials' "
+                    "AND COLUMN_NAME = :column_name"
+                ),
+                {"column_name": column},
+            ).first()
+            if row and str(row[0]).lower() == "text":
+                connection.execute(
+                    _sql_text(f"ALTER TABLE scholarship_materials MODIFY {column} MEDIUMTEXT")
+                )
+
+
 def ensure_schema(engine) -> None:
     _ensure_legacy_parent_columns(engine)
+    _ensure_material_longtext(engine)
     Base.metadata.create_all(engine)
     current_version = _current_version(engine)
     if current_version < 2 or _has_legacy_evaluation_columns(engine):

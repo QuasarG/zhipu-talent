@@ -20,6 +20,7 @@ import CandidateFolderTree from "@/features/talentEvaluation/CandidateFolderTree
 import AdmissionPane from "@/features/talentEvaluation/AdmissionPane";
 import { BatchQueueCard } from "@/features/talentEvaluation/BatchViews";
 import ImportOverlay from "@/features/resume/ImportOverlay";
+import BundleImportCard from "@/features/talentEvaluation/BundleImportCard";
 import {
   buildCandidateFolders,
   resolveEvaluationUiState,
@@ -66,6 +67,7 @@ export default function TalentEvaluation() {
   // ---- 临时态 ----
   const [creating, setCreating] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [bundleOpen, setBundleOpen] = useState(false);
   const [importRecovering, setImportRecovering] = useState(() => {
     try {
       return sessionStorage.getItem(sessionKey(IMPORT_FLAG)) === "1";
@@ -535,6 +537,9 @@ export default function TalentEvaluation() {
           onSelectCandidate={selectCandidateRoot}
           onSelectPair={selectPair}
           runningCard={runningCard}
+          bundleCard={bundleOpen ? (
+            <BundleImportCard onClose={() => setBundleOpen(false)} onChanged={() => void loadShell()} />
+          ) : undefined}
           queueCard={batch && !TERMINAL_BATCH_STATUSES.has(batch.status) ? (
             <BatchQueueCard
               batch={batch}
@@ -544,6 +549,7 @@ export default function TalentEvaluation() {
             />
           ) : undefined}
           onImport={openImport}
+          onImportBundles={() => setBundleOpen(true)}
         />
 
         <div className="min-w-0 min-h-0 flex flex-col">
