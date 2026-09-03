@@ -31,13 +31,24 @@ def main() -> None:
     single = create_bundle("李四_简历.pdf", b"%PDF-1.4 single")
     assert single.file_count == 1
     assert os.path.isfile(os.path.join(workspace_root(single.id), "李四_简历.pdf"))
+    # 内层 zip 递归解压：qtcl.zip 内的文件应摊平到 qtcl.zip__extracted/
+    blob = _zip({
+        "简历.pdf": b"%PDF-1.4 resume",
+        "材料/成绩单.txt": "GPA 3.9".encode(),
+        "成果/qtcl.zip": _zip({"论文/paper.pdf": b"%PDF-1.4 inner"}),
+        "__MACOSX/._junk": b"x",
+        "../escape.txt": b"evil",
+        "/abs/path.txt": b"evil",
+    })
     bundle = create_bundle("张三.zip", blob)
     ws = workspace_root(bundle.id)
-    assert bundle.status == "unpacked" and bundle.file_count == 3, bundle.file_count
+    assert bundle.status == "unpacked" and bundle.file_count == 4, bundle.file_count  # 简历+成绩单+内层包本体+解出的论文
 
     assert os.path.isfile(os.path.join(ws, "简历.pdf"))
     assert os.path.isfile(os.path.join(ws, "材料", "成绩单.txt"))
-    assert os.path.isfile(os.path.join(ws, "附件.zip")), "内层压缩包必须原样保留"
+    assert os.path.isfile(os.path.join(ws, "成果", "qtcl.zip")), "内层压缩包本体保留"
+    assert os.path.isfile(os.path.join(ws, "成果", "qtcl.zip__extracted", "论文", "paper.pdf")), "内层 zip 递归解压"
+    assert not os.path.exists(os.path.join(ws, "成果", "qtcl.zip__extracted", "..", "escape.txt").replace("/..", "/.."))
     assert os.path.exists(os.path.join(ws, "附件.zip"))
     assert not os.path.exists(os.path.join(ws, "escape.txt"))
     assert not os.path.abspath(os.path.join(os.path.dirname(ws), "escape.txt")).startswith("/") or True

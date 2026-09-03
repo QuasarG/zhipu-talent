@@ -13,6 +13,9 @@ import { StatusChip } from "@/components/ui/Chip";
 const STATUS_TONES: Record<string, "success" | "info" | "error" | "neutral" | "warning"> = {
   imported: "success", importing: "info", failed: "error", unpacked: "neutral", noresume: "warning",
 };
+const STATUS_LABELS: Record<string, string> = {
+  imported: "已入档", importing: "解析中…", failed: "解析失败", unpacked: "待解析", noresume: "未找到简历",
+};
 
 interface Props {
   onClose: () => void;
@@ -42,20 +45,21 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
     setLogs((current) => ({ ...current, [id]: [...(current[id] ?? []).slice(-6), line] }));
   }, []);
 
-  const importBundle = useCallback(async (bundle: TalentBundleSummary) => {
+  const importBundle = useCallback(async (bundle: TalentBundleSummary, resumeOverride?: string) => {
     const setLocal = (patch: Partial<TalentBundleSummary>) =>
       setBundles((current) => current.map((b) => (b.id === bundle.id ? { ...b, ...patch } : b)));
     setLogs((current) => ({ ...current, [bundle.id]: [] }));
     try {
-      if (!bundle.resume_file) {
-        setLocal({ status: "failed", error_message: t("未在包内定位到简历文件（文件名需含 简历/resume/cv，或包内仅一个 pdf）") });
+      const resumePath = resumeOverride || bundle.resume_file;
+      if (!resumePath) {
+        setLocal({ status: "failed", error_message: t("未指定简历文件") });
         return;
       }
       setLocal({ status: "importing" });
       pushLog(bundle.id, t("下载包内简历文件…"));
-      const blob = await fetch(`/api/talent-bundles/${bundle.id}/file?path=${encodeURIComponent(bundle.resume_file)}`)
+      const blob = await fetch(`/api/talent-bundles/${bundle.id}/file?path=${encodeURIComponent(resumePath)}`)
         .then((r) => { if (!r.ok) throw new Error(t("简历文件下载失败")); return r.blob(); });
-      const file = new File([blob], bundle.resume_file.split("/").pop() || "resume.pdf", { type: "application/octet-stream" });
+      const file = new File([blob], resumePath.split("/").pop() || "resume.pdf", { type: "application/octet-stream" });
 
       pushLog(bundle.id, t("走原有简历解析链路：结构化解析 + 身份判定 + 入档…"));
       const form = new FormData();
@@ -94,8 +98,9 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
       const result = await api.talentBundle.upload(Array.from(files));
       await load();
       if (result.errors.length) setError(result.errors.map((e) => `${e.filename}: ${e.error}`).join("；"));
-      // 上传成功即自动解析：定位简历 → 原有解析链路 → 入档
+      // 上传成功即自动解析：定位简历 → 原有解析链路 → 入档；未定位到的等人工指认
       for (const bundle of result.created) {
+        if (bundle.status === "noresume") continue;
         await importBundle(bundle);
       }
     } catch (err) {
@@ -139,15 +144,41 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
                   <span className="min-w-0 flex-1 truncate text-body-sm">{bundle.filename}</span>
                   <span className="shrink-0 text-label text-on-surface-variant">{bundle.file_count} 个文件</span>
                   <StatusChip tone={STATUS_TONES[bundle.status] ?? "neutral"}>
-                    {t(bundle.status === "importing" ? "解析中…" : bundle.status === "imported" ? "已入档" : bundle.status === "failed" ? "解析失败" : "待解析")}
+                    {t(STATUS_LABELS[bundle.status] ?? bundle.status)}
                   </StatusChip>
                   {bundle.status === "unpacked" && bundle.resume_file && (
                     <Button variant="outlined" className="h-7 px-2 text-xs shrink-0"
-                      onClick={() => void importBundle(bundle)}>
+                      onClick={() => void importBundle(bundle, bundle.resume_file)}>
                       {t("解析入档")}
                     </Button>
                   )}
                 </div>
+                {(bundle.files?.length) && (
+                  <div className="mt-1.5 pl-6">
+                    <ul className="space-y-0.5">
+                      {bundle.files.map((f) => (
+                        <li key={f.file} className="flex items-center gap-2 text-label text-on-surface-variant">
+                          <a href={f.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:text-primary hover:underline">
+                            {f.file}
+                          </a>
+                          <span className="shrink-0">{f.size_kb} KB</span>
+                          {bundle.status === "noresume" && (
+                            <Button variant="text" className="h-6 px-1.5 text-xs shrink-0"
+                              onClick={() => {
+                                void fetch(`/api/talent-bundles/${bundle.id}/use-as-resume`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ path: f.file }),
+                                }).then(() => void importBundle(bundle, f.file));
+                              }}>
+                              {t("设为简历")}
+                            </Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {(logs[bundle.id]?.length || bundle.status === "failed") && (
                   <div className="mt-1.5 pl-6">
                     {bundle.status === "failed" && bundle.error_message && (

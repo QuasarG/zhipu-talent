@@ -50,8 +50,8 @@ def build_bundle_blueprint() -> Blueprint:
                     bundle = create_bundle(storage.filename or "bundle.zip", storage.read())
                     resume_rel = locate_resume(bundle.id)
                     if not resume_rel:
-                        bundle.status = "failed"
-                        bundle.error_message = "未定位到简历文件（文件名无 简历/resume/cv/grzs 特征，内容识别也未命中）"
+                        bundle.status = "noresume"
+                        bundle.error_message = "未定位到简历文件，请在文件列表中选择一份设为简历"
                     session.add(bundle)
                     session.commit()
                     created.append(_to_dict(bundle))
@@ -110,6 +110,26 @@ def build_bundle_blueprint() -> Blueprint:
             return jsonify({"detail": "文件不存在"}), 404
         return send_file(path)
 
+    @bp.post("/api/talent-bundles/<bundle_id>/use-as-resume")
+    def use_as_resume(bundle_id: str):
+        """人工指定包内某文件为简历（自动定位失败时的兜底），路径持久化。"""
+        from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.talent_bundle.tools import BundleContext
+
+        body = request.get_json(silent=True) or {}
+        rel = str(body.get("path") or "").strip()
+        with get_session() as session:
+            bundle = session.get(TalentBundleORM, bundle_id)
+            if bundle is None:
+                return jsonify({"detail": "材料包不存在"}), 404
+            ctx = BundleContext(bundle_id)
+            path = ctx.resolve(rel)
+            if not path or not os.path.isfile(path):
+                return jsonify({"detail": "文件不存在"}), 404
+            bundle.resume_file = rel
+            session.commit()
+            return jsonify({"ok": True, "resume_file": rel})
+
     @bp.get("/api/talent-bundles/<bundle_id>")
     def get_bundle(bundle_id: str):
         from agi_talent_radar.core.db.runtime import get_session
@@ -141,6 +161,25 @@ def build_bundle_blueprint() -> Blueprint:
     return bp
 
 
+def _bundle_files(bundle: TalentBundleORM) -> list[dict]:
+    """包内文件清单（相对路径+大小+预览 url）。"""
+    from agi_talent_radar.talent_bundle.tools import BundleContext, walk_files
+
+    try:
+        ctx = BundleContext(bundle.id)
+    except Exception:  # noqa: BLE001
+        return []
+    files = []
+    for rel in walk_files(ctx):
+        path = ctx.resolve(rel)
+        files.append({
+            "file": rel,
+            "size_kb": max(1, os.path.getsize(path) // 1024) if path and os.path.isfile(path) else 0,
+            "url": f"/api/talent-bundles/{bundle.id}/file?path={urllib.parse.quote(rel)}",
+        })
+    return files
+
+
 def _to_dict(bundle: TalentBundleORM, with_trace: bool = False) -> dict:
     data = {
         "id": bundle.id,
@@ -149,7 +188,8 @@ def _to_dict(bundle: TalentBundleORM, with_trace: bool = False) -> dict:
         "person_id": bundle.person_id,
         "candidate_id": bundle.candidate_id,
         "error_message": bundle.error_message or "",
-        "resume_file": locate_resume(bundle.id) if bundle.status == "unpacked" else "",
+        "resume_file": bundle.resume_file or (locate_resume(bundle.id) if bundle.status in ("unpacked", "noresume") else ""),
+        "files": _bundle_files(bundle),
         "file_count": bundle.file_count or 0,
         "total_bytes": bundle.total_bytes or 0,
         "created_at": bundle.created_at.isoformat() if bundle.created_at else None,

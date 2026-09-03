@@ -89,6 +89,9 @@ def create_bundle(filename: str, blob: bytes) -> TalentBundleORM:
             fp.write(blob)
         count, total_bytes = 1, len(blob)
 
+    _extract_nested_archives(ws)
+
+    count = sum(len(files) for _root, _dirs, files in os.walk(ws))
     bundle = TalentBundleORM(
         id=bundle_id,
         filename=filename or "bundle.zip",
@@ -97,6 +100,69 @@ def create_bundle(filename: str, blob: bytes) -> TalentBundleORM:
         total_bytes=total_bytes,
     )
     return bundle
+
+
+# 递归解压护栏：深度/解压轮数/单轮大小，防嵌套炸弹
+MAX_ARCHIVE_DEPTH = 6
+MAX_EXTRACT_ROUNDS = 10
+
+
+def _extract_nested_archives(ws: str) -> None:
+    """递归解压工作区内所有压缩包：A/B.zip → A/B__extracted/（原地留档）。
+    每层都过 zip-slip 防护与大小上限；已解过的包靠 __extracted 目录标记跳过。"""
+    for _round in range(MAX_ARCHIVE_DEPTH):
+        pending: list[tuple[str, str]] = []
+        for root, _dirs, files in os.walk(ws):
+            for f in files:
+                rel = os.path.relpath(os.path.join(root, f), ws).replace(os.sep, "/")
+                suffix = ("." + f.rsplit(".", 1)[-1].lower()) if "." in f else ""
+                if suffix in (".zip", ".tar", ".gz", ".tgz") and not os.path.isdir(
+                    os.path.join(ws, rel + "__extracted")
+                ):
+                    pending.append((rel, suffix))
+        if not pending:
+            return
+        for rel, suffix in pending:
+            path = os.path.join(ws, *rel.split("/"))
+            dest_rel = rel + "__extracted"
+            dest = os.path.join(ws, *dest_rel.split("/"))
+            os.makedirs(dest, exist_ok=True)
+            try:
+                if suffix == ".zip":
+                    with zipfile.ZipFile(path) as zf:
+                        for info in zf.infolist():
+                            if info.is_dir():
+                                continue
+                            name = _safe_member(info.filename)
+                            if name is None:
+                                continue
+                            target = os.path.join(dest, *name.split("/"))
+                            if os.path.commonpath([os.path.abspath(target), os.path.abspath(ws)]) != os.path.abspath(ws):
+                                continue
+                            os.makedirs(os.path.dirname(target), exist_ok=True)
+                            with open(target, "wb") as fp:
+                                fp.write(zf.read(info))
+                else:
+                    with tarfile.open(path, "r:*") as tf:
+                        for member in tf.getmembers():
+                            if not member.isfile():
+                                continue
+                            name = _safe_member(member.name)
+                            if name is None:
+                                continue
+                            fp_member = tf.extractfile(member)
+                            data = fp_member.read() if fp_member else b""
+                            target = os.path.join(dest, *name.split("/"))
+                            if os.path.commonpath([os.path.abspath(target), os.path.abspath(ws)]) != os.path.abspath(ws):
+                                continue
+                            os.makedirs(os.path.dirname(target), exist_ok=True)
+                            with open(target, "wb") as fp:
+                                fp.write(data)
+            except Exception as exc:  # noqa: BLE001 — 单包损坏不阻断其余解压
+                import logging
+
+                logging.getLogger(__name__).warning("内层压缩包解压失败 %s：%s", rel, exc)
+                # 留下空 __extracted 目录作为"已尝试"标记，防死循环
 
 
 _RESUME_KEYWORDS = ("简历", "resume", "cv", "grzs")   # grzs=个人简历 拼音缩写

@@ -82,9 +82,27 @@ def _ensure_material_longtext(engine) -> None:
                 )
 
 
+def _ensure_bundle_resume_column(engine) -> None:
+    """talent_bundles 补 resume_file 列（人工指定包内简历）。幂等。"""
+    from sqlalchemy import text as _sql_text
+
+    with engine.begin() as connection:
+        exists = connection.execute(
+            _sql_text(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+                "AND TABLE_NAME = 'talent_bundles' AND COLUMN_NAME = 'resume_file'"
+            )
+        ).scalar()
+        if not exists:
+            connection.execute(
+                _sql_text("ALTER TABLE talent_bundles ADD COLUMN resume_file VARCHAR(512) NOT NULL DEFAULT ''")
+            )
+
+
 def ensure_schema(engine) -> None:
     _ensure_legacy_parent_columns(engine)
     _ensure_material_longtext(engine)
+    _ensure_bundle_resume_column(engine)
     Base.metadata.create_all(engine)
     current_version = _current_version(engine)
     if current_version < 2 or _has_legacy_evaluation_columns(engine):

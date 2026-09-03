@@ -1089,6 +1089,7 @@ class TalentBundleORM(Base):
 
     id = Column(String(16), primary_key=True)
     filename = Column(String(256), default="")
+    resume_file = Column(String(512), default="")          # 人工/自动定位的包内简历路径
     status = Column(String(24), default="unpacked", index=True)
     person_id = Column(String(36), ForeignKey("persons.id", ondelete="SET NULL"), nullable=True)
     candidate_id = Column(String(64), nullable=True)

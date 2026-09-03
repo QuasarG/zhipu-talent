@@ -886,7 +886,7 @@ export interface InterviewAssessment {
 export interface TalentBundleSummary {
   id: string;
   filename: string;
-  status: "unpacked" | "importing" | "imported" | "failed";
+  status: "unpacked" | "noresume" | "importing" | "imported" | "failed";
   person_id: string | null;
   candidate_id: string | null;
   resume_file: string;
@@ -894,6 +894,7 @@ export interface TalentBundleSummary {
   file_count: number;
   total_bytes: number;
   created_at: string | null;
+  files: { file: string; size_kb: number; url: string }[];
 }
 
 export interface TalentBundle extends TalentBundleSummary {
