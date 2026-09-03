@@ -5,6 +5,7 @@
   转译成结构化文字描述，描述同样过 anonymize+check_leak 脱敏闸门——
   视觉模型是翻译官不是评审员，agent 全程只看脱敏文本，盲评红线不破。
 - verify_paper 只回 venue/年份/引用（剥作者），身份不进 agent 循环。
+- 所有视觉调用必须带 timeout：一次挂起的 HTTPS 读会拖死整个 webhook/评分（900s worker 超时连坐全部线程）。
 - submit_scores 程序侧硬校验（维度齐全/分数范围/证据分级合法），
   不合格把错误作为工具结果回填，agent 必须重交。
 """
@@ -122,6 +123,7 @@ def _vision_image(path: str) -> str:
             {"type": "text", "text": _VISION_PROMPT},
         ]}],
         temperature=0.1,
+        timeout=120,
     )
     return resp.choices[0].message.content or ""
 
@@ -149,6 +151,7 @@ def _vision_pdf(path: str) -> str:
                     {"type": "text", "text": f"第 {i + 1}/{total} 页。{_VISION_PROMPT}"},
                 ]}],
                 temperature=0.1,
+                timeout=120,
             )
             parts.append(f"[第 {i + 1} 页]\n" + (resp.choices[0].message.content or ""))
         return f"（共 {total} 页，转译其中 {len(indices)} 页）\n\n" + "\n\n".join(parts)
@@ -166,6 +169,7 @@ def _vision_video(path: str, filename: str) -> str:
             {"type": "text", "text": _VISION_PROMPT},
         ]}],
         temperature=0.1,
+        timeout=300,
     )
     return resp.choices[0].message.content or ""
 

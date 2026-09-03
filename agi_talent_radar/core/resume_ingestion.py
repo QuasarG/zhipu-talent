@@ -192,6 +192,7 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
             temperature=0.1,
             top_p=0.95,
             stream=False,
+            timeout=90,
             **kwargs,
         )
     except Exception:
