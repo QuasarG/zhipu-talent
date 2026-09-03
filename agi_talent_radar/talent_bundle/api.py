@@ -6,6 +6,7 @@ import logging
 import os
 import queue
 import threading
+import urllib.parse
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
@@ -61,7 +62,18 @@ def build_bundle_blueprint() -> Blueprint:
                 .first()
             )
         if bundle is None:
-            return jsonify({"bundle_id": None, "files": []})
+            # 存量候选人 = 目录里只有一份简历的材料包：把简历原件作为唯一材料条目
+            from agi_talent_radar.core.pdf_storage import get_resume_original_path
+
+            files = []
+            original = get_resume_original_path(candidate_id)
+            if original and original.is_file():
+                files.append({
+                    "file": original.name,
+                    "size_kb": max(1, original.stat().st_size // 1024),
+                    "url": f"/api/candidates/{candidate_id}/original-file",
+                })
+            return jsonify({"bundle_id": None, "files": files})
         ctx = BundleContext(bundle.id)
         files = []
         for rel in walk_files(ctx):
@@ -69,6 +81,7 @@ def build_bundle_blueprint() -> Blueprint:
             files.append({
                 "file": rel,
                 "size_kb": max(1, os.path.getsize(path) // 1024) if path and os.path.isfile(path) else 0,
+                "url": f"/api/talent-bundles/{bundle.id}/file?path={urllib.parse.quote(rel)}",
             })
         return jsonify({"bundle_id": bundle.id, "status": bundle.status, "files": files})
 

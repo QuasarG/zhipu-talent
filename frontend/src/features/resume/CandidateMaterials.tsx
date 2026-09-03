@@ -7,6 +7,7 @@ import { RecordSection } from "@/features/resume/ResumeContent";
 interface FileItem {
   file: string;
   size_kb: number;
+  url: string;
 }
 
 export default function CandidateMaterials({ candidateId }: { candidateId: string }) {
@@ -30,7 +31,7 @@ export default function CandidateMaterials({ candidateId }: { candidateId: strin
         {data.files.map((f) => (
           <li key={f.file}>
             <a
-              href={`/api/talent-bundles/${data.bundle_id}/file?path=${encodeURIComponent(f.file)}`}
+              href={f.url}
               target="_blank"
               rel="noreferrer"
               className="state-layer flex items-center gap-2 px-4 py-2.5 text-body-sm text-on-surface hover:bg-surface-low"
