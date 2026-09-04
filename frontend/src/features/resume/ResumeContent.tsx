@@ -99,6 +99,10 @@ export default function ResumeContent({ detail, onReviewed, hideTabs }: Props) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      {/* 文件管理是第一性的：材料包/原件在此统一管理；结构化简历是解析派生视图 */}
+      <div className="shrink-0 mb-4">
+        <CandidateMaterials candidateId={detail.id} />
+      </div>
       {hideTabs ? null : (
         <Tabs
           className="mb-4 shrink-0"
@@ -159,8 +163,6 @@ export default function ResumeContent({ detail, onReviewed, hideTabs }: Props) {
             >
               <PublicationList detail={detail} academicReport={academicReport} importing={importing} onReviewed={onReviewed} />
             </RecordSection>
-
-            <CandidateMaterials candidateId={detail.id} />
 
             <RecordSection title={t("技能")} icon="bolt" importing={importing}>
               <SkillsList detail={detail} importing={importing} />
