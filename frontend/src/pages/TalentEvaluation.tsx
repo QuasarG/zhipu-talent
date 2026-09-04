@@ -15,7 +15,6 @@ import Icon from "@/components/ui/Icon";
 import Card from "@/components/ui/Card";
 import Progress from "@/components/ui/Progress";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
-import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowGraph";
 import CandidateFolderTree from "@/features/talentEvaluation/CandidateFolderTree";
 import AdmissionPane from "@/features/talentEvaluation/AdmissionPane";
 import { BatchQueueCard } from "@/features/talentEvaluation/BatchViews";
@@ -57,7 +56,6 @@ export default function TalentEvaluation() {
   const [selectedCandidateView, setSelectedCandidateView] = useSessionState<CandidateRecordView>("talent-evaluation.candidate-view", "materials");
   const [batchId, setBatchId] = useSessionState<string | null>("talent-evaluation.batch-id", null);
   const [activeRunId, setActiveRunId] = useSessionState<string | null>("talent-evaluation.active-run-id", null);
-  const [selectedNodeId, setSelectedNodeId] = useSessionState<string | null>("talent-evaluation.node-id", null);
   const [treeSearch, setTreeSearch] = useSessionState("talent-evaluation.tree-search", "");
   const [openFolderIds, setOpenFolderIds] = useSessionState<string[]>("talent-evaluation.open-folders", []);
   const [draftCandidateIds, setDraftCandidateIds] = useSessionState<string[]>("talent-evaluation.draft-candidate-ids", []);
@@ -75,7 +73,6 @@ export default function TalentEvaluation() {
       return false;
     }
   });
-  const [selectedNode, setSelectedNode] = useState<AdmissionGraphNode | null>(null);
   const [restoring, setRestoring] = useState(false);
   const batchIdRef = useRef<string | null>(null);
   const detailIdRef = useRef<string | null>(null);
@@ -284,8 +281,6 @@ export default function TalentEvaluation() {
       setBatch(next);
       setBatchId(next.id);
       setActiveRunId(next.runs?.[0]?.id || null);
-      setSelectedNodeId(null);
-      setSelectedNode(null);
       setSearchParams((current) => {
         const nextParams = new URLSearchParams(current);
         nextParams.delete("mode");
@@ -298,7 +293,7 @@ export default function TalentEvaluation() {
     } finally {
       setStarting(false);
     }
-  }, [loadShell, refreshActiveRuns, setActiveRunId, setBatchId, setSearchParams, setSelectedNodeId, starting, t]);
+  }, [loadShell, refreshActiveRuns, setActiveRunId, setBatchId, setSearchParams, starting, t]);
 
   const cancelRun = useCallback(async (runId: string) => {
     try {
@@ -325,11 +320,9 @@ export default function TalentEvaluation() {
     setBatchId(null);
     setBatch(null);
     setActiveRunId(null);
-    setSelectedNodeId(null);
-    setSelectedNode(null);
     setError("");
     setRestoring(false);
-  }, [setActiveRunId, setBatchId, setSelectedNodeId]);
+  }, [setActiveRunId, setBatchId]);
 
   const clearCreateDraft = useCallback(() => {
     setDraftCandidateIds([]);
@@ -383,43 +376,29 @@ export default function TalentEvaluation() {
   }, [clearCreateDraft, creating, searchParams, selectedCandidateId, selectedJdId, setSelectedCandidateId, setSelectedJdId]);
 
   // ---- 左侧文件夹选择 ----
-  const clearNode = useCallback(() => {
-    setSelectedNodeId(null);
-    setSelectedNode(null);
-  }, [setSelectedNodeId]);
-
   const selectCandidateRoot = useCallback((candidateId: string) => {
     setSelectedCandidateId(candidateId);
     setSelectedJdId(null);
     setSelectedCandidateView("materials");
-    clearNode();
-  }, [clearNode, setSelectedCandidateId, setSelectedCandidateView, setSelectedJdId]);
+  }, [setSelectedCandidateId, setSelectedCandidateView, setSelectedJdId]);
 
   const selectCandidateView = useCallback((candidateId: string, view: CandidateRecordView) => {
     setSelectedCandidateId(candidateId);
     setSelectedJdId(null);
     setSelectedCandidateView(view);
-    clearNode();
-  }, [clearNode, setSelectedCandidateId, setSelectedCandidateView, setSelectedJdId]);
+  }, [setSelectedCandidateId, setSelectedCandidateView, setSelectedJdId]);
 
   const selectPair = useCallback((candidateId: string, jdId: string) => {
     setSelectedCandidateId(candidateId);
     setSelectedJdId(jdId);
-    clearNode();
-  }, [clearNode, setSelectedCandidateId, setSelectedJdId]);
-
-  const selectGraphNode = useCallback((node: AdmissionGraphNode) => {
-    setSelectedNode(node);
-    setSelectedNodeId(node.id);
-  }, [setSelectedNodeId]);
+  }, [setSelectedCandidateId, setSelectedJdId]);
 
   const selectRun = useCallback((runId: string) => {
     // 进入批次运行视图：清掉左树的显式选择，让 AdmissionPane 显示 BatchRunView
     setSelectedCandidateId(null);
     setSelectedJdId(null);
     setActiveRunId(runId);
-    clearNode();
-  }, [clearNode, setActiveRunId, setSelectedCandidateId, setSelectedJdId]);
+  }, [setActiveRunId, setSelectedCandidateId, setSelectedJdId]);
 
   const runningCard = importRecovering ? (
     <div className="shrink-0 border-t border-outline-variant p-3">
@@ -558,8 +537,6 @@ export default function TalentEvaluation() {
               selectedCandidateView={selectedCandidateView}
               candidateDetail={candidateDetail}
               candidateDetailLoading={candidateDetailLoading}
-              selectedNode={selectedNode}
-              selectedNodeId={selectedNodeId}
               activeRunId={activeRunId}
               draftCandidateIds={new Set(draftCandidateIds)}
               draftJdIds={new Set(draftJdIds)}
@@ -574,7 +551,6 @@ export default function TalentEvaluation() {
               onDraftJdIds={(value) => setDraftJdIds([...value])}
               onDraftCandidateSearch={setDraftCandidateSearch}
               onDraftJdSearch={setDraftJdSearch}
-              onSelectNode={selectGraphNode}
               onCancelRun={(runId) => void cancelRun(runId)}
               onStartBatch={startBatch}
             />

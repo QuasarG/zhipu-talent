@@ -1,5 +1,4 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
-import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowGraph";
 import { computeScoreBreakdown } from "@/features/talentEvaluation/talentEvaluationModel";
 import type { InterviewAssessment, InterviewAssessmentRun, JdEntry } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
@@ -441,71 +440,5 @@ export function EvidenceQuote({ evidence }: { evidence: EvidenceView }) {
       <q className="mt-2 block text-body-sm leading-relaxed text-on-surface">{evidence.quote || t("未提供引用")}</q>
       {evidence.relevance && <p className="mt-1.5 text-label leading-4 text-on-surface-variant">{evidence.relevance}</p>}
     </div>
-  );
-}
-
-export function NodeInspector({ node }: { node: AdmissionGraphNode | null }) {
-  const { t } = useI18n();
-  if (!node) {
-    return (
-      <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 text-on-surface-variant">
-        <Icon name="inspect" size={28} />
-        <p className="text-body-sm">{t("选择一个节点查看详情")}</p>
-      </div>
-    );
-  }
-  const detail = node.event?.detail || {};
-  const taskDetail = detail as Record<string, unknown>;
-  const evidence = Array.isArray(taskDetail.evidence) ? taskDetail.evidence as EvidenceView[] : [];
-  const mappings = Array.isArray(taskDetail.task_mappings) ? taskDetail.task_mappings as Array<Record<string, unknown>> : [];
-  return (
-    <section>
-      <div className="flex items-center gap-2">
-        <span className={cn(
-          "h-2.5 w-2.5 rounded-full",
-          node.status === "failed" ? "bg-error" : node.status === "running" ? "bg-primary animate-pulse" : "border border-outline",
-        )} />
-        <p className="text-title">{node.label}</p>
-        <span className="ml-auto text-label text-on-surface-variant">{t(RUN_STATUS_LABEL[node.status] || node.status)}</span>
-      </div>
-      <p className="mt-2 text-body-sm text-on-surface-variant">{node.summary}</p>
-
-      {typeof taskDetail.level === "number" && (
-        <div className="mt-4 flex items-end gap-2">
-          <span className="text-headline font-mono tabular-nums">{taskDetail.level as number}</span>
-          <span className="pb-1 text-label text-on-surface-variant">
-            {t("/4 能力等级 · {confidence}", { confidence: confidenceLabel(taskDetail.confidence as TaskAssessmentView["confidence"], t) })}
-          </span>
-        </div>
-      )}
-      {typeof taskDetail.reasoning_summary === "string" && (
-        <div className="mt-3">
-          <p className="text-label font-semibold">{t("判断依据")}</p>
-          <p className="mt-1 text-body-sm text-on-surface-variant">{taskDetail.reasoning_summary}</p>
-        </div>
-      )}
-      {!!evidence.length && (
-        <div className="mt-3 flex flex-col gap-2">
-          <p className="text-label font-semibold">{t("引用证据")}</p>
-          {evidence.map((item, index) => <EvidenceQuote key={`${item.quote}-${index}`} evidence={item} />)}
-        </div>
-      )}
-      {!!mappings.length && (
-        <div className="mt-3 flex flex-col gap-2">
-          <p className="text-label font-semibold">{t("能力映射")}</p>
-          {mappings.map((mapping, index) => (
-            <div key={index} className="border-t border-outline-variant pt-2">
-              <p className="text-body-sm font-medium">{String(mapping.task_id || t("任务 {n}", { n: index + 1 }))}</p>
-              {Array.isArray(mapping.candidate_evidence) && <p className="mt-1 text-label text-on-surface-variant">{mapping.candidate_evidence.map(String).join("；")}</p>}
-              {typeof mapping.mapping_reason === "string" && <p className="mt-1 text-body-sm text-on-surface-variant">{mapping.mapping_reason}</p>}
-            </div>
-          ))}
-        </div>
-      )}
-      {node.event?.error && <p className="mt-3 rounded-md bg-error-container p-3 text-body-sm text-on-error-container">{node.event.error}</p>}
-      {!Object.keys(detail).length && node.kind !== "source" && (
-        <p className="mt-4 text-label text-on-surface-variant">{t("该节点当前没有额外产物。")}</p>
-      )}
-    </section>
   );
 }

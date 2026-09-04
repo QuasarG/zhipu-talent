@@ -57,7 +57,7 @@ TASK_SCORING_PROMPT = """
 
 
 OVERALL_REVIEW_PROMPT = """
-你是面试准入工作流的【评分总审】节点。只输出 JSON 对象。
+你是面试准入双 Agent 链路中的【督导 Agent】。只输出 JSON 对象。
 
 重新阅读完整脱敏简历、完整岗位评估卡和全部任务评分，检查遗漏、任务间尺度漂移、证据夸大和
 等级与岗位锚点不一致。可以纠错，但每次修改必须给出原等级、新等级、原因和可追溯简历原文。
@@ -93,6 +93,8 @@ class _Trace:
         parent_id: str = "",
         detail: dict[str, Any] | None = None,
         error: str = "",
+        actor: str = "system",
+        event_type: str = "stage",
     ) -> None:
         item = {
             "run_id": self.run_id,
@@ -104,6 +106,8 @@ class _Trace:
             "detail": detail or {},
             "error": error,
             "at": _utc_now(),
+            "actor": actor,
+            "event_type": event_type,
         }
         with self._lock:
             self.events.append(item)
@@ -131,7 +135,10 @@ def evaluate_candidate_for_job(
     trace.event("input_preparation", "输入准备", "running", "正在锁定并脱敏评估输入")
     trace.event("input_preparation", "输入准备", "completed", "完整简历与岗位卡已就绪")
 
-    trace.event("capability_mapping", "能力映射", "running", "正在建立经历与核心任务的关联")
+    trace.event(
+        "capability_mapping", "评估 Agent", "running", "正在建立经历与核心任务的关联",
+        actor="evaluator", event_type="thinking",
+    )
     mapping = invoke(
         CAPABILITY_MAPPING_PROMPT,
         {"resume_text": anonymized["raw_text"], "structured_resume": anonymized, "assessment_card": assessment_card.model_dump()},
@@ -142,24 +149,38 @@ def evaluate_candidate_for_job(
         "completed",
         "能力映射完成",
         detail={"task_mappings": mapping.get("task_mappings", [])},
+        actor="evaluator",
     )
 
-    trace.event("task_scoring", "核心任务评分", "running", "核心任务已进入统一并发队列")
+    trace.event(
+        "task_scoring", "评估 Agent", "running", "正在逐项核对核心任务与候选人证据",
+        actor="evaluator", event_type="thinking",
+    )
     assessments = _score_tasks(invoke, anonymized, assessment_card, mapping, trace)
     trace.event(
         "task_scoring",
         "核心任务评分",
         "completed",
         f"{len(assessments)} 个核心任务评分完成",
+        actor="evaluator",
     )
 
-    trace.event("evidence_validation", "证据校验", "running", "正在核对所有引用与简历原文")
+    trace.event(
+        "evidence_validation", "结果校验", "running", "正在核对所有引用与简历原文",
+        event_type="validation",
+    )
     assessments = _validate_and_repair_evidence(
         invoke, anonymized, assessment_card, mapping, assessments, trace
     )
-    trace.event("evidence_validation", "证据校验", "completed", "证据引用校验完成")
+    trace.event(
+        "evidence_validation", "结果校验", "completed", "证据引用校验完成",
+        event_type="validation",
+    )
 
-    trace.event("overall_review", "评分总审", "running", "正在复核任务间尺度与遗漏")
+    trace.event(
+        "overall_review", "督导 Agent", "running", "正在独立复核尺度、遗漏与证据夸大",
+        actor="observer", event_type="observer",
+    )
     review = OverallReview.model_validate(
         invoke(
             OVERALL_REVIEW_PROMPT,
@@ -178,16 +199,27 @@ def evaluate_candidate_for_job(
         "completed",
         review.summary or "评分总审完成",
         detail={"corrections": [item.model_dump() for item in corrections]},
+        actor="observer",
+        event_type="observer",
     )
 
     total_score = calculate_total_score(assessment_card, assessments)
     decision, reason = decide_admission(assessment_card, assessments, total_score)
     trace.event(
         "admission_decision",
-        "准入决策与报告",
+        "硬门槛裁决",
         "completed",
         reason,
         detail={"decision": decision, "total_score": total_score},
+        event_type="decision",
+    )
+    trace.event(
+        "result_formatter",
+        "报告生成",
+        "completed",
+        "评估结论、证据与面试重点已写入报告",
+        detail={"decision": decision, "total_score": total_score},
+        event_type="report",
     )
     return PairAssessmentResult(
         candidate_id=candidate.id,
@@ -253,6 +285,7 @@ def _score_tasks(
             f"能力等级 {assessment.level}，置信度 {assessment.confidence}",
             "task_scoring",
             detail=assessment.model_dump(),
+            actor="evaluator",
         )
     return [by_id[task.id] for task in card.core_tasks]
 
@@ -300,6 +333,8 @@ def _validate_and_repair_evidence(
                 "发现不可追溯引用，正在局部重评",
                 "evidence_validation",
                 detail={"invalid_quotes": invalid},
+                actor="evaluator",
+                event_type="validation",
             )
             assessment = _score_one_task(
                 invoke,
@@ -323,6 +358,8 @@ def _validate_and_repair_evidence(
                 f"局部重评完成，当前等级 {assessment.level}",
                 "evidence_validation",
                 detail=assessment.model_dump(),
+                actor="evaluator",
+                event_type="validation",
             )
         elif assessment.level > 0 and not assessment.evidence:
             assessment = assessment.model_copy(update={"level": 0, "confidence": "low"})

@@ -7,9 +7,8 @@ import type {
   InterviewAssessmentRun,
   JdEntry,
 } from "@/lib/types";
-import type { AdmissionGraphNode } from "@/features/admission/AdmissionWorkflowGraph";
-import AdmissionWorkflowGraph from "@/features/admission/AdmissionWorkflowGraph";
-import AdmissionReport, { NodeInspector } from "./AdmissionReport";
+import EvaluationAgentTimeline from "@/features/admission/EvaluationAgentTimeline";
+import AdmissionReport from "./AdmissionReport";
 import { BatchRunView, NewBatchPanel } from "./BatchViews";
 import EmptyState from "./EmptyState";
 import ResumeContent from "@/features/resume/ResumeContent";
@@ -36,8 +35,6 @@ export default function AdmissionPane({
   selectedCandidateView,
   candidateDetail,
   candidateDetailLoading,
-  selectedNode,
-  selectedNodeId,
   activeRunId,
   draftCandidateIds,
   draftJdIds,
@@ -49,8 +46,6 @@ export default function AdmissionPane({
   onDraftJdIds,
   onDraftCandidateSearch,
   onDraftJdSearch,
-  onSelectNode,
-
   onCancelRun,
 
   onStartBatch,
@@ -66,8 +61,6 @@ export default function AdmissionPane({
   selectedCandidateView: CandidateRecordView;
   candidateDetail: CandidateDetail | null;
   candidateDetailLoading: boolean;
-  selectedNode: AdmissionGraphNode | null;
-  selectedNodeId: string | null;
   activeRunId: string | null;
   draftCandidateIds: Set<string>;
   draftJdIds: Set<string>;
@@ -80,7 +73,6 @@ export default function AdmissionPane({
   onDraftJdIds: (value: Set<string>) => void;
   onDraftCandidateSearch: (value: string) => void;
   onDraftJdSearch: (value: string) => void;
-  onSelectNode: (node: AdmissionGraphNode) => void;
   onCancelRun: (runId: string) => void;
   onStartBatch: (
     pairs: Array<{ candidate_id: string; jd_id: string }>,
@@ -102,15 +94,11 @@ export default function AdmissionPane({
       <BatchRunView
         batch={batch}
         activeRunId={activeRunId}
-        candidates={candidates}
         jds={allJds}
         assessments={assessments}
         candidateDetail={candidateDetail}
         candidateDetailLoading={candidateDetailLoading}
         onCandidateReviewed={onCandidateReviewed}
-        selectedNode={selectedNode}
-        selectedNodeId={selectedNodeId}
-        onSelectNode={onSelectNode}
         onCancelRun={onCancelRun}
       />
     );
@@ -142,12 +130,8 @@ export default function AdmissionPane({
       <PairReportView
         assessments={assessments}
         allJds={allJds}
-        candidates={candidates}
         candidateId={selectedCandidateId}
         jdId={selectedJdId}
-        selectedNode={selectedNode}
-        selectedNodeId={selectedNodeId}
-        onSelectNode={onSelectNode}
       />
     );
   }
@@ -190,32 +174,23 @@ export default function AdmissionPane({
   );
 }
 
-/** 候选人–JD 配对的当前报告视图：真实运行图 + 完整报告与节点详情 */
+/** 候选人–JD 配对的当前报告视图：完整报告 + 双 Agent 活动回放。 */
 function PairReportView({
   assessments,
   allJds,
-  candidates,
   candidateId,
   jdId,
-  selectedNode,
-  selectedNodeId,
-  onSelectNode,
 }: {
   assessments: InterviewAssessment[];
   allJds: JdEntry[];
-  candidates: CandidateBrief[];
   candidateId: string;
   jdId: string;
-  selectedNode: AdmissionGraphNode | null;
-  selectedNodeId: string | null;
-  onSelectNode: (node: AdmissionGraphNode) => void;
 }) {
   const { t } = useI18n();
   const assessment = assessments.find(
     (item) => item.candidate_id === candidateId && item.jd_id === jdId,
   );
   const jd = allJds.find((item) => item.id === jdId);
-  const candidate = candidates.find((item) => item.id === candidateId);
 
   if (!assessment) {
     return (
@@ -229,7 +204,7 @@ function PairReportView({
     );
   }
 
-  // 已保存报告的运行轨迹回放为只读运行图
+  // 已保存报告与运行中批次共用同一活动流组件，仅切换为只读状态。
   const reportRun = {
     id: assessment.id,
     batch_id: "saved-reports",
@@ -245,39 +220,6 @@ function PairReportView({
     cancellation_requested: false,
   };
 
-  const graphCandidate = candidate
-    ?? (assessment.candidate_name
-      ? ({
-          id: assessment.candidate_id,
-          name: assessment.candidate_name,
-          role: "",
-          stage: "",
-          group: "",
-          level: "",
-          category: "",
-          engagement_status: "",
-          admitted_at: null,
-        } as CandidateBrief)
-      : undefined);
-  const graphJd = jd
-    ?? (assessment.jd_title
-      ? ({
-          id: assessment.jd_id,
-          title: assessment.jd_title,
-          team: "",
-          raw_text: "",
-          supplements: [],
-          assessment_card: null,
-          card_status: "ready",
-          card_error: "",
-          card_run_trace: [],
-          card_model_usage: [],
-          archived: false,
-          created_at: "",
-          updated_at: "",
-        } as JdEntry)
-      : undefined);
-
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(560px,1.7fr)_minmax(360px,1fr)]">
       {/* 报告是交付物：占主列 */}
@@ -290,30 +232,12 @@ function PairReportView({
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-5 admission-panel-scrollbar">
           <AdmissionReport assessment={assessment} jd={jd} />
-          <div className="my-5 border-t border-outline-variant" />
-          <NodeInspector node={selectedNode} />
         </div>
       </Card>
 
-      {/* 报告生成时的真实调用链：佐证材料，占辅列 */}
+      {/* 同一条真实活动流可在运行中观看，也可在历史报告中回放。 */}
       <Card variant="filled" className="relative min-h-[360px] overflow-hidden flex flex-col">
-        <div className="flex items-center gap-3 border-b border-outline-variant px-4 py-3 shrink-0">
-          <div className="min-w-0">
-            <p className="truncate text-title">{t("运行过程")}</p>
-            <p className="mt-0.5 truncate text-label text-on-surface-variant">
-              {t("报告生成时的真实调用链")}
-            </p>
-          </div>
-        </div>
-        <div className="flex-1 min-h-0 overflow-auto admission-panel-scrollbar">
-          <AdmissionWorkflowGraph
-            run={reportRun}
-            candidate={graphCandidate}
-            jd={graphJd}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={onSelectNode}
-          />
-        </div>
+        <EvaluationAgentTimeline run={reportRun} />
       </Card>
     </div>
   );

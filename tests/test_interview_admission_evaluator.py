@@ -93,6 +93,11 @@ class InterviewAdmissionEvaluatorTests(unittest.TestCase):
         self.assertEqual(result.decision, "interview")
         self.assertNotIn("hold", result.model_dump_json())
         self.assertTrue(any(item["node_id"].startswith("evidence_repair:") for item in result.run_trace))
+        observer_events = [item for item in result.run_trace if item.get("actor") == "observer"]
+        self.assertEqual([item["status"] for item in observer_events], ["running", "completed"])
+        self.assertTrue(all(item["event_type"] == "observer" for item in observer_events))
+        self.assertEqual(result.run_trace[-2]["event_type"], "decision")
+        self.assertEqual(result.run_trace[-1]["event_type"], "report")
 
     def test_publications_and_projects_are_capability_evidence_without_skill_keyword(self) -> None:
         def llm(prompt: str, payload: dict) -> dict:

@@ -828,6 +828,15 @@ export interface WorkflowNodeEvent {
   detail?: Record<string, unknown>;
   error?: string;
   at?: string;
+  /** 事件由谁产生；旧记录缺省时由前端按 node_id 兼容推断。 */
+  actor?: "evaluator" | "observer" | "system";
+  /** 活动流语义，不再把每条事件伪装成 DAG 节点。 */
+  event_type?: "stage" | "thinking" | "tool" | "observer" | "validation" | "decision" | "report";
+  turn?: number;
+  attempt?: number;
+  tool?: string;
+  call_id?: string;
+  args_summary?: string;
 }
 
 export interface InterviewAssessmentRun {

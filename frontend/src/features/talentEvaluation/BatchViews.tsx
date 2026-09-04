@@ -7,11 +7,8 @@ import type {
   JdEntry,
   CandidateDetail,
 } from "@/lib/types";
-import AdmissionWorkflowGraph, {
-  type AdmissionGraphNode,
-} from "@/features/admission/AdmissionWorkflowGraph";
+import EvaluationAgentTimeline from "@/features/admission/EvaluationAgentTimeline";
 import AdmissionReport, {
-  NodeInspector,
   RUN_STATUS_LABEL,
   RUN_STATUS_TONE,
   TERMINAL_RUN_STATUSES,
@@ -405,33 +402,25 @@ function ListEmpty({ icon, text }: { icon: string; text: string }) {
   );
 }
 
-// ---- 运行中的批次视图：配对状态条 + 运行图 + 报告/节点详情 ----
+// 运行中的批次视图：配对状态条 + 双 Agent 活动流 + 报告
 
 export function BatchRunView({
   batch,
   activeRunId,
-  candidates,
   jds,
   assessments,
   candidateDetail,
   candidateDetailLoading,
   onCandidateReviewed,
-  selectedNode,
-  selectedNodeId,
-  onSelectNode,
   onCancelRun,
 }: {
   batch: InterviewAssessmentBatch;
   activeRunId: string | null;
-  candidates: CandidateBrief[];
   jds: JdEntry[];
   assessments: InterviewAssessment[];
   candidateDetail: CandidateDetail | null;
   candidateDetailLoading: boolean;
   onCandidateReviewed: () => void;
-  selectedNode: AdmissionGraphNode | null;
-  selectedNodeId: string | null;
-  onSelectNode: (node: AdmissionGraphNode) => void;
   onCancelRun: (runId: string) => void;
 }) {
   const { t } = useI18n();
@@ -441,21 +430,6 @@ export function BatchRunView({
     ? assessments.find((item) => item.candidate_id === activeRun.candidate_id && item.jd_id === activeRun.jd_id)
     : undefined;
 
-  const candidateForRun = (run: InterviewAssessmentRun): CandidateBrief | undefined =>
-    candidates.find((item) => item.id === run.candidate_id)
-    || (run.candidate_name
-      ? ({
-          id: run.candidate_id,
-          name: run.candidate_name,
-          role: "",
-          stage: "",
-          group: "",
-          level: "",
-          category: "",
-          engagement_status: "",
-          admitted_at: null,
-        } as CandidateBrief)
-      : undefined);
   const jdForRun = (run: InterviewAssessmentRun): JdEntry | undefined =>
     jds.find((item) => item.id === run.jd_id)
     || (run.jd_title
@@ -476,7 +450,7 @@ export function BatchRunView({
         } as JdEntry)
       : undefined);
 
-  // 三视图 tab：结构化简历 / 简历原件 / 评估结果（含运行图）；运行中自动跳到评估结果看图
+  // 三视图 tab：运行中自动切到评估结果，直接观看双 Agent 活动流。
   const [pairTab, setPairTab] = useState<"structured" | "raw" | "result">(
     activeRun?.status === "running" ? "result" : "structured",
   );
@@ -533,13 +507,7 @@ export function BatchRunView({
                 <ListEmpty icon="description" text={t("候选人简历加载失败")} />
               )
             ) : activeRun && (activeRun.run_trace?.length || activeRun.status !== "queued") ? (
-              <AdmissionWorkflowGraph
-                run={activeRun}
-                candidate={candidateForRun(activeRun)}
-                jd={jdForRun(activeRun)}
-                selectedNodeId={selectedNodeId}
-                onSelectNode={onSelectNode}
-              />
+              <EvaluationAgentTimeline run={activeRun} />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center text-on-surface-variant">
                 <Icon name="hourglass_top" size={30} />
@@ -554,7 +522,7 @@ export function BatchRunView({
 
         <Card variant="filled" className="min-h-[320px] overflow-hidden flex flex-col">
           <div className="flex items-center justify-between border-b border-outline-variant px-4 py-3 shrink-0">
-            <p className="text-title">{completedAssessment ? t("报告与节点") : t("节点详情")}</p>
+            <p className="text-title">{completedAssessment ? t("评估报告") : t("运行状态")}</p>
             {activeRun && (
               <StatusChip tone={RUN_STATUS_TONE[activeRun.status] || "neutral"}>
                 {t(RUN_STATUS_LABEL[activeRun.status] || activeRun.status)}
@@ -565,8 +533,12 @@ export function BatchRunView({
             {activeRun && completedAssessment && (
               <AdmissionReport assessment={completedAssessment} jd={jdForRun(activeRun)} run={activeRun} />
             )}
-            {completedAssessment && <div className="my-4 border-t border-outline-variant" />}
-            <NodeInspector node={selectedNode} />
+            {!completedAssessment && !activeRun?.error_message && (
+              <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center text-on-surface-variant">
+                <Icon name="monitor_heart" size={26} />
+                <p className="text-body-sm text-on-surface">{t("报告将在双 Agent 与规则裁决完成后生成")}</p>
+              </div>
+            )}
             {activeRun?.error_message && (
               <div className="mt-4 rounded-md bg-error-container p-3 text-body-sm text-on-error-container">
                 <p className="font-medium">{t("运行失败")}</p>
