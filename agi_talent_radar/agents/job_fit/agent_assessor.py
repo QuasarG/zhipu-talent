@@ -5,17 +5,21 @@
 完全不变——评分模式不变。
 
 双 agent 回合结构（编排为确定性代码，两个 LLM 互不直接对话）：
-- 评估 agent：每 turn ≤5 轮工具调用；工具=包内文件系统（限量读取）+
-  视觉转译 + 论文查证/全网检索 + submit_assessments（终点合同）
+- 评估 agent：每 turn ≤5 轮工具调用，工具只承担「读取」（文件系统限量
+  读取/视觉转译/论文查证/全网检索）——GLM 对复杂提交 schema 的
+  function-calling 有间歇性 1210，因此提交不走 tools
+- 阅读阶段结束后，评估结果经独立 JSON 通道输出（call_llm_json 同款
+  稳定路径），_validate_assessments 硬校验不过则带错误重试
 - 观察 agent：每 turn 边界必跑（过程台账），action=guide/phase/wrap/silent；
   指导以 [督导] user input 注入
-- 硬护栏：MAX_TURNS / 预算耗尽 → 强制收尾 turn（只给 submit_assessments）
+- 硬护栏：MAX_TURNS / 预算耗尽 → 强制收尾
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+import re
 from typing import Any, Generator
 
 from agi_talent_radar.agents.job_fit.evaluator import DIMENSIONS
@@ -35,7 +39,6 @@ _TOOL_LABELS = {
     "search_text": "检索内容",
     "verify_paper": "论文查证",
     "web_search": "全网检索",
-    "submit_assessments": "提交评估",
 }
 
 
@@ -64,7 +67,7 @@ class MaterialsContext:
     def walk(self) -> list[str]:
         if self.allowed is not None:
             return sorted(self.allowed)
-        out = []
+        out: list[str] = []
         for root, _dirs, files in os.walk(self.root):
             for f in files:
                 out.append(os.path.relpath(os.path.join(root, f), self.root).replace(os.sep, "/"))
@@ -75,38 +78,34 @@ def _suffix(name: str) -> str:
     return ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
 
 
-def _system_prompt(resume_dump: dict, jobs: list, ctx: MaterialsContext, academic_report: dict | None) -> str:
+def _system_prompt(resume_dump: dict[str, Any], jobs: list, ctx: MaterialsContext | None, academic_report: dict | None) -> str:
     dims = "\n".join(f"- {key}｜{label}｜权重 {weight}%" for key, label, weight in DIMENSIONS)
-    jd_list = "\n".join(f"- jd_id={j.id}｜{j.title}\n---- JD 原文 ----\n{j.raw_text[:2000]}" for j in jobs)
+    jd_list = "\n\n".join(f"### jd_id={j.id}｜{j.title}\n{j.raw_text[:2000]}" for j in jobs)
     academic = json.dumps(academic_report or {}, ensure_ascii=False)[:1500]
-    files = "\n".join(f"- {rel}" for rel in ctx.walk()) or "（无原始材料文件，仅结构化简历可用）"
-    return f"""你是人才评估 agent。任务：读取候选人「本人目录」下的真实材料，对照 JD 完成逐岗评估，
-最后调用 submit_assessments 提交。证据只能来自材料原文或公开查证，禁止编造。
+    files = "\n".join(f"- {rel}" for rel in (ctx.walk() if ctx else [])) or "（无原始材料文件，仅结构化简历可用）"
+    return f"""你是人才评估 agent。任务：读取候选人「本人目录」下的真实材料，对照 JD 完成逐岗评估。
 
-# 候选人结构化简历（导入时解析，供快速定位；评估依据仍以下方材料为准）
+# 候选人结构化简历（导入时解析，供快速定位；评估依据仍以下方材料原文为准）
 {json.dumps({k: resume_dump.get(k) for k in ("name", "target_role", "stage", "education", "directions", "experiences", "projects", "publications", "skills")}, ensure_ascii=False)[:3000]}
 
-# 论文核验报告（已有）
+# 论文核验报告
 {academic}
 
 # 候选人材料目录（read_text/read_pages 的 file 参数取这里的相对路径）
 {files}
 
-# 目标 JD（每个 jd_id 都必须出现在 submit_assessments.assessments 里）
+# 目标 JD（评估必须覆盖这里的每个 jd_id）
 {jd_list}
 
-# 评估维度（score 0-5，rationale 必须引用具体证据：文件名 第N页/章节）
+# 评估维度（score 0-5；rationale 必须引用具体证据：文件名 第N页）
 {dims}
 
 # 工作方式
 0. 每次调工具前先用一两句话说明目的（给评审看的）。
-1. list_files 盘点 → 逐份 read_text（分页）读关键材料；扫描件/图片用 read_pages 视觉转译；
-   大文件先 search_text 定位再精读。
-2. 代表作论文可用 verify_paper 查证公开收录情况；必要时 web_search 核查公开信息。
-3. 材料读完或督导示意收尾后，为每个 JD 提交：硬性门槛逐条判定（从 JD 原文提取，
-   status=met/unmet/unknown + 证据）+ 六维评分（含理由与证据）+ 亮点/风险/面试问题/缺漏信息。
-4. 收到 [督导] 开头的 user 消息是评审督导的方向性指令，优先服从。
-5. 决策（面试/hold/拒绝）由系统按硬门槛与分数确定性计算，你不提交决策结论。"""
+1. list_files 盘点 → 逐份 read_text 分段读；扫描件/图片用 read_pages 视觉转译；大文件先 search_text 定位再精读。
+2. 代表作论文用 verify_paper 查证公开收录；必要时 web_search 核查公开信息。
+3. 收到 [督导] 开头的 user 消息是评审督导的方向性指令，优先服从。
+4. 决策（面试/hold/拒绝）由系统按硬门槛与分数确定性计算，你不输出决策结论。"""
 
 
 _OBSERVER_PROMPT = """你是人才评估的评审督导 agent。你看到的是评估 agent 的工作过程台账
@@ -115,13 +114,51 @@ _OBSERVER_PROMPT = """你是人才评估的评审督导 agent。你看到的是�
 # 决策规则（默认 silent）
 仅以下情况出手：
 - guide：重复读取已读内容 / 漏读关键材料（简历、代表作、成绩单、推荐信）/ 单文件过度逗留 / 前后矛盾
-- phase：各 JD 的证据已足够，提示提交
-- wrap：剩余轮数不足，要求基于已有信息立即提交
+- phase：各 JD 的证据已足够，提示进入提交
+- wrap：剩余轮数不足，要求基于已有信息收尾
 - silent：一切正常
 guidance 严禁包含任何具体分数或录用结论。
 
 # 输出 JSON
 {"action": "guide|phase|wrap|silent", "guidance": "简短指令（silent 留空）", "reason": "一句话依据"}"""
+
+
+_FINAL_PROMPT = """材料阅读阶段结束。基于以上全部阅读与查证，输出最终逐 JD 评估。
+
+只输出一个 JSON 对象（不要 markdown、不要解释）：
+{"assessments": [
+  {"jd_id": "<JD id>",
+   "hard_requirements": [{"requirement": "...", "status": "met|unmet|unknown", "evidence": ["文件 第N页"], "rationale": "..."}],
+   "dimensions": [
+     {"key": "direct_task_match", "score": 0-5, "rationale": "引用具体材料证据", "evidence": ["文件名 第N页"]},
+     {"key": "technical_depth", ...}, {"key": "ownership", ...}, {"key": "evidence_quality", ...},
+     {"key": "engineering_scale", ...}, {"key": "transferability", ...}],
+   "confidence": 0-1,
+   "strengths": ["…"], "risks": ["…"], "interview_questions": ["…"], "missing_information": ["…"]}
+]}要求：覆盖所有 jd_id；六维齐全且 score 为 0-5 数字；rationale 引用具体材料证据（文件名 第N页）；
+材料没覆盖的按已读内容谨慎给分并在 rationale 注明依据不足。"""
+
+
+def tools_schema() -> list[dict[str, Any]]:
+    def _fn(name: str, description: str, properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
+        return {"type": "function", "function": {
+            "name": name, "description": description,
+            "parameters": {"type": "object", "properties": properties, "required": required},
+        }}
+
+    return [
+        _fn("list_files", "列出本人材料目录全部文件（相对路径/大小）。", {}, []),
+        _fn("read_text", f"按段读取文件可提取文本（每段约{PAGE_CHARS}字）。参数：file, page(0基)。",
+            {"file": {"type": "string"}, "page": {"type": "integer"}}, ["file"]),
+        _fn("read_pages", "视觉转译读取扫描件 PDF/图片（无文本层时用）。参数：file, start(0基), count(≤5)。",
+            {"file": {"type": "string"}, "start": {"type": "integer"}, "count": {"type": "integer"}}, ["file"]),
+        _fn("search_text", "在已提取文本中正则检索。参数：pattern, file(可选)。",
+            {"pattern": {"type": "string"}, "file": {"type": "string"}}, ["pattern"]),
+        _fn("verify_paper", "按标题在公开学术库查证论文。参数：title。",
+            {"title": {"type": "string"}}, ["title"]),
+        _fn("web_search", "全网检索公开信息。参数：query。",
+            {"query": {"type": "string"}}, ["query"]),
+    ]
 
 
 def run_agent_assessments_stream(
@@ -133,82 +170,35 @@ def run_agent_assessments_stream(
     """双 agent 评估循环（生成器）：yield jd_fit_assessor 节点进度事件，
     return 与旧 _request_assessments 同构的 job_fit_raw（供 yield from 捕获）。"""
 
-    system_prompt = _system_prompt(resume_dump, jobs, ctx, academic_report)
+    def node(message: str, status: str = "running") -> dict[str, Any]:
+        return {"type": "node", "node": "jd_fit_assessor", "label": "逐 JD 证据对照",
+                "status": status, "phase": "assessment", "message": message}
+
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": "开始评估。先盘点并读取本人材料，逐 JD 完成证据对照后调用 submit_assessments。"},
+        {"role": "system", "content": _system_prompt(resume_dump, jobs, ctx, academic_report)},
+        {"role": "user", "content": "开始评估。先盘点并读取本人材料，逐 JD 完成证据对照。材料读完（或督导示意收尾）后停止调工具。"},
     ]
     ledger: list[dict[str, str]] = []
-    submitted: dict[str, Any] | None = None
-    submit_rejections = 0
 
     def observe(event: dict[str, str]) -> None:
         ledger.append(event)
         if len(ledger) > 120:
             del ledger[:20]
 
-    def _assessments_items_schema() -> dict[str, Any]:
-        """submit_assessments.assessments 数组的 item schema（每个 JD 一项）。"""
-        return {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "jd_id": {"type": "string"},
-                    "hard_requirements": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "requirement": {"type": "string"},
-                                "status": {"type": "string", "enum": ["met", "unmet", "unknown"]},
-                                "evidence": {"type": "array", "items": {"type": "string"}},
-                                "rationale": {"type": "string"},
-                            },
-                            "required": ["requirement", "status"],
-                        },
-                    },
-                    "dimensions": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "key": {"type": "string"},
-                                "score": {"type": "number"},
-                                "rationale": {"type": "string"},
-                                "evidence": {"type": "array", "items": {"type": "string"}},
-                            },
-                            "required": ["key", "score", "rationale"],
-                        },
-                    },
-                    "confidence": {"type": "number"},
-                    "strengths": {"type": "array", "items": {"type": "string"}},
-                    "risks": {"type": "array", "items": {"type": "string"}},
-                    "interview_questions": {"type": "array", "items": {"type": "string"}},
-                    "missing_information": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["jd_id", "dimensions"],
-            },
-        }
-
     def execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
-        nonlocal submitted, submit_rejections
         if name == "list_files":
-            files = ctx.walk()
+            files = ctx.walk() if ctx else []
             return {"summary": f"{len(files)} 个文件", "detail": {"files": files}}
         if name == "read_text":
             rel = str(args.get("file") or "")
-            text = ctx.text_cache.get(rel)
-            if text is None:
-                text = _extract_text_layer(ctx, rel)
+            text = _extract_text_layer(ctx, rel) if ctx else ""
             page = max(0, int(args.get("page") or 0))
             chunk = text[page * PAGE_CHARS:(page + 1) * PAGE_CHARS]
             if not chunk:
                 return {"summary": f"{rel} 无文本层", "detail": {"error": "无文本层（扫描件/图片用 read_pages 视觉转译）或超出范围"}}
-            return {
-                "summary": f"{rel} 第 {page + 1}/{max(1, (len(text) + PAGE_CHARS - 1) // PAGE_CHARS)} 段（{len(chunk)} 字）",
-                "detail": {"file": rel, "page": page, "total_pages": max(1, (len(text) + PAGE_CHARS - 1) // PAGE_CHARS), "text": chunk},
-            }
+            total = max(1, (len(text) + PAGE_CHARS - 1) // PAGE_CHARS)
+            return {"summary": f"{rel} 第 {page + 1}/{total} 段（{len(chunk)} 字）",
+                    "detail": {"file": rel, "page": page, "total_pages": total, "text": chunk}}
         if name == "read_pages":
             return _tool_read_pages(ctx, args)
         if name == "search_text":
@@ -231,129 +221,122 @@ def run_agent_assessments_stream(
             items = [{"title": str((f.payload or {}).get("title") or ""), "url": f.source_url or "",
                       "snippet": str((f.payload or {}).get("content") or "")[:200]} for f in facts]
             return {"summary": f"{len(items)} 条结果", "detail": {"query": query, "results": items}}
-        if name == "submit_assessments":
-            error = _validate_assessments(jobs, args)
-            if error:
-                submit_rejections += 1
-                return {"summary": "提交被驳回，需修正后重交", "detail": {"error": error}}
-            submitted = {"assessments": args.get("assessments") or []}
-            return {"summary": "评估已受理", "detail": {"accepted": True}}
         return {"summary": f"未知工具 {name}", "detail": {"error": "当前不可用"}}
 
-    def tools_schema() -> list[dict[str, Any]]:
-        def _fn(name: str, description: str, properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
-            return {"type": "function", "function": {
-                "name": name, "description": description,
-                "parameters": {"type": "object", "properties": properties, "required": required},
-            }}
-
-        tools = [
-            _fn("list_files", "列出本人材料目录全部文件（相对路径/大小）。", {}, []),
-            _fn("read_text", f"按段读取文件可提取文本（每段约{PAGE_CHARS}字）。参数：file, page(0基)。",
-                {"file": {"type": "string"}, "page": {"type": "integer"}}, ["file"]),
-            _fn("read_pages", "视觉转译读取扫描件 PDF/图片（无文本层时用）。参数：file, start(0基), count(≤5)。",
-                {"file": {"type": "string"}, "start": {"type": "integer"}, "count": {"type": "integer"}}, ["file"]),
-            _fn("search_text", "在已提取文本中正则检索。参数：pattern, file(可选)。",
-                {"pattern": {"type": "string"}, "file": {"type": "string"}}, ["pattern"]),
-            _fn("verify_paper", "按标题在公开学术库查证论文。参数：title。",
-                {"title": {"type": "string"}}, ["title"]),
-            _fn("web_search", "全网检索公开信息。参数：query。",
-                {"query": {"type": "string"}}, ["query"]),
-            _fn("submit_assessments", "提交逐 JD 评估（终点合同，所有 jd_id 必须齐全）。",
-                {"type": "object", "properties": {"assessments": _assessments_items_schema()},
-                 "required": ["assessments"]}, ["assessments"]),
-        ]
-        return tools
-
-    try:
-        forced = False
-        for turn_no in range(1, MAX_TURNS + 1):
-            for _round in range(TURN_ROUNDS):
-                result = call_llm_tools(
-                    messages, tools_schema(), temperature=0.2,
-                    reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"),
-                )
-                text = (result.get("text") or "").strip()
-                tool_calls = result.get("tool_calls") or []
-                if not tool_calls and not text:
-                    break
-                messages.append({
-                    "role": "assistant",
-                    "content": result.get("text") or "",
-                    "tool_calls": [
-                        {"id": tc["id"], "type": "function",
-                         "function": {"name": tc["name"], "arguments": tc["arguments"]}}
-                        for tc in tool_calls
-                    ],
-                })
-                for tc in tool_calls:
-                    try:
-                        args = json.loads(tc.get("arguments") or "{}")
-                    except json.JSONDecodeError:
-                        args = {}
-                    label = _TOOL_LABELS.get(tc["name"], tc["name"])
-                    output = execute_tool(tc["name"], args)
-                    summary = str(output.get("summary") or "完成")
-                    detail = json.dumps(output.get("detail"), ensure_ascii=False, default=str)
-                    yield {"type": "node", "node": "jd_fit_assessor", "label": "逐 JD 证据对照",
-                           "status": "running", "phase": "assessment", "message": f"{label}：{summary}"}
-                    observe({"kind": "tool", "tool": tc["name"], "args": json.dumps(args, ensure_ascii=False)[:120], "summary": summary})
-                    messages.append({"role": "tool", "tool_call_id": tc["id"], "content": detail[:TOOL_RESULT_MAX_CHARS]})
-                    if submitted is not None:
-                        break
-                if submitted is not None:
-                    break
-                if not tool_calls:
-                    break
-
-            if submitted is not None:
+    forced = False
+    for turn_no in range(1, MAX_TURNS + 1):
+        for _round in range(TURN_ROUNDS):
+            result = call_llm_tools(
+                messages, tools_schema(), temperature=0.2,
+                reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"),
+            )
+            text = (result.get("text") or "").strip()
+            tool_calls = result.get("tool_calls") or []
+            if not tool_calls and not text:
                 break
-            if submit_rejections >= 3:
-                raise RuntimeError("submit_assessments 连续驳回超过 3 次")
+            messages.append({
+                "role": "assistant",
+                "content": result.get("text") or "",
+                "tool_calls": [
+                    {"id": tc["id"], "type": "function",
+                     "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+                    for tc in tool_calls
+                ],
+            })
+            for tc in tool_calls:
+                try:
+                    args = json.loads(tc.get("arguments") or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                label = _TOOL_LABELS.get(tc["name"], tc["name"])
+                output = execute_tool(tc["name"], args)
+                summary = str(output.get("summary") or "完成")
+                yield node(f"{label}：{summary}")
+                observe({"kind": "tool", "tool": tc["name"], "args": json.dumps(args, ensure_ascii=False)[:120], "summary": summary})
+                messages.append({
+                    "role": "tool", "tool_call_id": tc["id"],
+                    "content": json.dumps(output.get("detail"), ensure_ascii=False, default=str)[:TOOL_RESULT_MAX_CHARS],
+                })
+            if not tool_calls:
+                break
 
-            # ---- 观察 agent 决策 ----
-            decision: dict[str, Any] = {"action": "silent"}
-            try:
-                decision = call_llm_json(_OBSERVER_PROMPT, {
-                    "turn": f"{turn_no}/{MAX_TURNS}",
-                    "read_files": {k: sorted(v)[:12] for k, v in list(ctx.vision_cache.items())[:0]} or {
-                        rel: True for rel in list(ctx.text_cache)[:40]},
-                    "extract_rounds": ctx.extract_rounds if hasattr(ctx, "extract_rounds") else 0,
-                    "ledger": ledger[-80:],
-                }, temperature=0.1)
-            except Exception as exc:  # noqa: BLE001 — 观察者失败降级为继续
-                logger.warning("评估督导 agent 失败：%s", exc)
-            action = str(decision.get("action") or "silent")
-            guidance = str(decision.get("guidance") or "").strip()
-            observe({"kind": "observer", "action": action, "guidance": guidance[:200],
-                     "reason": str(decision.get("reason") or "")[:200]})
+        # ---- 观察 agent 决策 ----
+        decision: dict[str, Any] = {"action": "silent"}
+        try:
+            decision = call_llm_json(_OBSERVER_PROMPT, {
+                "turn": f"{turn_no}/{MAX_TURNS}",
+                "files_read": sorted(ctx.text_cache)[:40] if ctx else [],
+                "ledger": ledger[-80:],
+            }, temperature=0.1)
+        except Exception as exc:  # noqa: BLE001 — 观察者失败降级为继续
+            logger.warning("评估督导 agent 失败：%s", exc)
+        action = str(decision.get("action") or "silent")
+        guidance = str(decision.get("guidance") or "").strip()
+        observe({"kind": "observer", "action": action, "guidance": guidance[:200],
+                 "reason": str(decision.get("reason") or "")[:200]})
+        if action == "wrap":
+            forced = True
 
-            if forced or turn_no >= MAX_TURNS - 1 or action == "wrap":
-                messages.append({"role": "user",
-                                 "content": "[系统] 预算即将耗尽。不要再调用其他工具，立即基于已收集信息调用 submit_assessments（未覆盖部分在 evidence/rationale 注明依据不足）。"})
-                forced = True
-            elif action in ("guide", "phase") and guidance:
-                messages.append({"role": "user", "content": f"[督导] {guidance}"})
-            else:
-                messages.append({"role": "user", "content": "继续。"})
+        if forced or turn_no >= MAX_TURNS - 1:
+            messages.append({"role": "user",
+                             "content": "[系统] 材料阅读预算已尽。不要再调用任何工具，等待输出最终评估 JSON（将基于你已收集的全部信息）。"})
+            forced = True
+        elif action in ("guide", "phase") and guidance:
+            messages.append({"role": "user", "content": f"[督导] {guidance}"})
+        else:
+            messages.append({"role": "user", "content": "继续。"})
 
-        if submitted is None:
-            raise RuntimeError(f"评估 agent 未能在预算内提交（{MAX_TURNS} turns）")
-        return submitted
-    except Exception:
-        raise
+    # ---- 独立 JSON 通道输出最终评估（不走 function-calling，规避 GLM 间歇性 1210）----
+    messages.append({"role": "user", "content": _FINAL_PROMPT})
+    last_error = ""
+    for attempt in range(3):
+        yield node("正在汇总输出最终评估…" if attempt == 0 else f"评估 JSON 校验未过，重试（{attempt}/3）：{last_error[:120]}")
+        result = call_llm_tools(messages, tools=[], temperature=0.2,
+                                reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"))
+        text = (result.get("text") or "").strip()
+        messages.append({"role": "assistant", "content": text})
+        parsed = _parse_json_block(text)
+        if parsed is None:
+            last_error = "输出不是合法 JSON"
+            messages.append({"role": "user", "content": f"输出解析失败：{last_error}。请严格只输出 JSON 对象。"})
+            continue
+        error = _validate_assessments(jobs, parsed)
+        if not error:
+            yield node("逐 JD 评估完成。", status="done")
+            return {"assessments": parsed.get("assessments") or []}
+        last_error = error
+        messages.append({"role": "user", "content": f"[系统] 评估校验未通过：{error}。请修正后重新只输出 JSON。"})
+    raise RuntimeError(f"评估 JSON 输出校验连续失败：{last_error}")
+
+
+def _parse_json_block(text: str) -> dict[str, Any] | None:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned).strip()
+    try:
+        data = json.loads(cleaned)
+        return data if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        pass
+    try:
+        from json_repair import loads as repair_loads
+
+        data = repair_loads(cleaned)
+        return data if isinstance(data, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _validate_assessments(jobs: list, data: dict[str, Any]) -> str:
     """终点硬校验：所有 jd_id 齐全、六维齐全且 0-5。错误文案回填给 agent 重交。"""
     items = data.get("assessments") or []
+    if not isinstance(items, list) or not items:
+        return "assessments 必须是非空数组"
     by_id = {str(i.get("jd_id") or ""): i for i in items if isinstance(i, dict)}
     missing = [j.id for j in jobs if j.id not in by_id]
     if missing:
         return f"缺少 JD 评估：{', '.join(missing)}"
-    extra = [k for k in by_id if k not in {j.id for j in jobs}]
-    if extra:
-        return f"存在未知 jd_id：{', '.join(extra)}"
     dim_keys = {key for key, _label, _weight in DIMENSIONS}
     for j in jobs:
         item = by_id[j.id]
@@ -410,7 +393,9 @@ def _extract_text_layer(ctx: MaterialsContext, rel: str) -> str:
     return text
 
 
-def _tool_read_pages(ctx: MaterialsContext, args: dict[str, Any]) -> dict[str, Any]:
+def _tool_read_pages(ctx: MaterialsContext | None, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx is None:
+        return {"summary": "无材料目录", "detail": {"error": "该候选人没有原始材料文件"}}
     rel = str(args.get("file") or "")
     path = ctx.resolve(rel)
     if not path or not os.path.isfile(path):
@@ -470,11 +455,11 @@ def _tool_read_pages(ctx: MaterialsContext, args: dict[str, Any]) -> dict[str, A
     return {"summary": f"{rel} 视觉转译 {len(text)} 字", "detail": {"file": rel, "text": text[:TOOL_RESULT_MAX_CHARS]}}
 
 
-def _tool_search_text(ctx: MaterialsContext, args: dict[str, Any]) -> dict[str, Any]:
+def _tool_search_text(ctx: MaterialsContext | None, args: dict[str, Any]) -> dict[str, Any]:
     import re
 
     pattern = str(args.get("pattern") or "").strip()
-    if not pattern:
+    if not pattern or ctx is None:
         return {"summary": "pattern 为空", "detail": {"hits": []}}
     scoped = str(args.get("file") or "").strip()
     targets = [scoped] if scoped else ctx.walk()
@@ -484,9 +469,7 @@ def _tool_search_text(ctx: MaterialsContext, args: dict[str, Any]) -> dict[str, 
         return {"summary": "正则非法", "detail": {"error": str(exc)[:200]}}
     hits = []
     for rel in targets:
-        text = ctx.text_cache.get(rel)
-        if text is None:
-            text = _extract_text_layer(ctx, rel)
+        text = _extract_text_layer(ctx, rel)
         if not text:
             continue
         for m in rx.finditer(text):
