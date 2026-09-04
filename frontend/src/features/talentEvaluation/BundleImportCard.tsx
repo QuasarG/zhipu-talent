@@ -33,9 +33,12 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
 
   const load = useCallback(async () => {
     try {
-      setBundles(await api.talentBundle.list());
+      const activeBundles = (await api.talentBundle.list()).filter((bundle) => bundle.status !== "imported");
+      setBundles(activeBundles);
+      return activeBundles;
     } catch (err) {
       setError(err instanceof Error ? err.message : t("加载失败"));
+      return null;
     }
   }, [t]);
 
@@ -46,6 +49,7 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
   }, []);
 
   const importBundle = useCallback(async (bundle: TalentBundleSummary, resumeOverride?: string) => {
+    let imported = false;
     const setLocal = (patch: Partial<TalentBundleSummary>) =>
       setBundles((current) => current.map((b) => (b.id === bundle.id ? { ...b, ...patch } : b)));
     setLogs((current) => ({ ...current, [bundle.id]: [] }));
@@ -78,16 +82,19 @@ export default function BundleImportCard({ onClose, onChanged }: Props) {
       if (!candidateId) throw new Error(t("解析完成但未返回候选人"));
       await api.talentBundle.link(bundle.id, candidateId);
       pushLog(bundle.id, t("已入人才档案"));
-      setLocal({ status: "imported", candidate_id: candidateId });
+      setBundles((current) => current.filter((item) => item.id !== bundle.id));
+      imported = true;
       onChanged();
     } catch (err) {
       const message = err instanceof Error ? err.message : t("操作失败");
       setLocal({ status: "failed", error_message: message });
       pushLog(bundle.id, message);
     } finally {
-      void load();
+      const activeBundles = await load();
+      if (imported && activeBundles?.length === 0) onClose();
     }
-  }, [load, onChanged, pushLog, t]);
+    return imported;
+  }, [load, onChanged, onClose, pushLog, t]);
 
   const upload = useCallback(async (files: FileList | null) => {
     if (!files?.length) return;
