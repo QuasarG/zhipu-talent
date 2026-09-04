@@ -429,6 +429,7 @@ export function BatchRunView({
   const completedAssessment = activeRun?.status === "completed"
     ? assessments.find((item) => item.candidate_id === activeRun.candidate_id && item.jd_id === activeRun.jd_id)
     : undefined;
+  const showResultPanel = !!completedAssessment || !!activeRun?.error_message;
 
   const jdForRun = (run: InterviewAssessmentRun): JdEntry | undefined =>
     jds.find((item) => item.id === run.jd_id)
@@ -460,7 +461,10 @@ export function BatchRunView({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(480px,1.5fr)_minmax(320px,1fr)]">
-        <Card variant="filled" className="relative min-h-[420px] overflow-hidden flex flex-col">
+        <Card
+          variant="filled"
+          className={cn("relative min-h-[420px] overflow-hidden flex flex-col", !showResultPanel && "xl:col-span-2")}
+        >
           <div className="flex items-center gap-3 border-b border-outline-variant px-4 py-2.5 shrink-0">
             <div className="min-w-0 flex-1">
               <p className="truncate text-title">
@@ -520,7 +524,7 @@ export function BatchRunView({
           </div>
         </Card>
 
-        <Card variant="filled" className="min-h-[320px] overflow-hidden flex flex-col">
+        {showResultPanel && <Card variant="filled" className="min-h-[320px] overflow-hidden flex flex-col">
           <div className="flex items-center justify-between border-b border-outline-variant px-4 py-3 shrink-0">
             <p className="text-title">{completedAssessment ? t("评估报告") : t("运行状态")}</p>
             {activeRun && (
@@ -533,12 +537,6 @@ export function BatchRunView({
             {activeRun && completedAssessment && (
               <AdmissionReport assessment={completedAssessment} jd={jdForRun(activeRun)} run={activeRun} />
             )}
-            {!completedAssessment && !activeRun?.error_message && (
-              <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center text-on-surface-variant">
-                <Icon name="monitor_heart" size={26} />
-                <p className="text-body-sm text-on-surface">{t("报告将在双 Agent 与规则裁决完成后生成")}</p>
-              </div>
-            )}
             {activeRun?.error_message && (
               <div className="mt-4 rounded-md bg-error-container p-3 text-body-sm text-on-error-container">
                 <p className="font-medium">{t("运行失败")}</p>
@@ -546,7 +544,7 @@ export function BatchRunView({
               </div>
             )}
           </div>
-        </Card>
+        </Card>}
       </div>
     </div>
   );

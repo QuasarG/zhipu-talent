@@ -237,7 +237,7 @@ function PairReportView({
 
       {/* 同一条真实活动流可在运行中观看，也可在历史报告中回放。 */}
       <Card variant="filled" className="relative min-h-[360px] overflow-hidden flex flex-col">
-        <EvaluationAgentTimeline run={reportRun} />
+        <EvaluationAgentTimeline run={reportRun} compact />
       </Card>
     </div>
   );
