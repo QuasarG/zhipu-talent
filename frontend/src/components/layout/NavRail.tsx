@@ -28,6 +28,8 @@ const navItems: NavItem[] = [
   { to: "/settings", icon: "settings", label: "设置" },
 ];
 
+const FEEDBACK_URL = "https://zhipu-ai.feishu.cn/share/base/form/shrcnBnsxfWPAOZW1yP12PA9RGg";
+
 /** MD3 Navigation Rail：80px 全高，active = pill 指示器 */
 export default function NavRail({ username }: { username?: string }) {
   const { t, lang } = useI18n();
@@ -96,6 +98,20 @@ export default function NavRail({ username }: { username?: string }) {
 
       {/* 用户 + 语言 + 主题 + 登出 */}
       <div className="mt-auto flex flex-col items-center gap-3">
+        <a
+          href={FEEDBACK_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="group flex w-20 flex-col items-center gap-1.5 no-underline"
+          title={t("反馈建议")}
+        >
+          <span className="state-layer flex h-9 w-16 items-center justify-center rounded-full text-on-surface-variant transition-colors duration-150 group-hover:bg-surface-high group-hover:text-on-surface">
+            <Icon name="lightbulb" size={22} />
+          </span>
+          <span className="nav-rail-label text-label text-on-surface-variant group-hover:text-on-surface">
+            {t("反馈建议")}
+          </span>
+        </a>
         <LangToggle className="w-20 h-9 rounded-full" />
         <ThemeToggle />
         <button

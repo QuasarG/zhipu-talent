@@ -16,6 +16,7 @@ export default {
   "简历评估": "Resume Screening",
   "奖学金": "Scholarship",
   "设置": "Settings",
+  "反馈建议": "Feedback",
   "退出登录": "Sign out",
   "材料包": "Bundles",
   "人才材料包": "Talent Bundles",

@@ -1612,6 +1612,14 @@ def _stream_import_upload(
                         decision = "new_person"
                         matched_id = ""
                 canonical_id = matched_id if decision == "same_person" and matched_id else source_id
+                if decision == "new_person":
+                    # source_id 可能来自包内通用文件名（如“简历原件.pdf”）。文件名不是身份，
+                    # 已被占用时必须分配新 ID，否则 save_candidate 会把另一个人的档案覆盖掉。
+                    from agi_talent_radar.core.db.orm import CandidateORM as _CandidateORM
+
+                    with get_session() as session:
+                        if session.get(_CandidateORM, canonical_id) is not None:
+                            canonical_id = uuid.uuid4().hex
                 if canonical_id != source_id:
                     resume = resume.model_copy(update={"id": canonical_id})
                     classification = classification.model_copy(update={"id": canonical_id})

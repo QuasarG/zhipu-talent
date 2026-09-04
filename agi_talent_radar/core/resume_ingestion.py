@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import threading
 from pathlib import Path
 
 from agi_talent_radar.core.models import CandidateResume
@@ -136,14 +137,14 @@ OCR_SECTIONS_PROMPT = """提取图片简历的全部内容并直接组织成 JSO
 按语义分节，每节 {"name": "节名", "text": "该节完整文字"}；节名从这些里选：基本信息 / 教育 / 经历 / 论文 / 项目 / 技能 / 其他。
 内容只能重组排版，不得增删编造；保持原文顺序。"""
 
-# 模块级缓存：本进程内最近一次结构化 OCR 的分节结果（ocr_pages 只带页码，分节挂这里）
-_last_ocr_sections: list[dict[str, str]] | None = None
+# 每条导入线程独享 OCR 分节，避免并发上传时把甲文件的版面结果交给乙文件。
+_ocr_state = threading.local()
 
 
 def take_last_ocr_sections() -> list[dict[str, str]] | None:
     """取走最近一次云端结构化 OCR 的分节（一次性消费，防串页）。"""
-    global _last_ocr_sections
-    sections, _last_ocr_sections = _last_ocr_sections, None
+    sections = getattr(_ocr_state, "sections", None)
+    _ocr_state.sections = None
     return sections
 
 
@@ -164,8 +165,7 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
     client = _cloud_ocr_client()
     if client is None:
         return None
-    global _last_ocr_sections
-    structured = _last_ocr_sections is None  # 每份简历首页做一次结构化
+    structured = getattr(_ocr_state, "sections", None) is None  # 每份简历首页做一次结构化
     prompt = OCR_SECTIONS_PROMPT if structured else OCR_PROMPT
     try:
         kwargs: dict = {}
@@ -199,13 +199,13 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
         try:
             sections = _json.loads(text).get("sections") or []
             if isinstance(sections, list) and sections:
-                _last_ocr_sections = [
+                _ocr_state.sections = [
                     {"name": str(s.get("name", "")), "text": str(s.get("text", ""))}
                     for s in sections
                     if str(s.get("text", "")).strip()
                 ]
                 # raw_text 用分节拼回（保序全文），下游仍有完整文本
-                return "\n\n".join(f"{s['name']}\n{s['text']}" for s in _last_ocr_sections)
+                return "\n\n".join(f"{s['name']}\n{s['text']}" for s in _ocr_state.sections)
         except (ValueError, AttributeError):
             pass  # JSON 失败当纯文本用
     return text

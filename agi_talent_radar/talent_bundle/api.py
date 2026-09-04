@@ -52,6 +52,8 @@ def build_bundle_blueprint() -> Blueprint:
                     if not resume_rel:
                         bundle.status = "noresume"
                         bundle.error_message = "未定位到简历文件，请在文件列表中选择一份设为简历"
+                    else:
+                        bundle.resume_file = resume_rel
                     session.add(bundle)
                     session.commit()
                     created.append(_to_dict(bundle))
@@ -154,6 +156,7 @@ def build_bundle_blueprint() -> Blueprint:
     @bp.post("/api/talent-bundles/<bundle_id>/link")
     def link_bundle(bundle_id: str):
         """导入链路完成后把候选人与包关联（status=imported）。"""
+        from agi_talent_radar.core.db.orm import CandidateORM
         from agi_talent_radar.core.db.runtime import get_session
 
         body = request.get_json(silent=True) or {}
@@ -164,7 +167,11 @@ def build_bundle_blueprint() -> Blueprint:
             bundle = session.get(TalentBundleORM, bundle_id)
             if bundle is None:
                 return jsonify({"detail": "材料包不存在"}), 404
+            candidate = session.get(CandidateORM, candidate_id)
+            if candidate is None:
+                return jsonify({"detail": "候选人不存在"}), 404
             bundle.candidate_id = candidate_id
+            bundle.person_id = candidate.person_id
             bundle.status = "imported"
             session.commit()
             return jsonify(_to_dict(bundle))

@@ -433,6 +433,46 @@ class WorkbenchTest(unittest.TestCase):
                         session.delete(row)
                 session.commit()
 
+    def test_new_person_with_reused_source_id_does_not_overwrite_existing_candidate(self) -> None:
+        """不同人的简历文件同名时，必须分配新 ID，不能覆盖已有档案。"""
+        from agi_talent_radar.core.database import get_session, save_candidate
+        from agi_talent_radar.core.db.orm import CandidateORM
+        from agi_talent_radar.core.models import CandidateResume, ImportClassification
+
+        shared_id = "generic_resume_filename"
+        with get_session() as session:
+            save_candidate(session, CandidateResume(id=shared_id, name="旧候选人", raw_text="旧简历内容"))
+        source = CandidateResume(id=shared_id, name="新候选人", raw_text="新简历内容")
+        classification = ImportClassification(
+            id=shared_id,
+            name=source.name,
+            category="工程闭环型",
+            confidence=0.9,
+            reason="不同人员",
+            identity_decision="new_person",
+            identity_confidence=0.9,
+        )
+        created_id = ""
+        try:
+            events = self._post_jsonl_import(source, classification)
+            candidate_event = next(e for e in events if e["type"] == "candidate")
+            created_id = candidate_event["candidate"]["id"]
+            self.assertNotEqual(created_id, shared_id)
+            with get_session() as session:
+                existing = session.get(CandidateORM, shared_id)
+                created = session.get(CandidateORM, created_id)
+                self.assertEqual(existing.name, "旧候选人")
+                self.assertEqual(existing.raw_text, "旧简历内容")
+                self.assertEqual(created.name, "新候选人")
+                self.assertEqual(created.raw_text, "新简历内容")
+        finally:
+            with get_session() as session:
+                for candidate_id in (shared_id, created_id):
+                    row = session.get(CandidateORM, candidate_id) if candidate_id else None
+                    if row:
+                        session.delete(row)
+                session.commit()
+
     @patch("agi_talent_radar.web.workbench.run_import_agent_stream")
     def test_upload_jsonl_sse_stream(self, mock_stream) -> None:
         source = make_resume_fixtures()[0]
