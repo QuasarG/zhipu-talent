@@ -103,6 +103,18 @@ export default {
 
   // ResumeContent
   "结构化简历": "Structured resume",
+  "材料目录": "Materials folder",
+  "正在读取材料目录…": "Loading materials folder…",
+  "材料目录加载失败": "Failed to load materials folder",
+  "评估 Agent 只从这个候选人的目录读取证据": "The assessment agent reads evidence only from this candidate's folder",
+  "历史档案：当前目录只有一份简历原件": "Legacy profile: this folder currently contains one original resume",
+  "材料包": "Material bundle",
+  "单份历史简历": "Single legacy resume",
+  "{n} 个文件": "{n} files",
+  "主简历": "Primary resume",
+  "目录根级": "Folder root",
+  "目录里还没有可用材料": "No usable materials in this folder",
+  "重新导入简历或上传一人一包的材料目录": "Re-import the resume or upload one material bundle per candidate",
   "简历原件": "Original resume",
   "解析中…": "Parsing…",
   "候选阶段": "Candidate stage",

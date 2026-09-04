@@ -38,16 +38,19 @@ if [[ ! -d "${release_dir}" ]]; then
 fi
 
 "${VENV_DIR}/bin/pip" install -r "${release_dir}/requirements.txt"
-chown -R root:root "${release_dir}"
 
-# 前端 dist 在 .gitignore（不入 git），从上个 release 继承，避免每次部署丢前端导致白屏
-DIST_DIR="${release_dir}/agi_talent_radar/web/static/dist"
-if [[ ! -d "${DIST_DIR}/assets" && -n "${previous_release}" && -d "${previous_release}/agi_talent_radar/web/static/dist/assets" ]]; then
-    mkdir -p "${DIST_DIR}"
-    cp -r "${previous_release}/agi_talent_radar/web/static/dist/." "${DIST_DIR}/"
-    chown -R root:root "${DIST_DIR}"
-    echo "Inherited frontend dist from previous release."
+# dist 不入 Git，必须在目标 revision 的 worktree 内构建。此前直接继承上个
+# release 的 dist 会让后端已更新、浏览器却长期运行旧前端。
+if command -v npm >/dev/null 2>&1; then
+    npm --prefix "${release_dir}/frontend" ci --no-audit --no-fund
+    npm --prefix "${release_dir}/frontend" run build
+    rm -rf "${release_dir}/frontend/node_modules"
+else
+    echo "npm is required to build the frontend release." >&2
+    exit 1
 fi
+
+chown -R root:root "${release_dir}"
 
 ln -sfn "${release_dir}" "${CURRENT_LINK}"
 systemctl restart talent-radar

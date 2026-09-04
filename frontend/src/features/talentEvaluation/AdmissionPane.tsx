@@ -16,6 +16,7 @@ import ResumeContent from "@/features/resume/ResumeContent";
 import Card from "@/components/ui/Card";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { useI18n } from "@/lib/i18n";
+import type { CandidateRecordView } from "@/features/resume/ResumeContent";
 
 const TERMINAL_BATCH_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
@@ -32,6 +33,7 @@ export default function AdmissionPane({
   activeRuns,
   selectedCandidateId,
   selectedJdId,
+  selectedCandidateView,
   candidateDetail,
   candidateDetailLoading,
   selectedNode,
@@ -61,6 +63,7 @@ export default function AdmissionPane({
   activeRuns: InterviewAssessmentRun[];
   selectedCandidateId: string | null;
   selectedJdId: string | null;
+  selectedCandidateView: CandidateRecordView;
   candidateDetail: CandidateDetail | null;
   candidateDetailLoading: boolean;
   selectedNode: AdmissionGraphNode | null;
@@ -158,12 +161,18 @@ export default function AdmissionPane({
             <LoadingIndicator size={32} label={t("加载中…")} />
           </div>
         ) : candidateDetail ? (
-          <ResumeContent key={candidateDetail.id} detail={candidateDetail} onReviewed={onCandidateReviewed} />
+          <ResumeContent
+            key={candidateDetail.id}
+            detail={candidateDetail}
+            onReviewed={onCandidateReviewed}
+            hideTabs
+            view={selectedCandidateView}
+          />
         ) : (
           <EmptyState
             icon="person"
             title={t("从左侧选择一个候选人")}
-            hint={t("选中候选人根节点查看简历；选择岗位子项查看该配对的准入报告")}
+            hint={t("展开候选人目录，先查看原始材料，再进入结构化简历或岗位评估")}
           />
         )}
       </Card>

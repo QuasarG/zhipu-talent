@@ -26,6 +26,7 @@ import {
 } from "@/features/talentEvaluation/talentEvaluationModel";
 import { useSessionState, sessionKey } from "@/lib/sessionState";
 import { useI18n } from "@/lib/i18n";
+import type { CandidateRecordView } from "@/features/resume/ResumeContent";
 
 const TERMINAL_BATCH_STATUSES = new Set(["completed", "failed", "cancelled"]);
 /** 导入进行中标记：SSE 断连（刷新）后用于提示"后台可能仍在导入" */
@@ -53,6 +54,7 @@ export default function TalentEvaluation() {
   // ---- 会话恢复的现场（刷新 / 短暂离开不丢） ----
   const [selectedCandidateId, setSelectedCandidateId] = useSessionState<string | null>("talent-evaluation.candidate-id", null);
   const [selectedJdId, setSelectedJdId] = useSessionState<string | null>("talent-evaluation.jd-id", null);
+  const [selectedCandidateView, setSelectedCandidateView] = useSessionState<CandidateRecordView>("talent-evaluation.candidate-view", "materials");
   const [batchId, setBatchId] = useSessionState<string | null>("talent-evaluation.batch-id", null);
   const [activeRunId, setActiveRunId] = useSessionState<string | null>("talent-evaluation.active-run-id", null);
   const [selectedNodeId, setSelectedNodeId] = useSessionState<string | null>("talent-evaluation.node-id", null);
@@ -389,8 +391,16 @@ export default function TalentEvaluation() {
   const selectCandidateRoot = useCallback((candidateId: string) => {
     setSelectedCandidateId(candidateId);
     setSelectedJdId(null);
+    setSelectedCandidateView("materials");
     clearNode();
-  }, [clearNode, setSelectedCandidateId, setSelectedJdId]);
+  }, [clearNode, setSelectedCandidateId, setSelectedCandidateView, setSelectedJdId]);
+
+  const selectCandidateView = useCallback((candidateId: string, view: CandidateRecordView) => {
+    setSelectedCandidateId(candidateId);
+    setSelectedJdId(null);
+    setSelectedCandidateView(view);
+    clearNode();
+  }, [clearNode, setSelectedCandidateId, setSelectedCandidateView, setSelectedJdId]);
 
   const selectPair = useCallback((candidateId: string, jdId: string) => {
     setSelectedCandidateId(candidateId);
@@ -442,7 +452,7 @@ export default function TalentEvaluation() {
     </div>
   ) : null;
 
-  const selectedChildKey = selectedJdId ? `jd:${selectedJdId}` : null;
+  const selectedChildKey = selectedJdId ? `jd:${selectedJdId}` : (selectedCandidateId ? selectedCandidateView : null);
 
   // 运行中的进度从 run 状态实时统计（后端聚合字段要等终态才更新，会长期显示 0/N）
   const batchDone = batch && TERMINAL_BATCH_STATUSES.has(batch.status)
@@ -510,6 +520,7 @@ export default function TalentEvaluation() {
           selectedCandidateId={selectedCandidateId}
           selectedChildKey={selectedChildKey}
           onSelectCandidate={selectCandidateRoot}
+          onSelectCandidateView={selectCandidateView}
           onSelectPair={selectPair}
           runningCard={runningCard}
           bundleCard={bundleOpen ? (
@@ -544,6 +555,7 @@ export default function TalentEvaluation() {
               activeRuns={activeRuns}
               selectedCandidateId={selectedCandidateId}
               selectedJdId={selectedJdId}
+              selectedCandidateView={selectedCandidateView}
               candidateDetail={candidateDetail}
               candidateDetailLoading={candidateDetailLoading}
               selectedNode={selectedNode}

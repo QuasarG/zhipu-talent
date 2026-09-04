@@ -66,6 +66,9 @@ def _ensure_material_longtext(engine) -> None:
     （如 26 页代表论文 4.6 万字符）直接撑爆列导致 webhook 500。幂等。"""
     from sqlalchemy import text as _sql_text
 
+    if engine.dialect.name != "mysql":
+        return
+
     with engine.begin() as connection:
         for column in ("raw_text", "anonymized_text"):
             row = connection.execute(
@@ -85,6 +88,9 @@ def _ensure_material_longtext(engine) -> None:
 def _ensure_bundle_resume_column(engine) -> None:
     """talent_bundles 补 resume_file 列（人工指定包内简历）。幂等。"""
     from sqlalchemy import text as _sql_text
+
+    if engine.dialect.name != "mysql":
+        return
 
     with engine.begin() as connection:
         exists = connection.execute(

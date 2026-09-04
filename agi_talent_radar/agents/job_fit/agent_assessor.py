@@ -53,6 +53,8 @@ class MaterialsContext:
 
     def resolve(self, rel: str) -> str | None:
         clean = (rel or "").replace("\\", "/").lstrip("/")
+        if ".." in clean.split("/"):
+            return None
         parts = [p for p in clean.split("/") if p not in ("", ".", "..")]
         if not parts:
             return None
@@ -384,7 +386,7 @@ def _extract_text_layer(ctx: MaterialsContext, rel: str) -> str:
 
                 with open(path, "rb") as fp:
                     text = str(mammoth.extract_raw_text(fp).value or "")
-            elif suffix in {".txt", ".md", ".csv", ".json", ".log", ".html"}:
+            elif suffix in {".txt", ".md", ".csv", ".json", ".jsonl", ".log", ".html"}:
                 with open(path, "rb") as fp:
                     text = fp.read(2_000_000).decode("utf-8", errors="replace")
         except Exception as exc:  # noqa: BLE001

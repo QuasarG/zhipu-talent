@@ -85,7 +85,12 @@ def build_bundle_blueprint() -> Blueprint:
                     "size_kb": max(1, original.stat().st_size // 1024),
                     "url": f"/api/candidates/{candidate_id}/original-file",
                 })
-            return jsonify({"bundle_id": None, "files": files})
+            return jsonify({
+                "bundle_id": None,
+                "storage_kind": "legacy_resume",
+                "resume_file": original.name if original and original.is_file() else "",
+                "files": files,
+            })
         ctx = BundleContext(bundle.id)
         files = []
         for rel in walk_files(ctx):
@@ -95,7 +100,13 @@ def build_bundle_blueprint() -> Blueprint:
                 "size_kb": max(1, os.path.getsize(path) // 1024) if path and os.path.isfile(path) else 0,
                 "url": f"/api/talent-bundles/{bundle.id}/file?path={urllib.parse.quote(rel)}",
             })
-        return jsonify({"bundle_id": bundle.id, "status": bundle.status, "files": files})
+        return jsonify({
+            "bundle_id": bundle.id,
+            "storage_kind": "material_bundle",
+            "status": bundle.status,
+            "resume_file": bundle.resume_file or locate_resume(bundle.id) or "",
+            "files": files,
+        })
 
     @bp.get("/api/talent-bundles/<bundle_id>/file")
     def bundle_file(bundle_id: str):

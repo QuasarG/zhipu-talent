@@ -173,7 +173,7 @@ def _run_evaluation_job(
             pass
 
         event_queue.put({"type": "result", "result": evaluation.model_dump()})
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 — 后台任务必须落失败态并结束 SSE
         logger.error("评估任务 %s 失败", evaluation_run_id, exc_info=True)
         from agi_talent_radar.core.database import fail_evaluation_run, get_session
 

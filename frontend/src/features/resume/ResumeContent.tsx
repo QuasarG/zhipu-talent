@@ -25,7 +25,11 @@ interface Props {
   onReviewed?: () => void;
   /** 外层已提供简历/原件 tab（如滑轨卡）时置 true，隐藏内层 Tabs */
   hideTabs?: boolean;
+  /** 由候选人目录树控制当前视图时传入。 */
+  view?: CandidateRecordView;
 }
+
+export type CandidateRecordView = "materials" | "structured" | "raw";
 
 /** 可编辑姓名：名字框即编辑框（无边框裸文本）；保存值等于提取名则清空备注，否则写入备注 */
 function EditableName({ detail, onSaved }: { detail: CandidateDetail; onSaved?: () => void }) {
@@ -88,25 +92,22 @@ function EditableName({ detail, onSaved }: { detail: CandidateDetail; onSaved?: 
   );
 }
 
-export default function ResumeContent({ detail, onReviewed, hideTabs }: Props) {
-  const [mode, setMode] = useSessionState<"structured" | "raw">(`resume-evaluate.resume-mode.${detail.id}`, "structured");
+export default function ResumeContent({ detail, onReviewed, hideTabs, view }: Props) {
+  const [mode, setMode] = useSessionState<CandidateRecordView>(`resume-evaluate.resume-mode.${detail.id}`, "materials");
   const { t } = useI18n();
   const directions = (detail.directions || []).filter(Boolean);
   const academicReport = detail.academic_report || null;
-  const effectiveMode = hideTabs ? "structured" : mode;
+  const effectiveMode = view || (hideTabs ? "structured" : mode);
   // 导入预览态：分节字段逐字显式，日常查看直接渲染
   const importing = detail.group === "importing";
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* 文件管理是第一性的：材料包/原件在此统一管理；结构化简历是解析派生视图 */}
-      <div className="shrink-0 mb-4">
-        <CandidateMaterials candidateId={detail.id} />
-      </div>
       {hideTabs ? null : (
         <Tabs
           className="mb-4 shrink-0"
           items={[
+            { value: "materials", label: t("材料目录") },
             { value: "structured", label: t("结构化简历") },
             { value: "raw", label: t("简历原件") },
           ]}
@@ -116,7 +117,9 @@ export default function ResumeContent({ detail, onReviewed, hideTabs }: Props) {
       )}
 
       <div className={hideTabs ? "flex-1 min-h-0" : "flex-1 min-h-0"}>
-        {effectiveMode === "raw" ? (
+        {effectiveMode === "materials" ? (
+          <CandidateMaterials candidateId={detail.id} />
+        ) : effectiveMode === "raw" ? (
           <OriginalPreview candidateId={detail.id} sourceFormat={detail.source_format} fallbackText={detail.raw_text || ""} />
         ) : (
           <div className="h-full min-h-0 overflow-y-auto pr-1">

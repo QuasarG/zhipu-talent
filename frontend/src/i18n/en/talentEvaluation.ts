@@ -16,6 +16,12 @@ export default {
   "折叠": "Collapse",
   "展开": "Expand",
   "暂无岗位评估": "No role assessments yet",
+  "原始材料": "Source materials",
+  "系统派生": "System-derived",
+  "岗位评估": "Role assessments",
+  "材料目录": "Materials folder",
+  "Agent 取证来源": "Agent evidence",
+  "由主简历解析": "Parsed from resume",
   "未命名岗位": "Unnamed role",
   "已评估": "Assessed",
   "未评估": "Not assessed",
@@ -28,7 +34,7 @@ export default {
 
   // 面试准入内容区
   "从左侧选择一个候选人": "Select a candidate on the left",
-  "选中候选人根节点查看简历；选择岗位子项查看该配对的准入报告": "Select a candidate folder to view the resume, or a role item for its admission report",
+  "展开候选人目录，先查看原始材料，再进入结构化简历或岗位评估": "Open a candidate folder to review source materials before structured resume data or role assessments",
   "选择左侧文件夹中的岗位子项": "Select a role item in a candidate folder",
   "每个岗位子项对应一次候选人–JD 准入评估，进入或不进入面试都保留完整报告": "Each role item is one candidate–JD admission assessment; full reports are kept whether or not the candidate advances",
   "该配对还没有当前报告": "No current report for this pair",

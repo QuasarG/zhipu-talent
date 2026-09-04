@@ -8,6 +8,7 @@ import { StatusChip } from "@/components/ui/Chip";
 import SearchField from "@/components/ui/SearchField";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
+import type { CandidateRecordView } from "@/features/resume/ResumeContent";
 
 interface Props {
   folders: CandidateFolder[];
@@ -19,6 +20,7 @@ interface Props {
   /** 当前选中的 JD 子项："jd:<id>"；null = 候选人根节点选中 */
   selectedChildKey: string | null;
   onSelectCandidate: (candidateId: string) => void;
+  onSelectCandidateView: (candidateId: string, view: CandidateRecordView) => void;
   onSelectPair: (candidateId: string, jdId: string) => void;
   /** 导入运行卡（插入列表底部，运行期间不可关闭） */
   runningCard?: ReactNode;
@@ -50,6 +52,7 @@ export default function CandidateFolderTree({
   selectedCandidateId,
   selectedChildKey,
   onSelectCandidate,
+  onSelectCandidateView,
   onSelectPair,
   runningCard,
   bundleCard,
@@ -100,6 +103,7 @@ export default function CandidateFolderTree({
                       selectedCandidateId={selectedCandidateId}
                       selectedChildKey={selectedChildKey}
                       onSelectCandidate={onSelectCandidate}
+                      onSelectCandidateView={onSelectCandidateView}
                       onSelectPair={onSelectPair}
                     />
                   ))}
@@ -137,6 +141,7 @@ function CandidateFolderNode({
   selectedCandidateId,
   selectedChildKey,
   onSelectCandidate,
+  onSelectCandidateView,
   onSelectPair,
 }: {
   folder: CandidateFolder;
@@ -145,17 +150,18 @@ function CandidateFolderNode({
   selectedCandidateId: string | null;
   selectedChildKey: string | null;
   onSelectCandidate: (candidateId: string) => void;
+  onSelectCandidateView: (candidateId: string, view: CandidateRecordView) => void;
   onSelectPair: (candidateId: string, jdId: string) => void;
 }) {
   const { t } = useI18n();
-  const rootActive = selectedCandidateId === folder.candidateId && selectedChildKey === null;
+  const folderActive = selectedCandidateId === folder.candidateId;
   return (
     <div className="mb-0.5">
       {/* 父行设计语言与人才库列表同步：无边框纯色头像 + 状态胶囊副行 */}
       <div
         className={cn(
           "flex items-center gap-1 rounded-md transition-colors",
-          rootActive ? "bg-secondary-container" : "hover:bg-surface-low",
+          folderActive ? "bg-surface-low" : "hover:bg-surface-low",
         )}
       >
         <button
@@ -194,6 +200,29 @@ function CandidateFolderNode({
       <div className="collapse-disclosure ml-[32px] mb-1" data-open={open}>
         <div className="collapse-disclosure-content">
           <div className="mt-0.5 mb-1 flex flex-col border-l border-outline-variant">
+            <TreeGroupLabel icon="folder_open" label={t("原始材料")} />
+            <CandidateViewRow
+              icon="folder_open"
+              label={t("材料目录")}
+              hint={t("Agent 取证来源")}
+              selected={selectedCandidateId === folder.candidateId && selectedChildKey === "materials"}
+              onClick={() => onSelectCandidateView(folder.candidateId, "materials")}
+            />
+            <CandidateViewRow
+              icon="picture_as_pdf"
+              label={t("简历原件")}
+              selected={selectedCandidateId === folder.candidateId && selectedChildKey === "raw"}
+              onClick={() => onSelectCandidateView(folder.candidateId, "raw")}
+            />
+            <TreeGroupLabel icon="account_tree" label={t("系统派生")} />
+            <CandidateViewRow
+              icon="account_tree"
+              label={t("结构化简历")}
+              hint={t("由主简历解析")}
+              selected={selectedCandidateId === folder.candidateId && selectedChildKey === "structured"}
+              onClick={() => onSelectCandidateView(folder.candidateId, "structured")}
+            />
+            <TreeGroupLabel icon="fact_check" label={t("岗位评估")} />
             {folder.children.map((child) => (
               <FolderChildRow
                 key={child.key}
@@ -212,6 +241,45 @@ function CandidateFolderNode({
         </div>
       </div>
     </div>
+  );
+}
+
+function TreeGroupLabel({ icon, label }: { icon: string; label: string }) {
+  return (
+    <div className="mt-1 flex items-center gap-1.5 px-3.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-on-surface-variant">
+      <Icon name={icon} size={12} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function CandidateViewRow({
+  icon,
+  label,
+  hint,
+  selected,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  hint?: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative flex w-full cursor-pointer items-center gap-2 rounded-md py-1.5 pl-3.5 pr-2 text-left transition-colors",
+        selected ? "bg-secondary-container text-on-secondary-container" : "hover:bg-surface-low",
+      )}
+    >
+      <span className={cn("absolute left-0 top-1/2 h-px w-2.5", selected ? "bg-on-secondary-container/40" : "bg-outline-variant")} />
+      <Icon name={icon} size={15} className={selected ? "text-primary" : "text-on-surface-variant"} />
+      <span className="min-w-0 flex-1 truncate text-body-sm">{label}</span>
+      {hint && <span className="shrink-0 text-[10px] text-on-surface-variant">{hint}</span>}
+    </button>
   );
 }
 
