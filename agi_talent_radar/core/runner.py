@@ -258,3 +258,67 @@ def run_batch_from_file(input_path: str | Path, output_dir: str | Path = "output
         encoding="utf-8",
     )
     return result
+
+
+def run_candidate_agent_stream(
+    resume: CandidateResume | dict,
+    academic_report: dict[str, Any] | None = None,
+    jobs: Iterable[JobDefinition | dict[str, Any]] | None = None,
+    materials: dict[str, Any] | None = None,
+):
+    """评估 agent 版 jd_fit_v2：agent 读本人真实材料（含视觉转译）+ 督导，
+    产出与旧 workflow 完全同构的 job_fit_raw；decision_guard（硬门槛确定性
+    裁决）与结果组装复用原节点函数——评分模式不变。
+
+    materials: {"root": 目录, "allowed": {相对路径白名单} | None}；
+    None 表示该候选人无原始材料文件，agent 仅依据结构化简历评估。
+    """
+    from agi_talent_radar.agents.job_fit.agent_assessor import run_agent_assessments_stream
+    from agi_talent_radar.agents.job_fit.nodes import run_decision_guard, run_job_fit_formatter
+
+    validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
+    structured = ensure_structured_resume(validated)
+    job_list = _validated_jobs(jobs)
+
+    state: dict[str, Any] = {
+        "prepared_resume": structured.model_dump(),
+        "prepared_jobs": [job.model_dump() for job in job_list],
+    }
+    if academic_report is not None:
+        state["academic_report"] = academic_report
+
+    yield {
+        "type": "node", "node": "candidate_preparer",
+        "label": NODE_LABELS["candidate_preparer"], "status": "done",
+        "phase": "preparation", "message": "评估输入就绪：结构化简历 + 激活 JD。",
+    }
+    yield {
+        "type": "node", "node": "jd_fit_assessor",
+        "label": NODE_LABELS["jd_fit_assessor"], "status": "running",
+        "phase": "assessment", "message": "评估 agent 正在读取本人材料…",
+    }
+
+    ctx = None
+    if materials and materials.get("root"):
+        from agi_talent_radar.agents.job_fit.agent_assessor import MaterialsContext
+
+        ctx = MaterialsContext(str(materials["root"]), materials.get("allowed"))
+
+    state["job_fit_raw"] = yield from run_agent_assessments_stream(
+        structured.model_dump(), job_list, academic_report, ctx,
+    )
+
+    state.update(run_decision_guard(state))
+    yield {
+        "type": "node", "node": "decision_guard",
+        "label": NODE_LABELS["decision_guard"], "status": "done",
+        "phase": "decision", "message": "硬门槛与决策阈值裁决完成（确定性规则，agent 不可绕过）。",
+    }
+    state.update(run_job_fit_formatter(state))
+    yield {
+        "type": "node", "node": "result_formatter",
+        "label": NODE_LABELS["result_formatter"], "status": "done",
+        "phase": "decision", "message": "评估结果组装完成。",
+    }
+    evaluation = CandidateEvaluation.model_validate(state["final_output"])
+    yield {"type": "result", "result": evaluation.model_dump()}

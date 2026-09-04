@@ -29,7 +29,7 @@ from agi_talent_radar.core.resume_ingestion import (
     extract_pdf_text,
     text_resume,
 )
-from agi_talent_radar.core.runner import run_candidate_stream
+from agi_talent_radar.core.runner import run_candidate_agent_stream, run_candidate_stream
 from agi_talent_radar.core.scoring_config import DEFAULT as SCORING_CONFIG
 from agi_talent_radar.web.spa_assets import list_dist_assets as _list_dist_assets
 
@@ -105,6 +105,28 @@ def _start_background_evaluation(session, candidate_orm) -> None:
     worker.start()
 
 
+def _candidate_materials(candidate_id: str) -> dict[str, Any] | None:
+    """候选人本人材料目录：材料包工作区（多文件）或存量简历原件（单文件）。"""
+    from agi_talent_radar.core.db.orm import TalentBundleORM
+    from agi_talent_radar.core.db.runtime import get_session
+    from agi_talent_radar.core.pdf_storage import get_resume_original_path
+    from agi_talent_radar.talent_bundle.ingest import workspace_root
+
+    with get_session() as session:
+        bundle = (
+            session.query(TalentBundleORM)
+            .filter_by(candidate_id=candidate_id)
+            .order_by(TalentBundleORM.id.desc())
+            .first()
+        )
+    if bundle is not None:
+        return {"root": workspace_root(bundle.id), "allowed": None}
+    original = get_resume_original_path(candidate_id)
+    if original and original.is_file():
+        return {"root": str(original.parent), "allowed": {original.name}}
+    return None
+
+
 def _run_evaluation_job(
     candidate_id: str,
     evaluation_run_id: int,
@@ -115,7 +137,14 @@ def _run_evaluation_job(
     """Run an evaluation independently from the browser's SSE connection."""
     evaluation = None
     try:
-        for event in run_candidate_stream(resume, academic_report=academic_report):
+        mode = os.getenv("TALENT_EVALUATION_MODE", "agent")
+        if mode == "agent":
+            iterator = run_candidate_agent_stream(
+                resume, academic_report=academic_report, materials=_candidate_materials(candidate_id),
+            )
+        else:
+            iterator = run_candidate_stream(resume, academic_report=academic_report)
+        for event in iterator:
             if event["type"] == "node":
                 from agi_talent_radar.core.database import get_session, record_node_event
 
