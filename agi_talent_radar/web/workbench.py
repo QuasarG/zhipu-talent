@@ -1596,6 +1596,9 @@ def _stream_import_upload(
                 resume = structured_by_id[source_id]
                 decision = getattr(classification, "identity_decision", "new_person")
                 matched_id = getattr(classification, "matched_candidate_id", "")
+                identity_confidence = getattr(classification, "identity_confidence", 0)
+                identity_evidence = getattr(classification, "identity_evidence", [])
+                identity_conflicts = getattr(classification, "identity_conflicts", [])
                 decision = decision if decision in {"same_person", "new_person"} else "new_person"
                 matched_id = matched_id if isinstance(matched_id, str) else ""
                 if decision == "same_person" and matched_id:
@@ -1608,7 +1611,22 @@ def _stream_import_upload(
                         existing = session.get(_CandidateORM, matched_id)
                     new_name = (resume.name or "").strip()
                     existing_name = (existing.name or "").strip() if existing else ""
-                    if not new_name or (existing_name and new_name != existing_name):
+                    evidence = (
+                        [str(item).strip() for item in identity_evidence]
+                        if isinstance(identity_evidence, list)
+                        else []
+                    )
+                    confidence = identity_confidence if isinstance(identity_confidence, (int, float)) else 0
+                    conflicts = identity_conflicts if isinstance(identity_conflicts, list) else []
+                    merge_is_supported = (
+                        bool(new_name)
+                        and bool(existing_name)
+                        and new_name.casefold() == existing_name.casefold()
+                        and confidence >= 0.9
+                        and len([item for item in evidence if item]) >= 2
+                        and not conflicts
+                    )
+                    if not merge_is_supported:
                         decision = "new_person"
                         matched_id = ""
                 canonical_id = matched_id if decision == "same_person" and matched_id else source_id
@@ -1627,9 +1645,6 @@ def _stream_import_upload(
                 with get_session() as session:
                     saved = save_candidate(session, resume, classification)
                     saved.group = "pending"
-                    identity_confidence = getattr(classification, "identity_confidence", 0)
-                    identity_evidence = getattr(classification, "identity_evidence", [])
-                    identity_conflicts = getattr(classification, "identity_conflicts", [])
                     identity_payload = {
                         "decision": decision,
                         "matched_candidate_id": matched_id,
@@ -1662,7 +1677,12 @@ def _stream_import_upload(
                     from agi_talent_radar.services import talent_service
 
                     direction = str(resume.directions[0]).strip() if resume.directions else ""
-                    person_id = talent_service.admit_candidate_from_import(session, saved, direction)
+                    person_id = talent_service.admit_candidate_from_import(
+                        session,
+                        saved,
+                        direction,
+                        identity_decision=decision,
+                    )
                     if person_id:
                         admitted_person_ids.append(person_id)
                 classifications.append(classification)

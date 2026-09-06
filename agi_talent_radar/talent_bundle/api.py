@@ -22,7 +22,12 @@ def build_bundle_blueprint() -> Blueprint:
         from agi_talent_radar.core.db.runtime import get_session
 
         with get_session() as session:
-            rows = session.query(TalentBundleORM).order_by(TalentBundleORM.id.desc()).limit(100).all()
+            rows = (
+                session.query(TalentBundleORM)
+                .order_by(TalentBundleORM.created_at.desc(), TalentBundleORM.id.desc())
+                .limit(100)
+                .all()
+            )
             return jsonify([_to_dict(b, with_trace=False) for b in rows])
 
     @bp.post("/api/talent-bundles")
@@ -72,7 +77,7 @@ def build_bundle_blueprint() -> Blueprint:
             bundle = (
                 session.query(TalentBundleORM)
                 .filter_by(candidate_id=candidate_id)
-                .order_by(TalentBundleORM.id.desc())
+                .order_by(TalentBundleORM.created_at.desc(), TalentBundleORM.id.desc())
                 .first()
             )
         if bundle is None:

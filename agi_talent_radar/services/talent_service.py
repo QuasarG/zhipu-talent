@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -149,7 +150,13 @@ def retry_publication_verification(
         }
 
 
-def admit_candidate_from_import(session, candidate: CandidateORM, direction: str = "") -> str | None:
+def admit_candidate_from_import(
+    session,
+    candidate: CandidateORM,
+    direction: str = "",
+    *,
+    identity_decision: str = "",
+) -> str | None:
     """导入即入库：为刚落库的候选人建立/关联人物主档并追加 ``resume_import`` 来源。
 
     人才库与评估列表合并后的入库动作（docs/rebuild.md §2.1）：简历导入完成即
@@ -158,18 +165,34 @@ def admit_candidate_from_import(session, candidate: CandidateORM, direction: str
     事务由调用方管理；``append_candidate_source`` 内部会即时 commit。
     返回 person_id；候选人行缺失时返回 None。
     """
-    from agi_talent_radar.core.persons import get_or_create_person
+    from agi_talent_radar.core.persons import get_or_create_person, person_fingerprint
 
     if candidate is None:
         return None
     person_id = candidate.person_id
     if not person_id:
-        person = get_or_create_person(
-            session,
-            candidate.name or "",
-            "",
-            direction,
-        )
+        if identity_decision == "new_person":
+            # 身份 Agent 已明确判新人物时，不再用姓名+方向做第二次隐式归并。
+            # 指纹绑定本次候选人 ID，同名同方向的自然人也能保持独立档案。
+            person = PersonORM(
+                id=uuid.uuid4().hex,
+                name=candidate.name or "",
+                direction=direction,
+                fingerprint=person_fingerprint(
+                    candidate.name or "",
+                    f"resume-import:{candidate.id}",
+                    direction,
+                ),
+            )
+            session.add(person)
+            session.flush()
+        else:
+            person = get_or_create_person(
+                session,
+                candidate.name or "",
+                "",
+                direction,
+            )
         person_id = person.id
         candidate.person_id = person_id
         candidate.admitted_at = candidate.admitted_at or datetime.now(timezone.utc).replace(tzinfo=None)

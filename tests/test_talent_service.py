@@ -254,6 +254,23 @@ class TestAdmitCandidateFromImport(_TalentServiceTestBase):
                 1,
             )
 
+    def test_new_person_decision_keeps_same_name_and_direction_separate(self) -> None:
+        with self.Session() as session:
+            first = CandidateORM(id="same-name-1", name="同名候选人")
+            second = CandidateORM(id="same-name-2", name="同名候选人")
+            session.add_all([first, second])
+            session.commit()
+
+            first_person_id = talent_service.admit_candidate_from_import(
+                session, first, "Agent", identity_decision="new_person"
+            )
+            second_person_id = talent_service.admit_candidate_from_import(
+                session, second, "Agent", identity_decision="new_person"
+            )
+
+            self.assertNotEqual(first_person_id, second_person_id)
+            self.assertEqual(session.query(PersonORM).count(), 2)
+
 
 class TestManualAdmitPerson(_TalentServiceTestBase):
     def test_changed_by_is_required(self) -> None:

@@ -354,9 +354,12 @@ class WorkbenchTest(unittest.TestCase):
             self.assertEqual(row.decision_method, "")
 
     def _post_jsonl_import(self, source, classification) -> list[dict]:
-        with patch(
-            "agi_talent_radar.web.workbench.run_import_agent_stream",
-            return_value=iter([classification]),
+        with (
+            patch(
+                "agi_talent_radar.web.workbench.run_import_agent_stream",
+                return_value=iter([classification]),
+            ),
+            patch("agi_talent_radar.web.workbench._sync_person_vectors_best_effort"),
         ):
             response = self.app.post(
                 "/api/import-file",
@@ -429,6 +432,70 @@ class WorkbenchTest(unittest.TestCase):
             with get_session() as session:
                 for cid in ("guard_target2", "guard_source2"):
                     row = session.get(CandidateORM, cid)
+                    if row:
+                        session.delete(row)
+                session.commit()
+
+    def test_import_never_merges_same_name_without_cross_evidence(self) -> None:
+        """同名不是同一人证据；缺少交叉证据时必须新建档案。"""
+        from agi_talent_radar.core.database import get_session, save_candidate
+        from agi_talent_radar.core.db.orm import CandidateORM
+        from agi_talent_radar.core.models import CandidateResume
+
+        with get_session() as session:
+            save_candidate(session, CandidateResume(id="weak_match_target", name="同名候选人", raw_text="旧经历"))
+        source = CandidateResume(id="weak_match_source", name="同名候选人", raw_text="另一份经历")
+        try:
+            events = self._post_jsonl_import(
+                source,
+                self._make_same_person_classification(source, "weak_match_target"),
+            )
+            candidate_event = next(e for e in events if e["type"] == "candidate")
+            self.assertEqual(candidate_event["candidate"]["id"], "weak_match_source")
+            with get_session() as session:
+                target = session.get(CandidateORM, "weak_match_target")
+                self.assertEqual(target.raw_text, "旧经历")
+                self.assertIsNotNone(session.get(CandidateORM, "weak_match_source"))
+        finally:
+            with get_session() as session:
+                for candidate_id in ("weak_match_target", "weak_match_source"):
+                    row = session.get(CandidateORM, candidate_id)
+                    if row:
+                        session.delete(row)
+                session.commit()
+
+    def test_import_merges_same_person_with_strong_cross_evidence(self) -> None:
+        """姓名一致且有高置信交叉证据时，仍允许更新同一人的档案。"""
+        from agi_talent_radar.core.database import get_session, save_candidate
+        from agi_talent_radar.core.db.orm import CandidateORM
+        from agi_talent_radar.core.models import CandidateResume, ImportClassification
+
+        with get_session() as session:
+            save_candidate(session, CandidateResume(id="strong_match_target", name="同一候选人", raw_text="旧版本"))
+        source = CandidateResume(id="strong_match_source", name="同一候选人", raw_text="新版本")
+        classification = ImportClassification(
+            id=source.id,
+            name=source.name,
+            category="研究探索型",
+            confidence=0.98,
+            reason="教育与项目经历均一致",
+            identity_decision="same_person",
+            matched_candidate_id="strong_match_target",
+            identity_confidence=0.98,
+            identity_evidence=["教育时间线一致", "代表项目一致"],
+        )
+        try:
+            events = self._post_jsonl_import(source, classification)
+            candidate_event = next(e for e in events if e["type"] == "candidate")
+            self.assertEqual(candidate_event["candidate"]["id"], "strong_match_target")
+            with get_session() as session:
+                target = session.get(CandidateORM, "strong_match_target")
+                self.assertEqual(target.raw_text, "新版本")
+                self.assertIsNone(session.get(CandidateORM, "strong_match_source"))
+        finally:
+            with get_session() as session:
+                for candidate_id in ("strong_match_target", "strong_match_source"):
+                    row = session.get(CandidateORM, candidate_id)
                     if row:
                         session.delete(row)
                 session.commit()
