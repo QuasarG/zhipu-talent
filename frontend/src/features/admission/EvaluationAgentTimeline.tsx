@@ -65,33 +65,16 @@ function formatTime(value?: string) {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-/** 运行态只保留每个动作的最新状态，并把并发任务收束成一条评分批次。 */
-function compactEvents(events: WorkflowNodeEvent[]): WorkflowNodeEvent[] {
-  const order: string[] = [];
-  const latest = new Map<string, WorkflowNodeEvent>();
-  events.forEach((event) => {
-    if (!latest.has(event.node_id)) order.push(event.node_id);
-    latest.set(event.node_id, event);
-  });
+function actorLabel(actor: Actor, t: (value: string) => string) {
+  if (actor === "observer") return t("督导 Agent");
+  if (actor === "system") return t("系统编排");
+  return t("评估 Agent");
+}
 
-  const taskEvents = order
-    .filter((id) => id.startsWith("task_score:"))
-    .map((id) => latest.get(id)!)
-    .filter(Boolean);
-  const taskParent = latest.get("task_scoring");
-  if (taskParent && taskEvents.length) {
-    latest.set("task_scoring", {
-      ...taskParent,
-      detail: {
-        ...taskParent.detail,
-        tasks: taskEvents.map((event) => ({ label: event.label, summary: event.summary, detail: event.detail })),
-      },
-    });
-  }
-  return order
-    .filter((id) => !id.startsWith("task_score:"))
-    .map((id) => latest.get(id)!)
-    .filter(Boolean);
+function nextActorLabel(events: WorkflowNodeEvent[], index: number, t: (value: string) => string) {
+  const current = actorOf(events[index]);
+  const next = events.slice(index + 1).map(actorOf).find((actor) => actor !== current);
+  return next ? actorLabel(next, t) : t("继续处理");
 }
 
 function FriendlyDetail({ detail }: { detail: Record<string, unknown> }) {
@@ -170,7 +153,7 @@ function EventDetail({ event }: { event: WorkflowNodeEvent }) {
   );
 }
 
-function AgentEvent({ event, live }: { event: WorkflowNodeEvent; live: boolean }) {
+function AgentEvent({ event, live, handoff }: { event: WorkflowNodeEvent; live: boolean; handoff: string }) {
   const { t } = useI18n();
   const actor = actorOf(event);
   const failed = event.status === "failed" || !!event.error;
@@ -189,7 +172,17 @@ function AgentEvent({ event, live }: { event: WorkflowNodeEvent; live: boolean }
       detail: Object.keys(event.detail || {}).length ? JSON.stringify(event.detail) : undefined,
       args_summary: event.args_summary,
     };
-    return <ToolCallCard segment={segment} />;
+    return (
+      <article className="py-3">
+        <div className="mb-1 flex items-center gap-2 text-[10px] text-on-surface-variant">
+          <span className="font-semibold text-primary">{meta.label}</span>
+          <Icon name="arrow_forward" size={12} />
+          <span>{handoff}</span>
+          {formatTime(event.at) && <time className="ml-auto font-mono opacity-70">{formatTime(event.at)}</time>}
+        </div>
+        <ToolCallCard segment={segment} />
+      </article>
+    );
   }
 
   return (
@@ -200,6 +193,7 @@ function AgentEvent({ event, live }: { event: WorkflowNodeEvent; live: boolean }
       <div className={cn("min-w-0", live && "rounded-md bg-primary-container/25 px-3 py-2 -my-2", failed && "text-error")}>
         <div className="flex items-baseline gap-2">
           <span className={cn("text-label font-semibold", meta.accent)}>{meta.label}</span>
+          <span className="text-[10px] text-on-surface-variant">{t("→")} {handoff}</span>
           <span className="truncate text-label text-on-surface-variant">{event.label ? t(event.label) : ""}</span>
           {formatTime(event.at) && <time className="ml-auto shrink-0 font-mono text-[10px] text-on-surface-variant opacity-70">{formatTime(event.at)}</time>}
         </div>
@@ -227,6 +221,24 @@ function SystemEvent({ event }: { event: WorkflowNodeEvent }) {
         <EventDetail event={event} />
       </div>
     </article>
+  );
+}
+
+function ActiveAgentBanner({ event, live }: { event?: WorkflowNodeEvent; live: boolean }) {
+  const { t } = useI18n();
+  const actor = event ? actorOf(event) : "system";
+  const label = actorLabel(actor, t);
+  return (
+    <div className="flex items-center gap-3 border-b border-outline-variant bg-surface-lowest px-4 py-2.5">
+      <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-primary">
+        {live ? <ThinkingOrb state="shaping" size={20} aria-label={t("正在工作")} /> : <Icon name="check_circle" size={17} />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-on-surface-variant">{t("当前正在工作")}</p>
+        <p className="truncate text-body-sm font-semibold text-on-surface">{label}</p>
+      </div>
+      <p className="max-w-[55%] truncate text-label text-on-surface-variant">{event?.summary ? t(event.summary) : t("等待 Agent 接收任务")}</p>
+    </div>
   );
 }
 
@@ -259,7 +271,8 @@ function AgentLanes({ events, completed }: { events: WorkflowNodeEvent[]; comple
 
 export default function EvaluationAgentTimeline({ run, compact = false }: { run: InterviewAssessmentRun; compact?: boolean }) {
   const { t } = useI18n();
-  const events = compactEvents(run.run_trace || []);
+  // 透明模式保留完整事件顺序；不要按 node_id 折叠，否则同一 Agent 的交接信息会被吞掉。
+  const events = run.run_trace || [];
   const states = stageStates(events, run.status === "completed");
   const latest = events.at(-1);
   const live = run.status === "running";
@@ -309,6 +322,7 @@ export default function EvaluationAgentTimeline({ run, compact = false }: { run:
         </ol>
       </header>
 
+      <ActiveAgentBanner event={latest} live={live} />
       <AgentLanes events={events} completed={run.status === "completed"} />
 
       <div className={cn("min-h-0 flex-1 overflow-y-auto admission-panel-scrollbar", compact ? "px-4 py-1" : "px-5 py-2")}>
@@ -323,7 +337,7 @@ export default function EvaluationAgentTimeline({ run, compact = false }: { run:
             {events.map((event, index) => actorOf(event) === "system" ? (
               <SystemEvent key={`${event.node_id}-${event.at || index}`} event={event} />
             ) : (
-              <AgentEvent key={`${event.node_id}-${event.at || index}`} event={event} live={live && index === events.length - 1 && event.status === "running"} />
+              <AgentEvent key={`${event.node_id}-${event.at || index}`} event={event} handoff={nextActorLabel(events, index, t)} live={live && index === events.length - 1 && event.status === "running"} />
             ))}
           </div>
         )}
