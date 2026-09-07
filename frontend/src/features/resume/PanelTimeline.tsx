@@ -81,7 +81,10 @@ function deriveModel(trace: PanelTraceEvent[]): PanelViewModel {
       }
       if (event.mission_goal) mission.goal = event.mission_goal;
       mission.activities.push({ ts: event.ts, message: event.message, status: event.status });
-      if (event.mission_status) mission.status = event.mission_status;
+      const missionStatus = event.mission_status;
+      if (missionStatus === "running" || missionStatus === "done" || missionStatus === "failed") {
+        mission.status = missionStatus;
+      }
       if (/失败/.test(event.message)) mission.status = "failed";
       model.leadRunning = mission.status === "running" || model.leadRunning;
     } else {
