@@ -215,6 +215,9 @@ def _worker_system(mission: dict[str, Any], dossier: dict[str, Any], type_spec: 
                 f"# 目标 JD：{job['jd_id']}｜{job['title']}\n## 拆解评分点（导航）\n{spec_text}\n"
                 f"## JD 原文（硬门槛须逐条对照此措辞）\n{raw}"
             )
+    elif dossier["jobs"] and mission["type"] in ("deep_read", "generic"):
+        jd_list = "\n".join(f"- jd_id={j['jd_id']}｜{j['title']}" for j in dossier["jobs"])
+        parts.append(f"# JD 清单（assessments 的 jd_id 必须从这里原样复制，每个 JD 独立评分一条）\n{jd_list}")
     parts.append(f"# 工作纪律\n{type_spec['findings_rules']}\n"
                  "每次调工具前先用一两句话说明目的。材料读完（或预算将尽）就停止调用工具。")
     return "\n\n".join(parts)
@@ -607,6 +610,11 @@ def _evidence_quality(claims: list[dict[str, Any]], publications: list) -> tuple
 
 def assemble(jobs: list, resume_dump: dict[str, Any], done: list[dict[str, Any]], per_jd: list[dict[str, Any]]) -> dict[str, Any]:
     lead_by_id = {str(item.get("jd_id") or ""): item for item in per_jd if isinstance(item, dict)}
+    # 评审员可能把 jd_id 写成 JD 标题：id 优先，标题兜底
+    resolve: dict[str, str] = {}
+    for job in jobs:
+        resolve[job.id] = job.id
+        resolve.setdefault(job.title, job.id)
     dim_findings: list[tuple[str, dict[str, Any]]] = []   # (jd_id, assessment) 按类型优先级
     hard_reqs: dict[str, list] = {}
     claims: list[dict[str, Any]] = []
@@ -618,7 +626,7 @@ def assemble(jobs: list, resume_dump: dict[str, Any], done: list[dict[str, Any]]
         if outcome.get("type") == "cross_check":
             continue  # 仲裁结论供主席参考，不进装配
         for a in findings.get("assessments") or []:
-            jd_id = str(a.get("jd_id") or "")
+            jd_id = resolve.get(str(a.get("jd_id") or ""), str(a.get("jd_id") or ""))
             dim_findings.append((jd_id, a))
             if outcome.get("type") == "jd_match" and a.get("hard_requirements"):
                 hard_reqs.setdefault(jd_id, a["hard_requirements"])
