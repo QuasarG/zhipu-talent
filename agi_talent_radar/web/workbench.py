@@ -138,7 +138,13 @@ def _run_evaluation_job(
     evaluation = None
     try:
         mode = os.getenv("TALENT_EVALUATION_MODE", "agent")
-        if mode == "agent":
+        if mode == "panel":
+            from agi_talent_radar.core.runner import run_candidate_panel_stream
+
+            iterator = run_candidate_panel_stream(
+                resume, academic_report=academic_report, materials=_candidate_materials(candidate_id),
+            )
+        elif mode == "agent":
             iterator = run_candidate_agent_stream(
                 resume, academic_report=academic_report, materials=_candidate_materials(candidate_id),
             )

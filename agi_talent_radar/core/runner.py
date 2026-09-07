@@ -322,3 +322,52 @@ def run_candidate_agent_stream(
     }
     evaluation = CandidateEvaluation.model_validate(state["final_output"])
     yield {"type": "result", "result": evaluation.model_dump()}
+
+
+def run_candidate_panel_stream(
+    resume: CandidateResume | dict,
+    academic_report: dict[str, Any] | None = None,
+    jobs: Iterable[JobDefinition | dict[str, Any]] | None = None,
+    materials: dict[str, Any] | None = None,
+):
+    """评审团（panel）版 jd_fit_v2：主席动态派类型化 mission 读真实材料，
+    findings 经确定性装配成 job_fit_raw；decision_guard / 结果组装复用原
+    节点函数——评分合同不变。见 docs/design/panel-evaluation.md。"""
+    from agi_talent_radar.agents.job_fit.nodes import run_decision_guard, run_job_fit_formatter
+    from agi_talent_radar.agents.job_fit.panel import run_panel_stream
+
+    validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
+    structured = ensure_structured_resume(validated)
+    job_list = _validated_jobs(jobs)
+
+    state: dict[str, Any] = {
+        "prepared_resume": structured.model_dump(),
+        "prepared_jobs": [job.model_dump() for job in job_list],
+    }
+    if academic_report is not None:
+        state["academic_report"] = academic_report
+
+    ctx = None
+    if materials and materials.get("root"):
+        from agi_talent_radar.agents.job_fit.agent_assessor import MaterialsContext
+
+        ctx = MaterialsContext(str(materials["root"]), materials.get("allowed"))
+
+    state["job_fit_raw"] = yield from run_panel_stream(
+        structured.model_dump(), job_list, academic_report, ctx,
+    )
+
+    state.update(run_decision_guard(state))
+    yield {
+        "type": "node", "node": "decision_guard",
+        "label": NODE_LABELS["decision_guard"], "status": "done",
+        "phase": "decision", "message": "硬门槛与决策阈值裁决完成（确定性规则，评审团不可绕过）。",
+    }
+    state.update(run_job_fit_formatter(state))
+    yield {
+        "type": "node", "node": "result_formatter",
+        "label": NODE_LABELS["result_formatter"], "status": "done",
+        "phase": "decision", "message": "评估结果组装完成。",
+    }
+    evaluation = CandidateEvaluation.model_validate(state["final_output"])
+    yield {"type": "result", "result": evaluation.model_dump()}
