@@ -324,6 +324,14 @@ export default function TalentEvaluation() {
     setRestoring(false);
   }, [setActiveRunId, setBatchId]);
 
+  // 批次终态后自动退出批次视图（留 6 秒看清完成态），右上角不再滞留「关闭已完成批次」；
+  // 报告与活动流仍可随时从左侧目录回放。
+  useEffect(() => {
+    if (!batch || !TERMINAL_BATCH_STATUSES.has(batch.status)) return;
+    const timer = window.setTimeout(resetBatch, 6000);
+    return () => window.clearTimeout(timer);
+  }, [batch, resetBatch]);
+
   const clearCreateDraft = useCallback(() => {
     setDraftCandidateIds([]);
     setDraftJdIds([]);
