@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
-import { activeAgents, roleNames, type Activity } from "./agentActivityModel";
-
-const kinds: Record<string, string> = { dispatch: "派工", handoff: "回传 / 交接", request: "开始工作",
-  message: "工作说明", tool_call: "调用工具", tool_result: "工具返回", error: "执行失败", status: "进度", legacy: "历史记录" };
+import { activeAgents, kinds, roleNames, type Activity } from "./agentActivityModel";
 
 export default function AgentWorkbench({ events, status, mode }: {
   events: Activity[]; status: string; mode: "panel" | "admission";

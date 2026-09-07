@@ -1,0 +1,38 @@
+/* 协作空间：几何形体为原创设计；颜色全部走设计令牌，暗色主题自动适配。 */
+.acs-stage { position: relative; flex: 1; min-height: 320px; overflow: hidden; container-type: size; }
+.acs-hub { position: absolute; top: 9%; left: 50%; transform: translate(-50%, -50%); }
+.acs-hub-label { position: absolute; top: calc(9% + 30px); left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: var(--text-label-size, 11px); color: var(--color-on-surface-variant); }
+.acs-meeting { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 130px; height: 52px; border: 1px dashed var(--color-outline); border-radius: 50%; opacity: .7; pointer-events: none; }
+.acs-meeting::after { content: ""; position: absolute; inset: 45% 38%; border-radius: 50%; border: 1px dashed var(--color-outline); }
+.acs-agent { position: absolute; transform: translate(-50%, -50%); cursor: pointer; }
+.acs-agent:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; border-radius: var(--radius-md); }
+.acs-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 120px; padding: 4px; text-align: center; }
+.acs-slot.approach { animation: acs-approach 2.2s var(--ease-emphasized, ease-in-out); }
+.acs-agent[aria-pressed='true'] .acs-avatar { box-shadow: 0 0 0 1.5px var(--color-primary); }
+.acs-avatar[data-state='working'] .acs-body { box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary), transparent 20%); }
+.acs-agent-name { font-size: 12px; font-weight: var(--font-weight-medium, 500); color: var(--color-on-surface); line-height: 1.3; }
+.acs-agent-state { font-size: 10px; color: var(--color-on-surface-variant); }
+.acs-agent[data-state='working'] .acs-agent-state { color: var(--color-primary); font-weight: 500; }
+.acs-agent[data-state='receiving'] .acs-agent-state { color: var(--color-on-surface); }
+@keyframes acs-approach { 0% { translate: 0 0; } 38%, 54% { translate: calc(var(--acs-dx, 0) * .45cqw) calc(var(--acs-dy, 0) * .45cqh); } 100% { translate: 0 0; } }
+/* 形体：身份色由主色与表面色按序混合，形状变体区分实例 */
+.acs-avatar { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: var(--radius-md); color: var(--color-on-surface); }
+.acs-avatar .acs-body { position: relative; display: block; width: 42px; height: 40px; border-radius: 16px 16px 13px 13px; background: var(--acs-tone); transform-origin: center bottom; animation: acs-breathe 4.4s ease-in-out infinite; }
+.acs-avatar[data-shape='1'] .acs-body { border-radius: 50% 50% 16px 16px; }
+.acs-avatar[data-shape='2'] .acs-body { border-radius: 12px 21px 12px 21px; }
+.acs-avatar[data-shape='3'] .acs-body { border-radius: 11px; width: 40px; }
+.acs-avatar[data-shape='4'] .acs-body { border-radius: 22px 13px 22px 13px; }
+.acs-avatar[data-shape='5'] .acs-body { border-radius: 50%; }
+.acs-eyes { position: absolute; left: 11px; top: 16px; display: flex; gap: 8px; transition: transform 250ms ease-out; }
+.acs-eyes i { width: 4px; height: 7px; background: var(--color-surface-lowest); border-radius: 3px; animation: acs-blink 5.6s infinite; }
+.acs-avatar[data-state='working'] .acs-body { animation: acs-work 1.8s ease-in-out infinite; }
+.acs-avatar[data-state='working'] .acs-eyes { transform: translateY(3px); }
+.acs-avatar[data-state='receiving'] .acs-body { animation: acs-receive 3.8s ease-out 1; }
+.acs-avatar[data-state='receiving'] .acs-eyes i, .acs-avatar[data-pulse='true'] .acs-eyes i { height: 10px; }
+.acs-avatar[data-state='done'] .acs-body { animation: acs-done 2.4s ease-in-out infinite; }
+.acs-still .acs-body, .acs-still .acs-eyes i { animation-play-state: paused; }
+@keyframes acs-breathe { 0%, 100% { transform: translateY(0) scaleY(1); } 50% { transform: translateY(-1.5px) scaleY(1.03); } }
+@keyframes acs-work { 0%, 100% { transform: rotate(-3deg) scaleY(1); } 50% { transform: rotate(2deg) scaleY(.96); } }
+@keyframes acs-receive { 0% { transform: scale(1); } 16% { transform: scale(1.12, .9); } 32% { transform: scale(.96, 1.05); } 46%, 100% { transform: scale(1); } }
+@keyframes acs-done { 0%, 100% { transform: translateY(0); } 20% { transform: translateY(-5px) scaleY(1.05); } 38% { transform: translateY(0) scaleY(.97); } 52% { transform: translateY(-2px); } 66% { transform: translateY(0); } }
+@keyframes acs-blink { 0%, 91%, 100% { transform: scaleY(1); } 94%, 96% { transform: scaleY(.12); } }

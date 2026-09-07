@@ -4,6 +4,8 @@ export interface Activity {
   id: string; agent: string; role: string; target?: string; kind: string; status: string;
   text: string; at?: string | null; detail?: Record<string, unknown>; mission?: string | null; goal?: string | null;
 }
+export const kinds: Record<string, string> = { dispatch: "派工", handoff: "回传 / 交接", request: "开始工作",
+  message: "工作说明", tool_call: "调用工具", tool_result: "工具返回", error: "执行失败", status: "进度", legacy: "历史记录" };
 export const roleNames: Record<string, string> = {
   chair: "主席 Agent", verify: "证据查证评审员", deep_read: "深读评审员",
   jd_match: "岗位对照评审员", cross_check: "仲裁评审员", generic: "通用评审员",
