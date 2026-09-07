@@ -194,6 +194,11 @@ export interface EvaluationNodeRun {
 
 /** 评审团（panel）模式的全量事件轨迹（panel_trace），按发生顺序排列。 */
 export interface PanelTraceEvent {
+  agent_id?: string;
+  agent_type?: string;
+  target_id?: string;
+  event_kind?: string;
+  detail?: Record<string, unknown>;
   ts: string | null;
   node: string;
   label: string;
@@ -834,6 +839,10 @@ export interface ModelUsage {
 }
 
 export interface WorkflowNodeEvent {
+  agent_id?: string;
+  agent_type?: string;
+  target_id?: string;
+  event_kind?: string;
   run_id?: string;
   node_id: string;
   parent_id?: string;

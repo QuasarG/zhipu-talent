@@ -98,6 +98,13 @@ class InterviewAdmissionEvaluatorTests(unittest.TestCase):
         self.assertTrue(all(item["event_type"] == "observer" for item in observer_events))
         self.assertEqual(result.run_trace[-2]["event_type"], "decision")
         self.assertEqual(result.run_trace[-1]["event_type"], "report")
+        for task in self.card.core_tasks:
+            events = [e for e in result.run_trace if e["agent_id"] == f"task_score:{task.id}"]
+            self.assertEqual([e["event_kind"] for e in events], ["request", "handoff"])
+            self.assertEqual(events[0]["detail"]["当前任务"]["id"], task.id)
+            self.assertEqual(events[-1]["target_id"], "system")
+        self.assertEqual(observer_events[0]["agent_type"], "reviewer")
+        self.assertEqual(len(observer_events[0]["detail"]["收到的任务评分"]), len(self.card.core_tasks))
 
     def test_publications_and_projects_are_capability_evidence_without_skill_keyword(self) -> None:
         def llm(prompt: str, payload: dict) -> dict:

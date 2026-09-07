@@ -95,6 +95,8 @@ class _Trace:
         error: str = "",
         actor: str = "system",
         event_type: str = "stage",
+        target_id: str = "",
+        event_kind: str = "status",
     ) -> None:
         item = {
             "run_id": self.run_id,
@@ -108,6 +110,14 @@ class _Trace:
             "at": _utc_now(),
             "actor": actor,
             "event_type": event_type,
+            "agent_id": node_id if node_id.startswith(("task_score:", "evidence_repair:")) else (
+                node_id if node_id in {"capability_mapping", "overall_review"} else "system"
+            ),
+            "agent_type": "task_scorer" if node_id.startswith(("task_score:", "evidence_repair:")) else (
+                {"capability_mapping": "mapper", "overall_review": "reviewer"}.get(node_id, "system")
+            ),
+            "target_id": target_id,
+            "event_kind": event_kind,
         }
         with self._lock:
             self.events.append(item)
@@ -138,6 +148,7 @@ def evaluate_candidate_for_job(
     trace.event(
         "capability_mapping", "评估 Agent", "running", "正在建立经历与核心任务的关联",
         actor="evaluator", event_type="thinking",
+        event_kind="request", detail={"输入材料": ["完整脱敏简历", "完整结构化简历", "完整岗位评估卡"]},
     )
     mapping = invoke(
         CAPABILITY_MAPPING_PROMPT,
@@ -150,6 +161,7 @@ def evaluate_candidate_for_job(
         "能力映射完成",
         detail={"task_mappings": mapping.get("task_mappings", [])},
         actor="evaluator",
+        target_id="system", event_kind="handoff",
     )
 
     trace.event(
@@ -180,6 +192,8 @@ def evaluate_candidate_for_job(
     trace.event(
         "overall_review", "督导 Agent", "running", "正在独立复核尺度、遗漏与证据夸大",
         actor="observer", event_type="observer",
+        event_kind="request", detail={"收到的任务评分": [item.model_dump() for item in assessments],
+                                      "输入材料": ["完整脱敏简历", "完整岗位评估卡"]},
     )
     review = OverallReview.model_validate(
         invoke(
@@ -198,9 +212,10 @@ def evaluate_candidate_for_job(
         "评分总审",
         "completed",
         review.summary or "评分总审完成",
-        detail={"corrections": [item.model_dump() for item in corrections]},
+        detail={"corrections": [item.model_dump() for item in corrections], "面试重点": review.interview_focus},
         actor="observer",
         event_type="observer",
+        target_id="system", event_kind="handoff",
     )
 
     total_score = calculate_total_score(assessment_card, assessments)
@@ -264,8 +279,16 @@ def _score_tasks(
     mapping: dict[str, Any],
     trace: _Trace,
 ) -> list[TaskAssessment]:
+    def score_task(task):
+        trace.event(
+            f"task_score:{task.id}", task.title, "running", f"正在评估：{task.title}",
+            "task_scoring", actor="evaluator", event_kind="request",
+            detail={"当前任务": task.model_dump(), "收到的能力映射": mapping,
+                    "输入材料": ["完整脱敏简历", "完整结构化简历", "完整岗位卡"]},
+        )
+        return _score_one_task(invoke, resume, card, mapping, task.model_dump())
     futures = {
-        _TASK_EXECUTOR.submit(_score_one_task, invoke, resume, card, mapping, task.model_dump()): task
+        _TASK_EXECUTOR.submit(score_task, task): task
         for task in card.core_tasks
     }
     by_id: dict[str, TaskAssessment] = {}
@@ -286,6 +309,7 @@ def _score_tasks(
             "task_scoring",
             detail=assessment.model_dump(),
             actor="evaluator",
+            target_id="system", event_kind="handoff",
         )
     return [by_id[task.id] for task in card.core_tasks]
 
@@ -335,6 +359,7 @@ def _validate_and_repair_evidence(
                 detail={"invalid_quotes": invalid},
                 actor="evaluator",
                 event_type="validation",
+                event_kind="request",
             )
             assessment = _score_one_task(
                 invoke,
@@ -360,6 +385,7 @@ def _validate_and_repair_evidence(
                 detail=assessment.model_dump(),
                 actor="evaluator",
                 event_type="validation",
+                event_kind="handoff", target_id="system",
             )
         elif assessment.level > 0 and not assessment.evidence:
             assessment = assessment.model_copy(update={"level": 0, "confidence": "low"})

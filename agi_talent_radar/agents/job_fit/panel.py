@@ -338,11 +338,13 @@ def run_mission(
     type_spec = TYPE_REGISTRY.get(str(mission.get("type") or "generic")) or TYPE_REGISTRY["generic"]
     label = f"任务[{mission_id}] {mission.get('goal', mission.get('type', 'generic'))}"
 
-    def node(message: str, status: str = "running") -> dict[str, Any]:
+    def node(message: str, status: str = "running", **activity: Any) -> dict[str, Any]:
         return {"type": "node", "node": "panel_lead", "label": "评审团", "status": status,
                 "phase": "assessment", "message": f"{label}：{message}",
                 "mission_id": mission_id, "mission_type": mission.get("type", "generic"),
-                "mission_goal": mission.get("goal", ""), "mission_status": status}
+                "mission_goal": mission.get("goal", ""), "mission_status": status,
+                "agent_id": mission_id, "agent_type": mission.get("type", "generic"),
+                "event_kind": "status", **activity}
 
     rounds_budget = type_spec["rounds"]
     lifetime_budget = _env_int("PANEL_MISSION_LIFETIME_ROUNDS", 10)
@@ -353,7 +355,7 @@ def run_mission(
         note = mission.get("note_to_worker") or "主席要求你在已有工作基础上继续。"
         extra = "\n".join(f"- {q}" for q in mission.get("questions") or [])
         messages.append({"role": "user", "content": f"[主席] {note}" + (f"\n新问题：\n{extra}" if extra else "")})
-        yield node("续派：复用已有上下文继续")
+        yield node("续派：复用已有上下文继续", detail={"指令": note, "问题": mission.get("questions", [])})
     else:
         messages = [
             {"role": "system", "content": _worker_system(mission, dossier, type_spec)},
@@ -361,6 +363,7 @@ def run_mission(
         ]
     sessions[mission_id] = messages
     used = lifetime.get(mission_id, 0)
+    yield node("正在读取任务简报，准备执行", event_kind="request")
 
     for _round in range(min(rounds_budget, max(0, lifetime_budget - used))):
         result = call_llm_tools(messages, schema, temperature=0.2,
@@ -372,6 +375,8 @@ def run_mission(
                          "tool_calls": [{"id": tc["id"], "type": "function",
                                          "function": {"name": tc["name"], "arguments": tc["arguments"]}}
                                         for tc in tool_calls]})
+        if result.get("text"):
+            yield node(str(result["text"]), event_kind="message")
         if not tool_calls:
             break
         for tc in tool_calls:
@@ -379,12 +384,16 @@ def run_mission(
                 args = json.loads(tc.get("arguments") or "{}")
             except json.JSONDecodeError:
                 args = {}
+            yield node(f"正在{_TOOL_LABELS.get(tc['name'], tc['name'])}", event_kind="tool_call",
+                       tool=tc["name"], call_id=tc["id"], detail={"输入": args})
             if tc["name"] not in type_spec["tools"]:  # 白名单是硬约束，不靠提示词
                 output = {"summary": "工具未授权", "detail": {"error": f"{tc['name']} 不属于工种 {mission.get('type')}"}}
             else:
                 output = _execute_tool(ctx, tc["name"], args)
             summary = str(output.get("summary") or "完成")
-            yield node(f"{_TOOL_LABELS.get(tc['name'], tc['name'])}：{summary}")
+            yield node(f"{_TOOL_LABELS.get(tc['name'], tc['name'])}：{summary}",
+                       event_kind="tool_result", tool=tc["name"], call_id=tc["id"],
+                       detail={"输入": args, "返回摘要": summary})
             messages.append({"role": "tool", "tool_call_id": tc["id"],
                              "content": json.dumps(output.get("detail"), ensure_ascii=False, default=str)[:6000]})
         used += 1
@@ -418,7 +427,7 @@ def run_mission(
             return {"status": "done", "mission_id": mission_id, "type": mission["type"],
                     "goal": mission.get("goal", ""), "findings": findings}
         last_error = error
-    yield node(f"失败：{last_error[:120]}", status="done")
+    yield node(f"失败：{last_error[:120]}", status="failed", event_kind="error")
     return {"status": "failed", "mission_id": mission_id, "type": mission["type"],
             "goal": mission.get("goal", ""), "findings": {}, "error": last_error}
 
@@ -507,9 +516,10 @@ def run_panel_stream(
     """评审团主循环。yield 进度事件，return job_fit_raw（供 yield from 捕获）。"""
     from agi_talent_radar.core.llm_client import call_llm_json
 
-    def lead_node(message: str, status: str = "running") -> dict[str, Any]:
+    def lead_node(message: str, status: str = "running", **activity: Any) -> dict[str, Any]:
         return {"type": "node", "node": "panel_lead", "label": "评审团", "status": status,
-                "phase": "assessment", "message": message}
+                "phase": "assessment", "message": message, "agent_id": "chair",
+                "agent_type": "chair", "event_kind": "status", **activity}
 
     yield {"type": "node", "node": "material_desk", "label": "材料整备", "status": "running",
            "phase": "preparation", "message": "正在盘点材料并预热文本层…"}
@@ -536,6 +546,10 @@ def run_panel_stream(
                                     error if attempt == 0 else "")
             if rounds_left == 0:
                 payload["instruction"] = "这是最后一轮：立即 synthesize，基于已有信息收队。"
+            yield lead_node(f"主席正在审阅结论并决定下一步（第 {round_no} 轮）",
+                            event_kind="request", detail={"已收到结论": [
+                                {"任务": d["mission_id"], "状态": d["status"], "摘要": d["digest"]} for d in done
+                            ], "剩余轮数": rounds_left})
             try:
                 data = call_llm_json(_LEAD_SYSTEM, payload, temperature=0.2)
             except Exception as exc:  # noqa: BLE001
@@ -550,7 +564,8 @@ def run_panel_stream(
 
         if data.get("action") == "synthesize":
             per_jd = data.get("per_jd") or []
-            yield lead_node("主席收队，正在汇总综合意见。")
+            yield lead_node("主席收队，综合意见已交给系统装配。", event_kind="handoff",
+                            target_id="system", detail={"综合意见": per_jd})
             break
 
         missions = data.get("missions") or []
@@ -563,7 +578,11 @@ def run_panel_stream(
                                          if j["jd_id"] not in {m.get("jd_id") for m in missions if m.get("jd_id")}), None)
             yield {**lead_node(f"派出 {mission['mission_id']}（{mission['type']}）：{mission.get('goal', '')}"),
                    "mission_id": mission["mission_id"], "mission_type": mission["type"],
-                   "mission_goal": mission.get("goal", ""), "mission_status": "running"}
+                   "mission_goal": mission.get("goal", ""), "mission_status": "running",
+                   "event_kind": "dispatch", "target_id": mission["mission_id"],
+                   "detail": {"目标": mission.get("goal", ""), "材料": mission.get("files", []),
+                              "问题": mission.get("questions", []), "续派指令": mission.get("note_to_worker", ""),
+                              "复用上下文": mission["mission_id"] in sessions}}
             try:
                 outcome = yield from run_mission(mission, dossier, ctx, sessions, lifetime)
             except Exception as exc:  # noqa: BLE001 — 单 mission 崩溃不拖全队
@@ -572,6 +591,13 @@ def run_panel_stream(
                            "type": mission.get("type", "?"), "goal": mission.get("goal", ""),
                            "findings": {}, "error": str(exc)[:200]}
             digest = json.dumps(outcome.get("findings") or {}, ensure_ascii=False)[:DIGEST_CHARS]
+            yield {**lead_node("评审结论已回传主席" if outcome["status"] == "done" else "任务失败已报告主席"),
+                   "agent_id": mission["mission_id"], "agent_type": mission["type"],
+                   "target_id": "chair", "event_kind": "handoff",
+                   "mission_id": mission["mission_id"], "mission_type": mission["type"],
+                   "mission_goal": mission.get("goal", ""), "mission_status": outcome["status"],
+                   "detail": {"结论": outcome.get("findings", {}), "主席收到的摘要": digest,
+                              "错误": outcome.get("error", "")}}
             done.append({"mission_id": outcome["mission_id"], "type": outcome["type"],
                          "goal": outcome["goal"], "status": outcome["status"], "digest": digest,
                          "findings": outcome.get("findings") or {}})

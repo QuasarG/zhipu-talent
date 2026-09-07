@@ -66,8 +66,8 @@ export default function EvaluationWorkspace({ candidatePersonId, candidateId = "
       <div className="flex-1 min-h-0 overflow-y-auto pt-4 pr-1">
         {tab === "result" ? (
           evaluation ? <ScoreOverview evaluation={evaluation} academicReport={academicReport} personId={candidatePersonId} /> : <ResultEmpty evaluating={evaluating} />
-        ) : evaluationRun?.panel_trace?.length ? (
-          <PanelTimeline trace={evaluationRun.panel_trace} evaluating={evaluating} />
+        ) : evaluationRun?.panel_trace?.some(e => e.node === "panel_lead") ? (
+          <PanelTimeline key={evaluationRun.id} trace={evaluationRun.panel_trace} evaluating={evaluating} status={evaluationRun.status} />
         ) : (
           <EvaluationProcess
             graph={graph}

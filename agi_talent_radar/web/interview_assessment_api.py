@@ -84,6 +84,17 @@ def build_interview_assessment_blueprint() -> Blueprint:
             return jsonify({"detail": "运行不存在或已经结束"}), 409
         return jsonify({"run_id": run_id, "cancelled": True})
 
+    @bp.get("/interview-assessments/<assessment_id>/trace")
+    def assessment_trace(assessment_id: str):
+        from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.core.db.orm import CandidateJdAssessmentORM
+
+        with get_session() as session:
+            row = session.get(CandidateJdAssessmentORM, assessment_id)
+            if row is None:
+                return jsonify({"detail": "评估报告不存在"}), 404
+            return jsonify({"run_trace": row.run_trace or []})
+
     @bp.get("/interview-assessments")
     def list_assessments():
         from agi_talent_radar.services.interview_assessment_service import list_current_assessments

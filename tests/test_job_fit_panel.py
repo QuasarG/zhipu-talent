@@ -124,6 +124,15 @@ class PanelEndToEndTests(unittest.TestCase):
         nodes = [e["message"] for e in events if e["type"] == "node"]
         self.assertTrue(any("材料整备" in e["label"] for e in events if e["type"] == "node"))
         self.assertTrue(any("任务[m1]" in m for m in nodes))
+        dispatches = [e for e in events if e.get("event_kind") == "dispatch"]
+        self.assertEqual([(e["agent_id"], e["target_id"]) for e in dispatches], [("chair", "m1"), ("chair", "m2")])
+        self.assertEqual(dispatches[0]["detail"]["目标"], "查证论文与奖项")
+        returns = [e for e in events if e.get("event_kind") == "handoff" and e.get("target_id") == "chair"]
+        self.assertEqual([e["agent_id"] for e in returns], ["m1", "m2"])
+        self.assertTrue(returns[0]["detail"]["主席收到的摘要"])
+        calls = [e for e in events if e.get("call_id") == "t1"]
+        self.assertEqual([e["event_kind"] for e in calls], ["tool_call", "tool_result"])
+        self.assertEqual(calls[0]["detail"]["输入"]["file"], "a.txt")
 
         a = raw["assessments"][0]
         self.assertEqual(a["jd_id"], "jd1")

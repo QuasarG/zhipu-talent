@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/api";
 import type {
   CandidateBrief,
   CandidateDetail,
@@ -13,6 +14,7 @@ import { BatchRunView, NewBatchPanel } from "./BatchViews";
 import EmptyState from "./EmptyState";
 import ResumeContent from "@/features/resume/ResumeContent";
 import Card from "@/components/ui/Card";
+import Tabs from "@/components/ui/Tabs";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { useI18n } from "@/lib/i18n";
 import type { CandidateRecordView } from "@/features/resume/ResumeContent";
@@ -123,8 +125,12 @@ export default function AdmissionPane({
   }
 
   if (selectedCandidateId && selectedJdId) {
+    const runningPair = [...(batch?.runs || []), ...activeRuns].find(run => run.candidate_id === selectedCandidateId
+      && run.jd_id === selectedJdId && ["running", "queued"].includes(run.status));
+    if (runningPair) return <EvaluationAgentTimeline run={runningPair} />;
     return (
       <PairReportView
+        key={`${selectedCandidateId}:${selectedJdId}`}
         assessments={assessments}
         allJds={allJds}
         candidateId={selectedCandidateId}
@@ -171,7 +177,7 @@ export default function AdmissionPane({
   );
 }
 
-/** 候选人–JD 配对的当前报告视图：完整报告 + 双 Agent 活动回放。 */
+/** 当前报告与真实 Agent 协作记录。 */
 function PairReportView({
   assessments,
   allJds,
@@ -188,6 +194,18 @@ function PairReportView({
     (item) => item.candidate_id === candidateId && item.jd_id === jdId,
   );
   const jd = allJds.find((item) => item.id === jdId);
+  const [fullTrace, setFullTrace] = useState<InterviewAssessmentRun["run_trace"] | null>(null);
+  const [traceError, setTraceError] = useState("");
+  const [tab, setTab] = useState("report");
+  useEffect(() => {
+    let active = true;
+    setFullTrace(null);
+    setTraceError("");
+    if (assessment) api.interviewAssessments.trace(assessment.id)
+      .then(data => { if (active) setFullTrace(data.run_trace); })
+      .catch(() => { if (active) setTraceError("协作记录加载失败，请重新选择报告重试"); });
+    return () => { active = false; };
+  }, [assessment?.id, assessment?.updated_at]);
 
   if (!assessment) {
     return (
@@ -211,16 +229,17 @@ function PairReportView({
     jd_title: assessment.jd_title,
     status: "completed" as const,
     current_node: assessment.run_trace.at(-1)?.node_id || "admission_decision",
-    run_trace: assessment.run_trace,
+    run_trace: fullTrace || [],
     model_usage: assessment.model_usage,
     error_message: "",
     cancellation_requested: false,
   };
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(560px,1.7fr)_minmax(360px,1fr)]">
+    <div className="flex h-full min-h-0 flex-col">
+      <Tabs items={[{ value: "report", label: t("评估报告") }, { value: "activity", label: t("Agent 协作") }]} value={tab} onChange={setTab} />
       {/* 报告是交付物：占主列 */}
-      <Card variant="filled" className="min-h-[420px] overflow-hidden flex flex-col">
+      {tab === "report" ? <Card variant="filled" className="min-h-0 flex-1 overflow-hidden flex flex-col">
         <div className="border-b border-outline-variant px-4 py-3 shrink-0">
           <p className="text-title">
             {assessment.candidate_name || t("候选人")} × {assessment.jd_title || jd?.title || t("岗位")}
@@ -230,12 +249,13 @@ function PairReportView({
         <div className="flex-1 min-h-0 overflow-y-auto p-5 admission-panel-scrollbar">
           <AdmissionReport assessment={assessment} jd={jd} />
         </div>
-      </Card>
+      </Card> :
 
-      {/* 同一条真实活动流可在运行中观看，也可在历史报告中回放。 */}
-      <Card variant="filled" className="relative min-h-[360px] overflow-hidden flex flex-col">
-        <EvaluationAgentTimeline run={reportRun} compact />
-      </Card>
+      <Card variant="filled" className="relative min-h-0 flex-1 overflow-hidden flex flex-col">
+        {traceError ? <p role="alert" className="p-4 text-body-sm text-error">{t(traceError)}</p>
+          : fullTrace === null ? <LoadingIndicator label={t("正在加载协作记录…")} />
+            : <EvaluationAgentTimeline run={reportRun} compact />}
+      </Card>}
     </div>
   );
 }

@@ -220,6 +220,7 @@ export const api = {
       }),
   },
   interviewAssessments: {
+    trace: (id: string) => fetchJSON<{ run_trace: InterviewAssessmentRun["run_trace"] }>(`/api/interview-assessments/${id}/trace`),
     start: (
       pairs: Array<{ candidate_id: string; jd_id: string }>,
       requestId: string,

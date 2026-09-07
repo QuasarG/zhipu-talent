@@ -180,6 +180,9 @@ def record_node_event(session, evaluation_id: int, event: dict[str, Any]) -> Eva
             "mission_type": str(event.get("mission_type", "")) or None,
             "mission_goal": str(event.get("mission_goal", "")) or None,
             "mission_status": str(event.get("mission_status", "")) or None,
+            **{key: event[key] for key in (
+                "agent_id", "agent_type", "target_id", "event_kind", "detail", "tool", "call_id"
+            ) if key in event},
         })
         if len(trace) > 400:  # 防跑飞：单次评估事件上限
             trace = trace[-400:]
