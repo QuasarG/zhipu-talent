@@ -554,6 +554,11 @@ def assessment_to_dict(
     candidate_name: str = "",
     jd_title: str = "",
 ) -> dict[str, Any]:
+    # 列表响应瘦身：完整 run_trace（双 agent 活动流）占单条体积的大头，
+    # 72 条全量序列化曾达 4.3MB。唯一消费方是 AdmissionReport 取最后一条
+    # admission_decision 事件的 summary——只保留该事件；完整轨迹走批次/活跃运行接口。
+    trace = [item for item in (row.run_trace or []) if isinstance(item, dict)]
+    decision_events = [item for item in trace if item.get("node_id") == "admission_decision"]
     return {
         "id": row.id,
         "candidate_id": row.candidate_id,
@@ -569,7 +574,7 @@ def assessment_to_dict(
         "review_corrections": list(row.review_corrections or []),
         "interview_focus": list(row.interview_focus or []),
         "model_usage": list(row.model_usage or []),
-        "run_trace": list(row.run_trace or []),
+        "run_trace": decision_events[-1:],
         "updated_at": _iso(row.updated_at),
     }
 
