@@ -96,9 +96,6 @@ export default function AdmissionPane({
         activeRunId={activeRunId}
         jds={allJds}
         assessments={assessments}
-        candidateDetail={candidateDetail}
-        candidateDetailLoading={candidateDetailLoading}
-        onCandidateReviewed={onCandidateReviewed}
         onCancelRun={onCancelRun}
       />
     );

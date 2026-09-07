@@ -5,7 +5,6 @@ import type {
   InterviewAssessmentBatch,
   InterviewAssessmentRun,
   JdEntry,
-  CandidateDetail,
 } from "@/lib/types";
 import EvaluationAgentTimeline from "@/features/admission/EvaluationAgentTimeline";
 import AdmissionReport, {
@@ -19,11 +18,8 @@ import Button, { IconButton } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Chip";
 import SearchField from "@/components/ui/SearchField";
 import Progress from "@/components/ui/Progress";
-import LoadingIndicator from "@/components/ui/LoadingIndicator";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
-import Tabs from "@/components/ui/Tabs";
-import ResumeContent, { OriginalPreview } from "@/features/resume/ResumeContent";
 import { buildBatchRiskPlan } from "./talentEvaluationModel";
 
 // crypto.randomUUID 仅安全上下文（HTTPS/localhost）可用；线上裸 HTTP 部署时
@@ -409,18 +405,12 @@ export function BatchRunView({
   activeRunId,
   jds,
   assessments,
-  candidateDetail,
-  candidateDetailLoading,
-  onCandidateReviewed,
   onCancelRun,
 }: {
   batch: InterviewAssessmentBatch;
   activeRunId: string | null;
   jds: JdEntry[];
   assessments: InterviewAssessment[];
-  candidateDetail: CandidateDetail | null;
-  candidateDetailLoading: boolean;
-  onCandidateReviewed: () => void;
   onCancelRun: (runId: string) => void;
 }) {
   const { t } = useI18n();
@@ -451,13 +441,8 @@ export function BatchRunView({
         } as JdEntry)
       : undefined);
 
-  // 三视图 tab：运行中自动切到评估结果，直接观看双 Agent 活动流。
-  const [pairTab, setPairTab] = useState<"structured" | "raw" | "result">(
-    activeRun?.status === "running" ? "result" : "structured",
-  );
-  useEffect(() => {
-    if (activeRun?.status === "running") setPairTab("result");
-  }, [activeRun?.status]);
+  // 结构化简历/简历原件已由左侧候选人目录承载（材料目录 → 简历原件 → 结构化简历），
+  // 运行批次视图只保留评估结果：活动流 + 报告。
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(480px,1.5fr)_minmax(320px,1fr)]">
@@ -480,37 +465,8 @@ export function BatchRunView({
               />
             )}
           </div>
-          <div className="px-4 pt-2 shrink-0">
-            <Tabs
-              items={[
-                { value: "structured", label: t("结构化简历") },
-                { value: "raw", label: t("简历原件") },
-                { value: "result", label: t("评估结果"), badge: activeRun?.status === "running" ? t("运行中") : undefined },
-              ]}
-              value={pairTab}
-              onChange={(v) => setPairTab(v as typeof pairTab)}
-            />
-          </div>
           <div className="flex-1 min-h-0 overflow-auto admission-panel-scrollbar">
-            {pairTab === "structured" ? (
-              candidateDetailLoading && !candidateDetail ? (
-                <div className="flex h-full items-center justify-center"><LoadingIndicator size={28} /></div>
-              ) : candidateDetail ? (
-                <ResumeContent key={candidateDetail.id} detail={candidateDetail} hideTabs onReviewed={onCandidateReviewed} />
-              ) : (
-                <ListEmpty icon="person" text={t("候选人简历加载失败")} />
-              )
-            ) : pairTab === "raw" ? (
-              candidateDetail ? (
-                <OriginalPreview
-                  candidateId={candidateDetail.id}
-                  sourceFormat={candidateDetail.source_format}
-                  fallbackText={candidateDetail.raw_text || ""}
-                />
-              ) : (
-                <ListEmpty icon="description" text={t("候选人简历加载失败")} />
-              )
-            ) : activeRun && (activeRun.run_trace?.length || activeRun.status !== "queued") ? (
+            {activeRun && (activeRun.run_trace?.length || activeRun.status !== "queued") ? (
               <EvaluationAgentTimeline run={activeRun} />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center text-on-surface-variant">
