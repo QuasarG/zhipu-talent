@@ -17,6 +17,13 @@ const STAGES: Array<{ id: StageId; label: string }> = [
   { id: "report", label: "生成报告" },
 ];
 
+const AGENT_LANES: Array<{ id: "system" | "evaluator" | "observer" | "decision"; label: string; role: string; icon: string; accent: string }> = [
+  { id: "system", label: "材料中枢", role: "整理输入与证据包", icon: "inventory_2", accent: "text-on-surface-variant" },
+  { id: "evaluator", label: "评估 Agent", role: "并行完成岗位评分", icon: "manage_search", accent: "text-primary" },
+  { id: "observer", label: "督导 Agent", role: "复核证据与风险", icon: "supervisor_account", accent: "text-secondary" },
+  { id: "decision", label: "裁决与报告", role: "硬门槛 + 结果输出", icon: "rule", accent: "text-tertiary" },
+];
+
 function actorOf(event: WorkflowNodeEvent): Actor {
   if (event.actor) return event.actor;
   if (event.node_id === "overall_review" || event.event_type === "observer") return "observer";
@@ -37,6 +44,19 @@ function stageStates(events: WorkflowNodeEvent[], completed: boolean) {
   events.forEach((event) => states.set(stageOf(event), event.status));
   if (completed && states.has("decision") && !states.has("report")) states.set("report", "completed");
   return states;
+}
+
+function laneState(events: WorkflowNodeEvent[], lane: typeof AGENT_LANES[number], completed: boolean) {
+  const related = events.filter((event) => {
+    if (lane.id === "decision") return stageOf(event) === "decision" || stageOf(event) === "report";
+    return lane.id === actorOf(event);
+  });
+  const latest = related.at(-1);
+  if (latest?.status === "failed" || latest?.error) return "failed" as const;
+  if (completed && related.length) return "done" as const;
+  if (latest?.status === "running") return "running" as const;
+  if (related.length) return "done" as const;
+  return "pending" as const;
 }
 
 function formatTime(value?: string) {
@@ -210,6 +230,33 @@ function SystemEvent({ event }: { event: WorkflowNodeEvent }) {
   );
 }
 
+function AgentLanes({ events, completed }: { events: WorkflowNodeEvent[]; completed: boolean }) {
+  const { t } = useI18n();
+  return (
+    <div className="grid grid-cols-2 gap-2 border-b border-outline-variant bg-surface-low/45 px-4 py-3 lg:grid-cols-4" aria-label={t("多 Agent 编排") }>
+      {AGENT_LANES.map((lane, index) => {
+        const state = laneState(events, lane, completed);
+        const stateLabel = state === "running" ? t("运行中") : state === "done" ? t("已完成") : state === "failed" ? t("失败") : t("等待");
+        return (
+          <div key={lane.id} className="relative min-w-0 rounded-md border border-outline-variant bg-surface-lowest px-2.5 py-2">
+            {index > 0 && <span className="pointer-events-none absolute -left-2.5 top-1/2 hidden h-px w-2 bg-outline-variant lg:block" aria-hidden="true" />}
+            <div className="flex items-center gap-2">
+              <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-high", lane.accent)}>
+                {state === "running" ? <ThinkingOrb state="shaping" size={20} aria-label={t("正在运行")} /> : <Icon name={lane.icon} size={15} />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-label font-semibold text-on-surface">{t(lane.label)}</span>
+                <span className="block truncate text-[10px] text-on-surface-variant">{t(lane.role)}</span>
+              </span>
+              <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", state === "running" ? "animate-pulse bg-primary" : state === "done" ? "bg-success" : state === "failed" ? "bg-error" : "bg-outline-variant")} title={stateLabel} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function EvaluationAgentTimeline({ run, compact = false }: { run: InterviewAssessmentRun; compact?: boolean }) {
   const { t } = useI18n();
   const events = compactEvents(run.run_trace || []);
@@ -261,6 +308,8 @@ export default function EvaluationAgentTimeline({ run, compact = false }: { run:
           })}
         </ol>
       </header>
+
+      <AgentLanes events={events} completed={run.status === "completed"} />
 
       <div className={cn("min-h-0 flex-1 overflow-y-auto admission-panel-scrollbar", compact ? "px-4 py-1" : "px-5 py-2")}>
         {!events.length ? (
