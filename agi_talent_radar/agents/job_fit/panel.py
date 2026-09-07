@@ -340,7 +340,9 @@ def run_mission(
 
     def node(message: str, status: str = "running") -> dict[str, Any]:
         return {"type": "node", "node": "panel_lead", "label": "评审团", "status": status,
-                "phase": "assessment", "message": f"{label}：{message}"}
+                "phase": "assessment", "message": f"{label}：{message}",
+                "mission_id": mission_id, "mission_type": mission.get("type", "generic"),
+                "mission_goal": mission.get("goal", ""), "mission_status": status}
 
     rounds_budget = type_spec["rounds"]
     lifetime_budget = _env_int("PANEL_MISSION_LIFETIME_ROUNDS", 10)
@@ -559,7 +561,9 @@ def run_panel_stream(
             if mission.get("type") == "jd_match" and not mission.get("jd_id"):
                 mission["jd_id"] = next((j["jd_id"] for j in dossier["jobs"]
                                          if j["jd_id"] not in {m.get("jd_id") for m in missions if m.get("jd_id")}), None)
-            yield lead_node(f"派出 {mission['mission_id']}（{mission['type']}）：{mission.get('goal', '')}")
+            yield {**lead_node(f"派出 {mission['mission_id']}（{mission['type']}）：{mission.get('goal', '')}"),
+                   "mission_id": mission["mission_id"], "mission_type": mission["type"],
+                   "mission_goal": mission.get("goal", ""), "mission_status": "running"}
             try:
                 outcome = yield from run_mission(mission, dossier, ctx, sessions, lifetime)
             except Exception as exc:  # noqa: BLE001 — 单 mission 崩溃不拖全队

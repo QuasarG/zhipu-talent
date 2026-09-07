@@ -192,6 +192,20 @@ export interface EvaluationNodeRun {
   sequence?: number;
 }
 
+/** 评审团（panel）模式的全量事件轨迹（panel_trace），按发生顺序排列。 */
+export interface PanelTraceEvent {
+  ts: string | null;
+  node: string;
+  label: string;
+  status: string;
+  phase: string;
+  message: string;
+  mission_id?: string | null;
+  mission_type?: string | null;
+  mission_goal?: string | null;
+  mission_status?: string | null;
+}
+
 export interface EvaluationRun {
   id: number;
   candidate_id: string;
@@ -200,6 +214,7 @@ export interface EvaluationRun {
   created_at: string | null;
   completed_at: string | null;
   evaluation_graph: EvaluationGraph;
+  panel_trace?: PanelTraceEvent[] | null;
   node_runs: EvaluationNodeRun[];
 }
 

@@ -175,6 +175,7 @@ class EvaluationORM(Base):
     best_fit_jd_title = Column(String(200), default="")
     decision_summary = Column(Text, default="")
     job_fit_assessments = Column(JSON, default=list)
+    panel_trace = Column(Text, default="")  # 评审团完整事件轨迹（JSON 数组；节点表只留每节点最新一条）
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     completed_at = Column(DateTime)
 

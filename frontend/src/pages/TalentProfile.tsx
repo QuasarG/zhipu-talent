@@ -37,6 +37,21 @@ export default function TalentProfile() {
 
   useEffect(() => { load(); }, [load]);
 
+  // 评估运行中轻量轮询（只刷 candidate，不触发整页 loading），结束后自动停
+  const candidateId = person?.candidate_id ?? null;
+  const evaluatingStatus = candidate?.evaluation_status;
+  useEffect(() => {
+    if (evaluatingStatus !== "running" || !candidateId) return;
+    const timer = window.setInterval(async () => {
+      try {
+        setCandidate(await api.candidates.get(candidateId));
+      } catch {
+        /* 轮询失败忽略，下一轮重试 */
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [evaluatingStatus, candidateId]);
+
   const updateEngagement = async (status: string) => {
     if (!person?.candidate_id) return;
     setSaving(true);

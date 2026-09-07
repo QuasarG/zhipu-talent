@@ -14,6 +14,7 @@ import Tabs from "@/components/ui/Tabs";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 import ScoreOverview from "./ScoreOverview";
+import PanelTimeline from "./PanelTimeline";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
 
@@ -53,7 +54,11 @@ export default function EvaluationWorkspace({ candidatePersonId, candidateId = "
         className="shrink-0"
         items={[
           { value: "result", label: t("评估结果") },
-          { value: "process", label: t("运行过程"), badge: evaluating ? t("运行中") : completedCount || undefined },
+          {
+            value: "process",
+            label: t("运行过程"),
+            badge: evaluating ? t("运行中") : evaluationRun?.panel_trace?.length ? undefined : completedCount || undefined,
+          },
         ]}
         value={tab}
         onChange={setTab}
@@ -61,6 +66,8 @@ export default function EvaluationWorkspace({ candidatePersonId, candidateId = "
       <div className="flex-1 min-h-0 overflow-y-auto pt-4 pr-1">
         {tab === "result" ? (
           evaluation ? <ScoreOverview evaluation={evaluation} academicReport={academicReport} personId={candidatePersonId} /> : <ResultEmpty evaluating={evaluating} />
+        ) : evaluationRun?.panel_trace?.length ? (
+          <PanelTimeline trace={evaluationRun.panel_trace} evaluating={evaluating} />
         ) : (
           <EvaluationProcess
             graph={graph}

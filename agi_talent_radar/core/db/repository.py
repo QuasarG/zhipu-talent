@@ -157,6 +157,34 @@ def record_node_event(session, evaluation_id: int, event: dict[str, Any]) -> Eva
     node_run.message = str(event.get("message", ""))
     if node_run.status in {"done", "skipped", "error"}:
         node_run.completed_at = _now()
+
+    # 评审团事件全量入轨迹（节点表按 node_key 覆盖，只留最新一条，不够前端画卡片流）
+    evaluation = session.get(EvaluationORM, evaluation_id)
+    if evaluation is not None:
+        import json as _json
+
+        try:
+            trace = _json.loads(evaluation.panel_trace or "[]")
+            if not isinstance(trace, list):
+                trace = []
+        except ValueError:
+            trace = []
+        trace.append({
+            "ts": _now().isoformat(timespec="seconds"),
+            "node": node_key,
+            "label": str(event.get("label", "")),
+            "status": node_run.status,
+            "phase": node_run.phase,
+            "message": node_run.message,
+            "mission_id": str(event.get("mission_id", "")) or None,
+            "mission_type": str(event.get("mission_type", "")) or None,
+            "mission_goal": str(event.get("mission_goal", "")) or None,
+            "mission_status": str(event.get("mission_status", "")) or None,
+        })
+        if len(trace) > 400:  # 防跑飞：单次评估事件上限
+            trace = trace[-400:]
+        evaluation.panel_trace = _json.dumps(trace, ensure_ascii=False)
+
     session.commit()
     return node_run
 
@@ -402,6 +430,7 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
         "created_at": _iso_datetime(evaluation.created_at),
         "completed_at": _iso_datetime(evaluation.completed_at),
         "evaluation_graph": evaluation_graph_catalog(),
+        "panel_trace": _panel_trace_to_dict(evaluation),
         "node_runs": [
             {
                 "node": item.node_key,
@@ -413,6 +442,16 @@ def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
             for item in evaluation.node_runs
         ],
     }
+
+
+def _panel_trace_to_dict(evaluation: EvaluationORM) -> list[dict[str, Any]]:
+    import json as _json
+
+    try:
+        trace = _json.loads(evaluation.panel_trace or "[]")
+        return trace if isinstance(trace, list) else []
+    except ValueError:
+        return []
 
 
 def evaluation_run_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
@@ -427,6 +466,7 @@ def evaluation_run_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
         "created_at": _iso_datetime(evaluation.created_at),
         "completed_at": _iso_datetime(evaluation.completed_at),
         "evaluation_graph": evaluation_graph_catalog(),
+        "panel_trace": _panel_trace_to_dict(evaluation),
         "node_runs": [
             {
                 "node": item.node_key,

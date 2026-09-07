@@ -105,10 +105,31 @@ def _ensure_bundle_resume_column(engine) -> None:
             )
 
 
+def _ensure_panel_trace_column(engine) -> None:
+    """evaluations 补 panel_trace 列（评审团完整事件轨迹）。幂等；升级为 MEDIUMTEXT 防长轨迹溢出。"""
+    from sqlalchemy import text as _sql_text
+
+    if engine.dialect.name != "mysql":
+        return
+
+    with engine.begin() as connection:
+        info = connection.execute(
+            _sql_text(
+                "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+                "AND TABLE_NAME = 'evaluations' AND COLUMN_NAME = 'panel_trace'"
+            )
+        ).first()
+        if info is None:
+            connection.execute(_sql_text("ALTER TABLE evaluations ADD COLUMN panel_trace MEDIUMTEXT NULL"))
+        elif str(info[0]).lower() != "mediumtext":
+            connection.execute(_sql_text("ALTER TABLE evaluations MODIFY COLUMN panel_trace MEDIUMTEXT NULL"))
+
+
 def ensure_schema(engine) -> None:
     _ensure_legacy_parent_columns(engine)
     _ensure_material_longtext(engine)
     _ensure_bundle_resume_column(engine)
+    _ensure_panel_trace_column(engine)
     Base.metadata.create_all(engine)
     current_version = _current_version(engine)
     if current_version < 2 or _has_legacy_evaluation_columns(engine):
