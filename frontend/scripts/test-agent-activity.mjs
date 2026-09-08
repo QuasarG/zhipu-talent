@@ -2,6 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { activeAgents, admissionActivities, panelActivities } from '../src/features/admission/agentActivityModel.ts';
 
+test('tool identities survive normalization so the shared tool renderer can pair results', () => {
+  const [event] = panelActivities([{ node: 'panel_lead', status: 'running', message: '读取材料', agent_id: 'm1', agent_type: 'deep_read', event_kind: 'tool_call', tool: 'read_text', call_id: 'read-1' }]);
+  assert.equal(event.tool, 'read_text');
+  assert.equal(event.callId, 'read-1');
+});
+
 test('parallel scorers remain active independently and terminal runs clear activity', () => {
   const events = ['a', 'b'].map(agent => ({ agent, role: 'task_scorer', status: 'running', kind: 'request' }));
   assert.equal(activeAgents(events, true).length, 2);

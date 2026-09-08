@@ -194,6 +194,8 @@ export interface EvaluationNodeRun {
 
 /** 评审团（panel）模式的全量事件轨迹（panel_trace），按发生顺序排列。 */
 export interface PanelTraceEvent {
+  tool?: string;
+  call_id?: string;
   agent_id?: string;
   agent_type?: string;
   target_id?: string;

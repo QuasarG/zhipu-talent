@@ -1,251 +1,218 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Icon from "@/components/ui/Icon";
-import { cn } from "@/lib/cn";
+import AssistantMessage from "@/features/chat/AssistantMessage";
+import ToolCallCard from "@/features/chat/ToolCallCard";
+import type { ChatMessage } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
 import { activeAgents, kinds, roleNames, type Activity } from "./agentActivityModel";
 import "./AgentCollaborationSpace.css";
 
-type AgentState = "working" | "receiving" | "done" | "idle";
-const stateLabels: Record<AgentState, string> = { working: "正在工作", receiving: "收到信息", done: "已完成", idle: "待命" };
-const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+type State = "working" | "done" | "failed" | "waiting" | "stopped";
+const labels: Record<State, string> = { working: "正在工作", done: "已完成", failed: "执行失败", waiting: "待命", stopped: "已停止" };
+const terminal = new Set(["completed", "failed", "cancelled"]);
+const isExchange = (e: Activity) => !!e.target && e.target !== e.agent && ["dispatch", "handoff"].includes(e.kind);
+const identity = (e: Activity) => [e.id, e.agent, e.target, e.at, e.kind, e.text].join("|");
+const NO_ACTION = () => {};
 
-interface SpaceAgent {
-  id: string; role: string; mission: string | null; goal: string | null;
-  shape: number; tone: number; state: AgentState; x: number; y: number;
-}
-
-/** 从活动流推导空间状态：加入顺序定席位、最新交接定动效，输入幂等（trace 全量重放安全）。 */
-function deriveSpace(events: Activity[], running: boolean, terminal: boolean) {
-  const order: string[] = [];
-  const roleOf = new Map<string, string>();
-  const goalOf = new Map<string, string>();
-  const missionOf = new Map<string, string>();
-  const lastIncoming = new Map<string, Activity>();
-  const exchanges: Activity[] = [];
-  for (const e of events) {
-    roleOf.set(e.agent, e.role);
-    if (e.goal) goalOf.set(e.agent, e.goal);
-    if (e.mission) missionOf.set(e.agent, e.mission);
-    for (const id of [e.agent, e.target]) if (id && !order.includes(id)) order.push(id);
-    if ((e.kind === "dispatch" || e.kind === "handoff") && e.target && e.agent !== e.target) {
-      exchanges.push(e);
-      lastIncoming.set(e.target, e);
-    }
-  }
-  const working = new Set(activeAgents(events, running).map(e => e.agent));
-  const workers = order.filter(id => id !== "system");
-  const agents: SpaceAgent[] = order.map(id => {
-    let state: AgentState = "idle";
-    if (working.has(id)) state = "working";
-    else if (terminal) state = "done";
-    else if (lastIncoming.has(id)) state = "receiving";
-    let shape = 0;
-    for (const c of id) shape = (shape * 31 + c.charCodeAt(0)) % 997;
-    const seat = workers.indexOf(id);
-    const angle = Math.PI / 2 + (Math.max(seat, 0) / Math.max(workers.length, 1)) * Math.PI * 2;
-    return {
-      id, role: roleOf.get(id) || "system", mission: missionOf.get(id) ?? null, goal: goalOf.get(id) ?? null,
-      shape: shape % 6, tone: id === "system" ? 0 : 14 + Math.min(Math.max(seat, 0), 5) * 13,
-      state, x: id === "system" ? 50 : 50 + 36 * Math.cos(angle), y: id === "system" ? 9 : 56 + 34 * Math.sin(angle),
-    };
-  });
-  return { agents, exchanges };
-}
-
-function Avatar({ agent, state, pulse }: { agent: SpaceAgent; state: AgentState; pulse?: boolean }) {
-  const tone = agent.id === "system" ? "var(--color-primary)" : agent.tone >= 100
-    ? "var(--color-surface)"
-    : `color-mix(in oklab, var(--color-primary), var(--color-surface) ${agent.tone}%)`;
-  return <span className="acs-avatar" data-shape={agent.id === "system" ? undefined : agent.shape}
-    data-state={state} data-pulse={pulse} style={{ "--acs-tone": tone } as CSSProperties} aria-hidden="true">
-    {agent.id === "system" ? <Icon name="layers" size={26} /> : <span className="acs-body"><span className="acs-eyes"><i /><i /></span></span>}
+function Avatar({ state, id = "", role = "", gaze = 0, system = false, small = false }: { state: State; id?: string; role?: string; gaze?: number; system?: boolean; small?: boolean }) {
+  const seed = [...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 997, 0);
+  const gesture = ["verify", "cross_check"].includes(role) ? "search" : ["chair", "reviewer"].includes(role) ? "consider" : "read";
+  return <span className="acs-avatar" data-state={state} data-small={small} data-form={seed % 5}
+    data-gesture={gesture} data-facing={gaze !== 0} style={{ "--acs-tempo": `${4.8 + seed % 37 / 10}s`, "--acs-delay": `${-(seed % 53) / 10}s`, "--acs-gaze": `${gaze}px` } as CSSProperties} aria-hidden="true">
+    {system ? <Icon name="layers" size={small ? 18 : 26} /> : <span className="acs-body"><span className="acs-look"><span className="acs-eyes"><i /><i /></span></span></span>}
   </span>;
 }
 
-/** Agent 协作的空间视图：席位、状态姿态与交接动效，详情为所选实例的活动记录。 */
+function EventContent({ event, t }: { event: Activity; t: (key: string) => string }) {
+  const message: ChatMessage = { id: event.id, conversation_id: "assessment", role: "assistant",
+    content: { segments: [{ type: "text", text: event.text }] }, citations: [],
+    status: "completed", created_at: event.at || "" };
+  return <>
+    <AssistantMessage message={message} busy={false} onDecide={NO_ACTION} hideAvatar />
+    {event.detail && Object.keys(event.detail).length > 0 && <details className="acs-evidence">
+      <summary>{t("查看输入、输出与依据")}</summary>
+      {Object.entries(event.detail).map(([key, value]) => <div key={key}><strong>{key}</strong><pre>{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre></div>)}
+    </details>}
+  </>;
+}
+
+/** 固定工作区 + 真实工作记录；回放按事件推进，不模拟模型 token 输出。 */
 export default function AgentCollaborationSpace({ events, status }: { events: Activity[]; status: string }) {
   const { t } = useI18n();
-  const live = !TERMINAL.has(status);
+  const live = !terminal.has(status);
   const [cursor, setCursor] = useState(events.length);
   const [playing, setPlaying] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
   const [still, setStill] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  const [pulse, setPulse] = useState<{ id: string; agent: string; target: string; dx: number; dy: number } | null>(null);
+  const [tab, setTab] = useState<"work" | "handoff">("work");
   const [followScroll, setFollowScroll] = useState(true);
-  const seenExchange = useRef<string | null>(null);
+  const [pulse, setPulse] = useState<{ key: string; source: string; target: string; dx: number; dy: number } | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const nodes = useRef(new Map<string, HTMLButtonElement>());
   const detailScroll = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { if (live) setCursor(events.length); }, [live, events.length]);
-
-  const visible = useMemo(() => events.slice(0, live ? events.length : cursor), [events, live, cursor]);
-  const space = useMemo(() => deriveSpace(visible, live || playing, !live && cursor >= events.length),
-    [visible, live, playing, cursor, events.length]);
+  const seen = useRef<string | null>(null);
+  const initialized = useRef(false);
+  const previousLive = useRef(live);
+  const count = live ? events.length : Math.min(cursor, events.length);
 
   useEffect(() => {
-    const ex = space.exchanges.at(-1);
-    if (!ex || ex.id === seenExchange.current) return;
-    seenExchange.current = ex.id;
-    if (still) return;
-    const from = space.agents.find(a => a.id === ex.agent);
-    const to = space.agents.find(a => a.id === ex.target);
-    if (!from || !to) return;
-    setPulse({ id: ex.id, agent: ex.agent, target: ex.target!, dx: to.x - from.x, dy: to.y - from.y });
-  }, [space, still]);
-
-  useEffect(() => {
-    if (!follow) return;
-    const last = visible.at(-1);
-    if (!last) return;
-    const next = last.target && (last.kind === "dispatch" || last.kind === "handoff") ? last.target : last.agent;
-    if (next) setSelected(next);
-  }, [visible, follow]);
+    if (live || previousLive.current) setCursor(events.length);
+    previousLive.current = live;
+  }, [live, events.length]);
+  const visible = useMemo(() => events.slice(0, count), [events, count]);
+  const allIds = useMemo(() => [...new Set(events.flatMap(e => [e.agent, ...(e.target ? [e.target] : [])]))], [events]);
+  const known = new Set(visible.flatMap(e => [e.agent, ...(e.target ? [e.target] : [])]));
+  const ids = allIds.filter(id => known.has(id));
+  const meta = new Map(events.map(e => [e.agent, e]));
+  const latest = new Map(visible.map(e => [e.agent, e]));
+  const working = new Set(activeAgents(visible, status === "running" || !live && count < events.length).map(e => e.agent));
+  const exchanges = visible.filter(isExchange);
+  const lastExchange = exchanges.at(-1);
+  const last = visible.at(-1);
+  const autoId = last?.target && isExchange(last) ? last.target : last?.agent;
+  const selectedId = follow ? autoId || ids[0] : selected && known.has(selected) ? selected : ids[0];
+  const leadIds = ids.filter(id => id === "chair" || id === "system");
+  const workerIds = ids.filter(id => id !== "chair" && id !== "system");
+  const nameOf = (id: string) => t(roleNames[meta.get(id)?.role || ""] || id);
+  const stateOf = (id: string): State => {
+    const e = latest.get(id);
+    if (e?.status === "failed" || e?.status === "error" || e?.kind === "error") return "failed";
+    if (working.has(id)) return "working";
+    if (e && (["completed", "done", "skipped"].includes(e.status) || e.kind === "handoff")) return "done";
+    if (status === "cancelled" || status === "failed") return "stopped";
+    return "waiting";
+  };
+  const select = (id: string) => { setSelected(id); setFollow(false); setHighlight(null); };
+  const chooseHandoff = (e: Activity) => { select(e.agent); setTab("handoff"); setHighlight(identity(e)); setFollowScroll(false); };
+  const seek = (value: number) => { setCursor(value); setPlaying(false); setPulse(null); seen.current = null; };
+  const replay = () => { initialized.current = true; seen.current = null; setPulse(null); setCursor(0); setPlaying(true); };
 
   useEffect(() => {
     if (!playing || live) return;
     if (cursor >= events.length) { setPlaying(false); return; }
-    const timer = window.setTimeout(() => setCursor(c => c + 1), 650);
+    const timer = window.setTimeout(() => setCursor(c => c + 1), 1000);
     return () => window.clearTimeout(timer);
   }, [playing, live, cursor, events.length]);
 
+  const exchangeKey = lastExchange ? identity(lastExchange) : null;
+  useEffect(() => {
+    if (!initialized.current) { initialized.current = true; seen.current = exchangeKey; return; }
+    if (!exchangeKey || seen.current === exchangeKey) return;
+    seen.current = exchangeKey;
+    if (still || !live && !playing || !lastExchange) return;
+    const from = nodes.current.get(lastExchange.agent)?.getBoundingClientRect();
+    const to = nodes.current.get(lastExchange.target!)?.getBoundingClientRect();
+    if (!from || !to) return;
+    setPulse({ key: exchangeKey, source: lastExchange.agent, target: lastExchange.target!,
+      dx: (to.x + to.width / 2 - from.x - from.width / 2) * .55,
+      dy: (to.y + to.height / 2 - from.y - from.height / 2) * .55 });
+    const timer = window.setTimeout(() => setPulse(null), 1400);
+    return () => window.clearTimeout(timer);
+  // 只在新交接时触发，普通轮询不重播动作。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exchangeKey, still, live, playing]);
+  useEffect(() => { if (still || !live && !playing) setPulse(null); }, [still, live, playing]);
   useEffect(() => {
     if (followScroll && detailScroll.current) detailScroll.current.scrollTop = detailScroll.current.scrollHeight;
-  }, [visible.length, selected, followScroll]);
+  }, [count, selectedId, followScroll, tab]);
+  useEffect(() => {
+    if (!highlight || !detailScroll.current) return;
+    const element = [...detailScroll.current.querySelectorAll<HTMLElement>("[data-exchange]")].find(el => el.dataset.exchange === highlight);
+    if (element) detailScroll.current.scrollTop = element.offsetTop - detailScroll.current.offsetTop - 12;
+  }, [highlight, tab]);
 
-  const selectedId = selected && space.agents.some(a => a.id === selected) ? selected : space.agents[0]?.id;
-  const agent = space.agents.find(a => a.id === selectedId);
-  const nameOf = (id: string) => {
-    const a = space.agents.find(x => x.id === id);
-    return t(roleNames[a?.role || "system"] || a?.role || id);
+  const renderAgent = (id: string, lead = false) => {
+    const state = stateOf(id);
+    const event = latest.get(id);
+    const receiving = pulse?.target === id;
+    const moving = pulse?.source === id && id !== "system";
+    return <button type="button" key={id} ref={el => { if (el) nodes.current.set(id, el); else nodes.current.delete(id); }}
+      className={lead ? "acs-seat acs-lead" : "acs-seat"} data-state={state} aria-pressed={selectedId === id}
+      onClick={() => select(id)} aria-label={nameOf(id) + " · " + id + " · " + t(labels[state])}>
+      <span className="acs-seat-avatar" key={moving ? pulse.key : "rest"} data-moving={moving} data-receiving={receiving}
+        style={moving ? { "--acs-dx": pulse.dx + "px", "--acs-dy": pulse.dy + "px" } as CSSProperties : undefined}>
+        <Avatar id={id} role={meta.get(id)?.role} state={state} system={id === "system"}
+          gaze={moving ? Math.sign(pulse.dx) * 4 : receiving ? -Math.sign(pulse?.dx || 1) * 4 : 0} />
+      </span>
+      <span className="acs-seat-info"><span className="acs-seat-title">{nameOf(id)}</span>
+        <span className="acs-seat-id">{id === "system" ? t("确定性调度") : meta.get(id)?.mission || id}</span>
+        <span className="acs-seat-status"><i />{t(receiving ? "收到信息" : labels[state])}</span>
+      </span>
+      <span className="acs-seat-task">{event?.text || t("等待任务开始")}</span>
+    </button>;
   };
-  const agentEvents = visible.filter(e => e.agent === selectedId || e.target === selectedId);
-  const agentExchanges = space.exchanges.filter(e => e.agent === selectedId || e.target === selectedId);
-  const currentExchange = space.exchanges.at(-1);
-  const chip = "rounded px-2 py-1 text-label hover:bg-surface-low focus-visible:outline-2 focus-visible:outline-primary cursor-pointer";
+  const workEvents = visible.filter(e => e.agent === selectedId && !isExchange(e));
+  const handoffs = exchanges.filter(e => e.agent === selectedId || e.target === selectedId);
+  const completedTools = new Map(workEvents.filter(e => e.kind === "tool_result" && e.callId).map(e => [e.callId!, e]));
+  const action = latest.get(selectedId || "");
+  const runningNames = ids.filter(id => working.has(id)).map(nameOf);
+  const overall = live ? status === "queued" ? "排队中" : "运行中" : playing ? "回放中" : count < events.length ? "回放已暂停" : status === "failed" ? "运行失败" : status === "cancelled" ? "已停止" : "已完成";
 
-  return (
-    <section className="flex h-full min-h-0 flex-col bg-surface-lowest" aria-label={t("协作空间")}>
-      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-outline-variant px-4 py-2.5">
-        <h2 className="text-title-lg font-semibold">{t("协作空间")}</h2>
-        {live ? (
-          <span className="flex items-center gap-2 text-label text-on-surface-variant">
-            <span className="h-2 w-2 rounded-full bg-primary motion-safe:animate-pulse" />
-            {t(status === "queued" ? "排队中" : "运行中")}
-          </span>
-        ) : (
-          <span className="flex items-center gap-2" role="group" aria-label={t("回放控制")}>
-            <button type="button" className={chip} aria-pressed={playing}
-              onClick={() => { if (!playing && cursor >= events.length) setCursor(0); setPlaying(!playing); }}>
-              <Icon name={playing ? "pause" : "play"} size={14} className="mr-1 inline-block align-[-2px]" />
-              {t(playing ? "暂停" : "播放")}
-            </button>
-            <button type="button" className={chip} onClick={() => { setCursor(0); setPlaying(true); }}>{t("重播")}</button>
-            <input type="range" min={0} max={events.length} value={live ? events.length : cursor}
-              onChange={e => { setCursor(Number(e.target.value)); setPlaying(false); }}
-              aria-label={t("回放进度")} className="w-32 accent-[var(--color-primary)]" />
-            <span className="text-label tabular-nums text-on-surface-variant">{visible.length} / {events.length}</span>
-          </span>
-        )}
-        <span className="ml-auto flex items-center gap-1">
-          <button type="button" className={chip} aria-pressed={follow} onClick={() => setFollow(!follow)}>
-            {t(follow ? "跟随最新 Agent" : "已固定所选 Agent")}
-          </button>
-          <button type="button" className={chip} aria-pressed={still} onClick={() => setStill(!still)}>{t("减少动效")}</button>
-        </span>
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className={cn("acs-stage m-4 mt-3", still && "acs-still")}>
-            <div className="acs-meeting" aria-hidden="true" />
-            {space.agents.map(a => (
-              <button type="button" key={a.id} className="acs-agent" data-state={a.state}
-                style={{ left: `${a.x}%`, top: `${a.y}%` }} aria-pressed={a.id === selectedId}
-                aria-label={`${nameOf(a.id)} · ${t(stateLabels[a.state])}`}
-                onClick={() => { setSelected(a.id); setFollow(false); }}>
-                <span key={pulse?.id || "rest"} className={cn("acs-slot", pulse?.agent === a.id && "approach")}
-                  style={pulse?.agent === a.id
-                    ? ({ "--acs-dx": pulse.dx, "--acs-dy": pulse.dy } as CSSProperties) : undefined}>
-                  <Avatar agent={a} state={a.state} pulse={pulse?.target === a.id} />
-                  <span className="acs-agent-name">{nameOf(a.id)}</span>
-                  <span className="acs-agent-state">{t(stateLabels[a.state])}</span>
-                </span>
-              </button>
-            ))}
-            {!space.agents.length && <p className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-body-sm text-on-surface-variant">{t("等待评估启动")}</p>}
-          </div>
-          <div className="flex min-h-[52px] shrink-0 items-center gap-2 border-t border-outline-variant px-4 py-2.5 text-body-sm">
-            {currentExchange ? (
-              <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
-                onClick={() => { setSelected(currentExchange.agent); setFollow(false); }}>
-                <Icon name="arrow-right" size={16} className="shrink-0 text-primary" />
-                <span className="min-w-0 truncate">
-                  <span className="font-semibold">{nameOf(currentExchange.agent)} → {nameOf(currentExchange.target!)}</span>
-                  <span className="ml-2 text-on-surface-variant">{currentExchange.text}</span>
-                </span>
-              </button>
-            ) : <p className="text-on-surface-variant">{t(live ? "等待第一次任务派发" : "尚未收到协作记录")}</p>}
-          </div>
+  return <section className="acs-root" data-still={still} aria-label={t("协作空间")}>
+    <header className="acs-header"><div><h2>{t("协作现场")}</h2><p>{t("看见任务如何推进，查看每一次信息交接")}</p></div>
+      <span className="acs-run-status" data-live={status === "running"}><i />{t(overall)}</span>
+      <button type="button" className="acs-control" aria-pressed={still} onClick={() => setStill(!still)}><Icon name="activity" size={14} />{t("减少动效")}</button>
+    </header>
+    <div className="acs-layout">
+      <div className="acs-overview">
+        <div className="acs-now"><span>{t("当前工作")}</span><p>{runningNames.length ? runningNames.join(" · ") : t(live ? "等待下一条执行事件" : "查看已记录的工作过程")}</p></div>
+        <div className="acs-stage">
+          {leadIds.length > 0 && <div className="acs-leads">{leadIds.map(id => renderAgent(id, true))}</div>}
+          <div className="acs-team">{workerIds.map(id => renderAgent(id))}</div>
+          {!ids.length && <div className="acs-empty"><Icon name="layers" size={28} /><p>{t("等待评估启动")}</p><span>{t("收到真实执行事件后，Agent 会出现在这里")}</span></div>}
         </div>
-        <aside className="flex min-h-0 w-full shrink-0 flex-col border-t border-outline-variant lg:w-96 lg:border-t-0 lg:border-l">
-          {agent && (
-            <>
-              <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant px-4 py-3">
-                <Avatar agent={agent} state={agent.state} />
-                <div className="min-w-0">
-                  <p className="truncate text-title font-semibold">{nameOf(agent.id)}</p>
-                  <p className="truncate text-label text-on-surface-variant">
-                    {t(stateLabels[agent.state])}{agent.goal ? ` · ${agent.goal}` : ""}
-                  </p>
-                </div>
-              </div>
-              <div ref={detailScroll} className="min-h-0 flex-1 overflow-y-auto px-4 admission-panel-scrollbar"
-                onScroll={e => {
-                  const el = e.currentTarget;
-                  setFollowScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 48);
-                }}>
-                {agentEvents.map(e => (
-                  <article key={e.id} className="border-b border-outline-variant py-3">
-                    <div className="flex flex-wrap items-center gap-x-2 text-label">
-                      <span className="font-semibold">{t(roleNames[e.role] || e.role)}</span>
-                      {e.target && <><Icon name="arrow-right" size={12} /><span>{nameOf(e.target)}</span></>}
-                      <span className="text-on-surface-variant">· {t(kinds[e.kind] || e.kind)}</span>
-                      {e.at && <time className="ml-auto tabular-nums text-on-surface-variant">{new Date(e.at).toLocaleTimeString()}</time>}
-                    </div>
-                    <p className={cn("mt-1.5 whitespace-pre-wrap break-words text-body-sm leading-relaxed",
-                      e.status === "failed" ? "text-error" : "text-on-surface")}>{e.text}</p>
-                    {e.detail && Object.keys(e.detail).length > 0 && (
-                      <details className="mt-1.5">
-                        <summary className="cursor-pointer rounded py-0.5 text-label font-medium text-primary focus-visible:outline-2 focus-visible:outline-primary">{t("查看输入、输出与依据")}</summary>
-                        <div className="mt-1.5 space-y-2 border-t border-outline-variant pt-2">
-                          {Object.entries(e.detail).map(([key, value]) => (
-                            <div key={key}>
-                              <p className="text-label font-semibold">{key}</p>
-                              <pre className="mt-0.5 max-h-64 overflow-auto whitespace-pre-wrap break-words font-sans text-body-sm leading-relaxed text-on-surface-variant">
-                                {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
-                              </pre>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                  </article>
-                ))}
-                {!agentEvents.length && <p className="py-8 text-center text-body-sm text-on-surface-variant">{t("尚未收到协作记录")}</p>}
-                <p className="pb-1 pt-4 text-label font-semibold">{t("交接记录")}</p>
-                {agentExchanges.map(e => (
-                  <button type="button" key={`x${e.id}`}
-                    className="block w-full border-b border-outline-variant py-2 text-left hover:bg-surface-low focus-visible:outline-2 focus-visible:outline-primary cursor-pointer"
-                    onClick={() => { setSelected(e.agent); if (!live) { setCursor(Number(e.id) + 1); setPlaying(false); } }}>
-                    <span className="text-label text-on-surface-variant">{nameOf(e.agent)} → {nameOf(e.target!)}</span>
-                    <p className="mt-0.5 text-body-sm">{e.text}</p>
-                  </button>
-                ))}
-                {!agentExchanges.length && <p className="py-2 text-body-sm text-on-surface-variant">{t("尚无交接记录")}</p>}
-              </div>
-            </>
-          )}
-        </aside>
+        <div className="acs-transfer">
+          <div className="acs-section-label">{t("最近交接")}{lastExchange?.at && <time>{new Date(lastExchange.at).toLocaleTimeString()}</time>}</div>
+          {lastExchange ? <button type="button" onClick={() => chooseHandoff(lastExchange)}>
+            <span className="acs-transfer-route">{nameOf(lastExchange.agent)}<Icon name="arrow-right" size={16} />{nameOf(lastExchange.target!)}</span>
+            <span className="acs-transfer-text">{lastExchange.text}</span><span className="acs-transfer-link">{t("查看完整交接")}<Icon name="arrow-up-right" size={14} /></span>
+          </button> : <p>{t("等待第一次任务派发")}</p>}
+        </div>
       </div>
-    </section>
-  );
+      <aside className="acs-detail">
+        {selectedId ? <>
+          <div className="acs-detail-head"><Avatar id={selectedId} role={meta.get(selectedId)?.role} state={stateOf(selectedId)} system={selectedId === "system"} small />
+            <div><h3>{nameOf(selectedId)}</h3><p>{meta.get(selectedId)?.mission || selectedId} · {t(labels[stateOf(selectedId)])}</p></div>
+            <button type="button" className="acs-control" aria-pressed={follow} onClick={() => setFollow(!follow)}>{t(follow ? "跟随中" : "已固定")}</button>
+          </div>
+          <div className="acs-detail-nav"><div role="tablist" aria-label={t("工作详情")}>
+            <button type="button" role="tab" aria-selected={tab === "work"} onClick={() => setTab("work")}>{t("工作记录")}</button>
+            <button type="button" role="tab" aria-selected={tab === "handoff"} onClick={() => setTab("handoff")}>{t("交接记录")}<span>{handoffs.length}</span></button>
+          </div><button type="button" className="acs-scroll-control" onClick={() => setFollowScroll(!followScroll)} aria-pressed={followScroll}>{t(followScroll ? "暂停跟随" : "跟随最新")}</button></div>
+          <div className="acs-detail-scroll" ref={detailScroll} onWheel={() => setFollowScroll(false)} onTouchMove={() => setFollowScroll(false)}>
+            {tab === "work" ? <>
+              <div className="acs-brief"><span>{t("当前任务与动作")}</span><p>{action?.goal || meta.get(selectedId)?.goal || action?.text || t("等待任务开始")}</p></div>
+              {workEvents.map(e => {
+                if (e.kind === "tool_result" && e.callId && workEvents.some(x => x.kind === "tool_call" && x.callId === e.callId)) return null;
+                if (e.kind === "tool_call" && e.callId) {
+                  const result = completedTools.get(e.callId);
+                  return <ToolCallCard key={e.id} segment={{ type: "tool", call_id: e.callId, tool: e.tool || t("工具调用"), label: e.text,
+                    args_summary: JSON.stringify(e.detail || {}), status: result ? ["failed", "error"].includes(result.status) ? "error" : "ok" : !live && count === events.length ? "error" : undefined,
+                    summary: result?.text || t("未记录工具返回"), detail: result ? JSON.stringify(result.detail || {}) : JSON.stringify(e.detail || {}) }} />;
+                }
+                return <article className="acs-record" key={e.id} data-failed={["failed", "error"].includes(e.status)}>
+                  <div className="acs-record-meta"><span>{t(kinds[e.kind] || e.kind)}</span>{e.at && <time>{new Date(e.at).toLocaleTimeString()}</time>}</div>
+                  <EventContent event={e} t={t} />
+                  {e.kind === "legacy" && <p className="acs-legacy">{t("历史记录未保存收发对象，不推断交接关系")}</p>}
+                </article>;
+              })}
+              {!workEvents.length && <div className="acs-empty"><p>{t("尚未收到工作记录")}</p></div>}
+            </> : handoffs.map(e => <article className="acs-record acs-handoff" key={identity(e)} data-exchange={identity(e)} data-highlight={highlight === identity(e)}>
+              <div className="acs-record-meta"><span>{nameOf(e.agent)} → {nameOf(e.target!)}</span><span>{t(kinds[e.kind] || e.kind)}</span></div>
+              <EventContent event={e} t={t} />
+              {!live && <button type="button" className="acs-control" onClick={() => { seek(events.indexOf(e) + 1); setFollow(false); }}>{t("回看此处")}</button>}
+            </article>)}
+            {tab === "handoff" && !handoffs.length && <div className="acs-empty"><p>{t("尚无交接记录")}</p></div>}
+          </div>
+          <p className="acs-data-note">{t("按真实事件更新 · 非模拟打字")}</p>
+        </> : <div className="acs-empty"><p>{t("选择 Agent 查看工作详情")}</p></div>}
+      </aside>
+    </div>
+    {!live && <footer className="acs-replay"><button type="button" className="acs-control" onClick={() => { if (!playing && count >= events.length) replay(); else setPlaying(!playing); }}><Icon name={playing ? "pause" : "play"} size={15} />{t(playing ? "暂停" : "播放")}</button>
+      <button type="button" className="acs-control" onClick={replay}>{t("重播")}</button>
+      <input type="range" min={0} max={events.length} value={count} onChange={e => seek(Number(e.target.value))} aria-label={t("回放进度")} />
+      <span>{count} / {events.length} {t("条事件")}</span>
+    </footer>}
+  </section>;
 }

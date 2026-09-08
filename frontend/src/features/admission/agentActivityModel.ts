@@ -3,6 +3,7 @@ import type { PanelTraceEvent, WorkflowNodeEvent } from "@/lib/types";
 export interface Activity {
   id: string; agent: string; role: string; target?: string; kind: string; status: string;
   text: string; at?: string | null; detail?: Record<string, unknown>; mission?: string | null; goal?: string | null;
+  tool?: string; callId?: string;
 }
 export const kinds: Record<string, string> = { dispatch: "派工", handoff: "回传 / 交接", request: "开始工作",
   message: "工作说明", tool_call: "调用工具", tool_result: "工具返回", error: "执行失败", status: "进度", legacy: "历史记录" };
@@ -16,7 +17,7 @@ export function panelActivities(trace: PanelTraceEvent[]): Activity[] {
   return trace.map((e, i) => ({
     id: `${i}`, agent: e.agent_id || (e.mission_id || (e.node === "panel_lead" ? "chair" : "system")),
     role: e.agent_type || (e.mission_type || (e.node === "panel_lead" ? "chair" : "system")),
-    target: e.target_id, kind: e.event_kind || "legacy", status: e.mission_status || e.status,
+    target: e.target_id, kind: e.event_kind || "legacy", status: e.mission_status || e.status, tool: e.tool, callId: e.call_id,
     text: e.message, at: e.ts, detail: e.detail, mission: e.agent_id === "chair" ? null : e.mission_id,
     goal: e.agent_id === "chair" ? null : e.mission_goal,
   }));

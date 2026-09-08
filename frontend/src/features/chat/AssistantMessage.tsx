@@ -13,6 +13,7 @@ import CitationBadge from "./CitationBadge";
 import { markdownHeadings } from "./chatNavigationModel";
 
 interface Props {
+  hideAvatar?: boolean;
   message: ChatMessage;
   error?: string;
   busy: boolean;
@@ -115,7 +116,7 @@ function citePlugin(citations: ChatCitation[]) {
 }
 
 /** assistant 消息：按 segments 顺序渲染 文本(markdown) / 工具卡片 / 决策卡片 */
-export default function AssistantMessage({ message, error, busy, onDecide }: Props) {
+export default function AssistantMessage({ message, error, busy, onDecide, hideAvatar = false }: Props) {
   const citations = message.citations ?? NO_CITATIONS;
   const citationMap = useMemo(
     () => new Map(citations.map((c) => [c.id, c])),
@@ -167,9 +168,9 @@ export default function AssistantMessage({ message, error, busy, onDecide }: Pro
 
   return (
     <div className="chat-enter flex gap-3">
-      <div className="w-8 h-8 rounded-md bg-primary text-on-primary flex items-center justify-center text-body font-bold shrink-0 mt-0.5">
+      {!hideAvatar && <div className="w-8 h-8 rounded-md bg-primary text-on-primary flex items-center justify-center text-body font-bold shrink-0 mt-0.5">
         Z
-      </div>
+      </div>}
       <div className="flex-1 min-w-0">
         {message.content.segments.map(renderSegment)}
         {busy && message.status !== "awaiting_action" && <AgentWorkingBar />}
