@@ -5,6 +5,8 @@ import Avatar from "@/features/admission/GrokAgentAvatar";
 import { reduceCollabEvents, type SceneInstance } from "@/features/admission/collabSceneModel";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import ToolCallCard from "@/features/chat/ToolCallCard";
+import Button from "@/components/ui/Button";
+import { StatusChip } from "@/components/ui/Chip";
 import { useTalentCollaboration } from "./useTalentCollaboration";
 import "./TalentCollaboration.css";
 
@@ -148,9 +150,10 @@ export default function TalentCollaboration(props: {
           const approachY = counterpart ? -18 : 0;
           const action = terminal && ["working", "reviewing", "waiting"].includes(instance.state) ? t("已停止") : t(instance.actionKind && instance.state === "working" ? actions[instance.actionKind] : states[instance.state]);
           const state = terminal && ["working", "reviewing", "waiting"].includes(instance.state) ? "stopped" : instance.state === "reviewing" ? "working" : instance.state;
+          const actionTone = instance.state === "failed" ? "error" : terminal && ["working", "reviewing", "waiting"].includes(instance.state) ? "neutral" : instance.state === "done" ? "success" : ["working", "reviewing"].includes(instance.state) ? "primary" : "neutral";
           return <button key={instance.id} className="tc-station" data-role={instance.role} data-active={!terminal && ["working", "reviewing"].includes(instance.state)} data-selected={selected === instance.id} data-involved={involved} style={{ left: point.x, top: point.y } as CSSProperties} onClick={() => open(instance.id)} aria-label={`${t(names[instance.role] || "任务评估")}：${goal(instance)}，${action}`}>
             <span className="tc-character" data-moving={motionActive && moving === exchange?.eventId && exchange?.sender === instance.id} data-working={motionActive && !terminal && ["working", "reviewing"].includes(instance.state)} data-communicating={motionActive && directConversation && involved} style={{ "--tc-travel-x": `${approachX}px`, "--tc-travel-y": `${approachY}px`, "--tc-delay": `${(instance.bornSeq % 5) * -0.7}s` } as CSSProperties}><Avatar role={instance.role} state={state} still={still || !live && !playing || terminal} gaze={involved && !terminal ? lookingDirection : 0} /></span>
-            <span className="tc-desk"><strong>{t(agentTitle(instance))}</strong><span className="tc-state" data-failed={instance.state === "failed"}>{action}</span></span>
+            <span className="tc-desk"><strong>{t(agentTitle(instance))}</strong><StatusChip className="tc-state-chip" tone={actionTone as "success" | "error" | "primary" | "neutral"}>{action}</StatusChip></span>
             <span className="tc-task">{brief(goal(instance), 64)}</span>
           </button>;
         })}
@@ -160,8 +163,8 @@ export default function TalentCollaboration(props: {
         </button>}
       </div></div>}
     <footer className="tc-footer">
-      {!live && events.length > 0 && <><button onClick={() => { if (playing) setPlaying(false); else { if (count >= events.length) setCursor(0); setPlaying(true); } }}>{t(playing ? "暂停回放" : "回看协作")}</button>
-        {cursor !== null && <><input aria-label={t("协作回放进度")} type="range" min="0" max={events.length} value={count} onChange={e => { setPlaying(false); setCursor(Number(e.target.value)); }} /><button onClick={() => { setCursor(null); setPlaying(false); }}>{t("回到结果")}</button></>}
+      {!live && events.length > 0 && <><Button type="button" variant="tonal" icon={playing ? "pause" : "replay"} onClick={() => { if (playing) setPlaying(false); else { if (count >= events.length) setCursor(0); setPlaying(true); } }}>{t(playing ? "暂停回放" : "回看协作")}</Button>
+        {cursor !== null && <><input aria-label={t("协作回放进度")} type="range" min="0" max={events.length} value={count} onChange={e => { setPlaying(false); setCursor(Number(e.target.value)); }} /><Button type="button" variant="text" icon="arrow_back" onClick={() => { setCursor(null); setPlaying(false); }}>{t("回到结果")}</Button></>}
       </>}
       <span>{t("点击 Agent 查看任务与依据")}</span>
     </footer>
