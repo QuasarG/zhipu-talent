@@ -92,3 +92,9 @@
 @container (max-width: 740px) { .acs-layout { display: flex; flex-direction: column; overflow-y: auto; } .acs-overview { flex-shrink: 0; } .acs-stage { max-height: 360px; flex: none; } .acs-detail { min-height: 450px; flex-shrink: 0; border-left: 0; border-top: 1px solid var(--color-outline-variant); } .acs-detail-scroll { max-height: 460px; } .acs-seat { min-height: 160px; } }
 @container (max-width: 420px) { .acs-header, .acs-now, .acs-transfer, .acs-detail-head { padding: 16px; } .acs-stage { padding-inline: 10px; } .acs-detail-scroll { padding: 16px; } .acs-header p { max-width: 30ch; line-height: 1.7; } .acs-detail-nav { padding-inline: 16px; gap: 8px; } .acs-detail-nav > div { gap: 12px; } .acs-replay { padding-inline: 12px; gap: 6px; } }
 @media (prefers-reduced-motion: reduce) { .acs-root *, .acs-root *::before, .acs-root *::after { animation: none !important; transition: none !important; } }
+/* 实例入场：创建事件到达后弹簧出现；定位/减少动效时不重播 */
+.acs-seat { animation: acs-enter .55s var(--ease-emphasized, ease-out) backwards; }
+.acs-seat[data-instant='true'] { animation: none; }
+@keyframes acs-enter { 0% { opacity: 0; transform: translateY(16px) scale(.82); } 60% { opacity: 1; transform: translateY(-3px) scale(1.04); } 100% { opacity: 1; transform: none; } }
+.acs-action { display: inline-flex; align-items: center; gap: 4px; margin-top: 3px; padding: 2px 8px; border-radius: 999px; background: var(--color-secondary-container); color: var(--color-on-secondary-container); font-size: 10px; font-weight: 500; }
+.acs-handoff-text { margin: 8px 0 0; font-size: 13px; line-height: 1.7; color: var(--color-on-surface); white-space: pre-wrap; }

@@ -8,10 +8,7 @@ import type {
   InterviewAssessmentRun,
   JdEntry,
 } from "@/lib/types";
-import EvaluationActivityViews from "@/features/admission/EvaluationActivityViews";
-import EvaluationAgentTimeline from "@/features/admission/EvaluationAgentTimeline";
-import AgentCollaborationSpace from "@/features/admission/AgentCollaborationSpace";
-import { admissionActivities } from "@/features/admission/agentActivityModel";
+import TalentCollaboration from "./TalentCollaboration";
 import AdmissionReport from "./AdmissionReport";
 import { BatchRunView, NewBatchPanel } from "./BatchViews";
 import EmptyState from "./EmptyState";
@@ -130,7 +127,7 @@ export default function AdmissionPane({
   if (selectedCandidateId && selectedJdId) {
     const runningPair = [...(batch?.runs || []), ...activeRuns].find(run => run.candidate_id === selectedCandidateId
       && run.jd_id === selectedJdId && ["running", "queued"].includes(run.status));
-    if (runningPair) return <EvaluationActivityViews run={runningPair} />;
+    if (runningPair) return <TalentCollaboration key={runningPair.id} runId={runningPair.id} status={runningPair.status} trace={runningPair.run_trace} />;
     return (
       <PairReportView
         key={`${selectedCandidateId}:${selectedJdId}`}
@@ -240,7 +237,7 @@ function PairReportView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Tabs items={[{ value: "report", label: t("评估报告") }, { value: "activity", label: t("Agent 协作") }, { value: "space", label: t("协作空间") }]} value={tab} onChange={setTab} />
+      <Tabs items={[{ value: "report", label: t("评估报告") }, { value: "space", label: t("协作过程") }]} value={tab} onChange={setTab} />
       {/* 报告是交付物：占主列 */}
       {tab === "report" ? <Card variant="filled" className="min-h-0 flex-1 overflow-hidden flex flex-col">
         <div className="border-b border-outline-variant px-4 py-3 shrink-0">
@@ -257,9 +254,7 @@ function PairReportView({
       <Card variant="filled" className="relative min-h-0 flex-1 overflow-hidden flex flex-col">
         {traceError ? <p role="alert" className="p-4 text-body-sm text-error">{t(traceError)}</p>
           : fullTrace === null ? <LoadingIndicator label={t("正在加载协作记录…")} />
-            : tab === "space"
-              ? <AgentCollaborationSpace events={admissionActivities(fullTrace)} status="completed" />
-              : <EvaluationAgentTimeline run={reportRun} compact />}
+            : <TalentCollaboration pair={{ candidateId, jdId }} status="completed" trace={reportRun.run_trace} />}
       </Card>}
     </div>
   );

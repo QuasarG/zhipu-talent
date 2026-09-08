@@ -3,6 +3,7 @@ import type {
   CandidateDetail,
   ChatConversation,
   ChatMessage,
+  CollabEvent,
   GrillDeliverables,
   GrillSessionState,
   GrillSessionSummary,
@@ -243,6 +244,16 @@ export const api = {
       if (candidateIds?.length) query.set("candidate_ids", candidateIds.join(","));
       if (jdIds?.length) query.set("jd_ids", jdIds.join(","));
       return fetchJSON<InterviewAssessment[]>(`/api/interview-assessments?${query}`);
+    },
+  },
+  agentCollab: {
+    events: (runKind: "panel" | "admission", runId: string, afterSeq = -1, limit = 500) => {
+      const query = new URLSearchParams({ run_kind: runKind, run_id: runId, after_seq: String(afterSeq), limit: String(limit) });
+      return fetchJSON<{ protocol: string; events: CollabEvent[]; latest_seq: number }>(`/api/agent-collab/events?${query}`);
+    },
+    eventsForPair: (candidateId: string, jdId: string, afterSeq = -1) => {
+      const query = new URLSearchParams({ run_kind: "admission", candidate_id: candidateId, jd_id: jdId, after_seq: String(afterSeq) });
+      return fetchJSON<{ protocol: string; run_id: string; events: CollabEvent[]; latest_seq: number }>(`/api/agent-collab/events?${query}`);
     },
   },
   tracks: {

@@ -6,7 +6,7 @@ import type {
   InterviewAssessmentRun,
   JdEntry,
 } from "@/lib/types";
-import EvaluationActivityViews from "@/features/admission/EvaluationActivityViews";
+import TalentCollaboration from "./TalentCollaboration";
 import AdmissionReport, {
   RUN_STATUS_LABEL,
   RUN_STATUS_TONE,
@@ -467,7 +467,7 @@ export function BatchRunView({
           </div>
           <div className="flex-1 min-h-0 overflow-auto admission-panel-scrollbar">
             {activeRun && (activeRun.run_trace?.length || activeRun.status !== "queued") ? (
-              <EvaluationActivityViews run={activeRun} />
+              <TalentCollaboration key={activeRun.id} runId={activeRun.id} status={activeRun.status} trace={activeRun.run_trace} />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center text-on-surface-variant">
                 <Icon name="hourglass_top" size={30} />

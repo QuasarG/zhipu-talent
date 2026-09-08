@@ -6,7 +6,7 @@ import AgentWorkbench from "./AgentWorkbench";
 import AgentCollaborationSpace from "./AgentCollaborationSpace";
 import { admissionActivities } from "./agentActivityModel";
 
-/** 运行/回放共用的协作视图：活动流（默认）与协作空间（席位化动效）同源切换。 */
+/** 运行/回放共用的协作视图：活动流（默认）与协作空间（事件流驱动）同源切换。 */
 export default function EvaluationActivityViews({ run }: { run: InterviewAssessmentRun }) {
   const { t } = useI18n();
   const [view, setView] = useState<"timeline" | "space">("timeline");
@@ -26,7 +26,7 @@ export default function EvaluationActivityViews({ run }: { run: InterviewAssessm
       <div className="min-h-0 flex-1">
         {view === "timeline"
           ? <AgentWorkbench key={run.id} events={events} status={run.status} mode="admission" />
-          : <AgentCollaborationSpace key={run.id} events={events} status={run.status} />}
+          : <AgentCollaborationSpace key={run.id} runKind="admission" runId={run.id} status={run.status} />}
       </div>
     </div>
   );

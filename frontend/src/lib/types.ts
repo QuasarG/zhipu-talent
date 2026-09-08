@@ -192,6 +192,48 @@ export interface EvaluationNodeRun {
   sequence?: number;
 }
 
+/** Agent 协作事件流（agent-collab/v1）信封：append-only，按 seq 游标续读。 */
+export interface CollabEvent {
+  protocol: string;
+  run_id: string;
+  run_kind: "panel" | "admission";
+  event_id: string;
+  seq: number;
+  at: string | null;
+  instance_id: string | null;
+  agent_type: string | null;
+  task_id: string | null;
+  task_kind: string | null;
+  turn_no: number | null;
+  message_id: string | null;
+  cause_event_id: string | null;
+  event: {
+    type: string;
+    sender?: string;
+    receiver?: string;
+    instruction?: string;
+    files?: string[];
+    questions?: string[];
+    note?: string;
+    reuse_context?: boolean;
+    round_no?: number;
+    text?: string;
+    call_id?: string;
+    tool?: string;
+    args_summary?: unknown;
+    status?: string;
+    summary?: string;
+    digest?: string;
+    artifact_id?: string;
+    succeeded?: boolean;
+    error?: string | null;
+    reply_to?: string | null;
+    mission_type?: string;
+    agent_type?: string;
+    context?: unknown;
+  } & Record<string, unknown>;
+}
+
 /** 评审团（panel）模式的全量事件轨迹（panel_trace），按发生顺序排列。 */
 export interface PanelTraceEvent {
   tool?: string;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   Evaluation,
   AcademicReport,
@@ -8,13 +8,16 @@ import type {
   EvaluationNodeRun,
   EvaluationNodeStatus,
   EvaluationRun,
+  PanelTraceEvent,
 } from "@/lib/types";
 import { useSessionState } from "@/lib/sessionState";
 import Tabs from "@/components/ui/Tabs";
 import Icon from "@/components/ui/Icon";
+import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import { StatusChip } from "@/components/ui/Chip";
 import ScoreOverview from "./ScoreOverview";
 import PanelTimeline from "./PanelTimeline";
+import AgentCollaborationSpace from "@/features/admission/AgentCollaborationSpace";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
 
@@ -67,7 +70,7 @@ export default function EvaluationWorkspace({ candidatePersonId, candidateId = "
         {tab === "result" ? (
           evaluation ? <ScoreOverview evaluation={evaluation} academicReport={academicReport} personId={candidatePersonId} /> : <ResultEmpty evaluating={evaluating} />
         ) : evaluationRun?.panel_trace?.some(e => e.node === "panel_lead") ? (
-          <PanelTimeline key={evaluationRun.id} trace={evaluationRun.panel_trace} evaluating={evaluating} status={evaluationRun.status} />
+          <PanelProcessViews runId={String(evaluationRun.id)} trace={evaluationRun.panel_trace} status={evaluationRun.status} />
         ) : (
           <EvaluationProcess
             graph={graph}
@@ -82,8 +85,30 @@ export default function EvaluationWorkspace({ candidatePersonId, candidateId = "
   );
 }
 
-function ResultEmpty({ evaluating }: { evaluating: boolean }) {
+/** 评审团运行过程：活动流与协作空间（agent-collab 事件流）切换，同一 run。 */
+function PanelProcessViews({ runId, trace, status }: { runId: string; trace: PanelTraceEvent[]; status: string }) {
   const { t } = useI18n();
+  const [view, setView] = useState<"timeline" | "space">("timeline");
+  return <div className="flex h-full min-h-0 flex-col">
+    <div className="flex shrink-0 items-center border-b border-outline-variant px-4 py-2">
+      <SegmentedButtons
+        options={[
+          { value: "timeline", label: t("活动流"), icon: "activity" },
+          { value: "space", label: t("协作空间"), icon: "layers" },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+    </div>
+    <div className="min-h-0 flex-1">
+      {view === "timeline"
+        ? <PanelTimeline trace={trace} evaluating={!["completed", "failed"].includes(status)} status={status} />
+        : <AgentCollaborationSpace runKind="panel" runId={runId} status={status} />}
+    </div>
+  </div>;
+}
+
+function ResultEmpty({ evaluating }: { evaluating: boolean }) {  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center min-h-[360px] text-center gap-2">
       <Icon name={evaluating ? "pending_actions" : "fact_check"} size={40} className="text-on-surface-variant" />
