@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Icon from "@/components/ui/Icon";
+import Avatar from "./GrokAgentAvatar";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import ToolCallCard from "@/features/chat/ToolCallCard";
 import type { ChatMessage } from "@/lib/types";
@@ -14,14 +15,6 @@ const isExchange = (e: Activity) => !!e.target && e.target !== e.agent && ["disp
 const identity = (e: Activity) => [e.id, e.agent, e.target, e.at, e.kind, e.text].join("|");
 const NO_ACTION = () => {};
 
-function Avatar({ state, id = "", role = "", gaze = 0, system = false, small = false }: { state: State; id?: string; role?: string; gaze?: number; system?: boolean; small?: boolean }) {
-  const seed = [...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 997, 0);
-  const gesture = ["verify", "cross_check"].includes(role) ? "search" : ["chair", "reviewer"].includes(role) ? "consider" : "read";
-  return <span className="acs-avatar" data-state={state} data-small={small} data-form={seed % 5}
-    data-gesture={gesture} data-facing={gaze !== 0} style={{ "--acs-tempo": `${4.8 + seed % 37 / 10}s`, "--acs-delay": `${-(seed % 53) / 10}s`, "--acs-gaze": `${gaze}px` } as CSSProperties} aria-hidden="true">
-    {system ? <Icon name="layers" size={small ? 18 : 26} /> : <span className="acs-body"><span className="acs-look"><span className="acs-eyes"><i /><i /></span></span></span>}
-  </span>;
-}
 
 function EventContent({ event, t }: { event: Activity; t: (key: string) => string }) {
   const message: ChatMessage = { id: event.id, conversation_id: "assessment", role: "assistant",
@@ -130,9 +123,9 @@ export default function AgentCollaborationSpace({ events, status }: { events: Ac
     return <button type="button" key={id} ref={el => { if (el) nodes.current.set(id, el); else nodes.current.delete(id); }}
       className={lead ? "acs-seat acs-lead" : "acs-seat"} data-state={state} aria-pressed={selectedId === id}
       onClick={() => select(id)} aria-label={nameOf(id) + " · " + id + " · " + t(labels[state])}>
-      <span className="acs-seat-avatar" key={moving ? pulse.key : "rest"} data-moving={moving} data-receiving={receiving}
+      <span className="acs-seat-avatar" data-moving={moving} data-receiving={receiving}
         style={moving ? { "--acs-dx": pulse.dx + "px", "--acs-dy": pulse.dy + "px" } as CSSProperties : undefined}>
-        <Avatar id={id} role={meta.get(id)?.role} state={state} system={id === "system"}
+        <Avatar role={meta.get(id)?.role} state={state} system={id === "system"} still={still}
           gaze={moving ? Math.sign(pulse.dx) * 4 : receiving ? -Math.sign(pulse?.dx || 1) * 4 : 0} />
       </span>
       <span className="acs-seat-info"><span className="acs-seat-title">{nameOf(id)}</span>
@@ -172,7 +165,7 @@ export default function AgentCollaborationSpace({ events, status }: { events: Ac
       </div>
       <aside className="acs-detail">
         {selectedId ? <>
-          <div className="acs-detail-head"><Avatar id={selectedId} role={meta.get(selectedId)?.role} state={stateOf(selectedId)} system={selectedId === "system"} small />
+          <div className="acs-detail-head"><Avatar role={meta.get(selectedId)?.role} state={stateOf(selectedId)} system={selectedId === "system"} small still={still} />
             <div><h3>{nameOf(selectedId)}</h3><p>{meta.get(selectedId)?.mission || selectedId} · {t(labels[stateOf(selectedId)])}</p></div>
             <button type="button" className="acs-control" aria-pressed={follow} onClick={() => setFollow(!follow)}>{t(follow ? "跟随中" : "已固定")}</button>
           </div>
