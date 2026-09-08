@@ -127,6 +127,21 @@ def _candidate_materials(candidate_id: str) -> dict[str, Any] | None:
     return None
 
 
+def _record_collab_events(envelopes) -> None:
+    """旁路写入协作事件；失败只记日志，绝不影响评估主流程。"""
+    if not envelopes:
+        return
+    from agi_talent_radar.core.collab_events import append_collab_events
+    from agi_talent_radar.core.database import get_session
+
+    try:
+        with get_session() as session:
+            append_collab_events(session, envelopes)
+            session.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("协作事件写入失败（不影响评估）", exc_info=True)
+
+
 def _run_evaluation_job(
     candidate_id: str,
     evaluation_run_id: int,
@@ -136,6 +151,7 @@ def _run_evaluation_job(
 ) -> None:
     """Run an evaluation independently from the browser's SSE connection."""
     evaluation = None
+    collab_translator = None
     try:
         mode = os.getenv("TALENT_EVALUATION_MODE", "agent")
         if mode == "panel":
@@ -144,6 +160,10 @@ def _run_evaluation_job(
             iterator = run_candidate_panel_stream(
                 resume, academic_report=academic_report, materials=_candidate_materials(candidate_id),
             )
+            from agi_talent_radar.core.collab_events import PanelCollabTranslator
+
+            collab_translator = PanelCollabTranslator(str(evaluation_run_id))
+            _record_collab_events([collab_translator.run_event("run.started")])
         elif mode == "agent":
             iterator = run_candidate_agent_stream(
                 resume, academic_report=academic_report, materials=_candidate_materials(candidate_id),
@@ -156,6 +176,10 @@ def _run_evaluation_job(
 
                 with get_session() as session:
                     record_node_event(session, evaluation_run_id, event)
+                    if collab_translator is not None:
+                        from agi_talent_radar.core.collab_events import append_collab_events
+
+                        append_collab_events(session, collab_translator.feed(event))
                 event_queue.put(event)
             elif event["type"] == "result":
                 evaluation = CandidateEvaluation.model_validate(event["result"])
@@ -171,6 +195,10 @@ def _run_evaluation_job(
         with get_session() as session:
             save_evaluation(session, evaluation, evaluation_id=evaluation_run_id)
 
+        if collab_translator is not None:
+            _record_collab_events([collab_translator.run_event(
+                "run.completed", summary=str(evaluation.decision_summary or ""))])
+
         try:
             from agi_talent_radar.services import talent_service
 
@@ -185,6 +213,8 @@ def _run_evaluation_job(
 
         with get_session() as session:
             fail_evaluation_run(session, evaluation_run_id, exc)
+        if collab_translator is not None:
+            _record_collab_events([collab_translator.run_event("run.failed", error=str(exc)[:300])])
         event_queue.put({"type": "error", "message": "评估执行失败，请稍后重试；问题持续请联系管理员。"})
     finally:
         _set_evaluation_active(evaluation_run_id, False)
@@ -229,6 +259,7 @@ def create_app() -> Flask:
     from agi_talent_radar.web.config_api import build_config_blueprint
     from agi_talent_radar.web.knowledge_api import build_knowledge_blueprint
     from agi_talent_radar.web.interview_assessment_api import build_interview_assessment_blueprint
+    from agi_talent_radar.web.collab_api import build_collab_blueprint
     from agi_talent_radar.scholarship.api import build_scholarship_blueprint
     from agi_talent_radar.grill.api import build_grill_blueprint
     from agi_talent_radar.talent_bundle.api import build_bundle_blueprint
@@ -252,6 +283,7 @@ def create_app() -> Flask:
     app.register_blueprint(build_config_blueprint())
     app.register_blueprint(build_knowledge_blueprint())
     app.register_blueprint(build_interview_assessment_blueprint())
+    app.register_blueprint(build_collab_blueprint())
     app.register_blueprint(build_scholarship_blueprint())
     app.register_blueprint(build_grill_blueprint())
     app.register_blueprint(build_bundle_blueprint())

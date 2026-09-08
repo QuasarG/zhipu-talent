@@ -21,7 +21,7 @@ from agi_talent_radar.core.db.repository import _replace_evaluation_details
 logger = logging.getLogger(__name__)
 
 
-LATEST_SCHEMA_VERSION = 31
+LATEST_SCHEMA_VERSION = 32
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -392,6 +392,14 @@ def ensure_schema(engine) -> None:
             engine,
             31,
             "scholarship scorer agent: evaluation trace segments (thinking/tool/final)",
+        )
+    if current_version < 32:
+        # agent_collab_events 新表由 create_all 自动创建，无需 ALTER；
+        # (run_id, seq) 唯一索引由 _ensure_indexes 按 ORM 元数据建立。
+        _record_version(
+            engine,
+            32,
+            "phase 32: append-only agent collaboration event stream (agent-collab/v1)",
         )
     if current_version < 27:
         existing = {c["name"] for c in inspect(engine).get_columns("scholarship_materials")}

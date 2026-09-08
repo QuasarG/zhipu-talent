@@ -796,6 +796,35 @@ class CandidateJdAssessmentORM(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class AgentCollabEventORM(Base):
+    """Agent 协作事件流（agent-collab/v1）：append-only，按运行游标读取。
+
+    事件在真实执行点旁路写入，不参与评分；旧链路 JSON 轨迹保持原样。
+    """
+
+    __tablename__ = "agent_collab_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "seq", name="uq_agent_collab_events_run_seq"),
+        Index("ix_agent_collab_events_run", "run_id", "id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(36), nullable=False, unique=True)
+    run_id = Column(String(64), nullable=False)
+    run_kind = Column(String(16), nullable=False)
+    seq = Column(Integer, nullable=False)
+    protocol = Column(String(32), default="agent-collab/v1", nullable=False)
+    instance_id = Column(String(64))
+    agent_type = Column(String(32))
+    task_id = Column(String(64))
+    task_kind = Column(String(32))
+    turn_no = Column(Integer)
+    message_id = Column(String(36))
+    cause_event_id = Column(String(36))
+    event = Column(JSON, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
 class InterviewAssessmentRunORM(Base):
     """配对的一次运行尝试；运行成功后结果晋升为当前报告。"""
 

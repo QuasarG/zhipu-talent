@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import and_, or_  # noqa: F401  (and_/or_ 保留给查询构造辅助；大批次已改分块 IN)
 
@@ -335,6 +338,9 @@ def assert_jd_editable(session, jd_id: str) -> None:
 
 
 def _run_pair(run_id: str) -> None:
+    from agi_talent_radar.core.collab_events import AdmissionCollabTranslator
+
+    collab = AdmissionCollabTranslator(run_id)
     try:
         with get_session() as session:
             run = session.get(InterviewAssessmentRunORM, run_id)
@@ -353,12 +359,13 @@ def _run_pair(run_id: str) -> None:
             run.started_at = _now()
             run.input_fingerprint = fingerprint
             session.commit()
+        _record_collab_events([collab.run_event("run.started")])
 
         result = evaluate_candidate_for_job(
             resume,
             jd.id,
             card,
-            on_event=lambda event: _append_run_event(run_id, event),
+            on_event=lambda event: _append_run_event(run_id, event, collab),
         )
 
         with get_session() as session:
@@ -369,22 +376,28 @@ def _run_pair(run_id: str) -> None:
                 return
             if run.cancellation_requested:
                 _discard_cancelled_run(session, run)
+                _record_collab_events([collab.run_event("run.cancelled")])
                 return
             current_fingerprint = _input_fingerprint(_candidate_to_resume(candidate), jd, AssessmentCard.model_validate(jd.assessment_card))
             if current_fingerprint != run.input_fingerprint:
                 raise RuntimeError("评估输入在运行期间发生变化，本次结果已作废。")
             _promote_result(session, run, result.model_dump())
+        _record_collab_events([collab.run_event(
+            "run.completed", summary=str(result.decision or ""))])
     except AssessmentCancelled:
         with get_session() as session:
             run = session.get(InterviewAssessmentRunORM, run_id)
             if run is not None:
                 _discard_cancelled_run(session, run)
+        _record_collab_events([collab.run_event("run.cancelled")])
     except Exception as exc:  # noqa: BLE001
+        cancelled = False
         with get_session() as session:
             run = session.get(InterviewAssessmentRunORM, run_id)
             if run is not None:
                 if run.cancellation_requested or run.status == "cancelled":
                     _discard_cancelled_run(session, run)
+                    cancelled = True
                 else:
                     run.status = "failed"
                     run.error_message = str(exc)
@@ -393,9 +406,25 @@ def _run_pair(run_id: str) -> None:
                     _release_pair_lock(session, run)
                     session.commit()
                     _refresh_batch(session, run.batch_id)
+        _record_collab_events([collab.run_event(
+            "run.cancelled" if cancelled else "run.failed", error=str(exc)[:300])])
 
 
-def _append_run_event(run_id: str, event: dict[str, Any]) -> None:
+def _record_collab_events(envelopes) -> None:
+    """旁路写入协作事件；失败只记日志，绝不影响评估主流程。"""
+    if not envelopes:
+        return
+    from agi_talent_radar.core.collab_events import append_collab_events
+
+    try:
+        with get_session() as session:
+            append_collab_events(session, envelopes)
+            session.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("协作事件写入失败（不影响评估）", exc_info=True)
+
+
+def _append_run_event(run_id: str, event: dict[str, Any], collab: Any = None) -> None:
     lock = _run_lock(run_id)
     with lock, get_session() as session:
         run = session.get(InterviewAssessmentRunORM, run_id)
@@ -403,6 +432,10 @@ def _append_run_event(run_id: str, event: dict[str, Any]) -> None:
             raise AssessmentCancelled("评估已取消。")
         run.current_node = str(event.get("node_id", ""))
         run.run_trace = [*(run.run_trace or []), event]
+        if collab is not None:
+            from agi_talent_radar.core.collab_events import append_collab_events
+
+            append_collab_events(session, collab.feed(event))
         session.commit()
 
 
