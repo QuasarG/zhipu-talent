@@ -120,45 +120,38 @@ export default function TalentCollaboration(props: {
       const posInRow = index % cols;
       const inRow = row === rows - 1 ? scorers.length - row * cols : cols;
       const seed = layoutJitter(instance.id);
-      const lift = row === 0 ? 36 * (1 - (Math.abs(posInRow - (cols - 1) / 2) / Math.max((cols - 1) / 2, 1)) ** 2) : 0;
+      const lift = row === 0 ? 30 * (1 - (Math.abs(posInRow - (cols - 1) / 2) / Math.max((cols - 1) / 2, 1)) ** 2) : 0;
       positions.set(instance.id, {
         x: cx + (posInRow - (inRow - 1) / 2) * spacing + (seed % 16) - 8,
-        y: 456 + row * 150 - lift + (seed % 14) - 7,
+        y: 420 + row * 150 - lift + (seed % 14) - 7,
       });
     });
     mappers.forEach((instance, index) => {
       const seed = layoutJitter(instance.id);
-      positions.set(instance.id, { x: Math.max(122, width * 0.16) + (seed % 18) - 9, y: 268 - index * 10 + (seed % 12) - 6 });
+      positions.set(instance.id, { x: Math.max(122, width * 0.16) + (seed % 18) - 9, y: 250 - index * 10 + (seed % 12) - 6 });
     });
     reviewers.forEach((instance, index) => {
       const seed = layoutJitter(instance.id);
-      positions.set(instance.id, { x: Math.min(width - 122, width * 0.84) + (seed % 18) - 9, y: 268 - index * 10 + (seed % 12) - 6 });
+      positions.set(instance.id, { x: Math.min(width - 122, width * 0.84) + (seed % 18) - 9, y: 250 - index * 10 + (seed % 12) - 6 });
     });
-    workerBottom = 456 + (rows - 1) * 150 + 8;
+    workerBottom = 420 + (rows - 1) * 150 + 8;
   }
-  const stageHeight = workerBottom + 176;
-  const laneAnchors: Array<[string, { x: number; y: number } | undefined]> = [
-    ["理解候选人", mappers[0] ? positions.get(mappers[0].id) : undefined],
-    ["分工核验", scorers.length ? positions.get(scorers.reduce((a, b) => positions.get(b.id)!.y >= positions.get(a.id)!.y ? b : a, scorers[0]).id) : undefined],
-    ["综合审阅", reviewers[0] ? positions.get(reviewers[0].id) : undefined],
-  ];
+  const stageHeight = workerBottom + 150;
   const motionActive = !still && (live || playing);
   const senderPoint = exchange && positions.get(exchange.sender);
   const receiverPoint = exchange && positions.get(exchange.receiver);
   const from = exchange && (senderPoint || (exchange.sender === "system" ? positions.get("system") : undefined));
   const to = exchange && (receiverPoint || (exchange.receiver === "system" ? positions.get("system") : undefined));
   const directConversation = Boolean(exchange && senderPoint && receiverPoint && exchange.sender !== exchange.receiver);
-  const bubbleTarget = from || to;
-  // 低位 Agent 的气泡向空侧偏移，避免遮住上方工位的任务说明；尾巴仍回指发送方。
   const bubbleHalf = Math.min(150, Math.max(120, (width - 40) / 2));
-  const bubbleShift = bubbleTarget && bubbleTarget.y > 480
-    ? (bubbleTarget.x <= width * .58 ? 154 : -154)
-    : 0;
-  const bubbleCenter = bubbleTarget
-    ? Math.max(bubbleHalf + 20, Math.min(width - bubbleHalf - 20, bubbleTarget.x + bubbleShift))
-    : 0;
-  const bubblePoint = bubbleTarget
-    ? { x: bubbleCenter, y: Math.max(145, bubbleTarget.y - 90), tailOffset: bubbleTarget.x - bubbleCenter } : null;
+  // 气泡悬浮在双方中点上方，占据系统调度台与工位带之间的空档，不遮任何工位
+  const bubbleMid = from && to ? { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) } : from || to;
+  const bubblePoint = bubbleMid ? {
+    x: Math.max(bubbleHalf + 16, Math.min(width - bubbleHalf - 16, bubbleMid.x)),
+    y: Math.max(112, bubbleMid.y - 150),
+    tailOffset: 0,
+  } : null;
+  if (bubblePoint && from) bubblePoint.tailOffset = Math.max(-bubbleHalf + 26, Math.min(bubbleHalf - 26, from.x - bubblePoint.x));
   const active = instances.filter(i => ["working", "reviewing"].includes(i.state));
   const headline = loading ? "正在加载评估过程" : terminal ? props.status === "failed" || scene.runState === "failed" ? "评估中断" : props.status === "cancelled" || scene.runState === "cancelled" ? "评估已停止" : "评估已完成"
     : active.length > 1 ? "多位 Agent 正在并行评估" : active.length ? `${agentTitle(active[0])}正在工作` : "等待任务推进";
@@ -174,8 +167,9 @@ export default function TalentCollaboration(props: {
     {error && <div className="tc-notice" role="alert">{t(error)} <button onClick={retry}>{t("重试")}</button></div>}
     {!loading && !events.length ? <div className="tc-empty"><h3>{t(live ? "等待评估开始" : "这次评估没有可展示的协作过程")}</h3><p>{t(live ? "Agent 开始工作后会出现在这里" : "已有评估报告不受影响")}</p></div> :
       <div className="tc-scroll" ref={viewport}><div className="tc-stage" data-narrow={narrow} style={{ height: stageHeight, width }}>
-        {!narrow && laneAnchors.map(([label, anchor]) => anchor
-          ? <span key={label} className="tc-lane-label" style={{ left: anchor.x, top: anchor.y + 108 }}>{t(label)}</span> : null)}
+        {!narrow && <div className="tc-lane-strip" aria-hidden="true">
+          <span>{t("理解候选人")}</span><i /><span>{t("分工核验")}</span><i /><span>{t("综合审阅")}</span>
+        </div>}
         <button className="tc-coordinator" onClick={() => { opener.current = document.activeElement as HTMLElement; setHistory(true); }}><span className="tc-coordinator-mark" aria-hidden="true" /><strong>{t("系统调度")}</strong><span>{t("查看交接")}</span></button>
         {instances.length === 0 && <div className="tc-stage-empty"><span className="tc-stage-empty-dot" aria-hidden="true" /><strong>{t("正在搭建协作小组")}</strong><p>{t("系统会先分派能力分析 Agent")}</p></div>}
         {instances.map(instance => {

@@ -9,9 +9,10 @@
 .tc-options summary { min-height: 32px; padding: 7px 10px; border-radius: var(--radius-sm); color: var(--color-on-surface-variant); transition: background-color 150ms var(--ease-standard), color 150ms var(--ease-standard); }
 .tc-options summary:hover { background: var(--color-surface-low); color: var(--color-on-surface); }
 .tc-options label { position: absolute; right: 0; z-index: 5; display: flex; gap: 10px; width: 170px; padding: 12px; margin-top: 6px; border: 1px solid var(--color-outline-variant); background: var(--color-surface-lowest); border-radius: var(--radius-md); box-shadow: var(--shadow-2); }
-.tc-scroll { overflow: auto; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--color-outline-variant) transparent; }
-.tc-stage { position: relative; width: 880px; margin: 0 auto; min-height: 440px; background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--color-primary-container) 36%, transparent), transparent 46%); }
-.tc-lane-label { position: absolute; transform: translateX(-50%); color: var(--color-on-surface-variant); font-size: 12px; white-space: nowrap; pointer-events: none; }
+.tc-scroll { display: grid; align-items: safe center; justify-items: safe center; overflow: auto; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--color-outline-variant) transparent; }
+.tc-stage { position: relative; width: 880px; margin: 0; min-height: 440px; background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--color-primary-container) 36%, transparent), transparent 46%); }
+.tc-lane-strip { position: absolute; bottom: 24px; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 14px; color: var(--color-on-surface-variant); font-size: 12px; letter-spacing: .04em; pointer-events: none; }
+.tc-lane-strip i { width: 46px; height: 1px; background: linear-gradient(90deg, transparent, var(--color-outline-variant) 30%, var(--color-outline-variant) 70%, transparent); }
 .tc-stage-empty { position: absolute; left: 50%; top: 280px; transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; width: min(270px, calc(100% - 48px)); padding: 22px 24px; border: 1px dashed var(--color-outline-variant); border-radius: 18px; background: rgb(255 255 255 / .68); text-align: center; }
 .tc-stage-empty strong { font-size: 14px; font-weight: 650; }
 .tc-stage-empty p { margin: 0; color: var(--color-on-surface-variant); font-size: 12px; }
