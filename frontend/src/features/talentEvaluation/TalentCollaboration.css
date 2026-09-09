@@ -10,8 +10,9 @@
 .tc-options summary:hover { background: var(--color-surface-low); color: var(--color-on-surface); }
 .tc-options label { position: absolute; right: 0; z-index: 5; display: flex; gap: 10px; width: 170px; padding: 12px; margin-top: 6px; border: 1px solid var(--color-outline-variant); background: var(--color-surface-lowest); border-radius: var(--radius-md); box-shadow: var(--shadow-2); }
 .tc-scroll { overflow: auto; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--color-outline-variant) transparent; }
-.tc-stage { position: relative; width: 880px; margin: 0 auto; min-height: 440px; background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--color-primary-container) 36%, transparent), transparent 42%), linear-gradient(90deg, transparent 33.2%, var(--color-outline-variant) 33.25%, transparent 33.35%, transparent 66.55%, var(--color-outline-variant) 66.6%, transparent 66.7%); }
-.tc-lane-labels { position: absolute; top: 235px; left: 0; right: 0; display: grid; grid-template-columns: repeat(3, 1fr); color: var(--color-on-surface-variant); text-align: center; font-size: 12px; }
+.tc-stage { position: relative; width: 880px; margin: 0 auto; min-height: 440px; background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--color-primary-container) 36%, transparent), transparent 46%); }
+.tc-arc { position: absolute; transform: translateX(-50%); border: 1px dashed color-mix(in srgb, var(--color-outline) 55%, transparent); border-top: 0; border-left-color: transparent; border-right-color: transparent; border-radius: 0 0 50% 50% / 0 0 100% 100%; pointer-events: none; }
+.tc-lane-label { position: absolute; transform: translateX(-50%); color: var(--color-on-surface-variant); font-size: 12px; white-space: nowrap; pointer-events: none; }
 .tc-stage-empty { position: absolute; left: 50%; top: 280px; transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; width: min(270px, calc(100% - 48px)); padding: 22px 24px; border: 1px dashed var(--color-outline-variant); border-radius: 18px; background: rgb(255 255 255 / .68); text-align: center; }
 .tc-stage-empty strong { font-size: 14px; font-weight: 650; }
 .tc-stage-empty p { margin: 0; color: var(--color-on-surface-variant); font-size: 12px; }
@@ -70,7 +71,6 @@
 .tc-character[data-communicating=true] { animation: tc-approach 1.4s cubic-bezier(.16,1,.3,1) both; z-index: 4; }
 @keyframes tc-work-cycle { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 35% { transform: translate(15px, -7px) rotate(2deg); } 70% { transform: translate(-12px, 4px) rotate(-2deg); } }
 @keyframes tc-approach { 0%, 100% { transform: translate(0, 0); } 35%, 65% { transform: translate(var(--tc-travel-x), var(--tc-travel-y)); } }
-.tc-stage[data-narrow=true] .tc-lane-labels { display: none; }
 .tc-stage[data-narrow=true] .tc-message { font-size: 12px; }
 .tc-stage[data-narrow=true] .tc-message p { font-size: 12px; }
 @container (max-width: 900px) { .tc-stage { margin-left: 0; } .tc-heading { padding: 20px; } .tc-heading h2 { font-size: 18px; } .tc-footer > span { display: none; } }

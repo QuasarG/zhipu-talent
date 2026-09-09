@@ -96,15 +96,36 @@ export default function TalentCollaboration(props: {
 
   const positions = new Map<string, { x: number; y: number }>();
   const narrow = width < 680;
-  positions.set("system", { x: width / 2, y: 42 });
-  const columns = [instances.filter(i => i.role === "mapper"), instances.filter(i => !["mapper", "reviewer"].includes(i.role)), instances.filter(i => i.role === "reviewer")];
   const layoutJitter = (id: string) => [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  columns.forEach((column, col) => column.forEach((i, row) => {
-    const seed = layoutJitter(i.id);
-    positions.set(i.id, { x: width * (col + .5) / 3 + (seed % 34) - 17 + (row % 2 ? 24 : -24), y: 310 + row * 180 + (seed % 26) - 13 });
-  }));
-  if (narrow) columns.flat().forEach((i, row) => positions.set(i.id, { x: width / 2 + (layoutJitter(i.id) % 22) - 11, y: 260 + row * 170 }));
-  const stageHeight = narrow ? 310 + instances.length * 170 : 410 + Math.max(0, ...columns.map(c => c.length - 1)) * 180;
+  positions.set("system", { x: width / 2, y: 46 });
+  const mappers = instances.filter(i => i.role === "mapper");
+  const reviewers = instances.filter(i => i.role === "reviewer");
+  const scorers = instances.filter(i => !["mapper", "reviewer"].includes(i.role));
+  let workerBottom = 420;
+  let arcRadius = 0;
+  if (narrow) {
+    // 窄屏左右交错下行，避免一条竖列
+    instances.forEach((instance, index) => {
+      const seed = layoutJitter(instance.id);
+      positions.set(instance.id, { x: width * (index % 2 ? 0.72 : 0.28) + (seed % 18) - 9, y: 214 + index * 158 + (seed % 20) - 10 });
+    });
+    workerBottom = 214 + Math.max(0, instances.length - 1) * 158;
+  } else {
+    // 工位沿弧线自左向右：理解 → 分工 → 综合，弧心在舞台上方
+    const cx = width / 2;
+    const cy = 50;
+    arcRadius = Math.min(360, (width / 2 - 128) / 0.848);
+    const place = (instance: SceneInstance, angleDeg: number) => {
+      const angle = angleDeg * Math.PI / 180;
+      const seed = layoutJitter(instance.id);
+      positions.set(instance.id, { x: cx + arcRadius * Math.cos(angle) + (seed % 24) - 12, y: cy + arcRadius * Math.sin(angle) + (seed % 16) - 8 });
+    };
+    mappers.forEach((instance, index) => place(instance, Math.min(150, 146 - index * 12)));
+    reviewers.forEach((instance, index) => place(instance, Math.max(30, 34 + index * 12)));
+    scorers.forEach((instance, index) => place(instance, 118 - (index + 0.5) * 56 / scorers.length));
+    workerBottom = cy + arcRadius + 8;
+  }
+  const stageHeight = workerBottom + 176;
   const motionActive = !still && (live || playing);
   const senderPoint = exchange && positions.get(exchange.sender);
   const receiverPoint = exchange && positions.get(exchange.receiver);
@@ -137,7 +158,9 @@ export default function TalentCollaboration(props: {
     {error && <div className="tc-notice" role="alert">{t(error)} <button onClick={retry}>{t("重试")}</button></div>}
     {!loading && !events.length ? <div className="tc-empty"><h3>{t(live ? "等待评估开始" : "这次评估没有可展示的协作过程")}</h3><p>{t(live ? "Agent 开始工作后会出现在这里" : "已有评估报告不受影响")}</p></div> :
       <div className="tc-scroll" ref={viewport}><div className="tc-stage" data-narrow={narrow} style={{ height: stageHeight, width }}>
-        <div className="tc-lane-labels"><span>{t("理解候选人")}</span><span>{t("分工核验")}</span><span>{t("综合审阅")}</span></div>
+        {!narrow && arcRadius > 0 && <span className="tc-arc" aria-hidden="true" style={{ left: width / 2, top: 50, width: arcRadius * 2, height: arcRadius }} />}
+        {!narrow && [["理解候选人", mappers[0] && positions.get(mappers[0].id)], ["分工核验", scorers.length ? positions.get(scorers.reduce((a, b) => positions.get(b.id)!.y >= positions.get(a.id)!.y ? b : a, scorers[0]).id) : undefined], ["综合审阅", reviewers[0] && positions.get(reviewers[0].id)]].map(([label, anchor]) => anchor
+          ? <span key={label} className="tc-lane-label" style={{ left: anchor.x, top: anchor.y + 108 }}>{t(label)}</span> : null)}
         <button className="tc-coordinator" onClick={() => { opener.current = document.activeElement as HTMLElement; setHistory(true); }}><span className="tc-coordinator-mark" aria-hidden="true" /><strong>{t("系统调度")}</strong><span>{t("查看交接")}</span></button>
         {instances.length === 0 && <div className="tc-stage-empty"><span className="tc-stage-empty-dot" aria-hidden="true" /><strong>{t("正在搭建协作小组")}</strong><p>{t("系统会先分派能力分析 Agent")}</p></div>}
         {instances.map(instance => {
