@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import type { CollabEvent, ChatMessage, WorkflowNodeEvent } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
 import Avatar from "@/features/admission/GrokAgentAvatar";
-import { reduceCollabEvents, type SceneInstance } from "@/features/admission/collabSceneModel";
+import { reduceCollabEvents, instanceName, type SceneInstance } from "@/features/admission/collabSceneModel";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import ToolCallCard from "@/features/chat/ToolCallCard";
 import Button from "@/components/ui/Button";
+import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 import { useTalentCollaboration } from "./useTalentCollaboration";
 import "./TalentCollaboration.css";
@@ -153,6 +154,14 @@ export default function TalentCollaboration(props: {
   } : null;
   if (bubblePoint && from) bubblePoint.tailOffset = Math.max(-bubbleHalf + 26, Math.min(bubbleHalf - 26, from.x - bubblePoint.x));
   const active = instances.filter(i => ["working", "reviewing"].includes(i.state));
+  // 工作台统计卡（借鉴 teamagentx 任务看板，数据全部来自事件归约）
+  const taskList = useMemo(() => [...scene.tasks.values()], [scene]);
+  const stats = [
+    { key: "running", label: "执行中", value: taskList.filter(t => t.state === "started").length, icon: "sync", tone: "primary" },
+    { key: "pending", label: "待处理", value: taskList.filter(t => t.state === "dispatched").length, icon: "schedule", tone: "warning" },
+    { key: "done", label: "已完成", value: taskList.filter(t => t.state === "completed").length, icon: "check_circle", tone: "success" },
+    { key: "failed", label: "需补充", value: taskList.filter(t => t.state === "failed").length, icon: "error", tone: "error" },
+  ] as const;
   const headline = loading ? "正在加载评估过程" : terminal ? props.status === "failed" || scene.runState === "failed" ? "评估中断" : props.status === "cancelled" || scene.runState === "cancelled" ? "评估已停止" : "评估已完成"
     : active.length > 1 ? "多位 Agent 正在并行评估" : active.length ? `${agentTitle(active[0])}正在工作` : "等待任务推进";
   const messages = focused ? scene.messages.filter(m => m.sender === focused.id) : [];
@@ -165,8 +174,14 @@ export default function TalentCollaboration(props: {
       <details className="tc-options"><summary>{t("显示选项")}</summary><label><input type="checkbox" checked={still} onChange={e => setStill(e.target.checked)} />{t("减少动效")}</label></details>
     </header>
     {error && <div className="tc-notice" role="alert">{t(error)} <button onClick={retry}>{t("重试")}</button></div>}
+    <div className="tc-stats">
+      {stats.map(s => <div key={s.key} className="tc-stat">
+        <span className="tc-stat-text"><span>{t(s.label)}</span><strong>{s.value}</strong></span>
+        <i data-tone={s.tone} aria-hidden="true"><Icon name={s.icon} size={18} /></i>
+      </div>)}
+    </div>
     {!loading && !events.length ? <div className="tc-empty"><h3>{t(live ? "等待评估开始" : "这次评估没有可展示的协作过程")}</h3><p>{t(live ? "Agent 开始工作后会出现在这里" : "已有评估报告不受影响")}</p></div> :
-      <div className="tc-scroll" ref={viewport}><div className="tc-stage" data-narrow={narrow} style={{ height: stageHeight, width }}>
+      <div className="tc-main"><div className="tc-stage-col"><div className="tc-scroll" ref={viewport}><div className="tc-stage" data-narrow={narrow} style={{ height: stageHeight, width }}>
         {!narrow && <div className="tc-lane-strip" aria-hidden="true">
           <span>{t("理解候选人")}</span><i /><span>{t("分工核验")}</span><i /><span>{t("综合审阅")}</span>
         </div>}
@@ -193,7 +208,21 @@ export default function TalentCollaboration(props: {
           <span className="tc-message-meta"><strong>{t(name(exchange.sender))}</strong><span className="tc-speaking">{t("和")}</span><strong>{t(name(exchange.receiver))}</strong><small>{t(exchange.kind === "dispatch" ? "派发任务" : exchange.succeeded ? "交付发现" : "报告问题")}</small></span>
           <p>{brief(exchange.text) || t("查看本次交接内容")}</p><span className="tc-message-open">{t("查看完整内容")}</span>
         </button>}
-      </div></div>}
+      </div></div></div><aside className="tc-tasks" aria-label={t("任务清单")}>
+        <header><strong>{t("任务清单")}</strong><span>{taskList.length}</span></header>
+        <div className="tc-task-list">
+          {taskList.map(task => {
+            const tone = task.state === "completed" ? "success" : task.state === "failed" ? "error" : task.state === "started" ? "primary" : "neutral";
+            const label = task.state === "completed" ? "已完成" : task.state === "failed" ? "失败" : task.state === "started" ? "执行中" : "已派发";
+            return <div key={task.key} className="tc-task-row">
+              <div className="tc-task-info"><strong>{brief(task.goal, 44) || t("未命名任务")}</strong>
+                <span>{scene.instances.get(task.instanceId) ? instanceName(scene.instances.get(task.instanceId)!) : task.instanceId} · {t("第 {n} 轮", { n: task.turn })}</span></div>
+              <StatusChip tone={tone as "success" | "error" | "primary" | "neutral"}>{t(label)}</StatusChip>
+            </div>;
+          })}
+          {!taskList.length && <p className="tc-muted">{t("任务派发后显示在这里")}</p>}
+        </div>
+      </aside></div>}
     <footer className="tc-footer">
       {!live && events.length > 0 && <><Button type="button" variant="tonal" icon={playing ? "pause" : "replay"} onClick={() => { if (playing) setPlaying(false); else { if (count >= events.length) setCursor(0); setPlaying(true); } }}>{t(playing ? "暂停回放" : "回看协作")}</Button>
         {cursor !== null && <><input aria-label={t("协作回放进度")} type="range" min="0" max={events.length} value={count} onChange={e => { setPlaying(false); setCursor(Number(e.target.value)); }} /><Button type="button" variant="text" icon="arrow_back" onClick={() => { setCursor(null); setPlaying(false); }}>{t("回到结果")}</Button></>}

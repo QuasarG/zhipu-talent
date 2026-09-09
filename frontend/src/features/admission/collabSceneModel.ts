@@ -244,6 +244,10 @@ export function reduceCollabEvents(events: CollabEvent[], base?: CollabScene): C
           receiver.actionKind = "analyzing";
           receiver.action = textOf(event.digest).slice(0, 80);
         }
+        // 回传即任务收尾：链路可能只发 result.returned 而没有独立 task.completed
+        const settled = [...scene.tasks.values()].reverse()
+          .find(t => t.instanceId === (instanceId || event.sender || "") && t.state !== "completed" && t.state !== "failed");
+        if (settled) settled.state = event.succeeded === false ? "failed" : "completed";
         scene.exchanges.push({
           eventId: envelope.event_id, seq, at: envelope.at,
           sender: instanceId || event.sender || "", receiver: event.receiver || "",
