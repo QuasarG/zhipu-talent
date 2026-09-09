@@ -126,6 +126,11 @@ export default function TalentCollaboration(props: {
     workerBottom = cy + arcRadius + 8;
   }
   const stageHeight = workerBottom + 176;
+  const laneAnchors: Array<[string, { x: number; y: number } | undefined]> = [
+    ["理解候选人", mappers[0] ? positions.get(mappers[0].id) : undefined],
+    ["分工核验", scorers.length ? positions.get(scorers.reduce((a, b) => positions.get(b.id)!.y >= positions.get(a.id)!.y ? b : a, scorers[0]).id) : undefined],
+    ["综合审阅", reviewers[0] ? positions.get(reviewers[0].id) : undefined],
+  ];
   const motionActive = !still && (live || playing);
   const senderPoint = exchange && positions.get(exchange.sender);
   const receiverPoint = exchange && positions.get(exchange.receiver);
@@ -159,7 +164,7 @@ export default function TalentCollaboration(props: {
     {!loading && !events.length ? <div className="tc-empty"><h3>{t(live ? "等待评估开始" : "这次评估没有可展示的协作过程")}</h3><p>{t(live ? "Agent 开始工作后会出现在这里" : "已有评估报告不受影响")}</p></div> :
       <div className="tc-scroll" ref={viewport}><div className="tc-stage" data-narrow={narrow} style={{ height: stageHeight, width }}>
         {!narrow && arcRadius > 0 && <span className="tc-arc" aria-hidden="true" style={{ left: width / 2, top: 50, width: arcRadius * 2, height: arcRadius }} />}
-        {!narrow && [["理解候选人", mappers[0] && positions.get(mappers[0].id)], ["分工核验", scorers.length ? positions.get(scorers.reduce((a, b) => positions.get(b.id)!.y >= positions.get(a.id)!.y ? b : a, scorers[0]).id) : undefined], ["综合审阅", reviewers[0] && positions.get(reviewers[0].id)]].map(([label, anchor]) => anchor
+        {!narrow && laneAnchors.map(([label, anchor]) => anchor
           ? <span key={label} className="tc-lane-label" style={{ left: anchor.x, top: anchor.y + 108 }}>{t(label)}</span> : null)}
         <button className="tc-coordinator" onClick={() => { opener.current = document.activeElement as HTMLElement; setHistory(true); }}><span className="tc-coordinator-mark" aria-hidden="true" /><strong>{t("系统调度")}</strong><span>{t("查看交接")}</span></button>
         {instances.length === 0 && <div className="tc-stage-empty"><span className="tc-stage-empty-dot" aria-hidden="true" /><strong>{t("正在搭建协作小组")}</strong><p>{t("系统会先分派能力分析 Agent")}</p></div>}
