@@ -11,7 +11,6 @@
 .tc-options label { position: absolute; right: 0; z-index: 5; display: flex; gap: 10px; width: 170px; padding: 12px; margin-top: 6px; border: 1px solid var(--color-outline-variant); background: var(--color-surface-lowest); border-radius: var(--radius-md); box-shadow: var(--shadow-2); }
 .tc-scroll { overflow: auto; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--color-outline-variant) transparent; }
 .tc-stage { position: relative; width: 880px; margin: 0 auto; min-height: 440px; background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--color-primary-container) 36%, transparent), transparent 46%); }
-.tc-arc { position: absolute; transform: translateX(-50%); border: 1px dashed color-mix(in srgb, var(--color-outline) 55%, transparent); border-top: 0; border-left-color: transparent; border-right-color: transparent; border-radius: 0 0 50% 50% / 0 0 100% 100%; pointer-events: none; }
 .tc-lane-label { position: absolute; transform: translateX(-50%); color: var(--color-on-surface-variant); font-size: 12px; white-space: nowrap; pointer-events: none; }
 .tc-stage-empty { position: absolute; left: 50%; top: 280px; transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; width: min(270px, calc(100% - 48px)); padding: 22px 24px; border: 1px dashed var(--color-outline-variant); border-radius: 18px; background: rgb(255 255 255 / .68); text-align: center; }
 .tc-stage-empty strong { font-size: 14px; font-weight: 650; }
@@ -24,7 +23,7 @@
 .tc-coordinator-mark::before, .tc-coordinator-mark::after { content: ""; position: absolute; left: 7px; right: 7px; height: 3px; border-radius: 99px; background: var(--color-surface-lowest); }
 .tc-coordinator-mark::before { top: 8px; box-shadow: 0 6px 0 var(--color-surface-lowest); }
 .tc-coordinator-mark::after { left: 4px; right: auto; top: 8px; width: 3px; height: 3px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 6px 0 var(--color-primary); }
-.tc-station { position: absolute; width: 220px; transform: translate(-50%, -34px); text-align: center; z-index: 2; padding: 0 12px 10px; border: 1px solid transparent; border-radius: var(--radius-md); transition: background-color 150ms var(--ease-standard), border-color 150ms var(--ease-standard), box-shadow 150ms var(--ease-standard); }
+.tc-station { position: absolute; width: 196px; transform: translate(-50%, -34px); text-align: center; z-index: 2; padding: 0 10px 10px; border: 1px solid transparent; border-radius: var(--radius-md); transition: background-color 150ms var(--ease-standard), border-color 150ms var(--ease-standard), box-shadow 150ms var(--ease-standard); }
 .tc-character { display: flex; justify-content: center; position: relative; margin-bottom: 7px; isolation: isolate; animation: tc-arrive .55s cubic-bezier(.16,1.4,.3,1) both; }
 .tc-character::before { content: ""; position: absolute; z-index: -1; top: -6px; left: 50%; width: 76px; height: 76px; transform: translateX(-50%); border: 1px solid var(--tc-role-accent); border-radius: 50%; opacity: .22; }
 .tc-station[data-role="mapper"] { --tc-role-accent: var(--color-primary); }

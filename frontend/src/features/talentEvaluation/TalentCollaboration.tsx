@@ -101,8 +101,7 @@ export default function TalentCollaboration(props: {
   const mappers = instances.filter(i => i.role === "mapper");
   const reviewers = instances.filter(i => i.role === "reviewer");
   const scorers = instances.filter(i => !["mapper", "reviewer"].includes(i.role));
-  let workerBottom = 420;
-  let arcRadius = 0;
+  let workerBottom = 470;
   if (narrow) {
     // 窄屏左右交错下行，避免一条竖列
     instances.forEach((instance, index) => {
@@ -111,19 +110,31 @@ export default function TalentCollaboration(props: {
     });
     workerBottom = 214 + Math.max(0, instances.length - 1) * 158;
   } else {
-    // 工位沿弧线自左向右：理解 → 分工 → 综合，弧心在舞台上方
+    // 两翼 + 中央座席：理解居左、综合居右，任务评估居中错落（每行至多 4 席，首行弧形微调）
     const cx = width / 2;
-    const cy = 50;
-    arcRadius = Math.min(360, (width / 2 - 128) / 0.848);
-    const place = (instance: SceneInstance, angleDeg: number) => {
-      const angle = angleDeg * Math.PI / 180;
+    const spacing = 208;
+    const cols = Math.min(scorers.length, 4);
+    const rows = Math.ceil(Math.max(scorers.length, 1) / cols);
+    scorers.forEach((instance, index) => {
+      const row = Math.floor(index / cols);
+      const posInRow = index % cols;
+      const inRow = row === rows - 1 ? scorers.length - row * cols : cols;
       const seed = layoutJitter(instance.id);
-      positions.set(instance.id, { x: cx + arcRadius * Math.cos(angle) + (seed % 24) - 12, y: cy + arcRadius * Math.sin(angle) + (seed % 16) - 8 });
-    };
-    mappers.forEach((instance, index) => place(instance, Math.min(150, 146 - index * 12)));
-    reviewers.forEach((instance, index) => place(instance, Math.max(30, 34 + index * 12)));
-    scorers.forEach((instance, index) => place(instance, 118 - (index + 0.5) * 56 / scorers.length));
-    workerBottom = cy + arcRadius + 8;
+      const lift = row === 0 ? 36 * (1 - (Math.abs(posInRow - (cols - 1) / 2) / Math.max((cols - 1) / 2, 1)) ** 2) : 0;
+      positions.set(instance.id, {
+        x: cx + (posInRow - (inRow - 1) / 2) * spacing + (seed % 16) - 8,
+        y: 456 + row * 150 - lift + (seed % 14) - 7,
+      });
+    });
+    mappers.forEach((instance, index) => {
+      const seed = layoutJitter(instance.id);
+      positions.set(instance.id, { x: Math.max(122, width * 0.16) + (seed % 18) - 9, y: 268 - index * 10 + (seed % 12) - 6 });
+    });
+    reviewers.forEach((instance, index) => {
+      const seed = layoutJitter(instance.id);
+      positions.set(instance.id, { x: Math.min(width - 122, width * 0.84) + (seed % 18) - 9, y: 268 - index * 10 + (seed % 12) - 6 });
+    });
+    workerBottom = 456 + (rows - 1) * 150 + 8;
   }
   const stageHeight = workerBottom + 176;
   const laneAnchors: Array<[string, { x: number; y: number } | undefined]> = [
@@ -140,7 +151,7 @@ export default function TalentCollaboration(props: {
   const bubbleTarget = from || to;
   // 低位 Agent 的气泡向空侧偏移，避免遮住上方工位的任务说明；尾巴仍回指发送方。
   const bubbleHalf = Math.min(150, Math.max(120, (width - 40) / 2));
-  const bubbleShift = bubbleTarget && bubbleTarget.y > 430
+  const bubbleShift = bubbleTarget && bubbleTarget.y > 480
     ? (bubbleTarget.x <= width * .58 ? 154 : -154)
     : 0;
   const bubbleCenter = bubbleTarget
@@ -163,7 +174,6 @@ export default function TalentCollaboration(props: {
     {error && <div className="tc-notice" role="alert">{t(error)} <button onClick={retry}>{t("重试")}</button></div>}
     {!loading && !events.length ? <div className="tc-empty"><h3>{t(live ? "等待评估开始" : "这次评估没有可展示的协作过程")}</h3><p>{t(live ? "Agent 开始工作后会出现在这里" : "已有评估报告不受影响")}</p></div> :
       <div className="tc-scroll" ref={viewport}><div className="tc-stage" data-narrow={narrow} style={{ height: stageHeight, width }}>
-        {!narrow && arcRadius > 0 && <span className="tc-arc" aria-hidden="true" style={{ left: width / 2, top: 50, width: arcRadius * 2, height: arcRadius }} />}
         {!narrow && laneAnchors.map(([label, anchor]) => anchor
           ? <span key={label} className="tc-lane-label" style={{ left: anchor.x, top: anchor.y + 108 }}>{t(label)}</span> : null)}
         <button className="tc-coordinator" onClick={() => { opener.current = document.activeElement as HTMLElement; setHistory(true); }}><span className="tc-coordinator-mark" aria-hidden="true" /><strong>{t("系统调度")}</strong><span>{t("查看交接")}</span></button>
