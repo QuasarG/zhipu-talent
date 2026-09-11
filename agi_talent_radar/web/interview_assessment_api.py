@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+import json
+import time
+
+from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 
 def build_interview_assessment_blueprint() -> Blueprint:
@@ -94,6 +97,42 @@ def build_interview_assessment_blueprint() -> Blueprint:
             if row is None:
                 return jsonify({"detail": "评估运行不存在"}), 404
             return jsonify({"run_trace": row.run_trace or [], "status": row.status})
+
+    @bp.get("/interview-assessment-runs/<run_id>/trace/stream")
+    def run_trace_stream(run_id: str):
+        """持续推送运行 trace 快照；单连接跟随后台评估，避免浏览器高频重建请求。"""
+        from agi_talent_radar.core.db.orm import InterviewAssessmentRunORM
+        from agi_talent_radar.core.db.runtime import get_session
+
+        with get_session() as session:
+            if session.get(InterviewAssessmentRunORM, run_id) is None:
+                return jsonify({"detail": "评估运行不存在"}), 404
+
+        def events():
+            previous = ""
+            last_emit = time.monotonic()
+            while True:
+                with get_session() as session:
+                    row = session.get(InterviewAssessmentRunORM, run_id)
+                    if row is None:
+                        break
+                    payload = {"segments": row.run_trace or [], "status": row.status}
+                encoded = json.dumps(payload, ensure_ascii=False, default=str)
+                if encoded != previous:
+                    previous = encoded
+                    last_emit = time.monotonic()
+                    yield f"data: {json.dumps({'type': 'trace_snapshot', 'payload': payload}, ensure_ascii=False)}\n\n"
+                elif time.monotonic() - last_emit >= 15:
+                    last_emit = time.monotonic()
+                    yield ": keep-alive\n\n"
+                if payload["status"] in {"completed", "failed", "cancelled"}:
+                    break
+                time.sleep(0.08)
+
+        response = Response(stream_with_context(events()), mimetype="text/event-stream")
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["X-Accel-Buffering"] = "no"
+        return response
 
     @bp.get("/interview-assessments/<assessment_id>/trace")
     def assessment_trace(assessment_id: str):

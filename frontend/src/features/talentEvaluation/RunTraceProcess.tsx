@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, ChatSegment } from "@/lib/types";
-import { api } from "@/lib/api";
+import { api, parseSSE } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import Icon from "@/components/ui/Icon";
@@ -29,33 +29,36 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
 
   useEffect(() => { setTrace(segments); }, [segments]);
 
-  // admission 在后台线程运行，用高频快照轮询逼近 SSE 的逐字生长效果。
+  // admission 在后台线程运行，与人才问答一样消费持续 SSE 流。
   useEffect(() => {
     if (!live || !runId) return;
     let active = true;
-    let timer: number | undefined;
-    let lastSnapshot = "";
+    const controller = new AbortController();
 
-    const refresh = async () => {
+    const consume = async () => {
       try {
-        const current = await api.interviewAssessments.runTrace(runId);
-        if (!active) return;
-        const snapshot = JSON.stringify(current.run_trace ?? []);
-        if (snapshot !== lastSnapshot) {
-          lastSnapshot = snapshot;
-          if (current.run_trace.length) setTrace(current.run_trace);
+        const response = await api.interviewAssessments.runTraceSSE(runId, controller.signal);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        for await (const raw of parseSSE(response, controller.signal)) {
+          if (!active || raw.type !== "trace_snapshot") continue;
+          const payload = raw.payload as { segments?: ChatSegment[] } | undefined;
+          if (payload?.segments?.length) setTrace(payload.segments);
         }
       } catch {
-        // 网络抖动下一轮再试
-      } finally {
-        // 上一次请求结束后再调度，避免慢网络下请求堆叠。
-        if (active) timer = window.setTimeout(refresh, 250);
+        // 断流时拉一次最新快照，后续由活跃运行刷新触发重连。
+        if (!active) return;
+        try {
+          const current = await api.interviewAssessments.runTrace(runId);
+          if (active && current.run_trace.length) setTrace(current.run_trace);
+        } catch {
+          // 页面保留已收到的内容
+        }
       }
     };
-    void refresh();
+    void consume();
     return () => {
       active = false;
-      if (timer !== undefined) window.clearTimeout(timer);
+      controller.abort();
     };
   }, [live, runId]);
 

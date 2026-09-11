@@ -222,6 +222,8 @@ export const api = {
   interviewAssessments: {
     trace: (id: string) => fetchJSON<{ run_trace: InterviewAssessmentRun["run_trace"] }>(`/api/interview-assessments/${id}/trace`),
     runTrace: (id: string) => fetchJSON<{ run_trace: InterviewAssessmentRun["run_trace"]; status: string }>(`/api/interview-assessment-runs/${id}/trace`),
+    runTraceSSE: (id: string, signal?: AbortSignal) =>
+      authedFetch(`/api/interview-assessment-runs/${id}/trace/stream`, { signal }),
     start: (
       pairs: Array<{ candidate_id: string; jd_id: string }>,
       requestId: string,
