@@ -27,28 +27,36 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
   const [trace, setTrace] = useState<ChatSegment[]>(segments);
   const [openSpawnId, setOpenSpawnId] = useState<string | null>(null);
 
-  const applyTrace = (next: ChatSegment[]) => {
-    if (next.length) setTrace(next);
-  };
-
   useEffect(() => { setTrace(segments); }, [segments]);
 
-  // 运行中轮询活跃运行：run_trace 每个事件落库，增量可见
+  // admission 在后台线程运行，用高频快照轮询逼近 SSE 的逐字生长效果。
   useEffect(() => {
     if (!live || !runId) return;
     let active = true;
+    let timer: number | undefined;
+    let lastSnapshot = "";
+
     const refresh = async () => {
       try {
         const current = await api.interviewAssessments.runTrace(runId);
-        if (active && current.run_trace) applyTrace(current.run_trace);
+        if (!active) return;
+        const snapshot = JSON.stringify(current.run_trace ?? []);
+        if (snapshot !== lastSnapshot) {
+          lastSnapshot = snapshot;
+          if (current.run_trace.length) setTrace(current.run_trace);
+        }
       } catch {
         // 网络抖动下一轮再试
+      } finally {
+        // 上一次请求结束后再调度，避免慢网络下请求堆叠。
+        if (active) timer = window.setTimeout(refresh, 250);
       }
     };
     void refresh();
-    const timer = window.setInterval(refresh, 1500);
-    return () => { active = false; window.clearInterval(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [live, runId]);
 
   const nested = useMemo(() => nestTraceSegments(trace).reduce<ChatSegment[]>((visible, segment) => {
