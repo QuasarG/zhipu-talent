@@ -311,12 +311,17 @@ def create_app() -> Flask:
     import os
     from pathlib import Path
 
+    from flask import make_response
+
     dist_dir = Path(app.static_folder) / "dist"
     vite_dev = os.getenv("VITE_DEV", "").strip() == "1"
 
-    def render_spa() -> str:
+    def render_spa():
+        # shell 必须 no-cache：hash 资源名随构建变化，缓存旧 shell 会整页加载旧 bundle
         assets = [] if vite_dev else _list_dist_assets(dist_dir)
-        return render_template("index.html", vite_dev=vite_dev, dist_assets=assets)
+        response = make_response(render_template("index.html", vite_dev=vite_dev, dist_assets=assets))
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/")
     def index() -> str:
