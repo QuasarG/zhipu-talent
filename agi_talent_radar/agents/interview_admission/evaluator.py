@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from typing import Any, Generator
 
 from pydantic import ValidationError
 
+from agi_talent_radar.agents.job_fit.materials import (
+    MaterialsContext,
+    parse_json_block,
+    tools_schema,
+)
 from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.models import CandidateResume
 
@@ -18,7 +24,12 @@ from .contracts import (
     ReviewCorrection,
     TaskAssessment,
 )
-from .job_card import EventObserver, LlmCallable
+from .job_card import EventObserver, LlmCallable  # noqa: F401  (EventObserver 供类型标注)
+
+_TASK_EXECUTOR = ThreadPoolExecutor(
+    max_workers=max(1, int(os.getenv("ADMISSION_TASK_CONCURRENCY", "50"))),
+    thread_name_prefix="admission-task",
+)
 
 
 CHAIR_REVIEW_PROMPT = """
@@ -34,41 +45,22 @@ CHAIR_REVIEW_PROMPT = """
 """.strip()
 
 
-_SPAWN_PROMPT_TEMPLATE = """
-你是面试准入评估的任务评估 agent。主席派你评估一项核心任务，你的产出就是该任务的最终评分。
+TOOL_LABELS = {
+    "list_files": "盘点材料", "read_text": "读取文本", "read_pages": "视觉转译",
+    "search_text": "检索内容", "verify_paper": "论文查证", "web_search": "全网检索",
+}
 
-# 岗位与任务
-{task_block}
+WORKER_TOOLS = tools_schema()
 
-# 评分规则
-- 只评价这一个任务，但必须阅读完整简历全文；可以纠正映射遗漏并自行从简历补证据。
-- 评分采用唯一的 0–4 等级：0 无证据；1 相关基础；2 实际参与；3 独立胜任；4 成熟胜任。
-- 任务锚点（2/3/4 级）是岗位化解释；不要机械要求数字，技能栏未写某工具不代表不会。
-- 每个非零等级必须有简历可追溯短原文；背景证据不能单独支撑 2 分以上；
-  可迁移证据必须说明迁移边界。
-- reasoning_summary 是报告卡片上的一行概述：一句中文（20–36 字，最多 45 字），
-  「结论 + 最关键事实」，禁止列举多个项目或换行。
-
-# 输出（只输出一个 JSON 对象，不要 markdown）
-{{"task_id":"{task_id}","level":0到4,"confidence":"high|medium|low",
-"reasoning_summary":"20–36字一句话概述","transfer_boundary":"迁移成立的边界，无则空串",
-"evidence":[{{"quote":"简历短原文","evidence_type":"direct|transferable|background",
-"confidence":"high|medium|low","relevance":"它如何支撑本任务"}}],
-"risks":["..."]}}
-""".strip()
-
-
-_TASK_EXECUTOR = ThreadPoolExecutor(
-    max_workers=max(1, int(os.getenv("ADMISSION_TASK_CONCURRENCY", "50"))),
-    thread_name_prefix="admission-task",
-)
+FINAL_RETRIES = 3
+AGENT_ROUNDS = max(1, int(os.getenv("ADMISSION_AGENT_ROUNDS", "8")))
 
 _EVIDENCE_TYPES = {"direct", "transferable", "background"}
 _CONFIDENCE_LEVELS = {"high", "medium", "low"}
 
 
 class _Trace:
-    """线程安全的聊天段收集器：段 = 奖学金同款 text/tool/spawn，直接落 run_trace。"""
+    """线程安全的聊天段收集器（奖学金同款 text/tool/spawn），直接落 run_trace。"""
 
     def __init__(self, on_event: EventObserver | None) -> None:
         self.segments: list[dict[str, Any]] = []
@@ -78,7 +70,7 @@ class _Trace:
 
     def segment(self, segment: dict[str, Any]) -> None:
         with self._lock:
-            # spawn 段按 spawn_id 原位替换（状态落位重发不产生重复行）
+            # spawn 段按 spawn_id 原位替换（状态落位/children 更新重发不产生重复行）
             replaced = False
             if segment.get("type") == "spawn":
                 for index, existing in enumerate(self.segments):
@@ -95,9 +87,10 @@ class _Trace:
         if text.strip():
             self.segment({"type": "text", "text": text})
 
-    def spawn(self, spawn_id: str, title: str) -> dict[str, Any]:
+    def spawn(self, spawn_id: str, title: str, prompt: str) -> dict[str, Any]:
         segment = {"type": "spawn", "spawn_id": spawn_id, "agent": "任务评估 Agent",
-                   "title": title, "status": "running", "summary": "", "children": []}
+                   "title": title, "status": "running", "summary": "",
+                   "prompt": prompt, "children": []}
         self.segment(segment)
         return segment
 
@@ -106,6 +99,27 @@ class _Trace:
         segment["status"] = status
         segment["summary"] = summary[:160]
         self.segment(segment)
+
+    def append_child(self, spawn_id: str, child: dict[str, Any], key: str) -> None:
+        """把子 agent 的工作段挂到它的 children（同 key 原位替换），并整段重发。"""
+        with self._lock:
+            for existing in self.segments:
+                if existing.get("type") == "spawn" and existing.get("spawn_id") == spawn_id:
+                    children = [*(existing.get("children") or [])]
+                    tagged = {**child, "_key": key}
+                    index = next((i for i, c in enumerate(children) if c.get("_key") == key), None)
+                    if index is None:
+                        children.append(tagged)
+                    else:
+                        children[index] = tagged
+                    existing["children"] = children
+                    break
+        if self._on_event is not None:
+            with self._lock:
+                current = next((s for s in self.segments
+                                if s.get("type") == "spawn" and s.get("spawn_id") == spawn_id), None)
+            if current is not None:
+                self._on_event(current)
 
     def observe_call(self, item: dict[str, str]) -> None:
         with self._lock:
@@ -116,24 +130,56 @@ def evaluate_candidate_for_job(
     resume: CandidateResume | dict[str, Any],
     jd_id: str,
     card: AssessmentCard,
-    llm: LlmCallable | None = None,
     on_event: EventObserver | None = None,
+    materials: MaterialsContext | None = None,
 ) -> PairAssessmentResult:
+    """面试准入 v2：主 agent 按岗位卡核心任务并发 spawn 子评估 agent。
+
+    子评估 agent 是真正的 agent 循环：与主 agent 相同的材料只读工具（不能嵌套
+    spawn），行为完全由 spawn prompt 约束；其叙述与工具调用实时进入过程 trace，
+    最终产出该任务的评分 JSON（宽容归一 + 校验失败回喂重试）。
+    """
     candidate = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
     assessment_card = card if isinstance(card, AssessmentCard) else AssessmentCard.model_validate(card)
     trace = _Trace(on_event)
-    invoke = llm or _default_llm(trace)
     anonymized = _anonymize_resume(candidate)
 
     trace.text(f"对照岗位卡「{assessment_card.role_summary}」的 "
                f"{len(assessment_card.core_tasks)} 项核心任务，逐项派出子评估 agent。")
 
-    assessments = _score_tasks(invoke, anonymized, assessment_card, trace)
-    assessments = _validate_and_repair_evidence(invoke, anonymized, assessment_card, assessments)
+    assessments, sessions = _score_tasks(anonymized, assessment_card, trace, materials)
+
+    # 续命修正：不可追溯引用 → 同一个子 agent 带反馈继续（上下文保留、轮数重置）
+    for index, assessment in enumerate(assessments):
+        invalid = [item.quote for item in assessment.evidence
+                   if not _quote_is_traceable(item.quote, anonymized["raw_text"])]
+        if not invalid:
+            continue
+        session = sessions.get(assessment.task_id)
+        task = next((t for t in assessment_card.core_tasks if t.id == assessment.task_id), None)
+        if not session or task is None:
+            continue
+        spawn_id = f"task_score:{assessment.task_id}"
+        trace.text(f"「{task.title}」发现 {len(invalid)} 条不可追溯引用，主席续命修正。")
+        try:
+            assessment, _ = _run_evaluator_mission(
+                task.model_dump(), assessment_card, anonymized, materials, trace, spawn_id,
+                messages=session,
+                instruction=(f"以下引用无法在简历中追溯：{'、'.join(invalid)}。"
+                             "请剔除或改为真实短原文后，重新输出完整评分 JSON。"),
+                cont=1,
+            )
+            assessments[index] = assessment
+            trace.append_child(spawn_id,
+                               {"type": "text", "text": _assessment_markdown(assessment)}, key="report")
+        except RuntimeError:
+            pass  # 续命仍失败 → 交给本地确定性证据校验兜底
+    assessments = _repair_evidence_locally(assessments, anonymized["raw_text"])
+    assessments = _repair_evidence_locally(assessments, anonymized["raw_text"])
 
     trace.text("全部任务评分完成，主席总审尺度、遗漏与证据夸大。")
     review = OverallReview.model_validate(
-        invoke(
+        llm_client.call_llm_json(
             CHAIR_REVIEW_PROMPT,
             {
                 "resume_text": anonymized["raw_text"],
@@ -141,6 +187,8 @@ def evaluate_candidate_for_job(
                 "assessment_card": assessment_card.model_dump(),
                 "task_assessments": [item.model_dump() for item in assessments],
             },
+            temperature=0.05,
+            deep=True,
         )
     )
     assessments, corrections = _apply_review(assessments, review.corrections, anonymized["raw_text"])
@@ -165,101 +213,245 @@ def evaluate_candidate_for_job(
 
 
 def _score_tasks(
-    invoke: LlmCallable,
     resume: dict[str, Any],
     card: AssessmentCard,
     trace: _Trace,
-) -> list[TaskAssessment]:
-    """按核心任务并发 spawn 子评估 agent；每个子 agent 就是该任务的最终评分。"""
+    materials: MaterialsContext | None,
+) -> tuple[list[TaskAssessment], dict[str, list[dict[str, Any]]]]:
+    """按核心任务并发 spawn 子评估 agent（过程实时进 trace）。
+
+    返回 (评分列表, 各子 agent 会话上下文)——上下文供主席续命（证据修正时复用）。"""
     segments_by_task: dict[str, dict[str, Any]] = {}
+    sessions: dict[str, list[dict[str, Any]]] = {}
+    first_error: RuntimeError | None = None
     lock = threading.Lock()
 
     def score_task(task):
-        segment = trace.spawn(f"task_score:{task.id}", task.title)
+        task_dict = task.model_dump()
+        spawn_id = f"task_score:{task.id}"
+        segment = trace.spawn(spawn_id, task.title, _spawn_prompt_text(task_dict))
         with lock:
             segments_by_task[task.id] = segment
-        return _score_one_task(invoke, resume, card, {}, task.model_dump())
+        assessment, messages = _run_evaluator_mission(
+            task_dict, card, resume, materials, trace, spawn_id)
+        with lock:
+            sessions[task.id] = messages
+        return assessment
 
     futures = {_TASK_EXECUTOR.submit(score_task, task): task for task in card.core_tasks}
     by_id: dict[str, TaskAssessment] = {}
-    first_error: RuntimeError | None = None
     for future in as_completed(futures):
         task = futures[future]
         segment = segments_by_task[task.id]
         try:
             assessment = future.result()
         except RuntimeError as exc:
-            with lock:
-                trace.spawn_update(segment, "failed", str(exc)[:160])
+            trace.spawn_update(segment, "failed", str(exc)[:160])
             first_error = first_error or exc
             continue
-        with lock:
-            trace.spawn_update(segment, "done",
-                               f"评定 {assessment.level} 级（{assessment.confidence}）：{assessment.reasoning_summary}")
+        trace.spawn_update(segment, "done",
+                           f"评定 {assessment.level} 级（{assessment.confidence}）：{assessment.reasoning_summary}")
+        trace.append_child(f"task_score:{task.id}",
+                           {"type": "text", "text": _assessment_markdown(assessment)}, key="report")
         by_id[task.id] = assessment
     if first_error is not None:
         raise first_error
-    return [by_id[task.id] for task in card.core_tasks]
+    return [by_id[task.id] for task in card.core_tasks], sessions
 
 
-def _spawn_prompt(task: dict[str, Any], card: AssessmentCard) -> dict[str, Any]:
+def _assessment_markdown(assessment: TaskAssessment) -> str:
+    """子评估 agent 的完整报告（侧栏与主流程同款 markdown 渲染，不截断）。"""
+    lines = [f"**评定 {assessment.level} 级（{assessment.confidence}）**：{assessment.reasoning_summary}"]
+    if assessment.transfer_boundary:
+        lines.append(f"- 迁移边界：{assessment.transfer_boundary}")
+    if assessment.evidence:
+        lines.append("")
+        lines.append("证据：")
+        lines.extend(f"- 「{e.quote}」（{e.evidence_type} / {e.confidence}）：{e.relevance}"
+                     for e in assessment.evidence)
+    if assessment.risks:
+        lines.append("")
+        lines.append("风险：")
+        lines.extend(f"- {risk}" for risk in assessment.risks)
+    return "\n".join(lines)
+
+
+def _spawn_prompt_text(task: dict[str, Any]) -> str:
+    """spawn 时的完整任务指令：任务块 + 评分规则 + 输出合同（自包含）。"""
     anchors = task.get("anchors") or {}
-    task_block = (
-        f"岗位使命：{card.role_summary}\n"
-        f"任务：{task['title']}（{'首要' if task['importance'] == 'primary' else '主要' if task['importance'] == 'major' else '补充'}）\n"
-        f"要完成什么：{task['description']}\n"
-        f"评价看什么：{task['evaluation_focus']}\n"
-        f"等级锚点：2 级={anchors.get('level_2', '')}；3 级={anchors.get('level_3', '')}；4 级={anchors.get('level_4', '')}"
-    )
-    return {
-        "system": _SPAWN_PROMPT_TEMPLATE.replace("{task_block}", task_block).replace("{task_id}", task["id"]),
-        "payload": {"current_task": task},
-    }
+    importance = {"primary": "首要", "major": "主要", "supporting": "补充"}.get(
+        task.get("importance", ""), "补充")
+    return f"""评估核心任务「{task['title']}」（{importance}任务）。
+
+要完成什么：{task['description']}
+评价看什么：{task['evaluation_focus']}
+等级锚点：2 级={anchors.get('level_2', '')}；3 级={anchors.get('level_3', '')}；4 级={anchors.get('level_4', '')}
+
+评分规则：
+- 评分采用唯一的 0–4 等级：0 无证据；1 相关基础；2 实际参与；3 独立胜任；4 成熟胜任。
+- 每个非零等级必须有简历可追溯短原文；背景证据不能单独支撑 2 分以上；
+  可迁移证据必须说明迁移边界。
+- reasoning_summary 是报告卡片上的一行概述：一句中文（20–36 字，最多 45 字），
+  「结论 + 最关键事实」，禁止换行与列举。
+
+先阅读上面的简历与材料（可用工具），每次调工具前先用一两句话说明目的；
+证据收集完成后停止调用工具，输出该任务的评分 JSON（格式见系统提示）。"""
 
 
-def _score_one_task(
-    invoke: LlmCallable,
-    resume: dict[str, Any],
-    card: AssessmentCard,
-    mapping: dict[str, Any],
+def _evaluator_system(resume: dict[str, Any], materials: MaterialsContext | None) -> str:
+    files = "\n".join(f"- {rel}" for rel in (materials.walk() if materials else [])) \
+        or "（无原始材料文件，以简历全文为准）"
+    return f"""你是面试准入评估的任务评估 agent。主席在任务指令里给出了你要评估的核心任务、
+锚点与输出合同——那就是你的全部职责。你拥有材料只读工具（不能派生其他 agent），
+每次调工具前先用一两句话说明目的；证据收集完成后停止调用工具，按输出合同给出结果。
+
+# 结构化简历
+{json.dumps(resume, ensure_ascii=False)[:4000]}
+
+# 简历全文（证据引用必须出自这里或材料原文）
+{resume.get("raw_text", "")[:12000]}
+
+# 材料目录（read_text/read_pages 的 file 取这里的相对路径）
+{files}
+
+# 事实纪律
+结论必须落在简历/材料原文上，查不到就明说，禁止推测；
+技能栏未写某工具不代表不会；学历专业只作背景证据。"""
+
+
+def _run_evaluator_mission(
     task: dict[str, Any],
-    repair_feedback: list[str] | None = None,
-) -> TaskAssessment:
-    """单任务评分（子评估 agent 的产出）：宽容归一 + 校验失败回喂重试。
+    card: AssessmentCard,
+    resume: dict[str, Any],
+    materials: MaterialsContext | None,
+    trace: _Trace,
+    spawn_id: str,
+    messages: list[dict[str, Any]] | None = None,
+    instruction: str | None = None,
+    cont: int = 0,
+) -> tuple[TaskAssessment, list[dict[str, Any]]]:
+    """子评估 agent 循环（messages 传入 = 续命，上下文保留、轮数重置）。
 
-    GLM 对长 schema 的必填字段偶发遗漏，链路默认「单次输出可能不合规」：
-    归一吸收字段缺失，重试吸收结构错误，都失败才按技术故障抛出。
-    """
-    spawn_prompt = _spawn_prompt(task, card)
-    payload = {
-        "resume_text": resume["raw_text"],
-        "structured_resume": resume,
-        "assessment_card": card.model_dump(),
-        "current_task": task,
-        "evidence_repair_feedback": repair_feedback or [],
-    }
+    叙述/工具调用实时进 children；最终产出任务评分 JSON，失败按技术故障抛出。"""
+    prompt = instruction or _spawn_prompt_text(task)
+    if messages is None:
+        messages = [
+            {"role": "system", "content": _evaluator_system(resume, materials)},
+            {"role": "user", "content": f"[主席] {prompt}"},
+        ]
+        trace.append_child(spawn_id, {"type": "text", "text": prompt}, key="prompt")
+    else:
+        messages.append({"role": "user", "content": f"[主席] {instruction}"})
+        trace.append_child(spawn_id, {"type": "text", "text": f"[续命指令] {instruction}"},
+                           key=f"prompt:{cont}")
+    narration_index = 0
+    report_text = ""
+
+    def note_narration(text: str) -> None:
+        nonlocal narration_index
+        narration_index += 1
+        trace.append_child(spawn_id, {"type": "text", "text": text}, key=f"narration:{narration_index}")
+
+    for _round in range(AGENT_ROUNDS):
+        result = llm_client.call_llm_tools(messages, WORKER_TOOLS, temperature=0.2,
+                                           reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"))
+        tool_calls = result.get("tool_calls") or []
+        text = str(result.get("text") or "").strip()
+        report_text = text
+        if text:
+            note_narration(text)
+        if not tool_calls:
+            break
+        messages.append({"role": "assistant", "content": text,
+                         "tool_calls": [{"id": tc["id"], "type": "function",
+                                         "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+                                        for tc in tool_calls]})
+        for tc in tool_calls:
+            try:
+                args = json.loads(tc.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            label = TOOL_LABELS.get(tc["name"], tc["name"])
+            child_key = f"tool:{tc['id']}"
+            trace.append_child(spawn_id, {"type": "tool", "call_id": tc["id"], "tool": tc["name"],
+                                          "label": label, "args_summary": json.dumps(args, ensure_ascii=False)[:200]},
+                               key=child_key)
+            output = _execute_read_tool(materials, tc["name"], args)
+            summary = str(output.get("summary") or "完成")
+            trace.append_child(spawn_id, {"type": "tool", "call_id": tc["id"], "tool": tc["name"],
+                                          "label": label, "args_summary": json.dumps(args, ensure_ascii=False)[:200],
+                                          "status": "ok", "summary": summary},
+                               key=child_key)
+            messages.append({"role": "tool", "tool_call_id": tc["id"],
+                             "content": json.dumps({"summary": summary, "detail": output.get("detail")},
+                                                   ensure_ascii=False, default=str)[:6000]})
+
+    # ---- 独立 JSON 通道收取任务评分合同（宽容归一 + 校验失败回喂重试）----
     last_error = ""
-    for attempt in range(3):
-        if attempt > 0:
-            payload = {
-                **payload,
-                "evidence_repair_feedback": [
-                    *(repair_feedback or []),
-                    f"上次输出未通过校验：{last_error}。请严格按输出格式重新评分；"
-                    "evidence 每项必须包含 quote/evidence_type/confidence/relevance 四个字段。",
-                ],
-            }
-        raw = invoke(spawn_prompt["system"], {**payload, **spawn_prompt["payload"]})
-        if not isinstance(raw, dict) or not raw:
-            # 空响应不能静默归一成 0 分评分——那是把技术失败伪装成业务结论
-            last_error = "模型未返回任何内容"
+    payload = {"resume_text": resume["raw_text"], "structured_resume": resume,
+               "assessment_card": card.model_dump(), "current_task": task}
+    for attempt in range(FINAL_RETRIES):
+        messages.append({"role": "user", "content": (
+            _task_output_contract(task) if attempt == 0 else
+            f"[系统] 上次输出校验未通过：{last_error}。请严格按输出合同重新只输出一个 JSON 对象；"
+            "evidence 每项必须包含 quote/evidence_type/confidence/relevance 四个字段。")})
+        result = llm_client.call_llm_tools(messages, tools=[], temperature=0.2,
+                                           reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"))
+        text = str(result.get("text") or "").strip()
+        messages.append({"role": "assistant", "content": text})
+        parsed = parse_json_block(text)
+        if parsed is None:
+            last_error = "输出不是合法 JSON"
             continue
-        raw = {**raw, "task_id": task["id"]}
+        raw = {**parsed, "task_id": task["id"]}
         try:
-            return TaskAssessment.model_validate(_normalize_task_payload(raw))
+            return TaskAssessment.model_validate(_normalize_task_payload(raw)), messages
         except ValidationError as exc:
             last_error = str(exc)
-    raise RuntimeError(f"任务 {task['id']} 评分输出连续 3 次不合规：{last_error}")
+    if not report_text and not last_error:
+        last_error = "模型未返回任何内容"
+    raise RuntimeError(f"任务 {task['id']} 评分输出连续 {FINAL_RETRIES} 次不合规：{last_error}")
+
+
+def _task_output_contract(task: dict[str, Any]) -> str:
+    return f"""任务「{task['title']}」的证据收集完成。只输出一个 JSON 对象（不要 markdown、不要解释）：
+
+{{"task_id":"{task['id']}","level":0到4,"confidence":"high|medium|low",
+"reasoning_summary":"20–36字一句话概述","transfer_boundary":"迁移成立的边界，无则空串",
+"evidence":[{{"quote":"简历短原文","evidence_type":"direct|transferable|background",
+"confidence":"high|medium|low","relevance":"它如何支撑本任务"}}],
+"risks":["..."]}}
+
+每个非零等级必须有简历可追溯短原文；不要因为学历、专业、没写某工具而降级。"""
+
+
+def _execute_read_tool(materials: MaterialsContext | None, name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """子评估 agent 的材料只读工具集（无 spawn、无写入）。"""
+    from agi_talent_radar.agents.job_fit.panel import _execute_tool
+
+    if name == "spawn_agent":
+        return {"summary": "子 agent 不能派生 agent", "detail": {"error": "禁止嵌套 spawn"}}
+    return _execute_tool(materials, name, args)
+
+
+def _repair_evidence_locally(
+    assessments: list[TaskAssessment],
+    resume_text: str,
+) -> list[TaskAssessment]:
+    """确定性证据校验：不可追溯引用剔除 + 按证据类型封顶等级（不再依赖 LLM 回喂）。"""
+    repaired: list[TaskAssessment] = []
+    for assessment in assessments:
+        invalid = [item.quote for item in assessment.evidence if not _quote_is_traceable(item.quote, resume_text)]
+        if invalid:
+            valid_evidence = [item for item in assessment.evidence if item.quote not in invalid]
+            level = _level_cap_from_evidence(assessment.level, valid_evidence)
+            assessment = assessment.model_copy(
+                update={"evidence": valid_evidence, "level": level, "confidence": "low"}
+            )
+        elif assessment.level > 0 and not assessment.evidence:
+            assessment = assessment.model_copy(update={"level": 0, "confidence": "low"})
+        repaired.append(assessment)
+    return repaired
 
 
 def _normalize_task_payload(raw: dict[str, Any]) -> dict[str, Any]:
@@ -317,38 +509,6 @@ def decide_admission(
     return "interview", f"首要任务均达到 2 级且加权总分 {total_score:.1f} 达到准入线"
 
 
-def _validate_and_repair_evidence(
-    invoke: LlmCallable,
-    resume: dict[str, Any],
-    card: AssessmentCard,
-    assessments: list[TaskAssessment],
-) -> list[TaskAssessment]:
-    tasks = {task.id: task for task in card.core_tasks}
-    repaired: list[TaskAssessment] = []
-    for assessment in assessments:
-        invalid = [item.quote for item in assessment.evidence if not _quote_is_traceable(item.quote, resume["raw_text"])]
-        if invalid:
-            assessment = _score_one_task(
-                invoke,
-                resume,
-                card,
-                {},
-                tasks[assessment.task_id].model_dump(),
-                [f"以下引用无法在简历找到，请删除或改为真实短原文：{quote}" for quote in invalid],
-            )
-            invalid = [item.quote for item in assessment.evidence if not _quote_is_traceable(item.quote, resume["raw_text"])]
-            if invalid:
-                valid_evidence = [item for item in assessment.evidence if item.quote not in invalid]
-                level = _level_cap_from_evidence(assessment.level, valid_evidence)
-                assessment = assessment.model_copy(
-                    update={"evidence": valid_evidence, "level": level, "confidence": "low"}
-                )
-        elif assessment.level > 0 and not assessment.evidence:
-            assessment = assessment.model_copy(update={"level": 0, "confidence": "low"})
-        repaired.append(assessment)
-    return repaired
-
-
 def _apply_review(
     assessments: list[TaskAssessment],
     corrections: list[ReviewCorrection],
@@ -393,17 +553,3 @@ def _anonymize_resume(candidate: CandidateResume) -> dict[str, Any]:
     structured["name"] = "候选人"
     structured["raw_text"] = raw_text
     return structured
-
-
-def _default_llm(trace: _Trace) -> LlmCallable:
-    def invoke(prompt: str, payload: dict[str, Any]) -> dict[str, Any]:
-        temperature = 0.3 if prompt.startswith("你是面试准入评估的任务评估 agent") else 0.05
-        return llm_client.call_llm_json(
-            prompt,
-            payload,
-            temperature=temperature,
-            deep=True,
-            on_call=lambda item: trace.observe_call({**item}),
-        )
-
-    return invoke

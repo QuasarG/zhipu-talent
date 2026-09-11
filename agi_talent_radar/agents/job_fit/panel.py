@@ -50,15 +50,16 @@ _SPAWN_SCHEMA = [{
     "function": {
         "name": "spawn_agent",
         "description": (
-            "派生一个子评审 agent 去完成一项调查任务。它拥有和你相同的材料只读工具"
-            "（读取/视觉转译/检索/论文查证/全网检索），但不能再生子 agent。"
-            "prompt 必须自包含：任务目标、要读的材料、要回答的问题、报告要求。"
+            "派生一个子评审 agent 去完成一项调查任务，或对已有子 agent 续命让它继续工作。"
+            "子 agent 拥有和你相同的材料只读工具（读取/视觉转译/检索/论文查证/全网检索），"
+            "但不能再生子 agent。prompt 必须自包含：任务目标、要读的材料、要回答的问题、报告要求。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "goal": {"type": "string", "description": "一句话任务目标（展示用）"},
-                "prompt": {"type": "string", "description": "给子 agent 的完整任务指令"},
+                "prompt": {"type": "string", "description": "给子 agent 的完整任务指令；续命时写继续指令（基于它已有的进展）"},
+                "agent_id": {"type": "string", "description": "续命已有子 agent 时填它的 id（上下文保留、轮数重置）；新任务留空"},
             },
             "required": ["goal", "prompt"],
         },
@@ -257,7 +258,8 @@ def _worker_system(dossier: dict[str, Any]) -> str:
 # 工作纪律
 1. 每轮至少向主席输出一句进展说明：做了什么、发现了什么、下一步为什么。
 2. 结论必须落在材料原文上，引用到「文件名 第N页」；查不到就明说，禁止推测。
-3. 材料读完（或任务完成）就停止调用工具，输出最终报告（结论、证据、风险）。"""
+3. 材料读完（或任务完成）就停止调用工具，输出最终报告（结论、证据、风险）。
+4. 主席可能发出续派指令让你继续：基于已有上下文接着做，不要重复已完成的工作。"""
 
 
 def run_agent_mission(
@@ -266,19 +268,26 @@ def run_agent_mission(
     prompt: str,
     dossier: dict[str, Any],
     ctx: MaterialsContext | None,
+    messages: list[dict[str, Any]] | None = None,
+    rounds: int | None = None,
 ) -> Generator[dict[str, Any], None, dict[str, Any]]:
-    """执行一个子评审 agent：yield {"type":"sse"/"trace", ...}，return {"status", "report"}。"""
+    """执行一个子评审 agent（messages 传入 = 续命，上下文保留、轮数重置）。
+
+    yield {"type":"sse"/"trace", ...}，return {"status","report","messages"}。"""
     from agi_talent_radar.core.llm_client import call_llm_tools
 
-    messages: list[dict[str, Any]] = [
-        {"role": "system", "content": _worker_system(dossier)},
-        {"role": "user", "content": f"[主席] {prompt}"},
-    ]
+    if messages is None:
+        messages = [
+            {"role": "system", "content": _worker_system(dossier)},
+            {"role": "user", "content": f"[主席] {prompt}"},
+        ]
+    else:
+        messages.append({"role": "user", "content": f"[主席] {prompt}"})
 
     def sse(event: dict[str, Any]) -> dict[str, Any]:
         return {"type": "sse", "event": event}
 
-    rounds = _env_int("PANEL_AGENT_ROUNDS", 8)
+    rounds = rounds if rounds is not None else _env_int("PANEL_AGENT_ROUNDS", 8)
     report = ""
     for _round in range(rounds):
         result = call_llm_tools(messages, WORKER_TOOLS, temperature=0.2,
@@ -318,8 +327,8 @@ def run_agent_mission(
                              "content": json.dumps({"summary": summary, "detail": output.get("detail")},
                                                    ensure_ascii=False, default=str)[:6000]})
     if not report:
-        return {"status": "failed", "report": ""}
-    return {"status": "done", "report": report}
+        return {"status": "failed", "report": "", "messages": messages}
+    return {"status": "done", "report": report, "messages": messages}
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +367,7 @@ def run_panel_stream(
         {"role": "user", "content": "开始本次评估。先盘点要查证什么，派出子评审 agent 或亲自核对；调查充分后停止调用工具。"},
     ]
     spawned = 0
+    sessions: dict[str, list[dict[str, Any]]] = {}   # mission_id -> 子 agent 上下文（续命复用）
 
     for _round in range(max_rounds):
         result: dict[str, Any] = {}
@@ -398,20 +408,37 @@ def run_panel_stream(
             if name == "spawn_agent":
                 goal = str(args.get("goal") or "").strip() or "子评审任务"
                 prompt = str(args.get("prompt") or "").strip()
+                agent_id = str(args.get("agent_id") or "").strip()
+                continuing = bool(agent_id) and agent_id in sessions
                 if not prompt:
                     output = {"summary": "缺少 prompt", "detail": {"error": "spawn_agent 需要 prompt"}}
-                elif spawned >= max_spawns:
-                    output = {"summary": "spawn 预算已用尽，请基于已有信息收尾",
+                elif spawned >= max_spawns and not continuing:
+                    output = {"summary": "spawn 预算已用尽，可对已有子 agent 续命或基于已有信息收尾",
                               "detail": {"error": f"最多派出 {max_spawns} 个子 agent"}}
                 else:
-                    spawned += 1
-                    mission_id = f"m{spawned}"
-                    spawn_segment: dict[str, Any] = {"type": "spawn", "spawn_id": mission_id,
-                                                     "agent": "通用评审员", "title": goal, "status": "running",
-                                                     "summary": "", "children": []}
-                    trace_append(spawn_segment)
-                    yield sse({"type": "spawn_start", "payload": {
-                        "spawn_id": mission_id, "agent": "通用评审员", "title": goal}})
+                    if continuing:
+                        # 续命：上下文保留、轮数重置；过程叙事里追加续派指令
+                        mission_id = agent_id
+                        spawn_segment = next(s for s in trace
+                                             if s.get("type") == "spawn" and s.get("spawn_id") == mission_id)
+                        spawn_segment["status"] = "running"
+                        spawn_segment["summary"] = ""
+                        spawn_segment["prompt"] = prompt
+                        yield sse({"type": "spawn_start", "payload": {
+                            "spawn_id": mission_id, "agent": spawn_segment["agent"], "title": goal}})
+                        yield sse({"type": "answer_delta", "payload": {
+                            "text": f"[续命指令] {prompt}", "spawn_id": mission_id}})
+                        trace_append({"type": "text", "text": f"[续命指令] {prompt}",
+                                      "spawn_id": mission_id})
+                    else:
+                        spawned += 1
+                        mission_id = agent_id or f"m{spawned}"
+                        spawn_segment = {"type": "spawn", "spawn_id": mission_id,
+                                         "agent": "通用评审员", "title": goal, "status": "running",
+                                         "summary": "", "children": [], "prompt": prompt}
+                        trace_append(spawn_segment)
+                        yield sse({"type": "spawn_start", "payload": {
+                            "spawn_id": mission_id, "agent": "通用评审员", "title": goal}})
 
                     def wrap(gen: Generator[dict[str, Any], None, dict[str, Any]],
                              spawn_id: str = mission_id) -> Generator[dict[str, Any], None, dict[str, Any]]:
@@ -446,10 +473,14 @@ def run_panel_stream(
                         return outcome
 
                     try:
-                        outcome = yield from wrap(run_agent_mission(mission_id, goal, prompt, dossier, ctx))
+                        outcome = yield from wrap(
+                            run_agent_mission(mission_id, goal, prompt, dossier, ctx,
+                                              messages=sessions.get(mission_id),
+                                              rounds=_env_int("PANEL_AGENT_ROUNDS", 8)))
                     except Exception as exc:  # noqa: BLE001 — 单个 spawn 崩溃不拖垮主 agent
                         logger.exception("spawn %s 执行失败", mission_id)
-                        outcome = {"status": "failed", "report": ""}
+                        outcome = {"status": "failed", "report": "", "messages": None}
+                    sessions[mission_id] = outcome.get("messages") or sessions.get(mission_id) or []
                     spawn_segment["status"] = "done" if outcome["status"] == "done" else "failed"
                     spawn_segment["summary"] = (outcome["report"] or "子 agent 未产出报告")[:200]
                     yield sse({"type": "spawn_end", "payload": {

@@ -61,8 +61,13 @@ export function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
       return { ...msg, content: { segments } };
     }
     case "spawn_start": {
-      const existing = spawnSegmentOf(segments, e.payload.spawn_id);
-      if (existing) return msg;
+      const index = segments.findIndex(s => s.type === "spawn" && s.spawn_id === e.payload.spawn_id);
+      if (index >= 0) {
+        // 续命：同一个子 agent 再次进入运行态
+        const spawn = segments[index] as Extract<ChatSegment, { type: "spawn" }>;
+        segments[index] = { ...spawn, status: "running", summary: "", prompt: e.payload.title };
+        return { ...msg, content: { segments } };
+      }
       segments.push({
         type: "spawn", spawn_id: e.payload.spawn_id, agent: e.payload.agent,
         title: e.payload.title, status: "running", children: [],

@@ -120,10 +120,12 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
             </button>
           </header>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-            <section>
-              <p className="text-label text-on-surface-variant">{t("任务")}</p>
-              <p className="mt-1 text-body-sm leading-6 text-on-surface">{openSpawn.title}</p>
-            </section>
+            {openSpawn.prompt && (
+              <section>
+                <p className="text-label text-on-surface-variant">{t("派工 prompt")}</p>
+                <p className="mt-1 whitespace-pre-wrap text-body-sm leading-6 text-on-surface">{openSpawn.prompt}</p>
+              </section>
+            )}
             {openSpawn.summary && (
               <section>
                 <p className="text-label text-on-surface-variant">{t("结论")}</p>
@@ -137,7 +139,7 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
                   ? <p key={index} className="whitespace-pre-wrap text-body-sm leading-6 text-on-surface">{child.text}</p>
                   : null
             ))}
-            {!(openSpawn.children ?? []).length && !openSpawn.summary && (
+            {!(openSpawn.children ?? []).length && !openSpawn.summary && !openSpawn.prompt && (
               <p className="text-label text-on-surface-variant">{t("尚未记录工作内容")}</p>
             )}
           </div>

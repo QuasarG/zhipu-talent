@@ -566,6 +566,8 @@ export type ChatSegment =
       title: string;
       status: "running" | "done" | "failed";
       summary?: string;
+      /** spawn 时的完整 prompt（续命时更新为最新指令） */
+      prompt?: string;
       children: ChatSegment[];
     }
   | {
