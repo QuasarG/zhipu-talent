@@ -36,6 +36,9 @@ interface MdNode {
 
 const CITE_RE = /\[\^(c\d+)\]/g;
 
+const clampText = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max)}…` : text;
+
 /** message.citations 缺省时的稳定空数组：身份抖动会导致下方 plugins/citationMap 反复重建，
  *  连锁触发所有 ReactMarkdown 每 tick 全量重解析（= 流式闪烁），必须钉住 */
 const NO_CITATIONS: ChatCitation[] = [];
@@ -155,11 +158,18 @@ function SpawnSegmentView({ segment, onOpen, active }: {
   return (
     <div className="chat-enter my-1 space-y-2">
       {segment.prompt && (
-        // 派工 prompt：以 user query 气泡呈现（spawn 指令 ≈ 对子 agent 的提问）
+        // 派工 prompt：以 user query 气泡呈现（spawn 指令 ≈ 对子 agent 的提问）；
+        // 长指令截断展示，完整内容在右侧工作栏
         <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-lg bg-primary-container px-4 py-3 text-body whitespace-pre-wrap text-on-primary-container">
-            {segment.prompt}
-          </div>
+          <button
+            type="button"
+            onClick={() => onOpen?.(segment)}
+            className="max-w-[85%] cursor-pointer rounded-lg bg-primary-container px-4 py-3 text-left text-body-sm whitespace-pre-wrap text-on-primary-container"
+            title={t("点击查看完整派工指令")}
+          >
+            {clampText(segment.prompt, 200)}
+            {segment.prompt.length > 200 && <span className="text-on-primary-container/70"> …</span>}
+          </button>
         </div>
       )}
       <button

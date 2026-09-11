@@ -232,6 +232,7 @@ export default {
   "产物": "Artifact",
   "协作群聊": "Collaboration chat",
   "主席": "Chair",
+  "点击查看完整派工指令": "Click to view the full dispatch prompt",
   "任务：": "Task: ",
   "尚未记录工作内容": "No work recorded yet",
   "主 agent 的工作记录：派出哪些子 agent、核对了什么、如何下结论": "The main agent's work log: which subagents were spawned, what was checked, and how conclusions were reached",

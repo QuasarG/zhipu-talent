@@ -200,20 +200,38 @@ def tool_search_text(ctx: MaterialsContext | None, args: dict[str, Any]) -> dict
 
 
 def parse_json_block(text: str) -> dict[str, Any] | None:
-    """解析 LLM 输出的 JSON 对象：剥 markdown 围栏 + json_repair 兜底。"""
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
-        cleaned = re.sub(r"\n?```$", "", cleaned).strip()
-    try:
-        data = json.loads(cleaned)
-        return data if isinstance(data, dict) else None
-    except json.JSONDecodeError:
-        pass
+    """解析 LLM 输出的 JSON 对象：剥 markdown 围栏 + json_repair 兜底。
+
+    GLM 偶发在 JSON 前后带叙述或把围栏放歪——依次尝试：原文 → 围栏剥离 →
+    首个 ```json 代码块 → 首个平衡的 {...} 块 → json_repair。"""
+    candidates = [text]
+    fenced = re.findall(r"```(?:json)?\s*\n?([\s\S]*?)```", text)
+    candidates.extend(block.strip() for block in fenced)
+    start = text.find("{")
+    if start >= 0:
+        depth = 0
+        for index in range(start, len(text)):
+            if text[index] == "{":
+                depth += 1
+            elif text[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    candidates.append(text[start:index + 1])
+                    break
+    for candidate in candidates:
+        candidate = candidate.strip()
+        if not candidate:
+            continue
+        try:
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            continue
     try:
         from json_repair import loads as repair_loads
 
-        data = repair_loads(cleaned)
+        data = repair_loads(text)
         return data if isinstance(data, dict) else None
     except Exception:  # noqa: BLE001
         return None

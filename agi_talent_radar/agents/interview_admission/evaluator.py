@@ -280,32 +280,43 @@ def _assessment_markdown(assessment: TaskAssessment) -> str:
 
 
 def _spawn_prompt_text(task: dict[str, Any]) -> str:
-    """spawn 时的完整任务指令：任务块 + 评分规则 + 输出合同（自包含）。"""
+    """spawn 时的任务指令：只含该任务的目标、评价看什么与等级锚点（短任务卡）。
+
+    评分规则与输出合同是所有任务共享的静态要求，放在 worker 系统提示里，
+    不随每个 spawn 重复——派工气泡保持简短可读。"""
     anchors = task.get("anchors") or {}
     importance = {"primary": "首要", "major": "主要", "supporting": "补充"}.get(
         task.get("importance", ""), "补充")
-    return f"""评估核心任务「{task['title']}」（{importance}任务）。
+    return (f"评估核心任务「{task.get('title', '')}」（{importance}任务）。\n"
+            f"要完成什么：{task.get('description', '')}\n"
+            f"评价看什么：{task.get('evaluation_focus', '')}\n"
+            f"等级锚点：2 级={anchors.get('level_2', '')}；3 级={anchors.get('level_3', '')}；"
+            f"4 级={anchors.get('level_4', '')}")
 
-要完成什么：{task['description']}
-评价看什么：{task['evaluation_focus']}
-等级锚点：2 级={anchors.get('level_2', '')}；3 级={anchors.get('level_3', '')}；4 级={anchors.get('level_4', '')}
 
-评分规则：
+_SCORING_RULES = """
+# 评分规则（所有任务统一）
 - 评分采用唯一的 0–4 等级：0 无证据；1 相关基础；2 实际参与；3 独立胜任；4 成熟胜任。
 - 每个非零等级必须有简历可追溯短原文；背景证据不能单独支撑 2 分以上；
   可迁移证据必须说明迁移边界。
 - reasoning_summary 是报告卡片上的一行概述：一句中文（20–36 字，最多 45 字），
   「结论 + 最关键事实」，禁止换行与列举。
 
-先阅读上面的简历与材料（可用工具），每次调工具前先用一两句话说明目的；
-证据收集完成后停止调用工具，输出该任务的评分 JSON（格式见系统提示）。"""
+# 输出合同（证据收集完成后输出该任务的评分 JSON，不要 markdown、不要解释）
+{"task_id":"<按主席指令>","level":0到4,"confidence":"high|medium|low",
+"reasoning_summary":"20–36字一句话概述","transfer_boundary":"迁移成立的边界，无则空串",
+"evidence":[{"quote":"简历短原文","evidence_type":"direct|transferable|background",
+"confidence":"high|medium|low","relevance":"它如何支撑本任务"}}],
+"risks":["..."]}
+
+每个非零等级必须有简历可追溯短原文；不要因为学历、专业、没写某工具而降级。"""
 
 
 def _evaluator_system(resume: dict[str, Any], materials: MaterialsContext | None) -> str:
     files = "\n".join(f"- {rel}" for rel in (materials.walk() if materials else [])) \
         or "（无原始材料文件，以简历全文为准）"
     return f"""你是面试准入评估的任务评估 agent。主席在任务指令里给出了你要评估的核心任务、
-锚点与输出合同——那就是你的全部职责。你拥有材料只读工具（不能派生其他 agent），
+锚点——那就是你的全部职责。你拥有材料只读工具（不能派生其他 agent），
 每次调工具前先用一两句话说明目的；证据收集完成后停止调用工具，按输出合同给出结果。
 
 # 结构化简历
@@ -316,6 +327,7 @@ def _evaluator_system(resume: dict[str, Any], materials: MaterialsContext | None
 
 # 材料目录（read_text/read_pages 的 file 取这里的相对路径）
 {files}
+{_SCORING_RULES}
 
 # 事实纪律
 结论必须落在简历/材料原文上，查不到就明说，禁止推测；
