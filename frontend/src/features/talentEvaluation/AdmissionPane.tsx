@@ -127,7 +127,7 @@ export default function AdmissionPane({
   if (selectedCandidateId && selectedJdId) {
     const runningPair = [...(batch?.runs || []), ...activeRuns].find(run => run.candidate_id === selectedCandidateId
       && run.jd_id === selectedJdId && ["running", "queued"].includes(run.status));
-    if (runningPair) return <TalentCollaboration key={runningPair.id} runId={runningPair.id} status={runningPair.status} trace={runningPair.run_trace} />;
+    if (runningPair) return <TalentCollaboration key={runningPair.id} runId={runningPair.id} status={runningPair.status} />;
     return (
       <PairReportView
         key={`${selectedCandidateId}:${selectedJdId}`}
@@ -219,22 +219,6 @@ function PairReportView({
     );
   }
 
-  // 已保存报告与运行中批次共用同一活动流组件，仅切换为只读状态。
-  const reportRun = {
-    id: assessment.id,
-    batch_id: "saved-reports",
-    candidate_id: assessment.candidate_id,
-    candidate_name: assessment.candidate_name,
-    jd_id: assessment.jd_id,
-    jd_title: assessment.jd_title,
-    status: "completed" as const,
-    current_node: assessment.run_trace.at(-1)?.node_id || "admission_decision",
-    run_trace: fullTrace || [],
-    model_usage: assessment.model_usage,
-    error_message: "",
-    cancellation_requested: false,
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Tabs items={[{ value: "report", label: t("评估报告") }, { value: "space", label: t("协作过程") }]} value={tab} onChange={setTab} />
@@ -254,7 +238,7 @@ function PairReportView({
       <Card variant="filled" className="relative min-h-0 flex-1 overflow-hidden flex flex-col">
         {traceError ? <p role="alert" className="p-4 text-body-sm text-error">{t(traceError)}</p>
           : fullTrace === null ? <LoadingIndicator label={t("正在加载协作记录…")} />
-            : <TalentCollaboration pair={{ candidateId, jdId }} status="completed" trace={reportRun.run_trace} />}
+            : <TalentCollaboration pair={{ candidateId, jdId }} status="completed" />}
       </Card>}
     </div>
   );
