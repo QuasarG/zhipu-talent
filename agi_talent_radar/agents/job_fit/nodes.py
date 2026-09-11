@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agi_talent_radar.agents.job_fit.evaluator import _build_evaluation, _request_assessments
+from agi_talent_radar.agents.job_fit.evaluator import _build_evaluation
 from agi_talent_radar.core.models import (
     CandidateEvaluation,
     CandidateJobFitEvaluation,
@@ -10,31 +10,6 @@ from agi_talent_radar.core.models import (
     DirectionRecommendation,
     JobDefinition,
 )
-
-
-def run_candidate_preparer(state: dict[str, Any]) -> dict[str, Any]:
-    resume = CandidateResume.model_validate(state["resume"])
-    jobs = [JobDefinition.model_validate(item) for item in state.get("jobs", [])]
-    if not jobs:
-        raise ValueError("没有激活的 JD，无法进行面试准入评估。")
-    if len({job.id for job in jobs}) != len(jobs):
-        raise ValueError("JD id 必须唯一。")
-    return {
-        "prepared_resume": resume.model_dump(),
-        "prepared_jobs": [job.model_dump() for job in jobs],
-    }
-
-
-def run_jd_fit_assessor(state: dict[str, Any]) -> dict[str, Any]:
-    resume = CandidateResume.model_validate(state["prepared_resume"])
-    jobs = [JobDefinition.model_validate(item) for item in state["prepared_jobs"]]
-    return {
-        "job_fit_raw": _request_assessments(
-            resume,
-            jobs,
-            academic_report=state.get("academic_report"),
-        )
-    }
 
 
 def run_decision_guard(state: dict[str, Any]) -> dict[str, Any]:

@@ -714,7 +714,7 @@ class WorkbenchTest(unittest.TestCase):
         mock_text_resume.assert_called_once_with("[第 1 页]\nPDF 候选人 简历文本", "candidate.pdf", ocr_pages=[])
 
     @patch("agi_talent_radar.services.talent_service.admit_candidate_after_evaluation")
-    @patch("agi_talent_radar.web.workbench.run_candidate_stream")
+    @patch("agi_talent_radar.web.workbench.run_candidate_panel_stream")
     @patch("agi_talent_radar.core.database.record_node_event")
     @patch("agi_talent_radar.core.database.start_evaluation_run")
     @patch("agi_talent_radar.core.database.save_evaluation")
@@ -836,7 +836,7 @@ class WorkbenchTest(unittest.TestCase):
             patch("agi_talent_radar.core.database.get_latest_evaluation_run", return_value=None),
             patch("agi_talent_radar.core.database.start_evaluation_run") as mock_start,
             patch("agi_talent_radar.core.database.save_evaluation", side_effect=lambda *_a, **_kw: evaluation_saved.set()),
-            patch("agi_talent_radar.web.workbench.run_candidate_stream", side_effect=delayed_stream),
+            patch("agi_talent_radar.web.workbench.run_candidate_panel_stream", side_effect=delayed_stream),
             patch("agi_talent_radar.services.talent_service.admit_candidate_after_evaluation"),
         ):
             mock_session.return_value.__enter__.return_value = MagicMock()
@@ -850,7 +850,7 @@ class WorkbenchTest(unittest.TestCase):
             release_worker.set()
             self.assertTrue(evaluation_saved.wait(2), "浏览器断开后后台评估应继续保存结果")
 
-    @patch("agi_talent_radar.web.workbench.run_candidate_stream")
+    @patch("agi_talent_radar.web.workbench.run_candidate_panel_stream")
     @patch("agi_talent_radar.core.database.start_evaluation_run")
     @patch("agi_talent_radar.core.database.get_candidate_with_latest_evaluation")
     @patch("agi_talent_radar.core.database.get_session")
@@ -980,7 +980,7 @@ class WorkbenchTest(unittest.TestCase):
         self.assertEqual(detail["source_kinds"], ["resume_evaluation"])
 
     @patch("agi_talent_radar.services.talent_service.admit_candidate_after_evaluation")
-    @patch("agi_talent_radar.web.workbench.run_candidate_stream")
+    @patch("agi_talent_radar.web.workbench.run_candidate_panel_stream")
     @patch("agi_talent_radar.core.database.start_evaluation_run")
     @patch("agi_talent_radar.core.database.save_evaluation")
     @patch("agi_talent_radar.core.database.get_candidate_with_latest_evaluation")

@@ -18,16 +18,16 @@ import logging
 import os
 from typing import Any, Generator
 
-from agi_talent_radar.agents.job_fit.agent_assessor import (
+from agi_talent_radar.agents.job_fit.evaluator import DIMENSIONS
+from agi_talent_radar.agents.job_fit.materials import (
     PAGE_CHARS,
     MaterialsContext,
-    _extract_text_layer,
-    _parse_json_block,
-    _tool_read_pages,
-    _tool_search_text,
+    extract_text_layer,
+    parse_json_block,
+    tool_read_pages,
+    tool_search_text,
     tools_schema,
 )
-from agi_talent_radar.agents.job_fit.evaluator import DIMENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ def build_dossier(
     """案卷目录：主席的全局视图。顺带预热文本层缓存（全 pipeline 共享）。"""
     files = []
     for rel in (ctx.walk() if ctx else [])[:FILE_LIST_MAX]:
-        text = _extract_text_layer(ctx, rel) if ctx else ""
+        text = extract_text_layer(ctx, rel) if ctx else ""
         files.append({
             "file": rel,
             "segments": max(1, (len(text) + PAGE_CHARS - 1) // PAGE_CHARS) if text else 0,
@@ -142,7 +142,7 @@ def build_dossier(
 
 
 # ---------------------------------------------------------------------------
-# 工具执行（委托 agent_assessor / scorer_tools 的现成实现）
+# 工具执行（委托 materials / scorer_tools 的现成实现）
 # ---------------------------------------------------------------------------
 
 
@@ -152,7 +152,7 @@ def _execute_tool(ctx: MaterialsContext | None, name: str, args: dict[str, Any])
         return {"summary": f"{len(files)} 个文件", "detail": {"files": files[:FILE_LIST_MAX]}}
     if name == "read_text":
         rel = str(args.get("file") or "")
-        text = _extract_text_layer(ctx, rel) if ctx else ""
+        text = extract_text_layer(ctx, rel) if ctx else ""
         page = max(0, int(args.get("page") or 0))
         chunk = text[page * PAGE_CHARS:(page + 1) * PAGE_CHARS]
         if not chunk:
@@ -161,9 +161,9 @@ def _execute_tool(ctx: MaterialsContext | None, name: str, args: dict[str, Any])
         return {"summary": f"{rel} 第 {page + 1}/{total} 段（{len(chunk)} 字）",
                 "detail": {"file": rel, "page": page, "total_pages": total, "text": chunk}}
     if name == "read_pages":
-        return _tool_read_pages(ctx, args)
+        return tool_read_pages(ctx, args)
     if name == "search_text":
-        return _tool_search_text(ctx, args)
+        return tool_search_text(ctx, args)
     if name == "verify_paper":
         from agi_talent_radar.scholarship.scorer_tools import _tool_verify_paper
 
@@ -413,7 +413,7 @@ def run_mission(
                                 reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"))
         text = (result.get("text") or "").strip()
         messages.append({"role": "assistant", "content": text})
-        parsed = _parse_json_block(text)
+        parsed = parse_json_block(text)
         if parsed is None:
             last_error = "输出不是合法 JSON"
             continue

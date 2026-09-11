@@ -6,7 +6,6 @@ import json
 
 from agi_talent_radar.agents.common_potential.rubric import COMMON_DIMENSION_LABELS, COMMON_RUBRIC_MODELS
 from agi_talent_radar.agents.resume_parser import ensure_structured_resume
-from agi_talent_radar.core.graph import NODE_LABELS, build_graph
 from agi_talent_radar.core.import_agent import run_import_agent
 from agi_talent_radar.core.io import load_resumes, render_summary_markdown, save_json
 from agi_talent_radar.core.models import (
@@ -18,89 +17,78 @@ from agi_talent_radar.core.models import (
 )
 
 
+NODE_LABELS = {
+    "material_desk": "材料整备",
+    "panel_lead": "评审团",
+    "decision_guard": "面试准入门禁",
+    "result_formatter": "准入结果组装",
+}
+
+NODE_DESCRIPTIONS = {
+    "material_desk": "盘点候选人材料并预热文本层，形成主席的全局案卷目录。",
+    "panel_lead": "主席动态派出类型化评审任务（查证/深读/岗位对照/仲裁），核收结论后写综合意见。",
+    "decision_guard": "按确定性规则处理 unmet、unknown 和岗位匹配阈值，模型不能绕过硬门槛。",
+    "result_formatter": "输出每个 JD 的独立准入结论，并推荐最匹配方向，不生成跨 JD 混合总分。",
+}
+
+
+def evaluation_graph_catalog() -> dict:
+    def node(key: str, order: int) -> dict:
+        return {
+            "node": key,
+            "label": NODE_LABELS[key],
+            "description": NODE_DESCRIPTIONS[key],
+            "order": order,
+        }
+
+    return {
+        "workflow_version": "jd_fit_panel",
+        "phases": [
+            {
+                "key": "preparation",
+                "label": "准备",
+                "description": "固定本次评估的简历和 JD 集合，整备材料案卷。",
+                "groups": [
+                    {"key": "input", "label": "评估输入", "nodes": [node("material_desk", 0)]}
+                ],
+            },
+            {
+                "key": "assessment",
+                "label": "评审",
+                "description": "主席派发类型化 mission，评审员读真实材料并回传 findings。",
+                "groups": [
+                    {"key": "panel", "label": "评审团循环", "nodes": [node("panel_lead", 1)]}
+                ],
+            },
+            {
+                "key": "decision",
+                "label": "准入决策",
+                "description": "硬门槛优先，随后判断是否值得投入面试资源。",
+                "groups": [
+                    {
+                        "key": "guard_and_output",
+                        "label": "门禁与输出",
+                        "nodes": [node("decision_guard", 2), node("result_formatter", 3)],
+                    }
+                ],
+            },
+        ],
+    }
+
+
 def run_candidate(
     resume: CandidateResume | dict,
     academic_report: dict[str, Any] | None = None,
     jobs: Iterable[JobDefinition | dict[str, Any]] | None = None,
 ) -> CandidateEvaluation:
-    validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
-    structured = ensure_structured_resume(validated)
-    graph = build_graph()
-    job_list = _validated_jobs(jobs)
-    initial_state = {
-        "resume": structured.model_dump(),
-        "jobs": [job.model_dump() for job in job_list],
-    }
-    if academic_report is not None:
-        initial_state["academic_report"] = academic_report
-    state = graph.invoke(initial_state)
-    return CandidateEvaluation.model_validate(state["final_output"])
-
-
-def run_candidate_stream(
-    resume: CandidateResume | dict,
-    academic_report: dict[str, Any] | None = None,
-    jobs: Iterable[JobDefinition | dict[str, Any]] | None = None,
-):
-    """流式执行单候选人评估，边执行边 yield 节点事件和最终结果。"""
-    validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
-    structured = ensure_structured_resume(validated)
-    graph = build_graph()
-    job_list = _validated_jobs(jobs)
-    state: dict = {
-        "resume": structured.model_dump(),
-        "jobs": [job.model_dump() for job in job_list],
-    }
-    if academic_report is not None:
-        state["academic_report"] = academic_report
-
-    for event in graph.stream(state):
-        for node_key, update in event.items():
-            if node_key in NODE_LABELS:
-                summary = _node_summary(node_key, update)
-                yield {
-                    "type": "node",
-                    "node": node_key,
-                    "label": NODE_LABELS[node_key],
-                    "status": _node_event_status(node_key, update),
-                    "phase": _node_phase(node_key),
-                    "message": summary,
-                }
-            state.update(update)
-
-    evaluation = CandidateEvaluation.model_validate(state["final_output"])
-    yield {"type": "result", "result": evaluation.model_dump()}
-
-
-def _node_summary(node_key: str, update: dict) -> str:
-    if node_key == "candidate_preparer":
-        return f"已固定 1 份简历和 {len(update.get('prepared_jobs', []))} 个 JD。"
-    if node_key == "jd_fit_assessor":
-        count = len(update.get("job_fit_raw", {}).get("assessments", []))
-        return f"一次请求完成 {count} 个 JD 的独立证据对照。"
-    if node_key == "decision_guard":
-        assessments = update.get("job_fit_result", {}).get("assessments", [])
-        decisions = _top_counts([item.get("decision", "") for item in assessments], limit=3)
-        return f"硬门槛和阈值校正完成：{decisions or '无有效结论'}。"
-    if node_key == "result_formatter":
-        final = update.get("final_output", {})
-        return (
-            f"组装完成：最匹配 {final.get('best_fit_jd_title', '—')}，"
-            f"结论 {final.get('interview_decision', '—')}。"
-        )
-    return "已完成"
-
-
-def _node_event_status(node_key: str, update: dict) -> str:
-    return "done"
-
-
-def _node_phase(node_key: str) -> str:
-    if node_key == "candidate_preparer":
-        return "preparation"
-    if node_key == "jd_fit_assessor":
-        return "assessment"
-    return "decision"
+    """同步执行评审团评估（panel 是唯一评估引擎），返回最终结果。"""
+    evaluation: CandidateEvaluation | None = None
+    for event in run_candidate_panel_stream(resume, academic_report=academic_report, jobs=jobs):
+        if event["type"] == "result":
+            evaluation = CandidateEvaluation.model_validate(event["result"])
+    if evaluation is None:
+        raise RuntimeError("评估流程未返回结果。")
+    return evaluation
 
 
 def _validated_jobs(
@@ -141,49 +129,6 @@ def _load_spec(value: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _tier_text(key: str, value: str | None) -> str:
-    labels = {
-        "school_tier": {
-            "elite_research": "顶尖研究型",
-            "strong_research": "强研究型",
-            "specialized_stem": "特色/STEM强相关",
-            "general_university": "普通综合类",
-            "emerging_or_unknown": "新型或未知",
-            "not_provided": "未提供",
-        },
-        "academic_signal_tier": {
-            "very_strong": "很强",
-            "strong": "较强",
-            "moderate": "中等",
-            "weak_or_unknown": "弱或未知",
-        },
-    }
-    return labels.get(key, {}).get(str(value), str(value or "未知"))
-
-
-def _top_counts(values: list[str], limit: int = 3) -> str:
-    counts: dict[str, int] = {}
-    for value in values:
-        if value:
-            counts[value] = counts.get(value, 0) + 1
-    return "、".join(key for key, _ in sorted(counts.items(), key=lambda item: item[1], reverse=True)[:limit])
-
-
-def _top_tools(evidence: list[dict], limit: int = 3) -> list[str]:
-    tools: dict[str, int] = {}
-    for item in evidence:
-        for signal in item.get("signals", []):
-            if isinstance(signal, str) and signal.startswith("技术栈:"):
-                tool = signal.split(":", 1)[1].strip()
-                tools[tool] = tools.get(tool, 0) + 1
-    return [tool for tool, _ in sorted(tools.items(), key=lambda item: item[1], reverse=True)[:limit]]
-
-
-def _shorten(text: str, limit: int) -> str:
-    text = str(text).strip()
-    return text if len(text) <= limit else text[: limit - 1] + "…"
-
-
 def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
     validated_resumes = [
         resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
@@ -210,7 +155,7 @@ def run_batch(resumes: Iterable[CandidateResume | dict]) -> BatchResult:
         import_classifications=import_classifications,
         notes=[
             "批量导入使用单一轻量 Agent，只提取基本信息和分类，不筛除候选人。",
-            "逐人深评使用一次智谱 GLM 请求，对当前激活的全部 JD 分别给出证据对照。",
+            "逐人深评使用评审团（panel）链路：主席派类型化评审员读真实材料并对照激活 JD。",
             "硬门槛优先判定；unmet 直接拒绝，unknown 进入待补信息。",
             "多 JD 不做加权平均，每个 JD 独立输出进入面试、待补信息或不进入面试。",
             "进入面试表示值得投入面试资源验证，不表示最终录用。",
@@ -260,70 +205,6 @@ def run_batch_from_file(input_path: str | Path, output_dir: str | Path = "output
     return result
 
 
-def run_candidate_agent_stream(
-    resume: CandidateResume | dict,
-    academic_report: dict[str, Any] | None = None,
-    jobs: Iterable[JobDefinition | dict[str, Any]] | None = None,
-    materials: dict[str, Any] | None = None,
-):
-    """评估 agent 版 jd_fit_v2：agent 读本人真实材料（含视觉转译）+ 督导，
-    产出与旧 workflow 完全同构的 job_fit_raw；decision_guard（硬门槛确定性
-    裁决）与结果组装复用原节点函数——评分模式不变。
-
-    materials: {"root": 目录, "allowed": {相对路径白名单} | None}；
-    None 表示该候选人无原始材料文件，agent 仅依据结构化简历评估。
-    """
-    from agi_talent_radar.agents.job_fit.agent_assessor import run_agent_assessments_stream
-    from agi_talent_radar.agents.job_fit.nodes import run_decision_guard, run_job_fit_formatter
-
-    validated = resume if isinstance(resume, CandidateResume) else CandidateResume.model_validate(resume)
-    structured = ensure_structured_resume(validated)
-    job_list = _validated_jobs(jobs)
-
-    state: dict[str, Any] = {
-        "prepared_resume": structured.model_dump(),
-        "prepared_jobs": [job.model_dump() for job in job_list],
-    }
-    if academic_report is not None:
-        state["academic_report"] = academic_report
-
-    yield {
-        "type": "node", "node": "candidate_preparer",
-        "label": NODE_LABELS["candidate_preparer"], "status": "done",
-        "phase": "preparation", "message": "评估输入就绪：结构化简历 + 激活 JD。",
-    }
-    yield {
-        "type": "node", "node": "jd_fit_assessor",
-        "label": NODE_LABELS["jd_fit_assessor"], "status": "running",
-        "phase": "assessment", "message": "评估 agent 正在读取本人材料…",
-    }
-
-    ctx = None
-    if materials and materials.get("root"):
-        from agi_talent_radar.agents.job_fit.agent_assessor import MaterialsContext
-
-        ctx = MaterialsContext(str(materials["root"]), materials.get("allowed"))
-
-    state["job_fit_raw"] = yield from run_agent_assessments_stream(
-        structured.model_dump(), job_list, academic_report, ctx,
-    )
-
-    state.update(run_decision_guard(state))
-    yield {
-        "type": "node", "node": "decision_guard",
-        "label": NODE_LABELS["decision_guard"], "status": "done",
-        "phase": "decision", "message": "硬门槛与决策阈值裁决完成（确定性规则，agent 不可绕过）。",
-    }
-    state.update(run_job_fit_formatter(state))
-    yield {
-        "type": "node", "node": "result_formatter",
-        "label": NODE_LABELS["result_formatter"], "status": "done",
-        "phase": "decision", "message": "评估结果组装完成。",
-    }
-    evaluation = CandidateEvaluation.model_validate(state["final_output"])
-    yield {"type": "result", "result": evaluation.model_dump()}
-
-
 def run_candidate_panel_stream(
     resume: CandidateResume | dict,
     academic_report: dict[str, Any] | None = None,
@@ -349,7 +230,7 @@ def run_candidate_panel_stream(
 
     ctx = None
     if materials and materials.get("root"):
-        from agi_talent_radar.agents.job_fit.agent_assessor import MaterialsContext
+        from agi_talent_radar.agents.job_fit.materials import MaterialsContext
 
         ctx = MaterialsContext(str(materials["root"]), materials.get("allowed"))
 

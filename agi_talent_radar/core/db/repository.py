@@ -355,7 +355,7 @@ def _dimension_row(
 
 
 def evaluation_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
-    from agi_talent_radar.core.graph import evaluation_graph_catalog
+    from agi_talent_radar.core.runner import evaluation_graph_catalog
 
     evidence = [_evidence_dict(item) for item in evaluation.evidence_items]
     common_dimensions = [
@@ -459,7 +459,7 @@ def _panel_trace_to_dict(evaluation: EvaluationORM) -> list[dict[str, Any]]:
 
 def evaluation_run_to_dict(evaluation: EvaluationORM) -> dict[str, Any]:
     """Serialize the durable portion of any evaluation run, including active runs."""
-    from agi_talent_radar.core.graph import evaluation_graph_catalog
+    from agi_talent_radar.core.runner import evaluation_graph_catalog
 
     return {
         "id": evaluation.id,

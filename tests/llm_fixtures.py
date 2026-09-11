@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import contextmanager
 from typing import Any
 from unittest.mock import patch
@@ -10,11 +11,90 @@ from agi_talent_radar.core.rubric import RUBRIC
 
 @contextmanager
 def mock_llm_json():
+    """全链路 Fake：对话/结构化/导入等走 prompt 分支；评审团链路走脚本化 Fake。"""
+    panel = _PanelScripted()
     with (
-        patch("agi_talent_radar.core.llm_client.call_llm_json", side_effect=_fake_llm_json),
+        patch("agi_talent_radar.core.llm_client.call_llm_json", side_effect=panel.llm_json),
         patch("agi_talent_radar.core.llm_client.call_llm_stream", side_effect=_fake_llm_stream),
+        patch("agi_talent_radar.core.llm_client.call_llm_tools", side_effect=panel.llm_tools),
     ):
         yield
+
+
+class _PanelScripted:
+    """评审团脚本：主席首轮按 JD 派 jd_match + 一个 deep_read，次轮收队；
+    评审员零工具轮直接交 4 分 findings（jd_match 引文取自当前简历，保证反查存活）。"""
+
+    def __init__(self) -> None:
+        self.resume: dict[str, Any] = {}
+        self.jobs: list[dict[str, Any]] = []
+
+    # ---- 主席（call_llm_json；其余 prompt 交给通用 _fake_llm_json）----
+    def llm_json(self, system_prompt: str, payload: dict[str, Any], temperature: float = 0.1, **_kw: Any) -> dict[str, Any]:
+        if "评审团的主席" not in system_prompt:
+            return _fake_llm_json(system_prompt, payload, temperature, **_kw)
+        self.resume = payload.get("resume") or {}
+        self.jobs = payload.get("jobs") or []
+        if payload.get("missions_done"):
+            return {"action": "synthesize", "per_jd": [
+                {"jd_id": j["jd_id"], "confidence": 0.85,
+                 "strengths": [], "risks": [],
+                 "interview_questions": [f"请展开 {j['jd_id']} 核心项目的本人贡献。"],
+                 "missing_information": [], "assessment_summary": "证据达到面试验证门槛"}
+                for j in self.jobs
+            ]}
+        missions = [
+            {"mission_id": f"jm_{j['jd_id']}", "type": "jd_match",
+             "goal": f"对照 {j['jd_id']} 判硬门槛", "jd_id": j["jd_id"]}
+            for j in self.jobs
+        ]
+        missions.append({"mission_id": "dr_core", "type": "deep_read", "goal": "深读项目材料",
+                         "dimensions": ["technical_depth", "ownership", "engineering_scale"]})
+        return {"action": "dispatch", "missions": missions}
+
+    # ---- 评审员（call_llm_tools；tools 非空=工具轮，tools==[]=findings 通道）----
+    def llm_tools(self, messages: list, tools: list, **_kw: Any) -> dict[str, Any]:
+        if tools:
+            return {"text": "", "tool_calls": []}
+        system = str(messages[0]["content"])
+        quote = self._quote()
+        if "岗位对照评审员" in system:
+            jd_id = self._jd_from_system(system)
+            return {"text": json.dumps({"assessments": [{
+                "jd_id": jd_id,
+                "hard_requirements": [
+                    {"requirement": f"{jd_id} 核心任务经验", "status": "met",
+                     "evidence": [quote], "rationale": "简历明确写出对应项目事实"},
+                ],
+                "dimensions": [
+                    {"key": "direct_task_match", "score": 4,
+                     "rationale": "简历项目覆盖岗位核心任务的要求充分", "evidence": [quote]},
+                    {"key": "transferability", "score": 4,
+                     "rationale": "相邻经历可迁移到岗位核心任务的完成", "evidence": [quote]},
+                ],
+            }]}, ensure_ascii=False), "tool_calls": []}
+        if "深读评审员" in system:
+            jd_ids = re.findall(r"jd_id=(\S+?)｜", system) or [j["jd_id"] for j in self.jobs]
+            return {"text": json.dumps({"assessments": [
+                {"jd_id": jd_id, "dimensions": [
+                    {"key": key, "score": 4,
+                     "rationale": "材料显示方法细节与本人贡献充分", "evidence": [quote]}
+                    for key in ("technical_depth", "ownership", "engineering_scale")
+                ]}
+                for jd_id in jd_ids
+            ]}, ensure_ascii=False), "tool_calls": []}
+        raise AssertionError(f"未覆盖的评审员工种: {system[:80]}")
+
+    def _jd_from_system(self, system: str) -> str:
+        match = re.search(r"# 目标 JD：(\S+?)｜", system)
+        if match:
+            return match.group(1)
+        return self.jobs[0]["jd_id"] if self.jobs else "jd"
+
+    def _quote(self) -> str:
+        projects = self.resume.get("projects") or []
+        details = (projects[0].get("details") if projects else None) or []
+        return details[0] if details else str(self.resume.get("raw_text") or "简历未提供项目细节")[:40]
 
 
 def _fake_llm_stream(system_prompt: str, payload: dict[str, Any], temperature: float = 0.1):
@@ -124,42 +204,6 @@ def _fake_llm_json(
                     "extraction_confidence": 1.0,
                 }
                 for index, (dimension, source, quote) in enumerate(quotes, start=1)
-            ]
-        }
-    if "JD 面试准入评估 Agent" in system_prompt:
-        resume = payload["resume"]
-        projects = resume.get("projects", [])
-        details = projects[0].get("details", []) if projects else []
-        quote = details[0] if details else (resume.get("raw_text", "")[:120] or "简历未提供直接项目证据")
-        return {
-            "assessments": [
-                {
-                    "jd_id": job["id"],
-                    "hard_requirements": [],
-                    "dimensions": [
-                        {
-                            "key": key,
-                            "score": 3.5,
-                            "rationale": "存在可面试验证的岗位相关证据。",
-                            "evidence": [quote],
-                        }
-                        for key in (
-                            "direct_task_match",
-                            "technical_depth",
-                            "ownership",
-                            "evidence_quality",
-                            "engineering_scale",
-                            "transferability",
-                        )
-                    ],
-                    "strengths": [{"summary": "具备岗位相关项目经验", "evidence": [quote]}],
-                    "risks": [{"summary": "需确认本人贡献边界", "evidence": [quote]}],
-                    "missing_information": [],
-                    "interview_questions": [f"请说明“{quote}”中的本人贡献和失败案例。"],
-                    "confidence": 0.82,
-                    "assessment_summary": "岗位相关证据达到面试验证门槛",
-                }
-                for job in payload["jobs"]
             ]
         }
     if "多 Track 路由 Agent" in system_prompt:

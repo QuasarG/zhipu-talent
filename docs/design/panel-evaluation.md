@@ -1,8 +1,8 @@
 # 评审团评估链路（panel mode）重构方案
 
-状态：设计定稿，待实施。
+状态：已落地；2026-09-11 起 panel 为唯一评估引擎（tag `pre-eval-mode-convergence-20260911` 保存三模式并存的历史状态，`agent_assessor.py` 双 agent 与 `workflow` 模式已删除）。
 范围：(JD×候选人) 评估链路，即 `agents/job_fit/` + `core/runner.py` 的 `jd_fit_v2` 输出。
-关联：`agents/job_fit/agent_assessor.py`（现双 agent 模式，保留作回滚，见 §13 删除计划）。
+关联：共享材料访问层已抽为 `agents/job_fit/materials.py`（MaterialsContext / 文本层 / 视觉转译 / 检索 / JSON 解析）。
 
 ---
 
@@ -249,15 +249,14 @@ assembly（装配+裁决，done）
 ## 12. 环境变量
 
 ```
-TALENT_EVALUATION_MODE = panel | agent | workflow   # 默认暂仍 agent，验收后切 panel
 PANEL_MAX_MISSIONS = 8
 PANEL_LEAD_MAX_ROUNDS = 12
 PANEL_MISSION_ROUNDS = 6
 PANEL_MISSION_LIFETIME_ROUNDS = 10
 ```
 
-## 13. 上线与删除计划
+`TALENT_EVALUATION_MODE` 已随 agent/workflow 模式删除；panel 是唯一评估路径。
 
-1. panel 合入，默认 mode 仍为 `agent`；服务器 env 切 `panel` 对 2-3 个真实候选人验收。
-2. 验收通过：env 默认改 `panel`，观察一周。
-3. **删除**：panel 稳定后删 `agent_assessor.py` 的双 agent 循环与观察者（`MaterialsContext`/文本提取/JSON 解析等被 panel 复用的部分迁入 panel.py 或留作共享 util），`TALENT_EVALUATION_MODE` 收敛为 `panel | workflow`。三套并存不逾期——腐化从第四套开始。
+## 13. 上线与删除计划（已执行）
+
+panel 验收通过后，双 agent 循环与观察者已删除，共享的工具与材料访问迁入 `agents/job_fit/materials.py`，`TALENT_EVALUATION_MODE` 开关移除。

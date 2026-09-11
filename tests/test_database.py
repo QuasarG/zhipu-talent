@@ -144,7 +144,7 @@ class DatabaseTest(unittest.TestCase):
                 for node in group["nodes"]
             ]
             # 与图目录动态比对：加节点不用改这里（旧断言写死 15，catalog 演进到 17 后过时红灯）
-            from agi_talent_radar.core.graph import evaluation_graph_catalog as _catalog
+            from agi_talent_radar.core.runner import evaluation_graph_catalog as _catalog
 
             catalog_nodes = [
                 node["node"]
@@ -156,10 +156,10 @@ class DatabaseTest(unittest.TestCase):
             self.assertEqual(len(graph_nodes), len(set(graph_nodes)))
             # 论文核验前移到导入阶段后，academic_check 不再出现在展示图谱
             self.assertNotIn("academic_check", graph_nodes)
-            # 硬编码 6 track 已废弃：图谱只暴露单个 JD 驱动动态节点
+            # 硬编码 6 track 已废弃：图谱只暴露评审团链路的真实节点
             self.assertEqual(
                 graph_nodes,
-                ["candidate_preparer", "jd_fit_assessor", "decision_guard", "result_formatter"],
+                ["material_desk", "panel_lead", "decision_guard", "result_formatter"],
             )
             self.assertEqual(
                 [phase["key"] for phase in payload["evaluation_graph"]["phases"]],

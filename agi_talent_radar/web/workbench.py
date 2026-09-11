@@ -29,7 +29,7 @@ from agi_talent_radar.core.resume_ingestion import (
     extract_pdf_text,
     text_resume,
 )
-from agi_talent_radar.core.runner import run_candidate_agent_stream, run_candidate_stream
+from agi_talent_radar.core.runner import run_candidate_panel_stream
 from agi_talent_radar.core.scoring_config import DEFAULT as SCORING_CONFIG
 from agi_talent_radar.web.spa_assets import list_dist_assets as _list_dist_assets
 
@@ -106,24 +106,30 @@ def _start_background_evaluation(session, candidate_orm) -> None:
 
 
 def _candidate_materials(candidate_id: str) -> dict[str, Any] | None:
-    """候选人本人材料目录：材料包工作区（多文件）或存量简历原件（单文件）。"""
-    from agi_talent_radar.core.db.orm import TalentBundleORM
-    from agi_talent_radar.core.db.runtime import get_session
-    from agi_talent_radar.core.pdf_storage import get_resume_original_path
-    from agi_talent_radar.talent_bundle.ingest import workspace_root
+    """候选人本人材料目录：材料包工作区（多文件）或存量简历原件（单文件）。
 
-    with get_session() as session:
-        bundle = (
-            session.query(TalentBundleORM)
-            .filter_by(candidate_id=candidate_id)
-            .order_by(TalentBundleORM.id.desc())
-            .first()
-        )
-    if bundle is not None:
-        return {"root": workspace_root(bundle.id), "allowed": None}
-    original = get_resume_original_path(candidate_id)
-    if original and original.is_file():
-        return {"root": str(original.parent), "allowed": {original.name}}
+    读取失败降级为无材料评估（panel 仅凭结构化简历出分），不阻断评估。
+    """
+    try:
+        from agi_talent_radar.core.db.orm import TalentBundleORM
+        from agi_talent_radar.core.db.runtime import get_session
+        from agi_talent_radar.core.pdf_storage import get_resume_original_path
+        from agi_talent_radar.talent_bundle.ingest import workspace_root
+
+        with get_session() as session:
+            bundle = (
+                session.query(TalentBundleORM)
+                .filter_by(candidate_id=candidate_id)
+                .order_by(TalentBundleORM.id.desc())
+                .first()
+            )
+        if bundle is not None:
+            return {"root": workspace_root(bundle.id), "allowed": None}
+        original = get_resume_original_path(candidate_id)
+        if original and original.is_file():
+            return {"root": str(original.parent), "allowed": {original.name}}
+    except Exception:  # noqa: BLE001 — 材料定位失败不影响评估主流程
+        logger.warning("候选人 %s 材料目录定位失败，按无材料评估", candidate_id, exc_info=True)
     return None
 
 
@@ -153,23 +159,13 @@ def _run_evaluation_job(
     evaluation = None
     collab_translator = None
     try:
-        mode = os.getenv("TALENT_EVALUATION_MODE", "agent")
-        if mode == "panel":
-            from agi_talent_radar.core.runner import run_candidate_panel_stream
+        from agi_talent_radar.core.collab_events import PanelCollabTranslator
 
-            iterator = run_candidate_panel_stream(
-                resume, academic_report=academic_report, materials=_candidate_materials(candidate_id),
-            )
-            from agi_talent_radar.core.collab_events import PanelCollabTranslator
-
-            collab_translator = PanelCollabTranslator(str(evaluation_run_id))
-            _record_collab_events([collab_translator.run_event("run.started")])
-        elif mode == "agent":
-            iterator = run_candidate_agent_stream(
-                resume, academic_report=academic_report, materials=_candidate_materials(candidate_id),
-            )
-        else:
-            iterator = run_candidate_stream(resume, academic_report=academic_report)
+        iterator = run_candidate_panel_stream(
+            resume, academic_report=academic_report, materials=_candidate_materials(candidate_id),
+        )
+        collab_translator = PanelCollabTranslator(str(evaluation_run_id))
+        _record_collab_events([collab_translator.run_event("run.started")])
         for event in iterator:
             if event["type"] == "node":
                 from agi_talent_radar.core.database import get_session, record_node_event
@@ -1985,7 +1981,7 @@ def _iso(value) -> str | None:
 
 
 def _orm_to_detail(row) -> dict[str, Any]:
-    from agi_talent_radar.core.graph import evaluation_graph_catalog
+    from agi_talent_radar.core.runner import evaluation_graph_catalog
 
     # 姓名备注：person 主档人工补充，展示优先于提取名
     note = ""
