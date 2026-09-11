@@ -21,6 +21,8 @@ interface Props {
   error?: string;
   busy: boolean;
   onDecide: (actionId: string, decision: Record<string, unknown>) => void;
+  /** spawn 段点击回调：提供时点击打开子 agent 工作侧栏，否则内联展开 */
+  onSpawnOpen?: (segment: Extract<ChatSegment, { type: "spawn" }>) => void;
 }
 
 interface MdNode {
@@ -118,12 +120,16 @@ function citePlugin(citations: ChatCitation[]) {
   return () => (tree: MdNode) => transform(tree);
 }
 
-/** 子 agent spawn 段：默认一行摘要，展开看它自己的工作段（工具/说明，DSH 式内联）。 */
-function SpawnSegmentView({ segment }: { segment: Extract<ChatSegment, { type: "spawn" }> }) {
+/** 子 agent spawn 段：一行摘要；提供 onOpen 时点击打开工作侧栏，否则内联展开。 */
+function SpawnSegmentView({ segment, onOpen }: {
+  segment: Extract<ChatSegment, { type: "spawn" }>;
+  onOpen?: (segment: Extract<ChatSegment, { type: "spawn" }>) => void;
+}) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const running = segment.status === "running";
   const failed = segment.status === "failed";
+  const children = segment.children ?? [];
 
   const renderChild = (child: ChatSegment, index: number) => {
     if (child.type === "tool") return <ToolCallCard key={child.call_id || index} segment={child} />;
@@ -147,8 +153,8 @@ function SpawnSegmentView({ segment }: { segment: Extract<ChatSegment, { type: "
     <div className="chat-enter my-1">
       <button
         type="button"
-        onClick={() => setExpanded(value => !value)}
-        aria-expanded={expanded}
+        onClick={() => (onOpen ? onOpen(segment) : setExpanded(value => !value))}
+        aria-expanded={onOpen ? undefined : expanded}
         className="state-layer flex w-full items-center gap-2 rounded-md border border-outline-variant bg-surface-low px-3 py-2 text-left"
       >
         <Icon name="smart_toy" size={17} className={cn("shrink-0", running ? "text-primary" : "text-on-surface-variant")} />
@@ -172,8 +178,8 @@ function SpawnSegmentView({ segment }: { segment: Extract<ChatSegment, { type: "
       {expanded && (
         <div className="ml-5 space-y-2 border-l-2 border-outline-variant py-1 pl-3">
           <p className="text-label leading-5 text-on-surface-variant">{t("任务")}：{segment.title}</p>
-          {segment.children.map(renderChild)}
-          {!segment.children.length && (
+          {children.map(renderChild)}
+          {!children.length && (
             <p className="text-label text-on-surface-variant">{running ? t("正在工作") : t("尚未记录工作内容")}</p>
           )}
         </div>
@@ -183,7 +189,7 @@ function SpawnSegmentView({ segment }: { segment: Extract<ChatSegment, { type: "
 }
 
 /** assistant 消息：按 segments 顺序渲染 文本(markdown) / 工具卡片 / 决策卡片 */
-export default function AssistantMessage({ message, error, busy, onDecide, hideAvatar = false }: Props) {
+export default function AssistantMessage({ message, error, busy, onDecide, hideAvatar = false, onSpawnOpen }: Props) {
   const citations = message.citations ?? NO_CITATIONS;
   const citationMap = useMemo(
     () => new Map(citations.map((c) => [c.id, c])),
@@ -230,7 +236,7 @@ export default function AssistantMessage({ message, error, busy, onDecide, hideA
       );
     }
     if (seg.type === "tool") return <ToolCallCard key={seg.call_id || i} segment={seg} />;
-    if (seg.type === "spawn") return <SpawnSegmentView key={seg.spawn_id || i} segment={seg} />;
+    if (seg.type === "spawn") return <SpawnSegmentView key={seg.spawn_id || i} segment={seg} onOpen={onSpawnOpen} />;
     return <ActionCard key={seg.action_id || i} segment={seg} busy={busy} onDecide={onDecide} />;
   };
 

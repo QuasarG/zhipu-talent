@@ -176,7 +176,9 @@ def _chair_system(dossier: dict[str, Any]) -> str:
 {json.dumps(dossier["academic_report"], ensure_ascii=False)[:1500]}
 
 # 工作方式
-每次调工具前先用一两句话说明目的。调查充分后停止调用工具，等待系统向你收取最终评估。"""
+每次调用工具（包括 spawn_agent）之前，先用一两句话向用户说明你要做什么、为什么；
+拿到结果后简述关键发现。禁止一句话不说就连环调工具。
+调查充分后停止调用工具，等待系统向你收取最终评估。"""
 
 
 def _chair_final_prompt(jobs: list) -> str:
@@ -253,9 +255,9 @@ def _worker_system(dossier: dict[str, Any]) -> str:
 {files}
 
 # 工作纪律
-1. 每次调工具前先用一两句话说明目的。
+1. 每轮至少向主席输出一句进展说明：做了什么、发现了什么、下一步为什么。
 2. 结论必须落在材料原文上，引用到「文件名 第N页」；查不到就明说，禁止推测。
-3. 材料读完（或任务完成）就停止调用工具，输出最终报告。"""
+3. 材料读完（或任务完成）就停止调用工具，输出最终报告（结论、证据、风险）。"""
 
 
 def run_agent_mission(
@@ -405,7 +407,8 @@ def run_panel_stream(
                     spawned += 1
                     mission_id = f"m{spawned}"
                     spawn_segment: dict[str, Any] = {"type": "spawn", "spawn_id": mission_id,
-                                                     "agent": "通用评审员", "title": goal, "status": "running"}
+                                                     "agent": "通用评审员", "title": goal, "status": "running",
+                                                     "summary": "", "children": []}
                     trace_append(spawn_segment)
                     yield sse({"type": "spawn_start", "payload": {
                         "spawn_id": mission_id, "agent": "通用评审员", "title": goal}})

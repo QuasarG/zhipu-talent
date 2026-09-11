@@ -2,8 +2,6 @@ import { useEffect, useMemo } from "react";
 import type {
   Evaluation,
   AcademicReport,
-  ChatMessage,
-  ChatSegment,
   EvaluationGraph,
   EvaluationGraphGroup,
   EvaluationGraphPhase,
@@ -16,7 +14,7 @@ import Tabs from "@/components/ui/Tabs";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 import ScoreOverview from "./ScoreOverview";
-import AssistantMessage from "@/features/chat/AssistantMessage";
+import RunTraceProcess from "@/features/talentEvaluation/RunTraceProcess";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
 
@@ -69,7 +67,9 @@ export default function EvaluationWorkspace({ candidatePersonId, candidateId = "
         {tab === "result" ? (
           evaluation ? <ScoreOverview evaluation={evaluation} academicReport={academicReport} personId={candidatePersonId} /> : <ResultEmpty evaluating={evaluating} />
         ) : evaluationRun?.panel_trace?.length ? (
-          <PanelProcess trace={evaluationRun.panel_trace} status={evaluationRun.status} />
+          <div className="flex h-full min-h-0">
+            <RunTraceProcess segments={evaluationRun.panel_trace} live={evaluationRun.status === "running"} />
+          </div>
         ) : (
           <EvaluationProcess
             graph={graph}
@@ -79,33 +79,6 @@ export default function EvaluationWorkspace({ candidatePersonId, candidateId = "
             evaluating={evaluating}
           />
         )}
-      </div>
-    </div>
-  );
-}
-
-/** 评估过程（奖学金同款）：一条 assistant 消息 = 主 agent 全部工作叙事。 */
-function PanelProcess({ trace, status }: { trace: ChatSegment[]; status: string }) {
-  const { t } = useI18n();
-  const message: ChatMessage = {
-    id: "panel-trace",
-    conversation_id: "",
-    role: "assistant",
-    content: { segments: trace },
-    citations: [],
-    status: status === "running" ? "running" : "completed",
-    created_at: "",
-  };
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-4xl px-5 py-4">
-        <div className="mb-5">
-          <h2 className="text-title-lg">{t("评估过程")}</h2>
-          <p className="mt-1 text-body-sm text-on-surface-variant">
-            {t("主 agent 的工作记录：派出哪些子 agent、核对了什么、如何下结论")}
-          </p>
-        </div>
-        <AssistantMessage message={message} busy={status === "running"} onDecide={() => {}} />
       </div>
     </div>
   );

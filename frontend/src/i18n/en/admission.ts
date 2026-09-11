@@ -227,6 +227,7 @@ export default {
   "已派发": "Dispatched",
   "已开始": "Started",
   "结论回传": "Findings returned",
+  "结论": "Conclusion",
   "失败回传": "Failure reported",
   "产物": "Artifact",
   "协作群聊": "Collaboration chat",

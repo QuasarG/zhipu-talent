@@ -97,7 +97,7 @@ class _Trace:
 
     def spawn(self, spawn_id: str, title: str) -> dict[str, Any]:
         segment = {"type": "spawn", "spawn_id": spawn_id, "agent": "任务评估 Agent",
-                   "title": title, "status": "running", "summary": ""}
+                   "title": title, "status": "running", "summary": "", "children": []}
         self.segment(segment)
         return segment
 

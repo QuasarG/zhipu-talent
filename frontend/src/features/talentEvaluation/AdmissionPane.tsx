@@ -127,7 +127,7 @@ export default function AdmissionPane({
   if (selectedCandidateId && selectedJdId) {
     const runningPair = [...(batch?.runs || []), ...activeRuns].find(run => run.candidate_id === selectedCandidateId
       && run.jd_id === selectedJdId && ["running", "queued"].includes(run.status));
-    if (runningPair) return <RunTraceProcess key={runningPair.id} runId={runningPair.id} status={runningPair.status} />;
+    if (runningPair) return <RunTraceProcess live runId={runningPair.id} status={runningPair.status} />;
     return (
       <PairReportView
         key={`${selectedCandidateId}:${selectedJdId}`}
@@ -238,7 +238,7 @@ function PairReportView({
       <Card variant="filled" className="relative min-h-0 flex-1 overflow-hidden flex flex-col">
         {traceError ? <p role="alert" className="p-4 text-body-sm text-error">{t(traceError)}</p>
           : fullTrace === null ? <LoadingIndicator label={t("正在加载协作记录…")} />
-            : <RunTraceProcess status="completed" runTrace={fullTrace ?? []} />}
+            : <RunTraceProcess status="completed" segments={fullTrace ?? []} />}
       </Card>}
     </div>
   );
