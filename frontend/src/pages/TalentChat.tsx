@@ -17,15 +17,6 @@ import { markdownHeadings } from "@/features/chat/chatNavigationModel";
 type LocalMessage = ChatMessage & { error?: string };
 export type { LocalMessage };
 
-/** 找到（或创建）spawn 段：子 agent 的工作段挂在自己名下 */
-function spawnSegmentOf(segments: ChatSegment[], spawnId: string): Extract<ChatSegment, { type: "spawn" }> | null {
-  for (let i = segments.length - 1; i >= 0; i -= 1) {
-    const segment = segments[i];
-    if (segment.type === "spawn" && segment.spawn_id === spawnId) return segment;
-  }
-  return null;
-}
-
 /** 逐事件更新正在流式生成的 assistant 消息 */
 export function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
   const segments = [...msg.content.segments];
