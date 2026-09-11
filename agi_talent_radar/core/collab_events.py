@@ -224,11 +224,16 @@ _ADMISSION_TASK_KINDS = (
 
 
 class AdmissionCollabTranslator(_BaseTranslator):
-    """准入链路：evaluator._Trace 事件 → v1 信封。系统编排节点不建 Agent 实例。"""
+    """准入链路：evaluator._Trace 事件 → v1 信封。系统编排节点不建 Agent 实例。
+
+    evidence_repair 与 task_score 是同一个评分 Agent 的重评回合：归并为同一实例，
+    避免群里出现成对的同名成员；回传 digest 带任务标题，保证消息人类可读。
+    """
 
     def __init__(self, run_id: str) -> None:
         super().__init__(run_id, "admission")
         self._returned_tasks: set[str] = set()
+        self._settled_tasks: set[str] = set()
 
     @staticmethod
     def _task_kind(node_id: str) -> str:
@@ -236,6 +241,22 @@ class AdmissionCollabTranslator(_BaseTranslator):
             if node_id.startswith(prefix):
                 return kind
         return "step"
+
+    @staticmethod
+    def _instance_of(agent_id: str) -> str:
+        """evidence_repair:{task} 复用 task_score:{task} 的实例。"""
+        if agent_id.startswith("evidence_repair:"):
+            return "task_score:" + agent_id.split(":", 1)[1]
+        return agent_id
+
+    @staticmethod
+    def _digest(raw: dict[str, Any]) -> str:
+        text = str(raw.get("summary") or raw.get("message") or "")
+        label = str(raw.get("label") or "")
+        node_id = str(raw.get("node_id") or "")
+        if text and label and node_id.startswith(("task_score:", "evidence_repair:")):
+            return f"【{label}】{text}"
+        return text
 
     def feed(self, raw: dict[str, Any]) -> list[dict[str, Any]]:
         agent_id = str(raw.get("agent_id") or "")
@@ -246,39 +267,49 @@ class AdmissionCollabTranslator(_BaseTranslator):
         at = str(raw.get("at") or "") or None
         if not agent_id or agent_type == "system" or not node_id:
             return []
+        instance_id = self._instance_of(agent_id)
 
         task = dict(
-            instance_id=agent_id, agent_type=agent_type, task_id=node_id,
+            instance_id=instance_id, agent_type=agent_type, task_id=node_id,
             task_kind=self._task_kind(node_id), turn_no=1,
         )
         out: list[dict[str, Any]] = []
 
         if kind == "handoff":
             out.append(self._envelope(
-                {"type": "result.returned", "sender": agent_id,
+                {"type": "result.returned",
+                 "sender": instance_id,
                  "receiver": str(raw.get("target_id") or "system"),
-                 "digest": raw.get("summary") or raw.get("message") or "",
+                 "digest": self._digest(raw),
                  "succeeded": status != "failed"},
                 at=at, message_id=uuid4().hex, **task))
             self._returned_tasks.add(node_id)
+            if status != "failed" and node_id not in self._settled_tasks:
+                # 链路以 handoff 承载终态：回传后补 task.completed，任务统计才有终点
+                self._settled_tasks.add(node_id)
+                out.append(self._envelope({"type": "task.completed"},
+                                          at=at, cause_event_id=out[-1]["event_id"], **task))
             return out
 
-        created = self.ensure_instance(agent_id, agent_type, at)
+        created = self.ensure_instance(instance_id, agent_type, at)
         if created is not None:
             out.append(created)
 
         if status == "running":
             out.append(self._envelope({"type": "task.started"}, at=at, **task))
         elif status == "completed":
-            out.append(self._envelope({"type": "task.completed"}, at=at, **task))
+            if node_id not in self._settled_tasks:
+                self._settled_tasks.add(node_id)
+                out.append(self._envelope({"type": "task.completed"}, at=at, **task))
             if node_id not in self._returned_tasks:
                 self._returned_tasks.add(node_id)
                 out.append(self._envelope(
-                    {"type": "result.returned", "sender": agent_id, "receiver": "system",
-                     "digest": raw.get("summary") or "", "succeeded": True},
+                    {"type": "result.returned", "sender": instance_id, "receiver": "system",
+                     "digest": self._digest(raw), "succeeded": True},
                     at=at, message_id=uuid4().hex,
                     cause_event_id=out[-1]["event_id"], **task))
         elif status == "failed" or kind == "error":
+            self._settled_tasks.add(node_id)
             out.append(self._envelope(
                 {"type": "task.failed", "error": raw.get("error") or raw.get("summary") or ""},
                 at=at, **task))

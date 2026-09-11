@@ -141,6 +141,9 @@ export default function AgentGroupChat({ runKind, status, events, live, loading,
 
   const stopped = !live;
   const workingMembers = room.members.filter(member => member.state === "working");
+  const rosterLimit = 6;
+  const roster = room.members.slice(0, rosterLimit);
+  const rosterOverflow = room.members.slice(rosterLimit);
   const overall = live
     ? status === "queued" ? t("排队中") : t("运行中")
     : room.runState === "failed" ? t("运行失败")
@@ -165,7 +168,7 @@ export default function AgentGroupChat({ runKind, status, events, live, loading,
           {overall}
         </StatusChip>
         <div className="flex flex-wrap items-center gap-1.5" aria-label={t("群成员")}>
-          {room.members.map(member => (
+          {roster.map(member => (
             <span key={member.id}
               title={t(memberStateLabel[stopped && member.state === "working" ? "done" : member.state])}
               className="flex items-center gap-1.5 rounded-full border border-outline-variant py-0.5 pl-1 pr-2.5">
@@ -173,6 +176,14 @@ export default function AgentGroupChat({ runKind, status, events, live, loading,
               <span className="text-label font-medium text-on-surface">{member.name}</span>
             </span>
           ))}
+          {rosterOverflow.length > 0 && (
+            <span
+              className="rounded-full border border-outline-variant px-2.5 py-1 text-label font-medium text-on-surface-variant"
+              title={rosterOverflow.map(member => member.name).join("、")}
+            >
+              +{rosterOverflow.length}
+            </span>
+          )}
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           {taskChips.map(chip => (

@@ -193,6 +193,37 @@ class AdmissionTranslatorTests(unittest.TestCase):
         self.assertEqual(types, ["instance.created", "task.completed", "result.returned"])
         self.assertEqual(events[-1]["cause_event_id"], events[-2]["event_id"])
 
+    def test_repair_merges_into_score_instance_and_digest_carries_task_title(self) -> None:
+        tr = AdmissionCollabTranslator("run-uuid-3")
+        events: list[dict] = []
+        for raw in [
+            admission_event(node_id="task_score:t9", agent_id="task_score:t9",
+                            agent_type="task_scorer", status="running", at="t1"),
+            admission_event(node_id="task_score:t9", agent_id="task_score:t9",
+                            agent_type="task_scorer", event_kind="handoff", target_id="system",
+                            status="completed", summary="评定 2 级（low）：生成经验偏研究",
+                            label="生成算法研究", at="t2"),
+            admission_event(node_id="evidence_repair:t9", agent_id="evidence_repair:t9",
+                            agent_type="task_scorer", status="running", at="t3"),
+            admission_event(node_id="evidence_repair:t9", agent_id="evidence_repair:t9",
+                            agent_type="task_scorer", event_kind="handoff", target_id="system",
+                            status="completed", summary="证据修正后评定 3 级：证据链完整",
+                            label="生成算法研究", at="t4"),
+        ]:
+            events.extend(tr.feed(raw))
+
+        types = [e["event"]["type"] for e in events]
+        # repair 与 score 是同一个评分 Agent：实例只建一次，信封全部挂在 task_score 实例下
+        self.assertEqual(types.count("instance.created"), 1)
+        self.assertTrue(all(e["instance_id"] == "task_score:t9" for e in events))
+        # 回传 digest 带任务标题，消息可读；每轮回传各补一次 task.completed 终点
+        returns = [e for e in events if e["event"]["type"] == "result.returned"]
+        self.assertEqual(len(returns), 2)
+        self.assertEqual(returns[0]["event"]["digest"], "【生成算法研究】评定 2 级（low）：生成经验偏研究")
+        self.assertEqual(returns[1]["event"]["digest"], "【生成算法研究】证据修正后评定 3 级：证据链完整")
+        self.assertEqual(types.count("task.completed"), 2)
+        self.assertEqual([e["seq"] for e in events], list(range(len(events))))
+
 
 class CollabEventStorageTests(unittest.TestCase):
     def setUp(self) -> None:

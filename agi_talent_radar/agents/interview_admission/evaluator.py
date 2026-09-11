@@ -154,11 +154,12 @@ def evaluate_candidate_for_job(
         CAPABILITY_MAPPING_PROMPT,
         {"resume_text": anonymized["raw_text"], "structured_resume": anonymized, "assessment_card": assessment_card.model_dump()},
     )
+    mapped_count = len(mapping.get("task_mappings", []) or [])
     trace.event(
         "capability_mapping",
         "能力映射",
         "completed",
-        "能力映射完成",
+        f"已把简历经历映射到 {mapped_count} 项核心任务，作为逐项评分的导航",
         detail={"task_mappings": mapping.get("task_mappings", [])},
         actor="evaluator",
         target_id="system", event_kind="handoff",
@@ -305,7 +306,7 @@ def _score_tasks(
             node_id,
             task.title,
             "completed",
-            f"能力等级 {assessment.level}，置信度 {assessment.confidence}",
+            f"评定 {assessment.level} 级（{assessment.confidence}）：{assessment.reasoning_summary}",
             "task_scoring",
             detail=assessment.model_dump(),
             actor="evaluator",
@@ -380,7 +381,7 @@ def _validate_and_repair_evidence(
                 f"evidence_repair:{assessment.task_id}",
                 tasks[assessment.task_id].title + "证据修正",
                 "completed",
-                f"局部重评完成，当前等级 {assessment.level}",
+                f"证据修正后评定 {assessment.level} 级：{assessment.reasoning_summary}",
                 "evidence_validation",
                 detail=assessment.model_dump(),
                 actor="evaluator",
