@@ -23,45 +23,35 @@ export function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
   switch (e.type) {
     case "meta":
       return { ...msg, id: e.payload.message_id };
-    case "thinking_delta": {
-      // 思考流：作为 segment 按位置入列（与工具卡同地位）；连续 delta 追加到当前思考段
-      const last = segments[segments.length - 1];
-      if (last?.type === "thinking") {
-        segments[segments.length - 1] = { ...last, text: last.text + e.payload.text };
-      } else {
-        segments.push({ type: "thinking", text: e.payload.text });
-      }
-      return { ...msg, content: { segments } };
-    }
+    case "thinking_delta":
     case "answer_delta": {
-      const spawnId = e.payload.spawn_id;
-      if (spawnId) {
-        const index = segments.findIndex(s => s.type === "spawn" && s.spawn_id === spawnId);
-        if (index >= 0) {
-          const spawn = segments[index] as Extract<ChatSegment, { type: "spawn" }>;
-          segments[index] = { ...spawn, children: [...spawn.children, { type: "text", text: e.payload.text }] };
-          return { ...msg, content: { segments } };
-        }
+      const type = e.type === "answer_delta" ? "text" : "thinking";
+      const append = (items: ChatSegment[]): ChatSegment[] => {
+        const last = items[items.length - 1];
+        return last?.type === type
+          ? [...items.slice(0, -1), { ...last, text: last.text + e.payload.text }]
+          : [...items, { type, text: e.payload.text }];
+      };
+      if (e.payload.spawn_id) {
+        const index = segments.findIndex(s => s.type === "spawn" && s.spawn_id === e.payload.spawn_id);
+        const spawn = segments[index];
+        if (spawn?.type !== "spawn") return msg;
+        segments[index] = { ...spawn, children: append(spawn.children) };
+        return { ...msg, content: { segments } };
       }
-      const last = segments[segments.length - 1];
-      if (last?.type === "text") {
-        segments[segments.length - 1] = { ...last, text: last.text + e.payload.text };
-      } else {
-        segments.push({ type: "text", text: e.payload.text });
-      }
-      return { ...msg, content: { segments } };
+      return { ...msg, content: { segments: append(segments) } };
     }
     case "spawn_start": {
       const index = segments.findIndex(s => s.type === "spawn" && s.spawn_id === e.payload.spawn_id);
       if (index >= 0) {
         // 续命：同一个子 agent 再次进入运行态
         const spawn = segments[index] as Extract<ChatSegment, { type: "spawn" }>;
-        segments[index] = { ...spawn, status: "running", summary: "", prompt: e.payload.title };
+        segments[index] = { ...spawn, status: "running", summary: "", prompt: e.payload.prompt ?? spawn.prompt };
         return { ...msg, content: { segments } };
       }
       segments.push({
         type: "spawn", spawn_id: e.payload.spawn_id, agent: e.payload.agent,
-        title: e.payload.title, status: "running", children: [],
+        title: e.payload.title, prompt: e.payload.prompt, status: "running", children: [],
       });
       return { ...msg, content: { segments } };
     }
@@ -111,7 +101,7 @@ export function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
         const segment = segments[i];
         if (segment.type === "spawn") {
           const children = segment.children.map(applyEnd);
-          if (children !== segment.children) {
+          if (children.some((child, index) => child !== segment.children[index])) {
             segments[i] = { ...segment, children };
             return { ...msg, content: { segments } };
           }

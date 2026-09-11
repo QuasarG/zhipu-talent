@@ -366,19 +366,30 @@ def _run_evaluator_mission(
     narration_index = 0
     report_text = ""
 
-    def note_narration(text: str) -> None:
-        nonlocal narration_index
-        narration_index += 1
-        trace.append_child(spawn_id, {"type": "text", "text": text}, key=f"narration:{narration_index}")
-
     for _round in range(AGENT_ROUNDS):
+        narration_index += 1
+        narration_key = f"narration:{narration_index}"
+        narration_chunks: list[str] = []
+        reasoning_chunks: list[str] = []
+
+        def on_delta(delta: str) -> None:
+            narration_chunks.append(delta)
+            trace.append_child(spawn_id, {"type": "text", "text": "".join(narration_chunks)},
+                               key=narration_key)
+
+        def on_reasoning(delta: str) -> None:
+            reasoning_chunks.append(delta)
+            trace.append_child(spawn_id, {"type": "thinking", "text": "".join(reasoning_chunks)},
+                               key=f"thinking:{narration_index}")
+
         result = llm_client.call_llm_tools(messages, WORKER_TOOLS, temperature=0.2,
+                                           on_delta=on_delta, on_reasoning=on_reasoning,
                                            reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"))
         tool_calls = result.get("tool_calls") or []
         text = str(result.get("text") or "").strip()
         report_text = text
-        if text:
-            note_narration(text)
+        if text and not narration_chunks:
+            trace.append_child(spawn_id, {"type": "text", "text": text}, key=narration_key)
         if not tool_calls:
             break
         messages.append({"role": "assistant", "content": text,

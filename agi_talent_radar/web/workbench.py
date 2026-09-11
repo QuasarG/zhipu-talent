@@ -157,7 +157,18 @@ def _run_evaluation_job(
                     record_node_event(session, evaluation_run_id, event)
             elif kind == "sse":
                 # 问答词汇事件：主 agent 发言 / 工具 / spawn，浏览器实时渲染
-                event_queue.put(event["event"])
+                stream_event = event["event"]
+                event_queue.put(stream_event)
+                from agi_talent_radar.agents.evaluation_trace import apply_event
+                from agi_talent_radar.core.db.orm import EvaluationORM
+                from agi_talent_radar.core.database import get_session
+
+                apply_event(trace_segments, stream_event)
+                with get_session() as session:
+                    run = session.get(EvaluationORM, evaluation_run_id)
+                    if run is not None:
+                        run.panel_trace = json.dumps(trace_segments, ensure_ascii=False)
+                        session.commit()
             elif kind == "trace":
                 trace_segments.append(event["segment"])
             elif kind == "result":

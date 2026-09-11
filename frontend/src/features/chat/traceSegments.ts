@@ -8,14 +8,6 @@ export function nestTraceSegments(segments: ChatSegment[]): ChatSegment[] {
   const out: ChatSegment[] = [];
   const spawnById = new Map<string, SpawnSegment>();
 
-  const lastSpawn = (): SpawnSegment | null => {
-    for (let i = out.length - 1; i >= 0; i -= 1) {
-      const segment = out[i];
-      if (segment.type === "spawn") return segment;
-    }
-    return null;
-  };
-
   for (const segment of segments) {
     if (segment.type === "spawn") {
       const nested: SpawnSegment = { ...segment, children: [...(segment.children ?? [])] };
@@ -24,7 +16,7 @@ export function nestTraceSegments(segments: ChatSegment[]): ChatSegment[] {
       continue;
     }
     const spawnId = (segment as { spawn_id?: string }).spawn_id;
-    const parent = (spawnId ? spawnById.get(spawnId) : null) ?? lastSpawn();
+    const parent = (spawnId ? spawnById.get(spawnId) : null);
     if (parent) {
       parent.children = [...parent.children, segment];
       continue;

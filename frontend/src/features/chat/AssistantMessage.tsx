@@ -164,11 +164,10 @@ function SpawnSegmentView({ segment, onOpen, active }: {
           <button
             type="button"
             onClick={() => onOpen?.(segment)}
-            className="max-w-[85%] cursor-pointer rounded-lg bg-primary-container px-4 py-3 text-left text-body-sm whitespace-pre-wrap text-on-primary-container"
+            className="max-w-[82%] cursor-pointer rounded-lg bg-primary-container px-4 py-3 text-left text-body-sm text-on-primary-container focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             title={t("点击查看完整派工指令")}
           >
-            {clampText(segment.prompt, 200)}
-            {segment.prompt.length > 200 && <span className="text-on-primary-container/70"> …</span>}
+            <span className="line-clamp-3 whitespace-pre-wrap">{clampText(segment.prompt, 180)}</span>
           </button>
         </div>
       )}
@@ -177,7 +176,7 @@ function SpawnSegmentView({ segment, onOpen, active }: {
         onClick={() => (onOpen ? onOpen(segment) : setExpanded(value => !value))}
         aria-expanded={onOpen ? undefined : expanded}
         className={cn(
-          "state-layer flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left",
+          "state-layer flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
           active ? "border-primary/50 bg-primary-container/30" : "border-outline-variant bg-surface-low",
         )}
       >

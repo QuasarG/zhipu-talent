@@ -25,6 +25,7 @@ from agi_talent_radar.agents.job_fit.materials import (
     tool_search_text,
     tools_schema,
 )
+from agi_talent_radar.agents.evaluation_trace import stream_call
 
 logger = logging.getLogger(__name__)
 
@@ -284,8 +285,6 @@ def run_agent_mission(
     """执行一个子评审 agent（messages 传入 = 续命，上下文保留、轮数重置）。
 
     yield {"type":"sse"/"trace", ...}，return {"status","report","messages"}。"""
-    from agi_talent_radar.core.llm_client import call_llm_tools
-
     if messages is None:
         messages = [
             {"role": "system", "content": _worker_system(dossier)},
@@ -300,8 +299,10 @@ def run_agent_mission(
     rounds = rounds if rounds is not None else _env_int("PANEL_AGENT_ROUNDS", 8)
     report = ""
     for _round in range(rounds):
-        result = call_llm_tools(messages, WORKER_TOOLS, temperature=0.2,
-                                reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"))
+        result = yield from stream_call(
+            messages, WORKER_TOOLS, temperature=0.2,
+            reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"),
+        )
         tool_calls = result.get("tool_calls") or []
         report = str(result.get("text") or "")
         if not tool_calls and not report:
@@ -310,8 +311,6 @@ def run_agent_mission(
                          "tool_calls": [{"id": tc["id"], "type": "function",
                                          "function": {"name": tc["name"], "arguments": tc["arguments"]}}
                                         for tc in tool_calls]})
-        if report:
-            yield sse({"type": "answer_delta", "payload": {"text": report}})
         if not tool_calls:
             break
         for tc in tool_calls:
@@ -362,6 +361,24 @@ def run_panel_stream(
     def trace_append(segment: dict[str, Any]) -> None:
         trace.append(segment)
 
+    def stream_chair(messages_arg, tools_arg, **kwargs):
+        iterator = iter(stream_call(messages_arg, tools_arg, **kwargs))
+        while True:
+            try:
+                item = next(iterator)
+            except StopIteration as stop:
+                return stop.value
+            payload = item["event"].get("payload", {})
+            event_type = item["event"]["type"]
+            segment_type = "thinking" if event_type == "thinking_delta" else "text"
+            if event_type in {"answer_delta", "thinking_delta"} and payload.get("text"):
+                if (trace and trace[-1].get("type") == segment_type
+                        and not trace[-1].get("spawn_id")):
+                    trace[-1]["text"] += payload["text"]
+                else:
+                    trace_append({"type": segment_type, "text": payload["text"]})
+            yield item
+
     yield {"type": "node", "node": "material_desk", "label": "材料整备", "status": "running",
            "phase": "preparation", "message": "正在盘点材料并预热文本层…"}
     dossier = build_dossier(resume_dump, jobs, academic_report, ctx)
@@ -384,8 +401,10 @@ def run_panel_stream(
         error = ""
         for attempt in range(LEAD_RETRIES + 1):
             try:
-                result = call_llm_tools(messages, CHAIR_TOOLS, temperature=0.2,
-                                        reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"))
+                result = yield from stream_chair(
+                    messages, CHAIR_TOOLS, temperature=0.2,
+                    reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"),
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("主席调用失败：%s", exc)
                 result = {}
@@ -400,8 +419,6 @@ def run_panel_stream(
         tool_calls = result.get("tool_calls") or []
         if text:
             messages.append({"role": "assistant", "content": text})
-            trace_append({"type": "text", "text": text})
-            yield sse({"type": "answer_delta", "payload": {"text": text}})
         if not tool_calls:
             break
         messages.append({"role": "assistant", "content": "",
@@ -435,7 +452,8 @@ def run_panel_stream(
                         spawn_segment["summary"] = ""
                         spawn_segment["prompt"] = prompt
                         yield sse({"type": "spawn_start", "payload": {
-                            "spawn_id": mission_id, "agent": spawn_segment["agent"], "title": goal}})
+                            "spawn_id": mission_id, "agent": spawn_segment["agent"],
+                            "title": goal, "prompt": prompt}})
                         yield sse({"type": "answer_delta", "payload": {
                             "text": f"[续命指令] {prompt}", "spawn_id": mission_id}})
                         trace_append({"type": "text", "text": f"[续命指令] {prompt}",
@@ -448,7 +466,8 @@ def run_panel_stream(
                                          "summary": "", "children": [], "prompt": prompt}
                         trace_append(spawn_segment)
                         yield sse({"type": "spawn_start", "payload": {
-                            "spawn_id": mission_id, "agent": "通用评审员", "title": goal}})
+                            "spawn_id": mission_id, "agent": "通用评审员",
+                            "title": goal, "prompt": prompt}})
 
                     def wrap(gen: Generator[dict[str, Any], None, dict[str, Any]],
                              spawn_id: str = mission_id) -> Generator[dict[str, Any], None, dict[str, Any]]:
@@ -470,9 +489,14 @@ def run_panel_stream(
                                                   "tool": payload["tool"], "label": payload["label"],
                                                   "args_summary": payload.get("args_summary", ""),
                                                   "spawn_id": spawn_id})
-                                elif event["type"] == "answer_delta":
-                                    trace_append({"type": "text", "text": payload.get("text", ""),
-                                                  "spawn_id": spawn_id})
+                                elif event["type"] in {"answer_delta", "thinking_delta"}:
+                                    segment_type = "thinking" if event["type"] == "thinking_delta" else "text"
+                                    if (trace and trace[-1].get("type") == segment_type
+                                            and trace[-1].get("spawn_id") == spawn_id):
+                                        trace[-1]["text"] += payload.get("text", "")
+                                    else:
+                                        trace_append({"type": segment_type, "text": payload.get("text", ""),
+                                                      "spawn_id": spawn_id})
                                 elif event["type"] == "tool_end":
                                     for segment in reversed(trace):
                                         if segment.get("type") == "tool" and segment.get("call_id") == payload["call_id"]:

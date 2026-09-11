@@ -593,7 +593,7 @@ export type ChatEvent =
   | { type: "meta"; payload: { conversation_id: string; message_id: string } }
   | { type: "answer_delta"; payload: { text: string; spawn_id?: string } }
   | { type: "thinking_delta"; payload: { text: string; spawn_id?: string } }
-  | { type: "spawn_start"; payload: { spawn_id: string; agent: string; title: string } }
+  | { type: "spawn_start"; payload: { spawn_id: string; agent: string; title: string; prompt?: string } }
   | { type: "spawn_end"; payload: { spawn_id: string; status: "done" | "failed"; summary: string } }
   | { type: "tool_start"; payload: { call_id: string; tool: string; label: string; args_summary: string; spawn_id?: string } }
   | { type: "tool_end"; payload: { call_id: string; tool: string; status: "ok" | "error"; summary: string; detail: string; spawn_id?: string } }

@@ -22,6 +22,7 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
 }) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
+  const workbenchRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [trace, setTrace] = useState<ChatSegment[]>(segments);
   const [openSpawnId, setOpenSpawnId] = useState<string | null>(null);
@@ -37,9 +38,8 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
     if (!live || !runId) return;
     const timer = window.setInterval(async () => {
       try {
-        const runs = await api.interviewAssessments.active();
-        const current = (runs as Array<{ id: string; run_trace?: ChatSegment[] }>).find(run => run.id === runId);
-        if (current?.run_trace) applyTrace(current.run_trace);
+        const current = await api.interviewAssessments.trace(runId);
+        if (current.run_trace) applyTrace(current.run_trace);
       } catch {
         // 网络抖动下一轮再试
       }
@@ -59,34 +59,43 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
     created_at: "",
   };
   const busy = live || status === "running";
+  const openSpawn = openSpawnId
+    ? (nested.find(segment => segment.type === "spawn" && segment.spawn_id === openSpawnId) as SpawnSegment | undefined)
+    : undefined;
 
   useEffect(() => {
     const el = containerRef.current;
     if (el && stick.current) el.scrollTo(0, el.scrollHeight);
-  }, [nested.length]);
+  }, [trace]);
+
+  useEffect(() => {
+    const el = workbenchRef.current;
+    if (el) el.scrollTo(0, el.scrollHeight);
+  }, [openSpawn?.children]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
 
-  const openSpawn = openSpawnId
-    ? (nested.find(segment => segment.type === "spawn" && segment.spawn_id === openSpawnId) as SpawnSegment | undefined)
-    : undefined;
-
   return (
-    <div className="flex h-full min-h-0">
+    <div className="relative flex h-full min-h-0 overflow-hidden bg-surface-lowest">
       <div
         ref={containerRef}
         onScroll={handleScroll}
         className="min-h-0 flex-1 overflow-y-auto"
       >
-        <div className="mx-auto w-full max-w-4xl px-5 py-4">
-          <div className="mb-5">
-            <h2 className="text-title-lg">{t("评估过程")}</h2>
+        <div className="mx-auto w-full max-w-[760px] px-5 py-5 sm:px-7">
+          <div className="mb-6 flex items-start justify-between gap-4 border-b border-outline-variant pb-4">
+            <div>
+            <h2 className="text-title-lg font-bold">{t("评估过程")}</h2>
             <p className="mt-1 text-body-sm text-on-surface-variant">
               {t("主 agent 的工作记录：派出哪些子 agent、核对了什么、如何下结论")}
             </p>
+            </div>
+            <StatusChip tone={busy ? "primary" : "success"} variant="dot" className="shrink-0">
+              {busy ? t("运行中") : t("已完成")}
+            </StatusChip>
           </div>
           {nested.length === 0 ? (
             <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center text-on-surface-variant">
@@ -106,7 +115,7 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
       </div>
 
       {openSpawn && (
-        <aside className="flex w-[380px] shrink-0 flex-col border-l border-outline-variant bg-surface-lowest">
+        <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-[440px] flex-col border-l border-outline-variant bg-surface-lowest shadow-[-12px_0_32px_rgba(23,25,28,0.08)] chat-enter">
           <header className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-4 py-3">
             <Icon name="smart_toy" size={17} className="text-on-surface-variant" />
             <span className="min-w-0 flex-1 truncate text-body-sm font-bold text-on-surface">{openSpawn.agent}</span>
@@ -119,7 +128,7 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
               <Icon name="close" size={15} />
             </button>
           </header>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+          <div ref={workbenchRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
             {openSpawn.prompt && (
               // 派工 prompt：user query 气泡（与主流程用户消息同款）
               <div className="flex justify-end">
@@ -134,7 +143,11 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
                 id: `${openSpawn.spawn_id}-work`,
                 conversation_id: "",
                 role: "assistant",
-                content: { segments: openSpawn.children },
+                content: {
+                  segments: openSpawn.children.filter(
+                    child => (child as ChatSegment & { _key?: string })._key !== "prompt",
+                  ),
+                },
                 citations: [],
                 status: "completed",
                 created_at: "",
