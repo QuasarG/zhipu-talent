@@ -57,10 +57,8 @@ def stream_call(messages, tools, **kwargs):
             nonlocal seen
             seen = True
             queue.put({"type": "sse", "event": {"type": "answer_delta", "payload": {"text": text}}})
-        def reasoning(text):
-            queue.put({"type": "sse", "event": {"type": "thinking_delta", "payload": {"text": text}}})
         try:
-            result = call_llm_tools(messages, tools, on_delta=delta, on_reasoning=reasoning, **kwargs)
+            result = call_llm_tools(messages, tools, on_delta=delta, **kwargs)
             if not seen and result.get("text"):
                 delta(str(result["text"]))
             queue.put((result, None))

@@ -36,19 +36,28 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
   // 运行中轮询活跃运行：run_trace 每个事件落库，增量可见
   useEffect(() => {
     if (!live || !runId) return;
-    const timer = window.setInterval(async () => {
+    let active = true;
+    const refresh = async () => {
       try {
-        const current = await api.interviewAssessments.trace(runId);
-        if (current.run_trace) applyTrace(current.run_trace);
+        const current = await api.interviewAssessments.runTrace(runId);
+        if (active && current.run_trace) applyTrace(current.run_trace);
       } catch {
         // 网络抖动下一轮再试
       }
-    }, 2500);
-    return () => window.clearInterval(timer);
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 1500);
+    return () => { active = false; window.clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, runId]);
 
-  const nested = useMemo(() => nestTraceSegments(trace), [trace]);
+  const nested = useMemo(() => nestTraceSegments(trace).reduce<ChatSegment[]>((visible, segment) => {
+    if (segment.type === "thinking") return visible;
+    visible.push(segment.type === "spawn"
+      ? { ...segment, children: segment.children.filter(child => child.type !== "thinking") }
+      : segment);
+    return visible;
+  }, []), [trace]);
   const message: ChatMessage = {
     id: `run-${runId ?? "process"}`,
     conversation_id: "",
@@ -130,12 +139,10 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
           </header>
           <div ref={workbenchRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
             {openSpawn.prompt && (
-              // 派工 prompt：user query 气泡（与主流程用户消息同款）
-              <div className="flex justify-end">
-                <div className="max-w-[95%] rounded-lg bg-primary-container px-4 py-3 text-body-sm whitespace-pre-wrap text-on-primary-container">
-                  {openSpawn.prompt}
-                </div>
-              </div>
+              <section className="border-b border-outline-variant pb-4">
+                <p className="text-label font-medium text-on-surface-variant">{t("交办任务")}</p>
+                <p className="mt-1 whitespace-pre-wrap text-body-sm leading-6 text-on-surface">{openSpawn.prompt}</p>
+              </section>
             )}
             {/* 子 agent 工作段：与主流程完全同款的 assistant 渲染（markdown + 工具卡） */}
             <AssistantMessage

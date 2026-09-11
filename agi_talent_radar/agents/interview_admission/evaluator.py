@@ -33,7 +33,8 @@ _TASK_EXECUTOR = ThreadPoolExecutor(
 
 
 CHAIR_REVIEW_PROMPT = """
-你是面试准入评估的主 agent（评审主席）。子评估 agent 已按岗位卡逐项完成任务评分，
+你是面试准入评估的主 agent（评审主席）。这是本次 agentic loop 的最后一轮。
+子评估 agent 已按岗位卡逐项完成任务评分，
 下面是全部任务评分。请做最后一轮总审并生成评估总结。
 
 总审：检查遗漏、任务间尺度漂移、证据夸大和等级与岗位锚点不一致。
@@ -56,8 +57,31 @@ TOOL_LABELS = {
 
 WORKER_TOOLS = tools_schema()
 
+_ADMISSION_SPAWN_SCHEMA = [{
+    "type": "function",
+    "function": {
+        "name": "spawn_agent",
+        "description": (
+            "派出通用子 agent，针对指定材料与一个评估维度或方向完成独立阅读。"
+            "prompt 必须说明材料范围、评估角度、证据要求和交付内容；子 agent 不能继续派生 agent。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "对应岗位卡核心任务 id"},
+                "goal": {"type": "string", "description": "简短、具体的调查目标"},
+                "prompt": {"type": "string", "description": "完整、自包含的任务约束与报告要求"},
+                "agent_id": {"type": "string", "description": "续命已有子 agent 时填写"},
+            },
+            "required": ["task_id", "goal", "prompt"],
+        },
+    },
+}]
+ADMISSION_MAIN_TOOLS = WORKER_TOOLS + _ADMISSION_SPAWN_SCHEMA
+
 FINAL_RETRIES = 3
 AGENT_ROUNDS = max(1, int(os.getenv("ADMISSION_AGENT_ROUNDS", "8")))
+MAIN_WORK_ROUNDS = max(1, int(os.getenv("ADMISSION_MAIN_WORK_ROUNDS", "15")))
 
 _EVIDENCE_TYPES = {"direct", "transferable", "background"}
 _CONFIDENCE_LEVELS = {"high", "medium", "low"}
@@ -90,6 +114,19 @@ class _Trace:
     def text(self, text: str) -> None:
         if text.strip():
             self.segment({"type": "text", "text": text})
+
+    def text_update(self, key: str, text: str) -> None:
+        if not text:
+            return
+        with self._lock:
+            current = next((item for item in self.segments if item.get("_key") == key), None)
+            if current is None:
+                current = {"type": "text", "text": text, "_key": key}
+                self.segments.append(current)
+            else:
+                current["text"] = text
+        if self._on_event is not None:
+            self._on_event(current)
 
     def spawn(self, spawn_id: str, title: str, prompt: str) -> dict[str, Any]:
         segment = {"type": "spawn", "spawn_id": spawn_id, "agent": "任务评估 Agent",
@@ -149,7 +186,7 @@ def evaluate_candidate_for_job(
     anonymized = _anonymize_resume(candidate)
 
     trace.text(f"对照岗位卡「{assessment_card.role_summary}」的 "
-               f"{len(assessment_card.core_tasks)} 项核心任务，逐项派出子评估 agent。")
+               f"{len(assessment_card.core_tasks)} 项核心任务，正在按材料范围与评估维度拆分工作。")
 
     assessments, sessions = _score_tasks(anonymized, assessment_card, trace, materials)
 
@@ -163,7 +200,11 @@ def evaluate_candidate_for_job(
         task = next((t for t in assessment_card.core_tasks if t.id == assessment.task_id), None)
         if not session or task is None:
             continue
-        spawn_id = f"task_score:{assessment.task_id}"
+        spawn_id = next(
+            (key for key, context in sessions.items()
+             if key.startswith("task_agent:") and context is session),
+            f"task_score:{assessment.task_id}",
+        )
         trace.text(f"「{task.title}」发现 {len(invalid)} 条不可追溯引用，主席续命修正。")
         try:
             assessment, _ = _run_evaluator_mission(
@@ -178,7 +219,6 @@ def evaluate_candidate_for_job(
                                {"type": "text", "text": _assessment_markdown(assessment)}, key="report")
         except RuntimeError:
             pass  # 续命仍失败 → 交给本地确定性证据校验兜底
-    assessments = _repair_evidence_locally(assessments, anonymized["raw_text"])
     assessments = _repair_evidence_locally(assessments, anonymized["raw_text"])
 
     trace.text("全部任务评分完成，主席总审尺度、遗漏与证据夸大。")
@@ -220,6 +260,175 @@ def evaluate_candidate_for_job(
 
 
 def _score_tasks(
+    resume: dict[str, Any],
+    card: AssessmentCard,
+    trace: _Trace,
+    materials: MaterialsContext | None,
+) -> tuple[list[TaskAssessment], dict[str, list[dict[str, Any]]]]:
+    """主 agent 编排评估；模型不可用或未覆盖全部任务时兼容旧链路。"""
+    try:
+        return _score_tasks_agentic(resume, card, trace, materials)
+    except (RuntimeError, AssertionError, KeyError, ValidationError, ValueError) as exc:
+        if any(item.get("type") == "spawn" for item in trace.segments):
+            raise RuntimeError(f"主 agent 编排中断：{str(exc)[:160]}") from exc
+        trace.text(f"主 agent 编排未完成（{str(exc)[:80]}），补齐尚未覆盖的核心任务。")
+        return _score_tasks_fallback(resume, card, trace, materials)
+
+
+def _admission_main_system(resume: dict[str, Any], card: AssessmentCard,
+                           materials: MaterialsContext | None) -> str:
+    files = "\n".join(f"- {rel}" for rel in (materials.walk() if materials else [])) \
+        or "（无独立材料文件，以简历全文为准）"
+    return f"""你是面试准入评估的主 agent（评审主席）。你先理解岗位卡、简历和材料目录，
+再通过 spawn_agent 把不同材料、不同核心任务或不同证据方向交给子 agent 针对性阅读。
+
+编排规则：
+1. 每轮最多同时调用两个 spawn_agent；同一子 agent 完成后才可续命，不得嵌套派生。
+2. 每个 prompt 必须自包含，明确材料范围、评估维度/方向、需核对的问题、证据格式和边界。
+3. 子 agent 之间应有明确分工，避免多人重复通读同一材料；你负责对照岗位锚点和汇总尺度得失。
+4. 需要补证时用 agent_id 续命原 agent，保留上下文。全部核心任务得到报告后停止调用工具。
+5. 不得根据姓名、性别、年龄、学校层级或其他敏感属性作判断。
+
+岗位卡：
+{json.dumps(card.model_dump(), ensure_ascii=False)}
+
+匿名结构化:
+{json.dumps(resume, ensure_ascii=False)[:5000]}
+
+简历全文：
+{resume.get('raw_text', '')[:12000]}
+
+材料目录：
+{files}"""
+
+
+def _score_tasks_agentic(
+    resume: dict[str, Any],
+    card: AssessmentCard,
+    trace: _Trace,
+    materials: MaterialsContext | None,
+) -> tuple[list[TaskAssessment], dict[str, list[dict[str, Any]]]]:
+    task_by_id = {task.id: task for task in card.core_tasks}
+    assessments: dict[str, TaskAssessment] = {}
+    sessions: dict[str, list[dict[str, Any]]] = {}
+    spawn_count = 0
+    spawn_lock = threading.Lock()
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": _admission_main_system(resume, card, materials)},
+        {"role": "user", "content": (
+            "开始评估。先说明材料与核心任务的拆分思路，然后按不同材料和评估方向派工；"
+            "每轮最多并行两个子 agent。")},
+    ]
+
+    for round_index in range(MAIN_WORK_ROUNDS):
+        chunks: list[str] = []
+        key = f"main:{round_index}"
+
+        def on_delta(delta: str) -> None:
+            chunks.append(delta)
+            trace.text_update(key, "".join(chunks))
+
+        result = llm_client.call_llm_tools(
+            messages, ADMISSION_MAIN_TOOLS, temperature=0.2, on_delta=on_delta,
+            reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"),
+        )
+        text = str(result.get("text") or "").strip()
+        if text and not chunks:
+            trace.text_update(key, text)
+        calls = result.get("tool_calls") or []
+        if not calls:
+            if len(assessments) == len(task_by_id):
+                break
+            raise RuntimeError("主 agent 尚未覆盖全部核心任务")
+        messages.append({"role": "assistant", "content": text,
+                         "tool_calls": [{"id": tc["id"], "type": "function",
+                                         "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+                                        for tc in calls]})
+
+        spawn_calls = [tc for tc in calls if tc["name"] == "spawn_agent"]
+        if len(spawn_calls) > 2:
+            spawn_calls = spawn_calls[:2]
+        direct_calls = [tc for tc in calls if tc["name"] != "spawn_agent"]
+
+        def run_spawn(tc: dict[str, Any]) -> tuple[dict[str, Any], TaskAssessment | None, str, list[dict[str, Any]]]:
+            nonlocal spawn_count
+            segment: dict[str, Any] | None = None
+            try:
+                args = json.loads(tc.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            task_id = str(args.get("task_id") or "")
+            task = task_by_id.get(task_id)
+            if task is None:
+                return tc, None, "", []
+            agent_id = str(args.get("agent_id") or "").strip()
+            continuing = agent_id in sessions
+            if continuing:
+                spawn_id = agent_id
+                segment = next(item for item in trace.segments
+                               if item.get("type") == "spawn" and item.get("spawn_id") == spawn_id)
+                segment["status"] = "running"
+                segment["prompt"] = str(args.get("prompt") or "")
+                trace.segment(segment)
+            else:
+                with spawn_lock:
+                    spawn_count += 1
+                    spawn_id = f"task_agent:{spawn_count}"
+                trace.spawn(spawn_id, str(args.get("goal") or task.title), str(args.get("prompt") or ""))
+            segment = next(item for item in trace.segments
+                           if item.get("type") == "spawn" and item.get("spawn_id") == spawn_id)
+            prompt = str(args.get("prompt") or "").strip()
+            try:
+                assessment, context = _run_evaluator_mission(
+                    task.model_dump(), card, resume, materials, trace, spawn_id,
+                    messages=sessions.get(spawn_id), instruction=prompt,
+                    cont=sum(1 for item in segment.get("children", [])
+                             if str(item.get("_key", "")).startswith("prompt:")),
+                )
+            except Exception as exc:
+                trace.spawn_update(segment, "failed", f"执行失败：{str(exc)[:120]}")
+                raise
+            trace.spawn_update(segment, "done",
+                               f"评定 {assessment.level} 级（{assessment.confidence}）：{assessment.reasoning_summary}")
+            trace.append_child(spawn_id, {"type": "text", "text": _assessment_markdown(assessment)}, key="report")
+            return tc, assessment, spawn_id, context
+
+        futures = [_TASK_EXECUTOR.submit(run_spawn, tc) for tc in spawn_calls]
+        outcomes = [future.result() for future in futures]
+        by_call: dict[str, dict[str, Any]] = {}
+        for tc, assessment, spawn_id, context in outcomes:
+            if assessment is None:
+                by_call[tc["id"]] = {"summary": "task_id 不属于岗位卡", "detail": {"error": "无效任务"}}
+                continue
+            assessments[assessment.task_id] = assessment
+            sessions[spawn_id] = context
+            sessions[assessment.task_id] = context
+            by_call[tc["id"]] = {"summary": f"{assessment.task_id} 已完成",
+                                  "detail": {"agent_id": spawn_id, **assessment.model_dump()}}
+        for tc in direct_calls:
+            try:
+                args = json.loads(tc.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            output = _execute_read_tool(materials, tc["name"], args)
+            trace.segment({"type": "tool", "call_id": tc["id"], "tool": tc["name"],
+                           "label": TOOL_LABELS.get(tc["name"], tc["name"]),
+                           "args_summary": json.dumps(args, ensure_ascii=False)[:200],
+                           "status": "ok", "summary": str(output.get("summary") or "完成")})
+            by_call[tc["id"]] = output
+        for tc in calls:
+            output = by_call.get(tc["id"], {"summary": "本轮并行上限为两个子 agent",
+                                             "detail": {"error": "请下一轮再派发"}})
+            messages.append({"role": "tool", "tool_call_id": tc["id"],
+                             "content": json.dumps(output, ensure_ascii=False, default=str)[:6000]})
+
+    missing = [task.id for task in card.core_tasks if task.id not in assessments]
+    if missing:
+        raise RuntimeError(f"主 agent 未完成核心任务：{', '.join(missing)}")
+    return [assessments[task.id] for task in card.core_tasks], sessions
+
+
+def _score_tasks_fallback(
     resume: dict[str, Any],
     card: AssessmentCard,
     trace: _Trace,
@@ -370,20 +579,14 @@ def _run_evaluator_mission(
         narration_index += 1
         narration_key = f"narration:{narration_index}"
         narration_chunks: list[str] = []
-        reasoning_chunks: list[str] = []
 
         def on_delta(delta: str) -> None:
             narration_chunks.append(delta)
             trace.append_child(spawn_id, {"type": "text", "text": "".join(narration_chunks)},
                                key=narration_key)
 
-        def on_reasoning(delta: str) -> None:
-            reasoning_chunks.append(delta)
-            trace.append_child(spawn_id, {"type": "thinking", "text": "".join(reasoning_chunks)},
-                               key=f"thinking:{narration_index}")
-
         result = llm_client.call_llm_tools(messages, WORKER_TOOLS, temperature=0.2,
-                                           on_delta=on_delta, on_reasoning=on_reasoning,
+                                           on_delta=on_delta,
                                            reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"))
         tool_calls = result.get("tool_calls") or []
         text = str(result.get("text") or "").strip()

@@ -31,6 +31,7 @@ from agi_talent_radar.core.db.repository import create_interview_assessment_batc
 from agi_talent_radar.core.db.repository import replace_jd_assessment_card
 from agi_talent_radar.core.db.runtime import get_session
 from agi_talent_radar.core.models import CandidateResume
+from agi_talent_radar.agents.job_fit.materials import MaterialsContext
 
 
 ASSESSMENT_RULE_VERSION = "interview-admission-v1"
@@ -40,6 +41,27 @@ _PAIR_EXECUTOR = ThreadPoolExecutor(
 )
 _RUN_LOCKS: dict[str, threading.Lock] = {}
 _RUN_LOCKS_GUARD = threading.Lock()
+
+
+def _candidate_materials(candidate_id: str) -> MaterialsContext | None:
+    """把候选人的材料包或简历原件接入主/子 agent 的同一套只读工具。"""
+    try:
+        from agi_talent_radar.core.db.orm import TalentBundleORM
+        from agi_talent_radar.core.pdf_storage import get_resume_original_path
+        from agi_talent_radar.talent_bundle.ingest import workspace_root
+
+        with get_session() as session:
+            bundle = (session.query(TalentBundleORM)
+                      .filter_by(candidate_id=candidate_id)
+                      .order_by(TalentBundleORM.id.desc()).first())
+        if bundle is not None:
+            return MaterialsContext(str(workspace_root(bundle.id)), None)
+        original = get_resume_original_path(candidate_id)
+        if original and original.is_file():
+            return MaterialsContext(str(original.parent), {original.name})
+    except Exception:  # noqa: BLE001 — 无材料时仍可基于结构化简历评估
+        logger.warning("候选人 %s 的材料目录不可用", candidate_id, exc_info=True)
+    return None
 
 
 class AssessmentCancelled(RuntimeError):
@@ -362,6 +384,7 @@ def _run_pair(run_id: str) -> None:
             jd.id,
             card,
             on_event=lambda event: _append_run_event(run_id, event),
+            materials=_candidate_materials(candidate.id),
         )
 
         with get_session() as session:
@@ -408,7 +431,13 @@ def _append_run_event(run_id: str, event: dict[str, Any]) -> None:
         run.current_node = str(event.get("spawn_id") or event.get("type") or "")
         trace = list(run.run_trace or [])
         replaced = False
-        if event["type"] == "spawn":
+        if event.get("_key"):
+            for index, existing in enumerate(trace):
+                if existing.get("_key") == event.get("_key"):
+                    trace[index] = event
+                    replaced = True
+                    break
+        elif event["type"] == "spawn":
             for index, existing in enumerate(trace):
                 if existing.get("type") == "spawn" and existing.get("spawn_id") == event.get("spawn_id"):
                     trace[index] = event

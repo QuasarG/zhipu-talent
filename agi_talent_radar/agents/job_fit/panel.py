@@ -158,8 +158,9 @@ def _chair_system(dossier: dict[str, Any]) -> str:
 
 # 制度
 1. 子 agent 与你工具相同，但不能再生子 agent；它们的报告只回给你。
-2. 大量阅读应交给子 agent（spawn 的 prompt 写清楚目标、材料、问题、报告要求），
-   保持你自己的上下文留给综合判断；小的核对你可以亲自做。
+2. 你负责按「材料范围 × 评估维度/方向」拆分工作，子 agent 分别针对性阅读。
+   spawn prompt 必须自包含，写明指定材料、评估角度、待核对问题、证据和报告要求。
+   避免多个子 agent 无差别通读同一批材料；每轮最多派出两个。
 3. 事实纪律：结论必须落在材料原文上，引文到「文件名 第N页」；简历没写的事实是
    unknown，不能标 unmet；「优先/加分」不进硬门槛。
 4. 每个 JD 必须独立评估：硬门槛逐条对照 + 六维打分（0-5），禁止跨 JD 平均。
@@ -371,13 +372,14 @@ def run_panel_stream(
             payload = item["event"].get("payload", {})
             event_type = item["event"]["type"]
             segment_type = "thinking" if event_type == "thinking_delta" else "text"
-            if event_type in {"answer_delta", "thinking_delta"} and payload.get("text"):
+            if event_type == "answer_delta" and payload.get("text"):
                 if (trace and trace[-1].get("type") == segment_type
                         and not trace[-1].get("spawn_id")):
                     trace[-1]["text"] += payload["text"]
                 else:
                     trace_append({"type": segment_type, "text": payload["text"]})
-            yield item
+            if event_type != "thinking_delta":
+                yield item
 
     yield {"type": "node", "node": "material_desk", "label": "材料整备", "status": "running",
            "phase": "preparation", "message": "正在盘点材料并预热文本层…"}
@@ -388,10 +390,13 @@ def run_panel_stream(
            "message": f"整备完成：{len(dossier['files'])} 份材料，{scanned} 份需视觉转译。"}
 
     max_spawns = _env_int("PANEL_MAX_SPAWNS", 8)
-    max_rounds = _env_int("PANEL_LEAD_ROUNDS", 10)
+    # 总预算 16 轮：最多 14 轮工作 + 评分合同 + 最终 markdown 总结。
+    max_rounds = _env_int("PANEL_LEAD_ROUNDS", 14)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _chair_system(dossier)},
-        {"role": "user", "content": "开始本次评估。先盘点要查证什么，派出子评审 agent 或亲自核对；调查充分后停止调用工具。"},
+        {"role": "user", "content": (
+            "开始本次评估。先按材料范围与评估维度拆分，再给子 agent 下发针对性 prompt；"
+            "每轮最多派出两个，调查充分后停止调用工具。")},
     ]
     spawned = 0
     sessions: dict[str, list[dict[str, Any]]] = {}   # mission_id -> 子 agent 上下文（续命复用）
@@ -426,6 +431,7 @@ def run_panel_stream(
                                          "function": {"name": tc["name"], "arguments": tc["arguments"]}}
                                         for tc in tool_calls]})
 
+        round_spawns = 0
         for tc in tool_calls:
             try:
                 args = json.loads(tc.get("arguments") or "{}")
@@ -437,12 +443,16 @@ def run_panel_stream(
                 prompt = str(args.get("prompt") or "").strip()
                 agent_id = str(args.get("agent_id") or "").strip()
                 continuing = bool(agent_id) and agent_id in sessions
-                if not prompt:
+                if round_spawns >= 2:
+                    output = {"summary": "本轮已达两个子 agent 上限，请下一轮再派发",
+                              "detail": {"error": "每轮最多两个子 agent"}}
+                elif not prompt:
                     output = {"summary": "缺少 prompt", "detail": {"error": "spawn_agent 需要 prompt"}}
                 elif spawned >= max_spawns and not continuing:
                     output = {"summary": "spawn 预算已用尽，可对已有子 agent 续命或基于已有信息收尾",
                               "detail": {"error": f"最多派出 {max_spawns} 个子 agent"}}
                 else:
+                    round_spawns += 1
                     if continuing:
                         # 续命：上下文保留、轮数重置；过程叙事里追加续派指令
                         mission_id = agent_id
@@ -489,8 +499,8 @@ def run_panel_stream(
                                                   "tool": payload["tool"], "label": payload["label"],
                                                   "args_summary": payload.get("args_summary", ""),
                                                   "spawn_id": spawn_id})
-                                elif event["type"] in {"answer_delta", "thinking_delta"}:
-                                    segment_type = "thinking" if event["type"] == "thinking_delta" else "text"
+                                elif event["type"] == "answer_delta":
+                                    segment_type = "text"
                                     if (trace and trace[-1].get("type") == segment_type
                                             and trace[-1].get("spawn_id") == spawn_id):
                                         trace[-1]["text"] += payload.get("text", "")
@@ -503,7 +513,8 @@ def run_panel_stream(
                                             segment["status"] = payload.get("status", "ok")
                                             segment["summary"] = payload.get("summary", "")
                                             break
-                            yield item
+                            if item.get("event", {}).get("type") != "thinking_delta":
+                                yield item
                         return outcome
 
                     try:
