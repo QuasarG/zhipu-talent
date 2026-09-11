@@ -254,4 +254,9 @@ def run_candidate_panel_stream(
         "phase": "decision", "message": "评估结果组装完成。",
     }
     evaluation = CandidateEvaluation.model_validate(state["final_output"])
+    decision_label = {"interview": "进入面试", "hold": "待补信息", "reject": "不进入面试"}.get(
+        evaluation.interview_decision, evaluation.interview_decision)
+    panel_trace.append({"type": "text", "text": (
+        f"评估结论：{decision_label}，最匹配方向「{evaluation.best_fit_jd_title}」，"
+        f"总分 {evaluation.overall_score}。{evaluation.decision_summary}")})
     yield {"type": "result", "result": evaluation.model_dump(), "trace": panel_trace}

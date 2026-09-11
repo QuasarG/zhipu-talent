@@ -23,6 +23,8 @@ interface Props {
   onDecide: (actionId: string, decision: Record<string, unknown>) => void;
   /** spawn 段点击回调：提供时点击打开子 agent 工作侧栏，否则内联展开 */
   onSpawnOpen?: (segment: Extract<ChatSegment, { type: "spawn" }>) => void;
+  /** 当前在侧栏打开的 spawn 段 id（高亮对应卡片） */
+  activeSpawnId?: string;
 }
 
 interface MdNode {
@@ -120,10 +122,11 @@ function citePlugin(citations: ChatCitation[]) {
   return () => (tree: MdNode) => transform(tree);
 }
 
-/** 子 agent spawn 段：一行摘要；提供 onOpen 时点击打开工作侧栏，否则内联展开。 */
-function SpawnSegmentView({ segment, onOpen }: {
+/** 子 agent spawn 段：派工 prompt 以 user query 气泡呈现；提供 onOpen 时点击在右侧打开该子 agent 的完整工作。 */
+function SpawnSegmentView({ segment, onOpen, active }: {
   segment: Extract<ChatSegment, { type: "spawn" }>;
   onOpen?: (segment: Extract<ChatSegment, { type: "spawn" }>) => void;
+  active?: boolean;
 }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -150,12 +153,23 @@ function SpawnSegmentView({ segment, onOpen }: {
   };
 
   return (
-    <div className="chat-enter my-1">
+    <div className="chat-enter my-1 space-y-2">
+      {segment.prompt && (
+        // 派工 prompt：以 user query 气泡呈现（spawn 指令 ≈ 对子 agent 的提问）
+        <div className="flex justify-end">
+          <div className="max-w-[85%] rounded-lg bg-primary-container px-4 py-3 text-body whitespace-pre-wrap text-on-primary-container">
+            {segment.prompt}
+          </div>
+        </div>
+      )}
       <button
         type="button"
         onClick={() => (onOpen ? onOpen(segment) : setExpanded(value => !value))}
         aria-expanded={onOpen ? undefined : expanded}
-        className="state-layer flex w-full items-center gap-2 rounded-md border border-outline-variant bg-surface-low px-3 py-2 text-left"
+        className={cn(
+          "state-layer flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left",
+          active ? "border-primary/50 bg-primary-container/30" : "border-outline-variant bg-surface-low",
+        )}
       >
         <Icon name="smart_toy" size={17} className={cn("shrink-0", running ? "text-primary" : "text-on-surface-variant")} />
         <span className="shrink-0 text-body-sm font-bold text-on-surface">{segment.agent}</span>
@@ -170,12 +184,12 @@ function SpawnSegmentView({ segment, onOpen }: {
           </StatusChip>
         )}
         <Icon
-          name="expand_more"
+          name={onOpen ? "chevron_right" : "expand_more"}
           size={16}
-          className={cn("shrink-0 text-on-surface-variant transition-transform duration-200 ease-emphasized", expanded && "rotate-180")}
+          className={cn("shrink-0 text-on-surface-variant transition-transform duration-200 ease-emphasized", (active || (expanded && !onOpen)) && "rotate-90")}
         />
       </button>
-      {expanded && (
+      {expanded && !onOpen && (
         <div className="ml-5 space-y-2 border-l-2 border-outline-variant py-1 pl-3">
           <p className="text-label leading-5 text-on-surface-variant">{t("任务")}：{segment.title}</p>
           {children.map(renderChild)}
@@ -189,7 +203,7 @@ function SpawnSegmentView({ segment, onOpen }: {
 }
 
 /** assistant 消息：按 segments 顺序渲染 文本(markdown) / 工具卡片 / 决策卡片 */
-export default function AssistantMessage({ message, error, busy, onDecide, hideAvatar = false, onSpawnOpen }: Props) {
+export default function AssistantMessage({ message, error, busy, onDecide, hideAvatar = false, onSpawnOpen, activeSpawnId }: Props) {
   const citations = message.citations ?? NO_CITATIONS;
   const citationMap = useMemo(
     () => new Map(citations.map((c) => [c.id, c])),
@@ -236,7 +250,7 @@ export default function AssistantMessage({ message, error, busy, onDecide, hideA
       );
     }
     if (seg.type === "tool") return <ToolCallCard key={seg.call_id || i} segment={seg} />;
-    if (seg.type === "spawn") return <SpawnSegmentView key={seg.spawn_id || i} segment={seg} onOpen={onSpawnOpen} />;
+    if (seg.type === "spawn") return <SpawnSegmentView key={seg.spawn_id || i} segment={seg} onOpen={onSpawnOpen} active={activeSpawnId === seg.spawn_id} />;
     return <ActionCard key={seg.action_id || i} segment={seg} busy={busy} onDecide={onDecide} />;
   };
 

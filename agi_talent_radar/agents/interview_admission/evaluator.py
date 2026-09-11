@@ -197,6 +197,9 @@ def evaluate_candidate_for_job(
 
     total_score = calculate_total_score(assessment_card, assessments)
     decision, reason = decide_admission(assessment_card, assessments, total_score)
+    decision_label = "进入面试" if decision == "interview" else "不进入面试"
+    trace.text(f"评估结论：{decision_label}（总分 {total_score}）。{reason}")
+
     return PairAssessmentResult(
         candidate_id=candidate.id,
         jd_id=jd_id,

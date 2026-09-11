@@ -3,7 +3,6 @@ import type { ChatMessage, ChatSegment } from "@/lib/types";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import AssistantMessage from "@/features/chat/AssistantMessage";
-import ToolCallCard from "@/features/chat/ToolCallCard";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
 import { nestTraceSegments } from "@/features/chat/traceSegments";
@@ -100,13 +99,14 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
               busy={busy}
               onDecide={() => {}}
               onSpawnOpen={segment => setOpenSpawnId(segment.spawn_id)}
+              activeSpawnId={openSpawnId ?? undefined}
             />
           )}
         </div>
       </div>
 
       {openSpawn && (
-        <aside className="flex w-[360px] shrink-0 flex-col border-l border-outline-variant bg-surface-lowest">
+        <aside className="flex w-[380px] shrink-0 flex-col border-l border-outline-variant bg-surface-lowest">
           <header className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-4 py-3">
             <Icon name="smart_toy" size={17} className="text-on-surface-variant" />
             <span className="min-w-0 flex-1 truncate text-body-sm font-bold text-on-surface">{openSpawn.agent}</span>
@@ -121,25 +121,29 @@ export default function RunTraceProcess({ segments = EMPTY, live = false, runId,
           </header>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {openSpawn.prompt && (
-              <section>
-                <p className="text-label text-on-surface-variant">{t("派工 prompt")}</p>
-                <p className="mt-1 whitespace-pre-wrap text-body-sm leading-6 text-on-surface">{openSpawn.prompt}</p>
-              </section>
+              // 派工 prompt：user query 气泡（与主流程用户消息同款）
+              <div className="flex justify-end">
+                <div className="max-w-[95%] rounded-lg bg-primary-container px-4 py-3 text-body-sm whitespace-pre-wrap text-on-primary-container">
+                  {openSpawn.prompt}
+                </div>
+              </div>
             )}
-            {openSpawn.summary && (
-              <section>
-                <p className="text-label text-on-surface-variant">{t("结论")}</p>
-                <p className="mt-1 text-body-sm leading-6 text-on-surface">{openSpawn.summary}</p>
-              </section>
-            )}
-            {(openSpawn.children ?? []).map((child, index) => (
-              child.type === "tool"
-                ? <ToolCallCard key={child.call_id || index} segment={child} />
-                : child.type === "text"
-                  ? <p key={index} className="whitespace-pre-wrap text-body-sm leading-6 text-on-surface">{child.text}</p>
-                  : null
-            ))}
-            {!(openSpawn.children ?? []).length && !openSpawn.summary && !openSpawn.prompt && (
+            {/* 子 agent 工作段：与主流程完全同款的 assistant 渲染（markdown + 工具卡） */}
+            <AssistantMessage
+              message={{
+                id: `${openSpawn.spawn_id}-work`,
+                conversation_id: "",
+                role: "assistant",
+                content: { segments: openSpawn.children },
+                citations: [],
+                status: "completed",
+                created_at: "",
+              }}
+              hideAvatar
+              busy={openSpawn.status === "running"}
+              onDecide={() => {}}
+            />
+            {!openSpawn.children.length && !openSpawn.summary && !openSpawn.prompt && (
               <p className="text-label text-on-surface-variant">{t("尚未记录工作内容")}</p>
             )}
           </div>
