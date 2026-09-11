@@ -211,9 +211,10 @@ def run_candidate_panel_stream(
     jobs: Iterable[JobDefinition | dict[str, Any]] | None = None,
     materials: dict[str, Any] | None = None,
 ):
-    """评审团（panel）版 jd_fit_v2：主席动态派类型化 mission 读真实材料，
-    findings 经确定性装配成 job_fit_raw；decision_guard / 结果组装复用原
-    节点函数——评分合同不变。见 docs/design/panel-evaluation.md。"""
+    """评审团（panel）评估：主席是带工具的主 agent（spawn_agent 派子评审 agent，
+    子 agent 由 spawn prompt 全权约束、不能嵌套），调查充分后输出评分合同，
+    经确定性装配成 job_fit_raw；decision_guard / 结果组装复用原节点——评分合同
+    不变。见 docs/design/panel-evaluation.md。"""
     from agi_talent_radar.agents.job_fit.nodes import run_decision_guard, run_job_fit_formatter
     from agi_talent_radar.agents.job_fit.panel import run_panel_stream
 

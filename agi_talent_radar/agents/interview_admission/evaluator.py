@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from agi_talent_radar.core import llm_client
 from agi_talent_radar.core.models import CandidateResume
 
@@ -323,19 +325,80 @@ def _score_one_task(
     task: dict[str, Any],
     repair_feedback: list[str] | None = None,
 ) -> TaskAssessment:
-    raw = invoke(
-        TASK_SCORING_PROMPT,
-        {
-            "resume_text": resume["raw_text"],
-            "structured_resume": resume,
-            "assessment_card": card.model_dump(),
-            "current_task": task,
-            "capability_mapping": mapping,
-            "evidence_repair_feedback": repair_feedback or [],
-        },
-    )
-    raw = {**raw, "task_id": task["id"]}
-    return TaskAssessment.model_validate(raw)
+    """单任务评分：输出先做宽容归一；pydantic 校验失败带错误回喂重试。
+
+    GLM 对长 schema 的必填字段偶发遗漏（同源于 panel 链路 1210 教训），链路设计
+    默认「单次输出可能不合规」：归一吸收字段缺失，重试吸收结构错误，都失败才算
+    技术故障交给上层落失败态。
+    """
+    payload = {
+        "resume_text": resume["raw_text"],
+        "structured_resume": resume,
+        "assessment_card": card.model_dump(),
+        "current_task": task,
+        "capability_mapping": mapping,
+        "evidence_repair_feedback": repair_feedback or [],
+    }
+    last_error = ""
+    for attempt in range(3):
+        if attempt > 0:
+            payload = {
+                **payload,
+                "evidence_repair_feedback": [
+                    *(repair_feedback or []),
+                    f"上次输出未通过校验：{last_error}。请严格按输出格式重新评分；"
+                    "evidence 每项必须包含 quote/evidence_type/confidence/relevance 四个字段。",
+                ],
+            }
+        raw = invoke(TASK_SCORING_PROMPT, payload)
+        if not isinstance(raw, dict) or not raw:
+            # 空响应不能静默归一成 0 分评分——那是把技术失败伪装成业务结论
+            last_error = "模型未返回任何内容"
+            continue
+        raw = {**raw, "task_id": task["id"]}
+        try:
+            return TaskAssessment.model_validate(_normalize_task_payload(raw))
+        except ValidationError as exc:
+            last_error = str(exc)
+    raise RuntimeError(f"任务 {task['id']} 评分输出连续 {3} 次不合规：{last_error}")
+
+
+_EVIDENCE_TYPES = {"direct", "transferable", "background"}
+_CONFIDENCE_LEVELS = {"high", "medium", "low"}
+
+
+def _normalize_task_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    """宽容归一：吸收 GLM 偶发的字段遗漏/类型漂移，再交 pydantic 硬校验。"""
+    payload = dict(raw)
+    evidence: list[dict[str, Any]] = []
+    for item in payload.get("evidence") or []:
+        if not isinstance(item, dict):
+            continue
+        quote = str(item.get("quote") or "").strip()
+        if len(quote) < 2:
+            continue  # 没有可用引文的条目无法核验，直接丢弃
+        evidence_type = str(item.get("evidence_type") or "").strip()
+        confidence = str(item.get("confidence") or "").strip()
+        relevance = str(item.get("relevance") or "").strip()
+        evidence.append({
+            "quote": quote,
+            # 缺类型按背景证据兜底（评分规则本就限制背景证据单独支撑高分）
+            "evidence_type": evidence_type if evidence_type in _EVIDENCE_TYPES else "background",
+            "confidence": confidence if confidence in _CONFIDENCE_LEVELS else "low",
+            "relevance": relevance if len(relevance) >= 2 else "未说明支撑关系",
+        })
+    payload["evidence"] = evidence
+    try:
+        payload["level"] = max(0, min(4, int(float(payload.get("level")))))
+    except (TypeError, ValueError):
+        payload["level"] = 0
+        payload["confidence"] = "low"
+    if str(payload.get("confidence") or "").strip() not in _CONFIDENCE_LEVELS:
+        payload["confidence"] = "low"
+    payload["reasoning_summary"] = str(payload.get("reasoning_summary") or "")
+    payload["transfer_boundary"] = str(payload.get("transfer_boundary") or "")
+    payload["risks"] = [str(r) for r in (payload.get("risks") or []) if str(r).strip()]
+    return payload
 
 
 def _validate_and_repair_evidence(

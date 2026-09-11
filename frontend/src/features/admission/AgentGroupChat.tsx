@@ -41,17 +41,26 @@ function LeadAvatar({ small = false }: { small?: boolean }) {
 
 /** 主席的发言：问答同款 assistant 消息（markdown）。 */
 function LeadSpeech({ entry }: { entry: Extract<CollabEntry, { kind: "lead"; variant: "speech" }> }) {
+  const { t } = useI18n();
   return (
     <div className="chat-enter flex gap-3">
       <LeadAvatar />
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-body-sm font-bold text-on-surface">{entry.senderName}</span>
-          <StatusChip tone="neutral" variant="dot">{entry.badge}</StatusChip>
+          <span className="text-body-sm font-bold text-on-surface">{t("主席")}</span>
           {entry.at && <time className="text-label tabular-nums text-on-surface-variant">{new Date(entry.at).toLocaleTimeString()}</time>}
         </div>
-        <AssistantMessage message={entry.message} hideAvatar busy={false} onDecide={() => {}} />
+        <AssistantMessage message={asMessage(entry.key, entry.text)} hideAvatar busy={false} onDecide={() => {}} />
       </div>
+    </div>
+  );
+}
+
+/** 主席亲自调用的工具：问答同款工具卡。 */
+function LeadTool({ entry }: { entry: Extract<CollabEntry, { kind: "lead"; variant: "tool" }> }) {
+  return (
+    <div className="chat-enter pl-11">
+      <ToolCallCard segment={entry.tool} />
     </div>
   );
 }
@@ -268,6 +277,9 @@ export default function AgentGroupChat({ runKind, status, events, live, loading,
                     {entry.at && <time className="text-label tabular-nums text-on-surface-variant opacity-70">{new Date(entry.at).toLocaleTimeString()}</time>}
                   </div>
                 );
+              }
+              if (entry.kind === "lead" && entry.variant === "tool") {
+                return <LeadTool key={entry.key} entry={entry} />;
               }
               if (entry.kind === "lead") return <LeadSpeech key={entry.key} entry={entry} />;
               const spawn = spawnByKey.get(entry.spawnKey);

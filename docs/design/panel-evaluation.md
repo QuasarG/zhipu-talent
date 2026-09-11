@@ -1,6 +1,17 @@
 # 评审团评估链路（panel mode）重构方案
 
-状态：已落地；2026-09-11 起 panel 为唯一评估引擎（tag `pre-eval-mode-convergence-20260911` 保存三模式并存的历史状态，`agent_assessor.py` 双 agent 与 `workflow` 模式已删除）。
+状态：**v2 已落地**。2026-09-11 起 panel 为唯一评估引擎（tag `pre-eval-mode-convergence-20260911` 保存三模式并存的历史状态，`agent_assessor.py` 双 agent 与 `workflow` 模式已删除）。
+
+> **v2 架构变更（2026-09-11，对齐 DSH 主 agent + spawn 形态）**：
+> 主席不再是「JSON 决策派工器」，而是一个带工具的 agentic loop（问答 agent 同款）：
+> 工具 = 材料只读工具 + `spawn_agent`；spawn 时的 prompt 就是子评审 agent 的全部
+> 约束与指引——不再有 TYPE_REGISTRY 按工种区分的系统提示词/工具白名单/findings
+> 合同；子 agent 工具与主 agent 相同但不能 spawn（不嵌套，工具集与代码双保险）。
+> 子 agent 的最终报告作为工具结果回到主席上下文；主席收尾经独立 JSON 通道输出
+> 评分合同（job_fit_raw），decision_guard / formatter 复用原节点。预算改为
+> `PANEL_MAX_SPAWNS` / `PANEL_LEAD_ROUNDS` / `PANEL_AGENT_ROUNDS`。下文 §4–§7
+> 中关于工种注册表、findings 合同、规划-派工 JSON 协议的描述均为 v1 历史设计。
+
 范围：(JD×候选人) 评估链路，即 `agents/job_fit/` + `core/runner.py` 的 `jd_fit_v2` 输出。
 关联：共享材料访问层已抽为 `agents/job_fit/materials.py`（MaterialsContext / 文本层 / 视觉转译 / 检索 / JSON 解析）。
 

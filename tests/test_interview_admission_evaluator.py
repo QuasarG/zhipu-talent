@@ -106,7 +106,64 @@ class InterviewAdmissionEvaluatorTests(unittest.TestCase):
         self.assertEqual(observer_events[0]["agent_type"], "reviewer")
         self.assertEqual(len(observer_events[0]["detail"]["收到的任务评分"]), len(self.card.core_tasks))
 
-    def test_publications_and_projects_are_capability_evidence_without_skill_keyword(self) -> None:
+    def test_missing_evidence_fields_are_normalized_without_retry(self) -> None:
+        """GLM 偶发漏字段（同 1210 教训）：宽容归一吸收，不打断 run、不触发重试。"""
+        score_calls: dict[str, int] = {}
+        lock = threading.Lock()
+
+        def llm(prompt: str, payload: dict) -> dict:
+            if prompt == CAPABILITY_MAPPING_PROMPT:
+                return {"task_mappings": []}
+            if prompt == TASK_SCORING_PROMPT:
+                task_id = payload["current_task"]["id"]
+                with lock:
+                    score_calls[task_id] = score_calls.get(task_id, 0) + 1
+                if task_id == "evaluation_loop":
+                    # 只回了 quote，漏了 relevance/evidence_type/confidence
+                    return {
+                        "task_id": task_id,
+                        "level": 2,
+                        "confidence": "medium",
+                        "reasoning_summary": "大规模评测平台对应评测闭环任务。",
+                        "evidence": [{"quote": _quote_for(task_id)}],
+                    }
+                return _score_response(task_id, 3, _quote_for(task_id))
+            return {"corrections": [], "interview_focus": [], "summary": "总审无异议"}
+
+        result = evaluate_candidate_for_job(self.resume, "jd-agent", self.card, llm=llm)
+
+        self.assertEqual(score_calls["evaluation_loop"], 1)
+        target = next(a for a in result.task_assessments if a.task_id == "evaluation_loop")
+        self.assertEqual(len(target.evidence), 1)
+        self.assertEqual(target.evidence[0].evidence_type, "background")
+        self.assertEqual(target.evidence[0].confidence, "low")
+        self.assertEqual(target.evidence[0].relevance, "未说明支撑关系")
+        self.assertEqual(result.decision, "interview")
+
+    def test_persistently_empty_scoring_fails_after_retries(self) -> None:
+        """模型持续返回空内容：重试穷尽后按技术故障落失败态，而不是静默评 0 分。"""
+        score_calls: dict[str, int] = {}
+        lock = threading.Lock()
+
+        def llm(prompt: str, payload: dict) -> dict:
+            if prompt == CAPABILITY_MAPPING_PROMPT:
+                return {"task_mappings": []}
+            if prompt == TASK_SCORING_PROMPT:
+                task_id = payload["current_task"]["id"]
+                with lock:
+                    score_calls[task_id] = score_calls.get(task_id, 0) + 1
+                if task_id == "evaluation_loop":
+                    return {}
+                return _score_response(task_id, 2, _quote_for(task_id))
+            return {"corrections": [], "interview_focus": [], "summary": "总审无异议"}
+
+        with self.assertRaises(RuntimeError) as ctx:
+            evaluate_candidate_for_job(self.resume, "jd-agent", self.card, llm=llm)
+
+        self.assertIn("evaluation_loop", str(ctx.exception))
+        self.assertEqual(score_calls["evaluation_loop"], 3)
+
+
         def llm(prompt: str, payload: dict) -> dict:
             serialized = str(payload)
             self.assertNotIn("仲奕杰", serialized)

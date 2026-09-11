@@ -165,6 +165,30 @@ class PanelCollabTranslator(_BaseTranslator):
         out: list[dict[str, Any]] = []
         chair = dict(instance_id="chair", agent_type="chair")
 
+        if kind == "message":
+            # 主 agent 的正式发言（v2：主席是对话主体）
+            message_id = uuid4().hex
+            out.append(self._envelope(
+                {"type": "message.started", "sender": "chair", "receiver": "user"},
+                at=at, message_id=message_id, **chair))
+            out.append(self._envelope(
+                {"type": "message.completed", "sender": "chair", "receiver": "user",
+                 "text": raw.get("message", "")},
+                at=at, message_id=message_id, cause_event_id=out[-1]["event_id"], **chair))
+            return out
+        if kind == "tool_call":
+            out.append(self._envelope(
+                {"type": "tool.started", "call_id": raw.get("call_id"), "tool": raw.get("tool"),
+                 "args_summary": (raw.get("detail") or {}).get("输入")},
+                at=at, **chair))
+            return out
+        if kind == "tool_result":
+            summary = str((raw.get("detail") or {}).get("返回摘要") or "")
+            out.append(self._envelope(
+                {"type": "tool.completed", "call_id": raw.get("call_id"), "tool": raw.get("tool"),
+                 "status": "error" if "未授权" in summary else "ok", "summary": summary},
+                at=at, **chair))
+            return out
         if kind == "request":
             self._chair_round += 1
             self._planning_open = True
@@ -172,7 +196,8 @@ class PanelCollabTranslator(_BaseTranslator):
                 {"type": "planning.started", "round_no": self._chair_round,
                  "context": (raw.get("detail") or {}).get("已收到结论")},
                 at=at, **chair))
-        elif kind == "dispatch":
+            return out
+        if kind == "dispatch":
             mission_id = str(raw.get("target_id") or "")
             if not mission_id:
                 return out
@@ -190,7 +215,7 @@ class PanelCollabTranslator(_BaseTranslator):
                  "note": detail.get("续派指令") or "", "reuse_context": bool(detail.get("复用上下文"))},
                 at=at, message_id=message_id, turn_no=self.instances[mission_id]["turns"], **chair))
             self._dispatch_of[mission_id] = {"event_id": out[-1]["event_id"], "message_id": message_id}
-        elif kind == "handoff" and raw.get("target_id") == "system":
+        if kind == "handoff" and raw.get("target_id") == "system":
             self._append_closed_planning(out, at, **chair)
             out.append(self._envelope(
                 {"type": "result.returned", "sender": "chair", "receiver": "system",
@@ -198,7 +223,7 @@ class PanelCollabTranslator(_BaseTranslator):
                  "digest": json.dumps(raw.get("detail") or {}, ensure_ascii=False, default=str)[:300],
                  "succeeded": True},
                 at=at, message_id=uuid4().hex, **chair))
-        elif kind == "status" and status == "done":
+        if kind == "status" and status == "done":
             self._append_closed_planning(out, at, **chair)
         return out
 

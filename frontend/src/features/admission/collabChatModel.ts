@@ -2,7 +2,7 @@
 // 评审/评分 agent 是它 spawn 出来的子 agent——子活动折叠为紧凑内联行，点开看细节。
 // 消息体复用问答的 ChatMessage/ChatSegment（markdown + ToolCallCard）。纯函数：
 // 实时跟随与回放共用同一解释逻辑，重复 event_id 幂等跳过；evidence_repair 归并评分实例。
-import type { ChatMessage, ChatSegment, CollabEvent } from "@/lib/types";
+import type { ChatSegment, CollabEvent } from "@/lib/types";
 import { roleNames } from "./agentActivityModel";
 
 export type SpawnState = "running" | "done" | "failed";
@@ -23,10 +23,12 @@ export interface CollabSpawn {
 
 export type CollabEntry =
   | { kind: "system"; key: string; at: string | null; text: string; tone: "info" | "success" | "error" }
-  | { kind: "lead"; key: string; at: string | null; senderName: string;
-      variant: "planning"; round: number; contextCount: number }
-  | { kind: "lead"; key: string; at: string | null; senderName: string;
-      variant: "speech"; badge: string; message: ChatMessage }
+  /** 主 agent 发言（自然语言，问答同款渲染） */
+  | { kind: "lead"; key: string; at: string | null; variant: "speech"; text: string }
+  /** 主 agent 亲自调用的工具（问答同款工具卡） */
+  | { kind: "lead"; key: string; at: string | null; variant: "tool"; tool: ToolSegment }
+  /** 历史（v1 JSON 派工时代）规划行 */
+  | { kind: "lead"; key: string; at: string | null; variant: "planning"; round: number; contextCount: number }
   | { kind: "spawn"; key: string; at: string | null; spawnKey: string; birthEvent: string };
 
 export interface CollabChatTaskStats {
@@ -52,16 +54,6 @@ const TOOL_LABELS: Record<string, string> = {
 const normInstance = (id: string): string =>
   id.startsWith("evidence_repair:") ? "task_score:" + id.slice("evidence_repair:".length) : id;
 
-const emptyMessage = (id: string, segments: ChatSegment[], at: string | null): ChatMessage => ({
-  id,
-  conversation_id: "collab",
-  role: "assistant",
-  content: { segments },
-  citations: [],
-  status: "completed",
-  created_at: at ?? "",
-});
-
 /** 可解析的 JSON 摘要渲染为代码块（panel findings 摘要是 JSON 截断串），普通文本原样。 */
 export function digestMarkdown(text: string): string {
   const trimmed = text.trim();
@@ -73,10 +65,6 @@ export function digestMarkdown(text: string): string {
     }
   }
   return text || "（未记录内容）";
-}
-
-function digestSegment(text: string): ChatSegment {
-  return { type: "text", text: digestMarkdown(text) };
 }
 
 export function reduceCollabChat(events: CollabEvent[]): CollabChatTranscript {
@@ -100,6 +88,8 @@ export function reduceCollabChat(events: CollabEvent[]): CollabChatTranscript {
     }
     return spawn;
   };
+  // 主 agent 亲自调用的工具：call_id → 条目，tool.completed 原地更新状态
+  const leadTools = new Map<string, Extract<CollabEntry, { kind: "lead"; variant: "tool" }>>();
 
   for (const envelope of events) {
     if (applied.has(envelope.event_id)) continue;
@@ -133,7 +123,7 @@ export function reduceCollabChat(events: CollabEvent[]): CollabChatTranscript {
         spawnOf(senderId, senderRole || event.agent_type || "", envelope.event_id);
         break;
       case "planning.started":
-        entries.push({ kind: "lead", key: envelope.event_id, at, senderName: roleNames.chair,
+        entries.push({ kind: "lead", key: envelope.event_id, at,
           variant: "planning", round: Number(event.round_no ?? 1),
           contextCount: Array.isArray(event.context) ? event.context.length : 0 });
         break;
@@ -153,20 +143,30 @@ export function reduceCollabChat(events: CollabEvent[]): CollabChatTranscript {
         break;
       }
       case "tool.started": {
-        const spawn = spawnOf(senderId, senderRole);
         const tool = typeof event.tool === "string" ? event.tool : "";
-        if (spawn) spawn.tools.push({
+        const segment: ToolSegment = {
           type: "tool",
           call_id: typeof event.call_id === "string" ? event.call_id : `${seq}`,
           tool,
           label: TOOL_LABELS[tool] || tool || "工具调用",
           args_summary: typeof event.args_summary === "string" ? event.args_summary : "",
-        });
+        };
+        if (isLead) {
+          const entry: Extract<CollabEntry, { kind: "lead"; variant: "tool" }> = {
+            kind: "lead", key: envelope.event_id, at, variant: "tool", tool: segment,
+          };
+          leadTools.set(segment.call_id, entry);
+          entries.push(entry);
+          break;
+        }
+        const spawn = spawnOf(senderId, senderRole);
+        if (spawn) spawn.tools.push(segment);
         break;
       }
       case "tool.completed": {
-        const spawn = spawns.get(senderId);
-        const segment = spawn?.tools.find(s => s.call_id === event.call_id);
+        const callId = String(event.call_id);
+        const segment = leadTools.get(callId)?.tool
+          ?? spawns.get(senderId)?.tools.find(s => s.call_id === callId);
         if (segment) {
           segment.status = event.status === "error" ? "error" : "ok";
           segment.summary = typeof event.summary === "string" ? event.summary : "";
@@ -174,19 +174,23 @@ export function reduceCollabChat(events: CollabEvent[]): CollabChatTranscript {
         break;
       }
       case "message.completed": {
-        const spawn = spawnOf(senderId, senderRole);
         const text = typeof event.text === "string" ? event.text.trim() : "";
-        if (spawn && text) spawn.notes.push(text);
+        if (!text) break;
+        if (isLead) {
+          // 主 agent 的正式发言
+          entries.push({ kind: "lead", key: envelope.event_id, at, variant: "speech", text });
+          break;
+        }
+        const spawn = spawnOf(senderId, senderRole);
+        if (spawn) spawn.notes.push(text);
         break;
       }
       case "result.returned": {
         const succeeded = event.succeeded !== false;
         const digest = typeof event.digest === "string" ? event.digest.trim() : "";
         if (isLead) {
-          // 主席收队：综合意见是主 agent 的正式发言
-          entries.push({ kind: "lead", key: envelope.event_id, at, senderName: roleNames.chair,
-            variant: "speech", badge: "综合意见",
-            message: emptyMessage(envelope.event_id, [digestSegment(digest)], at) });
+          // 历史（v1）：主席收队综合意见按主 agent 发言渲染
+          entries.push({ kind: "lead", key: envelope.event_id, at, variant: "speech", text: digest });
           break;
         }
         const spawn = spawnOf(senderId, senderRole);
