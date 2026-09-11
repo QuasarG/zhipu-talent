@@ -182,6 +182,16 @@ def _chair_system(dossier: dict[str, Any]) -> str:
 调查充分后停止调用工具，等待系统向你收取最终评估。"""
 
 
+_CHAIR_SUMMARY_PROMPT = """最后一步：面向用人方写一段评估总结（markdown，250–450 字）。
+
+要求：
+- 先按 JD 逐个给出结论概览（各维度得分要点与最终等级判断）；
+- 提炼最有价值的证据（引用到「文件名 第N页」）与最大的不确定性；
+- 指出主要风险与面试建议（验证什么、怎么验证）；
+- 只依据上方已收集的子 agent 报告与你亲自核对的事实，不引入新结论。
+不要输出 JSON，不要重复逐条列引用。"""
+
+
 def _chair_final_prompt(jobs: list) -> str:
     jd_list = "\n".join(f"- jd_id={job.id}｜{job.title}" for job in jobs)
     dims = "\n".join(f"- {key}（{label}）" for key, label, _w in DIMENSIONS)
@@ -529,6 +539,20 @@ def run_panel_stream(
     if last_error:
         # 主席连续输出非法 → 兜底：空合同走保守缺省，评估照常出分
         trace_append({"type": "text", "text": f"评分合同未产出：{last_error[:120]}，按保守缺省出分"})
+
+    # ---- 最后一轮：主席生成面向用人方的评估总结（markdown）----
+    messages.append({"role": "user", "content": _CHAIR_SUMMARY_PROMPT})
+    try:
+        result = call_llm_tools(messages, tools=[], temperature=0.4,
+                                reasoning_effort=os.getenv("OPENAI_EFFORT_SCORING", "high"))
+        summary_text = str(result.get("text") or "").strip()
+        messages.append({"role": "assistant", "content": summary_text})
+    except Exception as exc:  # noqa: BLE001 — 总结生成失败不影响评分结果
+        logger.warning("主席总结生成失败：%s", exc)
+        summary_text = ""
+    if summary_text:
+        trace_append({"type": "text", "text": summary_text})
+        yield sse({"type": "answer_delta", "payload": {"text": summary_text}})
 
     yield {"type": "node", "node": "panel_lead", "label": "评审团", "status": "done",
            "phase": "assessment", "message": f"评审团收工：派出 {spawned} 个子 agent。"}

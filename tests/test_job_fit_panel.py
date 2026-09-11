@@ -90,6 +90,9 @@ class FakePanelLLM:
         self.tool_contents.extend(
             m.get("content", "") for m in messages if m.get("role") == "tool")
         if not tools:
+            last_user = [m for m in messages if m["role"] == "user"][-1]["content"]
+            if "评估总结" in last_user:
+                return {"text": "评估总结：各任务证据充分，建议面试。", "tool_calls": []}
             self.final_calls += 1
             return {"text": json.dumps(self.contract, ensure_ascii=False), "tool_calls": []}
         system = messages[0]["content"]
@@ -139,6 +142,8 @@ class PanelEndToEndTests(unittest.TestCase):
         self.assertEqual(worker_tools[1]["payload"]["status"], "ok")
         speeches = [e for e in sse if e["type"] == "answer_delta" and "spawn_id" not in e["payload"]]
         self.assertTrue(any("报告已收齐" in e["payload"]["text"] for e in speeches))
+        self.assertTrue(any("评估总结" in e["payload"]["text"] for e in speeches))  # 收尾总结由主 agent 生成
+        self.assertTrue(any(s["type"] == "text" and "评估总结" in s["text"] for s in trace))
 
         # trace：spawn 段 + 挂在其下的子 agent 工具/说明 + 主 agent 文本
         spawn_segments = [s for s in trace if s["type"] == "spawn"]
