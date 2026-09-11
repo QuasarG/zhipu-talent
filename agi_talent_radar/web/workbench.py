@@ -133,21 +133,6 @@ def _candidate_materials(candidate_id: str) -> dict[str, Any] | None:
     return None
 
 
-def _record_collab_events(envelopes) -> None:
-    """旁路写入协作事件；失败只记日志，绝不影响评估主流程。"""
-    if not envelopes:
-        return
-    from agi_talent_radar.core.collab_events import append_collab_events
-    from agi_talent_radar.core.database import get_session
-
-    try:
-        with get_session() as session:
-            append_collab_events(session, envelopes)
-            session.commit()
-    except Exception:  # noqa: BLE001
-        logger.warning("协作事件写入失败（不影响评估）", exc_info=True)
-
-
 def _run_evaluation_job(
     candidate_id: str,
     evaluation_run_id: int,
@@ -157,31 +142,28 @@ def _run_evaluation_job(
 ) -> None:
     """Run an evaluation independently from the browser's SSE connection."""
     evaluation = None
-    collab_translator = None
+    trace_segments: list[dict[str, Any]] = []
     try:
-        from agi_talent_radar.core.collab_events import PanelCollabTranslator
-
         iterator = run_candidate_panel_stream(
             resume, academic_report=academic_report, materials=_candidate_materials(candidate_id),
         )
-        collab_translator = PanelCollabTranslator(str(evaluation_run_id))
-        _record_collab_events([collab_translator.run_event("run.started")])
         for event in iterator:
-            if event["type"] == "node":
+            kind = event.get("type")
+            if kind == "node":
+                # 评估图谱节点表（graph 页）；过程叙事已改为 panel_trace 聊天段
                 from agi_talent_radar.core.database import get_session, record_node_event
 
                 with get_session() as session:
                     record_node_event(session, evaluation_run_id, event)
-                    if collab_translator is not None:
-                        from agi_talent_radar.core.collab_events import append_collab_events
-
-                        append_collab_events(session, collab_translator.feed(event))
-                event_queue.put(event)
-            elif event["type"] == "result":
+            elif kind == "sse":
+                # 问答词汇事件：主 agent 发言 / 工具 / spawn，浏览器实时渲染
+                event_queue.put(event["event"])
+            elif kind == "trace":
+                trace_segments.append(event["segment"])
+            elif kind == "result":
                 evaluation = CandidateEvaluation.model_validate(event["result"])
                 evaluation.id = candidate_id
-            else:
-                event_queue.put(event)
+                trace_segments = event.get("trace") or trace_segments
 
         if evaluation is None:
             raise RuntimeError("评估流程未返回结果。")
@@ -189,11 +171,8 @@ def _run_evaluation_job(
         from agi_talent_radar.core.database import get_session, save_evaluation
 
         with get_session() as session:
-            save_evaluation(session, evaluation, evaluation_id=evaluation_run_id)
-
-        if collab_translator is not None:
-            _record_collab_events([collab_translator.run_event(
-                "run.completed", summary=str(evaluation.decision_summary or ""))])
+            save_evaluation(session, evaluation, evaluation_id=evaluation_run_id,
+                            trace=trace_segments or None)
 
         try:
             from agi_talent_radar.services import talent_service
@@ -202,15 +181,14 @@ def _run_evaluation_job(
         except (ValueError, RuntimeError):
             pass
 
-        event_queue.put({"type": "result", "result": evaluation.model_dump()})
+        event_queue.put({"type": "result", "payload": {
+            **evaluation.model_dump(), "trace": trace_segments}})
     except Exception as exc:  # noqa: BLE001 — 后台任务必须落失败态并结束 SSE
         logger.error("评估任务 %s 失败", evaluation_run_id, exc_info=True)
         from agi_talent_radar.core.database import fail_evaluation_run, get_session
 
         with get_session() as session:
             fail_evaluation_run(session, evaluation_run_id, exc)
-        if collab_translator is not None:
-            _record_collab_events([collab_translator.run_event("run.failed", error=str(exc)[:300])])
         event_queue.put({"type": "error", "message": "评估执行失败，请稍后重试；问题持续请联系管理员。"})
     finally:
         _set_evaluation_active(evaluation_run_id, False)
@@ -255,7 +233,6 @@ def create_app() -> Flask:
     from agi_talent_radar.web.config_api import build_config_blueprint
     from agi_talent_radar.web.knowledge_api import build_knowledge_blueprint
     from agi_talent_radar.web.interview_assessment_api import build_interview_assessment_blueprint
-    from agi_talent_radar.web.collab_api import build_collab_blueprint
     from agi_talent_radar.scholarship.api import build_scholarship_blueprint
     from agi_talent_radar.grill.api import build_grill_blueprint
     from agi_talent_radar.talent_bundle.api import build_bundle_blueprint
@@ -279,7 +256,6 @@ def create_app() -> Flask:
     app.register_blueprint(build_config_blueprint())
     app.register_blueprint(build_knowledge_blueprint())
     app.register_blueprint(build_interview_assessment_blueprint())
-    app.register_blueprint(build_collab_blueprint())
     app.register_blueprint(build_scholarship_blueprint())
     app.register_blueprint(build_grill_blueprint())
     app.register_blueprint(build_bundle_blueprint())

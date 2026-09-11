@@ -8,7 +8,7 @@ import type {
   InterviewAssessmentRun,
   JdEntry,
 } from "@/lib/types";
-import TalentCollaboration from "./TalentCollaboration";
+import RunTraceProcess from "./RunTraceProcess";
 import AdmissionReport from "./AdmissionReport";
 import { BatchRunView, NewBatchPanel } from "./BatchViews";
 import EmptyState from "./EmptyState";
@@ -127,7 +127,7 @@ export default function AdmissionPane({
   if (selectedCandidateId && selectedJdId) {
     const runningPair = [...(batch?.runs || []), ...activeRuns].find(run => run.candidate_id === selectedCandidateId
       && run.jd_id === selectedJdId && ["running", "queued"].includes(run.status));
-    if (runningPair) return <TalentCollaboration key={runningPair.id} runId={runningPair.id} status={runningPair.status} />;
+    if (runningPair) return <RunTraceProcess key={runningPair.id} runId={runningPair.id} status={runningPair.status} />;
     return (
       <PairReportView
         key={`${selectedCandidateId}:${selectedJdId}`}
@@ -238,7 +238,7 @@ function PairReportView({
       <Card variant="filled" className="relative min-h-0 flex-1 overflow-hidden flex flex-col">
         {traceError ? <p role="alert" className="p-4 text-body-sm text-error">{t(traceError)}</p>
           : fullTrace === null ? <LoadingIndicator label={t("正在加载协作记录…")} />
-            : <TalentCollaboration pair={{ candidateId, jdId }} status="completed" />}
+            : <RunTraceProcess status="completed" runTrace={fullTrace ?? []} />}
       </Card>}
     </div>
   );

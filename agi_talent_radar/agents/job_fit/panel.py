@@ -265,24 +265,16 @@ def run_agent_mission(
     dossier: dict[str, Any],
     ctx: MaterialsContext | None,
 ) -> Generator[dict[str, Any], None, dict[str, Any]]:
-    """执行一个子评审 agent：yield 进度事件，return {"status", "report"}。"""
+    """执行一个子评审 agent：yield {"type":"sse"/"trace", ...}，return {"status", "report"}。"""
     from agi_talent_radar.core.llm_client import call_llm_tools
-
-    label = f"任务[{mission_id}] {goal}"
-
-    def node(message: str, status: str = "running", **activity: Any) -> dict[str, Any]:
-        return {"type": "node", "node": "panel_lead", "label": "评审团", "status": status,
-                "phase": "assessment", "message": f"{label}：{message}",
-                "mission_id": mission_id, "mission_type": "generic",
-                "mission_goal": goal, "mission_status": status,
-                "agent_id": mission_id, "agent_type": "generic",
-                "event_kind": "status", **activity}
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _worker_system(dossier)},
         {"role": "user", "content": f"[主席] {prompt}"},
     ]
-    yield node("接收任务简报，开始工作", event_kind="request")
+
+    def sse(event: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "sse", "event": event}
 
     rounds = _env_int("PANEL_AGENT_ROUNDS", 8)
     report = ""
@@ -298,7 +290,7 @@ def run_agent_mission(
                                          "function": {"name": tc["name"], "arguments": tc["arguments"]}}
                                         for tc in tool_calls]})
         if report:
-            yield node(report, event_kind="message")
+            yield sse({"type": "answer_delta", "payload": {"text": report}})
         if not tool_calls:
             break
         for tc in tool_calls:
@@ -306,24 +298,25 @@ def run_agent_mission(
                 args = json.loads(tc.get("arguments") or "{}")
             except json.JSONDecodeError:
                 args = {}
-            yield node(f"正在{_TOOL_LABELS.get(tc['name'], tc['name'])}", event_kind="tool_call",
-                       tool=tc["name"], call_id=tc["id"], detail={"输入": args})
+            label = _TOOL_LABELS.get(tc["name"], tc["name"])
+            yield sse({"type": "tool_start", "payload": {
+                "call_id": tc["id"], "tool": tc["name"], "label": label,
+                "args_summary": json.dumps(args, ensure_ascii=False)[:200]}})
             if tc["name"] == "spawn_agent":
                 # 工具集里没有 spawn（提示词层约束）；这里再硬拦一层防幻觉嵌套
                 output = {"summary": "子 agent 不能派生 agent", "detail": {"error": "禁止嵌套 spawn"}}
             else:
                 output = _execute_tool(ctx, tc["name"], args)
             summary = str(output.get("summary") or "完成")
-            yield node(f"{_TOOL_LABELS.get(tc['name'], tc['name'])}：{summary}",
-                       event_kind="tool_result", tool=tc["name"], call_id=tc["id"],
-                       detail={"输入": args, "返回摘要": summary})
+            status = "error" if "未授权" in summary or "不能派生" in summary else "ok"
+            yield sse({"type": "tool_end", "payload": {
+                "call_id": tc["id"], "status": status, "summary": summary,
+                "detail": json.dumps(output.get("detail"), ensure_ascii=False, default=str)[:2000]}})
             messages.append({"role": "tool", "tool_call_id": tc["id"],
                              "content": json.dumps({"summary": summary, "detail": output.get("detail")},
                                                    ensure_ascii=False, default=str)[:6000]})
     if not report:
-        yield node("未产出报告", status="failed", event_kind="error")
         return {"status": "failed", "report": ""}
-    yield node("报告完成", status="done")
     return {"status": "done", "report": report}
 
 
@@ -337,13 +330,16 @@ def run_panel_stream(
     academic_report: dict[str, Any] | None,
     ctx: MaterialsContext | None,
 ) -> Generator[dict[str, Any], None, dict[str, Any]]:
-    """主 agent 循环。yield 进度事件，return job_fit_raw（供 yield from 捕获）。"""
+    """主 agent 循环。yield {"type":"sse"/"node"} 事件，return {"job_fit_raw","trace"}。"""
     from agi_talent_radar.core.llm_client import call_llm_tools
 
-    def lead_node(message: str, status: str = "running", **activity: Any) -> dict[str, Any]:
-        return {"type": "node", "node": "panel_lead", "label": "评审团", "status": status,
-                "phase": "assessment", "message": message, "agent_id": "chair",
-                "agent_type": "chair", "event_kind": "status", **activity}
+    def sse(event: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "sse", "event": event}
+
+    trace: list[dict[str, Any]] = []
+
+    def trace_append(segment: dict[str, Any]) -> None:
+        trace.append(segment)
 
     yield {"type": "node", "node": "material_desk", "label": "材料整备", "status": "running",
            "phase": "preparation", "message": "正在盘点材料并预热文本层…"}
@@ -382,7 +378,8 @@ def run_panel_stream(
         tool_calls = result.get("tool_calls") or []
         if text:
             messages.append({"role": "assistant", "content": text})
-            yield lead_node(text, event_kind="message")
+            trace_append({"type": "text", "text": text})
+            yield sse({"type": "answer_delta", "payload": {"text": text}})
         if not tool_calls:
             break
         messages.append({"role": "assistant", "content": "",
@@ -407,37 +404,71 @@ def run_panel_stream(
                 else:
                     spawned += 1
                     mission_id = f"m{spawned}"
-                    yield {**lead_node(f"派出 {mission_id}（{goal}）"),
-                           "event_kind": "dispatch", "target_id": mission_id,
-                           "mission_id": mission_id, "mission_type": "generic",
-                           "mission_goal": goal, "mission_status": "running",
-                           "detail": {"目标": prompt}}
+                    spawn_segment: dict[str, Any] = {"type": "spawn", "spawn_id": mission_id,
+                                                     "agent": "通用评审员", "title": goal, "status": "running"}
+                    trace_append(spawn_segment)
+                    yield sse({"type": "spawn_start", "payload": {
+                        "spawn_id": mission_id, "agent": "通用评审员", "title": goal}})
+
+                    def wrap(gen: Generator[dict[str, Any], None, dict[str, Any]],
+                             spawn_id: str = mission_id) -> Generator[dict[str, Any], None, dict[str, Any]]:
+                        # 子 agent 的 SSE 注入 spawn_id，并镜像为 trace 段（挂在 spawn 下）
+                        outcome: dict[str, Any] | None = None
+                        iterator = iter(gen)
+                        while True:
+                            try:
+                                item = next(iterator)
+                            except StopIteration as stop:
+                                outcome = stop.value
+                                break
+                            if item["type"] == "sse":
+                                event = item["event"]
+                                payload = event.setdefault("payload", {})
+                                payload["spawn_id"] = spawn_id
+                                if event["type"] == "tool_start":
+                                    trace_append({"type": "tool", "call_id": payload["call_id"],
+                                                  "tool": payload["tool"], "label": payload["label"],
+                                                  "args_summary": payload.get("args_summary", ""),
+                                                  "spawn_id": spawn_id})
+                                elif event["type"] == "answer_delta":
+                                    trace_append({"type": "text", "text": payload.get("text", ""),
+                                                  "spawn_id": spawn_id})
+                                elif event["type"] == "tool_end":
+                                    for segment in reversed(trace):
+                                        if segment.get("type") == "tool" and segment.get("call_id") == payload["call_id"]:
+                                            segment["status"] = payload.get("status", "ok")
+                                            segment["summary"] = payload.get("summary", "")
+                                            break
+                            yield item
+                        return outcome
+
                     try:
-                        outcome = yield from run_agent_mission(mission_id, goal, prompt, dossier, ctx)
+                        outcome = yield from wrap(run_agent_mission(mission_id, goal, prompt, dossier, ctx))
                     except Exception as exc:  # noqa: BLE001 — 单个 spawn 崩溃不拖垮主 agent
                         logger.exception("spawn %s 执行失败", mission_id)
                         outcome = {"status": "failed", "report": ""}
-                    digest = outcome["report"][:6000]
-                    yield {**lead_node(f"任务[{mission_id}] 报告已回传" if outcome["status"] == "done"
-                                       else f"任务[{mission_id}] 失败"),
-                           "agent_id": mission_id, "agent_type": "generic",
-                           "mission_id": mission_id, "mission_type": "generic",
-                           "mission_goal": goal, "mission_status": outcome["status"],
-                           "event_kind": "handoff", "target_id": "chair",
-                           "detail": {"结论": outcome["report"], "主席收到的摘要": digest[:300],
-                                      "错误": "" if outcome["status"] == "done" else "子 agent 未产出报告"}}
+                    spawn_segment["status"] = "done" if outcome["status"] == "done" else "failed"
+                    spawn_segment["summary"] = (outcome["report"] or "子 agent 未产出报告")[:200]
+                    yield sse({"type": "spawn_end", "payload": {
+                        "spawn_id": mission_id, "status": spawn_segment["status"],
+                        "summary": spawn_segment["summary"]}})
                     output = {"summary": f"子 agent {mission_id}（{goal}）"
                                          f"{'已完成' if outcome['status'] == 'done' else '失败'}",
-                              "detail": {"report": digest} if outcome["status"] == "done"
+                              "detail": {"report": outcome["report"][:6000]} if outcome["status"] == "done"
                                         else {"error": "子 agent 未产出报告"}}
             else:
-                yield lead_node(f"正在{_TOOL_LABELS.get(name, name)}", event_kind="tool_call",
-                                tool=name, call_id=tc["id"], detail={"输入": args})
+                yield sse({"type": "tool_start", "payload": {
+                    "call_id": tc["id"], "tool": name, "label": _TOOL_LABELS.get(name, name),
+                    "args_summary": json.dumps(args, ensure_ascii=False)[:200]}})
                 output = _execute_tool(ctx, name, args)
                 summary = str(output.get("summary") or "完成")
-                yield lead_node(f"{_TOOL_LABELS.get(name, name)}：{summary}",
-                                event_kind="tool_result", tool=name, call_id=tc["id"],
-                                detail={"输入": args, "返回摘要": summary})
+                trace_append({"type": "tool", "call_id": tc["id"], "tool": name,
+                              "label": _TOOL_LABELS.get(name, name),
+                              "args_summary": json.dumps(args, ensure_ascii=False)[:200],
+                              "status": "ok", "summary": summary})
+                yield sse({"type": "tool_end", "payload": {
+                    "call_id": tc["id"], "status": "ok", "summary": summary,
+                    "detail": json.dumps(output.get("detail"), ensure_ascii=False, default=str)[:2000]}})
             messages.append({"role": "tool", "tool_call_id": tc["id"],
                              "content": json.dumps({"summary": str(output.get("summary") or "完成"),
                                                     "detail": output.get("detail")},
@@ -447,8 +478,6 @@ def run_panel_stream(
     contract: dict[str, Any] = {}
     last_error = ""
     for attempt in range(FINAL_RETRIES):
-        yield lead_node("正在汇总最终评估…" if attempt == 0
-                        else f"评分合同校验未过，重试（{attempt}/{FINAL_RETRIES}）：{last_error[:120]}")
         messages.append({"role": "user", "content": _chair_final_prompt(jobs) if attempt == 0
                          else f"[系统] 上次输出校验未通过：{last_error}。请修正后重新只输出 JSON。"})
         result = call_llm_tools(messages, tools=[], temperature=0.2,
@@ -465,10 +494,11 @@ def run_panel_stream(
             break
     if last_error:
         # 主席连续输出非法 → 兜底：空合同走保守缺省，评估照常出分
-        yield lead_node(f"评分合同未产出：{last_error[:120]}，按保守缺省出分", event_kind="error")
+        trace_append({"type": "text", "text": f"评分合同未产出：{last_error[:120]}，按保守缺省出分"})
 
-    yield lead_node(f"评审团收工：派出 {spawned} 个子 agent。", status="done")
-    return assemble(jobs, contract)
+    yield {"type": "node", "node": "panel_lead", "label": "评审团", "status": "done",
+           "phase": "assessment", "message": f"评审团收工：派出 {spawned} 个子 agent。"}
+    return {"job_fit_raw": assemble(jobs, contract), "trace": trace}
 
 
 # ---------------------------------------------------------------------------

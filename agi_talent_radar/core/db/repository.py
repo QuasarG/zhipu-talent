@@ -158,36 +158,7 @@ def record_node_event(session, evaluation_id: int, event: dict[str, Any]) -> Eva
     if node_run.status in {"done", "skipped", "error"}:
         node_run.completed_at = _now()
 
-    # 评审团事件全量入轨迹（节点表按 node_key 覆盖，只留最新一条，不够前端画卡片流）
-    evaluation = session.get(EvaluationORM, evaluation_id)
-    if evaluation is not None:
-        import json as _json
-
-        try:
-            trace = _json.loads(evaluation.panel_trace or "[]")
-            if not isinstance(trace, list):
-                trace = []
-        except ValueError:
-            trace = []
-        trace.append({
-            "ts": _now().isoformat(timespec="seconds"),
-            "node": node_key,
-            "label": str(event.get("label", "")),
-            "status": node_run.status,
-            "phase": node_run.phase,
-            "message": node_run.message,
-            "mission_id": str(event.get("mission_id", "")) or None,
-            "mission_type": str(event.get("mission_type", "")) or None,
-            "mission_goal": str(event.get("mission_goal", "")) or None,
-            "mission_status": str(event.get("mission_status", "")) or None,
-            **{key: event[key] for key in (
-                "agent_id", "agent_type", "target_id", "event_kind", "detail", "tool", "call_id"
-            ) if key in event},
-        })
-        if len(trace) > 400:  # 防跑飞：单次评估事件上限
-            trace = trace[-400:]
-        evaluation.panel_trace = _json.dumps(trace, ensure_ascii=False)
-
+    # 评估图谱节点表（node_runs）；评估过程叙事由 panel_trace 存聊天段，不再在这里追加节点 dump
     session.commit()
     return node_run
 
@@ -206,6 +177,7 @@ def save_evaluation(
     session,
     evaluation: CandidateEvaluation,
     evaluation_id: int | None = None,
+    trace: list[dict[str, Any]] | None = None,
 ) -> EvaluationORM:
     if evaluation_id is None:
         ev = EvaluationORM(candidate_id=evaluation.id)
@@ -248,6 +220,9 @@ def save_evaluation(
     ev.status = "completed"
     ev.error_message = ""
     ev.completed_at = _now()
+    if trace is not None:
+        # 评估过程叙事：问答式聊天段（text/tool/spawn），前端按单条 assistant 消息渲染
+        ev.panel_trace = json.dumps(trace, ensure_ascii=False)
     session.flush()
 
     _replace_evaluation_details(session, ev, evaluation.model_dump())

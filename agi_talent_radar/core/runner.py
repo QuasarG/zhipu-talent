@@ -235,9 +235,11 @@ def run_candidate_panel_stream(
 
         ctx = MaterialsContext(str(materials["root"]), materials.get("allowed"))
 
-    state["job_fit_raw"] = yield from run_panel_stream(
+    stream_result = yield from run_panel_stream(
         structured.model_dump(), job_list, academic_report, ctx,
     )
+    state["job_fit_raw"] = stream_result["job_fit_raw"]
+    panel_trace = stream_result["trace"]
 
     state.update(run_decision_guard(state))
     yield {
@@ -252,4 +254,4 @@ def run_candidate_panel_stream(
         "phase": "decision", "message": "评估结果组装完成。",
     }
     evaluation = CandidateEvaluation.model_validate(state["final_output"])
-    yield {"type": "result", "result": evaluation.model_dump()}
+    yield {"type": "result", "result": evaluation.model_dump(), "trace": panel_trace}

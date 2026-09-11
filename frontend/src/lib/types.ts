@@ -234,27 +234,6 @@ export interface CollabEvent {
   } & Record<string, unknown>;
 }
 
-/** 评审团（panel）模式的全量事件轨迹（panel_trace），按发生顺序排列。 */
-export interface PanelTraceEvent {
-  tool?: string;
-  call_id?: string;
-  agent_id?: string;
-  agent_type?: string;
-  target_id?: string;
-  event_kind?: string;
-  detail?: Record<string, unknown>;
-  ts: string | null;
-  node: string;
-  label: string;
-  status: string;
-  phase: string;
-  message: string;
-  mission_id?: string | null;
-  mission_type?: string | null;
-  mission_goal?: string | null;
-  mission_status?: string | null;
-}
-
 export interface EvaluationRun {
   id: number;
   candidate_id: string;
@@ -263,7 +242,8 @@ export interface EvaluationRun {
   created_at: string | null;
   completed_at: string | null;
   evaluation_graph: EvaluationGraph;
-  panel_trace?: PanelTraceEvent[] | null;
+  /** 评估过程叙事：问答式聊天段（text/tool/spawn），单条 assistant 消息渲染 */
+  panel_trace?: ChatSegment[] | null;
   node_runs: EvaluationNodeRun[];
 }
 
@@ -454,7 +434,7 @@ export interface PersonAdmissionAssessment {
   review_corrections: Array<Record<string, unknown>>;
   interview_focus: Array<Record<string, string>>;
   model_usage: ModelUsage[];
-  run_trace: WorkflowNodeEvent[];
+  run_trace: ChatSegment[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -579,6 +559,16 @@ export type ChatSegment =
       args_summary?: string;
     }
   | {
+      /** 子 agent spawn 行：默认一行摘要，展开看它自己的工作段 */
+      type: "spawn";
+      spawn_id: string;
+      agent: string;
+      title: string;
+      status: "running" | "done" | "failed";
+      summary?: string;
+      children: ChatSegment[];
+    }
+  | {
       type: "action";
       action_id: string;
       kind: ChatActionKind;
@@ -599,10 +589,12 @@ export interface ChatMessage {
 // 问答 SSE 事件
 export type ChatEvent =
   | { type: "meta"; payload: { conversation_id: string; message_id: string } }
-  | { type: "answer_delta"; payload: { text: string } }
-  | { type: "thinking_delta"; payload: { text: string } }
-  | { type: "tool_start"; payload: { call_id: string; tool: string; label: string; args_summary: string } }
-  | { type: "tool_end"; payload: { call_id: string; tool: string; status: "ok" | "error"; summary: string; detail: string } }
+  | { type: "answer_delta"; payload: { text: string; spawn_id?: string } }
+  | { type: "thinking_delta"; payload: { text: string; spawn_id?: string } }
+  | { type: "spawn_start"; payload: { spawn_id: string; agent: string; title: string } }
+  | { type: "spawn_end"; payload: { spawn_id: string; status: "done" | "failed"; summary: string } }
+  | { type: "tool_start"; payload: { call_id: string; tool: string; label: string; args_summary: string; spawn_id?: string } }
+  | { type: "tool_end"; payload: { call_id: string; tool: string; status: "ok" | "error"; summary: string; detail: string; spawn_id?: string } }
   | { type: "observer"; payload: { action: string; text: string } }
   | { type: "action_required"; payload: { action_id: string; kind: ChatActionKind; payload: Record<string, unknown> } }
   | { type: "sources"; payload: { items: ChatCitation[] } }
@@ -916,7 +908,7 @@ export interface InterviewAssessmentRun {
   jd_title: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   current_node: string;
-  run_trace: WorkflowNodeEvent[];
+  run_trace: ChatSegment[];
   model_usage: ModelUsage[];
   error_message: string;
   cancellation_requested: boolean;
@@ -955,7 +947,7 @@ export interface InterviewAssessment {
   review_corrections: Array<Record<string, unknown>>;
   interview_focus: Array<Record<string, string>>;
   model_usage: ModelUsage[];
-  run_trace: WorkflowNodeEvent[];
+  run_trace: ChatSegment[];
   updated_at: string;
 }
 

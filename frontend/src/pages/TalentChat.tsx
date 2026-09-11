@@ -17,6 +17,15 @@ import { markdownHeadings } from "@/features/chat/chatNavigationModel";
 type LocalMessage = ChatMessage & { error?: string };
 export type { LocalMessage };
 
+/** 找到（或创建）spawn 段：子 agent 的工作段挂在自己名下 */
+function spawnSegmentOf(segments: ChatSegment[], spawnId: string): Extract<ChatSegment, { type: "spawn" }> | null {
+  for (let i = segments.length - 1; i >= 0; i -= 1) {
+    const segment = segments[i];
+    if (segment.type === "spawn" && segment.spawn_id === spawnId) return segment;
+  }
+  return null;
+}
+
 /** 逐事件更新正在流式生成的 assistant 消息 */
 export function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
   const segments = [...msg.content.segments];
@@ -34,6 +43,15 @@ export function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
       return { ...msg, content: { segments } };
     }
     case "answer_delta": {
+      const spawnId = e.payload.spawn_id;
+      if (spawnId) {
+        const index = segments.findIndex(s => s.type === "spawn" && s.spawn_id === spawnId);
+        if (index >= 0) {
+          const spawn = segments[index] as Extract<ChatSegment, { type: "spawn" }>;
+          segments[index] = { ...spawn, children: [...spawn.children, { type: "text", text: e.payload.text }] };
+          return { ...msg, content: { segments } };
+        }
+      }
       const last = segments[segments.length - 1];
       if (last?.type === "text") {
         segments[segments.length - 1] = { ...last, text: last.text + e.payload.text };
@@ -42,29 +60,72 @@ export function applyEvent(msg: LocalMessage, e: ChatEvent): LocalMessage {
       }
       return { ...msg, content: { segments } };
     }
-    case "tool_start":
-      // 思考、工具与正文都按真实发生顺序保留，完成后切换会话仍可回看。
+    case "spawn_start": {
+      const existing = spawnSegmentOf(segments, e.payload.spawn_id);
+      if (existing) return msg;
       segments.push({
+        type: "spawn", spawn_id: e.payload.spawn_id, agent: e.payload.agent,
+        title: e.payload.title, status: "running", children: [],
+      });
+      return { ...msg, content: { segments } };
+    }
+    case "spawn_end": {
+      const index = segments.findIndex(s => s.type === "spawn" && s.spawn_id === e.payload.spawn_id);
+      if (index >= 0) {
+        const spawn = segments[index] as Extract<ChatSegment, { type: "spawn" }>;
+        segments[index] = { ...spawn, status: e.payload.status, summary: e.payload.summary };
+      }
+      return { ...msg, content: { segments } };
+    }
+    case "tool_start": {
+      const segment: ChatSegment = {
         type: "tool",
         call_id: e.payload.call_id,
         tool: e.payload.tool,
         label: e.payload.label,
         args_summary: e.payload.args_summary,
-      });
+      };
+      const spawnId = e.payload.spawn_id;
+      if (spawnId) {
+        const index = segments.findIndex(s => s.type === "spawn" && s.spawn_id === spawnId);
+        if (index >= 0) {
+          const spawn = segments[index] as Extract<ChatSegment, { type: "spawn" }>;
+          segments[index] = { ...spawn, children: [...spawn.children, segment] };
+          return { ...msg, content: { segments } };
+        }
+      }
+      segments.push(segment);
       return { ...msg, content: { segments } };
+    }
     case "observer":
       // 督导泳道（材料包双 agent）：观察 agent 的方向性指令，独立类型供差异化渲染
       segments.push({ type: "observer", action: e.payload.action, text: e.payload.text });
       return { ...msg, content: { segments } };
     case "tool_end": {
-      const idx = segments.findIndex((s) => s.type === "tool" && s.call_id === e.payload.call_id);
-      if (idx >= 0) {
-        segments[idx] = {
-          ...(segments[idx] as ChatSegment & { type: "tool" }),
+      const applyEnd = (segment: ChatSegment): ChatSegment => {
+        if (segment.type !== "tool" || segment.call_id !== e.payload.call_id) return segment;
+        return {
+          ...segment,
           status: e.payload.status,
           summary: e.payload.summary,
           detail: e.payload.detail,
         };
+      };
+      for (let i = 0; i < segments.length; i += 1) {
+        const segment = segments[i];
+        if (segment.type === "spawn") {
+          const children = segment.children.map(applyEnd);
+          if (children !== segment.children) {
+            segments[i] = { ...segment, children };
+            return { ...msg, content: { segments } };
+          }
+        } else {
+          const next = applyEnd(segment);
+          if (next !== segment) {
+            segments[i] = next;
+            return { ...msg, content: { segments } };
+          }
+        }
       }
       return { ...msg, content: { segments } };
     }

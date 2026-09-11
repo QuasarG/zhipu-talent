@@ -1,29 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import type {
   Evaluation,
   AcademicReport,
+  ChatMessage,
+  ChatSegment,
   EvaluationGraph,
   EvaluationGraphGroup,
   EvaluationGraphPhase,
   EvaluationNodeRun,
   EvaluationNodeStatus,
   EvaluationRun,
-  PanelTraceEvent,
 } from "@/lib/types";
 import { useSessionState } from "@/lib/sessionState";
 import Tabs from "@/components/ui/Tabs";
 import Icon from "@/components/ui/Icon";
-import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import { StatusChip } from "@/components/ui/Chip";
 import ScoreOverview from "./ScoreOverview";
-import PanelTimeline from "./PanelTimeline";
-import AgentCollaborationSpace from "@/features/admission/AgentCollaborationSpace";
+import AssistantMessage from "@/features/chat/AssistantMessage";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
 
 interface Props {
-  candidateId?: string;
   candidatePersonId?: string | null;
+  candidateId?: string;
   evaluation?: Evaluation;
   evaluationRun?: EvaluationRun;
   academicReport?: AcademicReport;
@@ -69,8 +68,8 @@ export default function EvaluationWorkspace({ candidatePersonId, candidateId = "
       <div className="flex-1 min-h-0 overflow-y-auto pt-4 pr-1">
         {tab === "result" ? (
           evaluation ? <ScoreOverview evaluation={evaluation} academicReport={academicReport} personId={candidatePersonId} /> : <ResultEmpty evaluating={evaluating} />
-        ) : evaluationRun?.panel_trace?.some(e => e.node === "panel_lead") ? (
-          <PanelProcessViews runId={String(evaluationRun.id)} trace={evaluationRun.panel_trace} status={evaluationRun.status} />
+        ) : evaluationRun?.panel_trace?.length ? (
+          <PanelProcess trace={evaluationRun.panel_trace} status={evaluationRun.status} />
         ) : (
           <EvaluationProcess
             graph={graph}
@@ -85,27 +84,31 @@ export default function EvaluationWorkspace({ candidatePersonId, candidateId = "
   );
 }
 
-/** 评审团运行过程：活动流与协作空间（agent-collab 事件流）切换，同一 run。 */
-function PanelProcessViews({ runId, trace, status }: { runId: string; trace: PanelTraceEvent[]; status: string }) {
+/** 评估过程（奖学金同款）：一条 assistant 消息 = 主 agent 全部工作叙事。 */
+function PanelProcess({ trace, status }: { trace: ChatSegment[]; status: string }) {
   const { t } = useI18n();
-  const [view, setView] = useState<"timeline" | "space">("timeline");
-  return <div className="flex h-full min-h-0 flex-col">
-    <div className="flex shrink-0 items-center border-b border-outline-variant px-4 py-2">
-      <SegmentedButtons
-        options={[
-          { value: "timeline", label: t("活动流"), icon: "activity" },
-          { value: "space", label: t("协作空间"), icon: "layers" },
-        ]}
-        value={view}
-        onChange={setView}
-      />
+  const message: ChatMessage = {
+    id: "panel-trace",
+    conversation_id: "",
+    role: "assistant",
+    content: { segments: trace },
+    citations: [],
+    status: status === "running" ? "running" : "completed",
+    created_at: "",
+  };
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-4xl px-5 py-4">
+        <div className="mb-5">
+          <h2 className="text-title-lg">{t("评估过程")}</h2>
+          <p className="mt-1 text-body-sm text-on-surface-variant">
+            {t("主 agent 的工作记录：派出哪些子 agent、核对了什么、如何下结论")}
+          </p>
+        </div>
+        <AssistantMessage message={message} busy={status === "running"} onDecide={() => {}} />
+      </div>
     </div>
-    <div className="min-h-0 flex-1">
-      {view === "timeline"
-        ? <PanelTimeline trace={trace} evaluating={!["completed", "failed"].includes(status)} status={status} />
-        : <AgentCollaborationSpace runKind="panel" runId={runId} status={status} />}
-    </div>
-  </div>;
+  );
 }
 
 function ResultEmpty({ evaluating }: { evaluating: boolean }) {  const { t } = useI18n();

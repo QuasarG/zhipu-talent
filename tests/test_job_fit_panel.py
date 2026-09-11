@@ -122,18 +122,33 @@ class PanelEndToEndTests(unittest.TestCase):
             contract=_contract(),
         )
         with patch(f"{LLM}.call_llm_tools", side_effect=fake):
-            events, raw = _consume(run_panel_stream(RESUME_DUMP, [JOB], None, ctx))
+            events, result = _consume(run_panel_stream(RESUME_DUMP, [JOB], None, ctx))
 
-        # 事件流：派工 → 子 agent 请求/工具/说明 → 报告回传 → 主席发言
-        dispatches = [e for e in events if e.get("event_kind") == "dispatch"]
-        self.assertEqual([(e["target_id"], e["mission_type"]) for e in dispatches], [("m1", "generic")])
-        self.assertEqual(dispatches[0]["detail"]["目标"], SPAWN_PROMPT)
-        worker_events = [e for e in events if e.get("agent_id") == "m1"]
-        self.assertEqual([e["event_kind"] for e in worker_events],
-                         ["request", "tool_call", "tool_result", "message", "status", "handoff"])
-        self.assertIn("评审报告", worker_events[-1]["detail"]["主席收到的摘要"])
-        speeches = [e for e in events if e.get("event_kind") == "message" and e.get("agent_id") == "chair"]
-        self.assertTrue(any("报告已收齐" in e["message"] for e in speeches))
+        raw = result["job_fit_raw"]
+        trace = result["trace"]
+
+        # SSE：spawn_start → 子 agent 工具（带 spawn_id）→ 主 agent 发言
+        sse = [e["event"] for e in events if e["type"] == "sse"]
+        spawn_starts = [e for e in sse if e["type"] == "spawn_start"]
+        self.assertEqual([(e["payload"]["spawn_id"], e["payload"]["agent"], e["payload"]["title"])
+                          for e in spawn_starts], [("m1", "通用评审员", "核查论文")])
+        worker_tools = [e for e in sse
+                        if e["type"] in ("tool_start", "tool_end")
+                        and e["payload"].get("spawn_id") == "m1"]
+        self.assertEqual([e["type"] for e in worker_tools], ["tool_start", "tool_end"])
+        self.assertEqual(worker_tools[1]["payload"]["status"], "ok")
+        speeches = [e for e in sse if e["type"] == "answer_delta" and "spawn_id" not in e["payload"]]
+        self.assertTrue(any("报告已收齐" in e["payload"]["text"] for e in speeches))
+
+        # trace：spawn 段 + 挂在其下的子 agent 工具/说明 + 主 agent 文本
+        spawn_segments = [s for s in trace if s["type"] == "spawn"]
+        self.assertEqual(len(spawn_segments), 1)
+        self.assertEqual(spawn_segments[0]["status"], "done")
+        self.assertIn("评审报告", spawn_segments[0]["summary"])
+        tool_segments = [s for s in trace if s["type"] == "tool"]
+        self.assertEqual(len(tool_segments), 1)
+        self.assertEqual((tool_segments[0]["spawn_id"], tool_segments[0]["status"], tool_segments[0]["label"]),
+                         ("m1", "ok", "读取文本"))
 
         # 子 agent 的报告作为工具结果回到主席上下文
         self.assertTrue(any("评审报告" in content for content in fake.tool_contents))
@@ -195,8 +210,9 @@ class PanelEndToEndTests(unittest.TestCase):
             contract={"assessments": []},
         )
         with patch(f"{LLM}.call_llm_tools", side_effect=fake):
-            _events, raw = _consume(run_panel_stream(RESUME_DUMP, [JOB], None, ctx))
+            _events, result = _consume(run_panel_stream(RESUME_DUMP, [JOB], None, ctx))
         self.assertEqual(fake.final_calls, 3)  # 校验失败重试穷尽
+        raw = result["job_fit_raw"]
         a = raw["assessments"][0]
         self.assertTrue(all(d["score"] == 2.0 for d in a["dimensions"]))
         self.assertIn("主 agent 未产出评分合同", a["missing_information"])

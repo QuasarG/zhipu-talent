@@ -1,7 +1,8 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { PluggableList } from "unified";
+import { ThinkingOrb } from "thinking-orbs";
 import type { ChatCitation, ChatMessage, ChatSegment } from "@/lib/types";
 import { StatusChip } from "@/components/ui/Chip";
 import Icon from "@/components/ui/Icon";
@@ -11,6 +12,8 @@ import ThinkingCard from "@/components/ui/ThinkingCard";
 import ActionCard from "./ActionCard";
 import CitationBadge from "./CitationBadge";
 import { markdownHeadings } from "./chatNavigationModel";
+import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   hideAvatar?: boolean;
@@ -115,6 +118,70 @@ function citePlugin(citations: ChatCitation[]) {
   return () => (tree: MdNode) => transform(tree);
 }
 
+/** 子 agent spawn 段：默认一行摘要，展开看它自己的工作段（工具/说明，DSH 式内联）。 */
+function SpawnSegmentView({ segment }: { segment: Extract<ChatSegment, { type: "spawn" }> }) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const running = segment.status === "running";
+  const failed = segment.status === "failed";
+
+  const renderChild = (child: ChatSegment, index: number) => {
+    if (child.type === "tool") return <ToolCallCard key={child.call_id || index} segment={child} />;
+    if (child.type === "text") {
+      const message: ChatMessage = {
+        id: `${segment.spawn_id}-text-${index}`,
+        conversation_id: "",
+        role: "assistant",
+        content: { segments: [child] },
+        citations: [],
+        status: "completed",
+        created_at: "",
+      };
+      return <AssistantMessage key={message.id} message={message} hideAvatar busy={false} onDecide={() => {}} />;
+    }
+    if (child.type === "thinking") return <ThinkingCard key={`think-${index}`} text={child.text} streaming={false} />;
+    return null;
+  };
+
+  return (
+    <div className="chat-enter my-1">
+      <button
+        type="button"
+        onClick={() => setExpanded(value => !value)}
+        aria-expanded={expanded}
+        className="state-layer flex w-full items-center gap-2 rounded-md border border-outline-variant bg-surface-low px-3 py-2 text-left"
+      >
+        <Icon name="smart_toy" size={17} className={cn("shrink-0", running ? "text-primary" : "text-on-surface-variant")} />
+        <span className="shrink-0 text-body-sm font-bold text-on-surface">{segment.agent}</span>
+        <span className="min-w-0 flex-1 truncate text-body-sm text-on-surface-variant">
+          {segment.summary || segment.title}
+        </span>
+        {running ? (
+          <ThinkingOrb state="shaping" size={20} className="shrink-0" aria-label={t("工作中")} />
+        ) : (
+          <StatusChip tone={failed ? "error" : "success"} variant="dot" className="shrink-0">
+            {failed ? t("失败") : t("已完成")}
+          </StatusChip>
+        )}
+        <Icon
+          name="expand_more"
+          size={16}
+          className={cn("shrink-0 text-on-surface-variant transition-transform duration-200 ease-emphasized", expanded && "rotate-180")}
+        />
+      </button>
+      {expanded && (
+        <div className="ml-5 space-y-2 border-l-2 border-outline-variant py-1 pl-3">
+          <p className="text-label leading-5 text-on-surface-variant">{t("任务")}：{segment.title}</p>
+          {segment.children.map(renderChild)}
+          {!segment.children.length && (
+            <p className="text-label text-on-surface-variant">{running ? t("正在工作") : t("尚未记录工作内容")}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** assistant 消息：按 segments 顺序渲染 文本(markdown) / 工具卡片 / 决策卡片 */
 export default function AssistantMessage({ message, error, busy, onDecide, hideAvatar = false }: Props) {
   const citations = message.citations ?? NO_CITATIONS;
@@ -163,6 +230,7 @@ export default function AssistantMessage({ message, error, busy, onDecide, hideA
       );
     }
     if (seg.type === "tool") return <ToolCallCard key={seg.call_id || i} segment={seg} />;
+    if (seg.type === "spawn") return <SpawnSegmentView key={seg.spawn_id || i} segment={seg} />;
     return <ActionCard key={seg.action_id || i} segment={seg} busy={busy} onDecide={onDecide} />;
   };
 

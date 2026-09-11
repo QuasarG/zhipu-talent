@@ -74,7 +74,7 @@ export default function AdmissionReport({
     jd?.assessment_card?.core_tasks?.find((item) => item.id === taskId);
   const decisionReason = [...(assessment.run_trace || [])]
     .reverse()
-    .find((event) => event.node_id === "admission_decision")?.summary;
+    .find((event) => event.type === "text")?.text;
   const degradedCount = (assessment.model_usage || []).filter(
     (item) => item.fallback_reason && item.fallback_reason !== "none",
   ).length;

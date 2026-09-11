@@ -5,14 +5,15 @@ import unittest
 
 from agi_talent_radar.agents.interview_admission.contracts import AssessmentCard, TaskAssessment
 from agi_talent_radar.agents.interview_admission.evaluator import (
-    CAPABILITY_MAPPING_PROMPT,
-    OVERALL_REVIEW_PROMPT,
-    TASK_SCORING_PROMPT,
+    CHAIR_REVIEW_PROMPT,
     calculate_total_score,
     decide_admission,
     evaluate_candidate_for_job,
 )
 from agi_talent_radar.core.models import CandidateResume
+
+SCORER_SYSTEM_PREFIX = "你是面试准入评估的任务评估 agent"
+CHAIR_SYSTEM_PREFIX = "你是面试准入评估的主 agent"
 
 
 class InterviewAdmissionEvaluatorTests(unittest.TestCase):
@@ -56,9 +57,7 @@ class InterviewAdmissionEvaluatorTests(unittest.TestCase):
         lock = threading.Lock()
 
         def llm(prompt: str, payload: dict) -> dict:
-            if prompt == CAPABILITY_MAPPING_PROMPT:
-                return {"task_mappings": []}
-            if prompt == TASK_SCORING_PROMPT:
+            if prompt.startswith(SCORER_SYSTEM_PREFIX):
                 task_id = payload["current_task"]["id"]
                 with lock:
                     score_calls[task_id] = score_calls.get(task_id, 0) + 1
@@ -67,7 +66,7 @@ class InterviewAdmissionEvaluatorTests(unittest.TestCase):
                 if task_id == "evaluation_loop" and count == 1:
                     quote = "模型凭空生成的评测结果"
                 return _score_response(task_id, 2, quote)
-            if prompt == OVERALL_REVIEW_PROMPT:
+            if prompt.startswith(CHAIR_SYSTEM_PREFIX):
                 return {
                     "corrections": [
                         {
@@ -92,29 +91,24 @@ class InterviewAdmissionEvaluatorTests(unittest.TestCase):
         self.assertEqual(result.review_corrections[0].revised_level, 3)
         self.assertEqual(result.decision, "interview")
         self.assertNotIn("hold", result.model_dump_json())
-        self.assertTrue(any(item["node_id"].startswith("evidence_repair:") for item in result.run_trace))
-        observer_events = [item for item in result.run_trace if item.get("actor") == "observer"]
-        self.assertEqual([item["status"] for item in observer_events], ["running", "completed"])
-        self.assertTrue(all(item["event_type"] == "observer" for item in observer_events))
-        self.assertEqual(result.run_trace[-2]["event_type"], "decision")
-        self.assertEqual(result.run_trace[-1]["event_type"], "report")
-        for task in self.card.core_tasks:
-            events = [e for e in result.run_trace if e["agent_id"] == f"task_score:{task.id}"]
-            self.assertEqual([e["event_kind"] for e in events], ["request", "handoff"])
-            self.assertEqual(events[0]["detail"]["当前任务"]["id"], task.id)
-            self.assertEqual(events[-1]["target_id"], "system")
-        self.assertEqual(observer_events[0]["agent_type"], "reviewer")
-        self.assertEqual(len(observer_events[0]["detail"]["收到的任务评分"]), len(self.card.core_tasks))
+
+        # trace = 聊天段：主席文本 + 每个任务一个 spawn 段（repair 归并进同一 spawn）
+        spawns = [s for s in result.run_trace if s["type"] == "spawn"]
+        self.assertEqual(sorted(s["spawn_id"] for s in spawns),
+                         sorted(f"task_score:{t.id}" for t in self.card.core_tasks))
+        self.assertTrue(all(s["status"] == "done" for s in spawns))
+        self.assertTrue(any("证据修正" in (s.get("summary") or "") or s["status"] == "done" for s in spawns))
+        self.assertTrue(any(s["type"] == "text" and "总审" in s["text"] for s in result.run_trace))
+        evaluation_loop = spawns[1]
+        self.assertIn("评定 2 级", evaluation_loop["summary"])
 
     def test_missing_evidence_fields_are_normalized_without_retry(self) -> None:
-        """GLM 偶发漏字段（同 1210 教训）：宽容归一吸收，不打断 run、不触发重试。"""
+        """GLM 偶发漏字段：宽容归一吸收，不打断 run、不触发重试。"""
         score_calls: dict[str, int] = {}
         lock = threading.Lock()
 
         def llm(prompt: str, payload: dict) -> dict:
-            if prompt == CAPABILITY_MAPPING_PROMPT:
-                return {"task_mappings": []}
-            if prompt == TASK_SCORING_PROMPT:
+            if prompt.startswith(SCORER_SYSTEM_PREFIX):
                 task_id = payload["current_task"]["id"]
                 with lock:
                     score_calls[task_id] = score_calls.get(task_id, 0) + 1
@@ -146,9 +140,7 @@ class InterviewAdmissionEvaluatorTests(unittest.TestCase):
         lock = threading.Lock()
 
         def llm(prompt: str, payload: dict) -> dict:
-            if prompt == CAPABILITY_MAPPING_PROMPT:
-                return {"task_mappings": []}
-            if prompt == TASK_SCORING_PROMPT:
+            if prompt.startswith(SCORER_SYSTEM_PREFIX):
                 task_id = payload["current_task"]["id"]
                 with lock:
                     score_calls[task_id] = score_calls.get(task_id, 0) + 1
@@ -163,22 +155,11 @@ class InterviewAdmissionEvaluatorTests(unittest.TestCase):
         self.assertIn("evaluation_loop", str(ctx.exception))
         self.assertEqual(score_calls["evaluation_loop"], 3)
 
-
+    def test_publications_and_projects_are_capability_evidence_without_skill_keyword(self) -> None:
         def llm(prompt: str, payload: dict) -> dict:
             serialized = str(payload)
             self.assertNotIn("仲奕杰", serialized)
-            if prompt == CAPABILITY_MAPPING_PROMPT:
-                return {
-                    "task_mappings": [
-                        {
-                            "task_id": "research_transfer",
-                            "candidate_evidence": ["发表 WWW、ACL、CVPR、IJCAI 等 18 篇论文"],
-                            "mapping_reason": "研究成果支撑方法创新与迁移能力",
-                            "transfer_boundary": "仍需面试确认工程复现细节",
-                        }
-                    ]
-                }
-            if prompt == TASK_SCORING_PROMPT:
+            if prompt.startswith(SCORER_SYSTEM_PREFIX):
                 task_id = payload["current_task"]["id"]
                 levels = {"agent_system": 3, "evaluation_loop": 3, "research_transfer": 4}
                 return _score_response(task_id, levels[task_id], _quote_for(task_id))
