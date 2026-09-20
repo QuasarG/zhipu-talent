@@ -90,7 +90,7 @@ def extract_image_text(file_bytes: bytes) -> str:
     return _recognize_pixmap(pixmap)
 
 
-# 智谱视觉转译客户端（GLM-5.3-Flash 多模态，复用 LLM_API_KEY）——唯一的页面转译者
+# 智谱视觉转译客户端（GLM-5.3-FlashX 多模态，复用 LLM_API_KEY）——唯一的页面转译者
 _ocr_client = None
 
 
@@ -172,7 +172,7 @@ def _recognize_via_cloud(img_bytes: bytes) -> str | None:
         if structured:
             kwargs["response_format"] = {"type": "json_object"}
         resp = client.chat.completions.create(
-            model="glm-5.3-flash",
+            model="glm-5.3-flashx",
             messages=[
                 {
                     "role": "user",

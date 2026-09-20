@@ -24,7 +24,7 @@ export default {
   "{key} 已写入文件，但运行时刷新失败，重启服务后生效": "{key} saved to file, but the runtime refresh failed. Restart the service to apply it.",
   "{key} 更新失败": "Failed to update {key}",
   "智谱开放平台": "Zhipu Open Platform",
-  "一把 Key 通吃：GLM-5.3-Flash 主模型（文本与多模态），以及 Web Search、Embedding 与云端 OCR": "One key for everything: GLM-5.3-Flash for text and multimodal calls, plus Web Search, Embedding, and cloud OCR",
+  "一把 Key 通吃：GLM-5.3-FlashX 主模型（文本与多模态），以及 Web Search、Embedding 与云端 OCR": "One key for everything: GLM-5.3-FlashX for text and multimodal calls, plus Web Search, Embedding, and cloud OCR",
   "智谱 Z.AI": "Zhipu Z.AI",
   "AMiner 学术平台": "AMiner Academic Platform",
   "简历评估、初筛分类、结构化解析、论文对齐等 Agent 工作节点": "Agent workflow nodes such as resume evaluation, screening classification, structured parsing, and paper alignment",

@@ -128,7 +128,7 @@ class LlmClientRuntimeTests(unittest.TestCase):
 
         llm_client._call_llm_tools_once(
             client,
-            "glm-5.3-flash",
+            "glm-5.3-flashx",
             [{"role": "user", "content": "test"}],
             [{"type": "function", "function": {"name": "lookup"}}],
             1.0,
@@ -152,7 +152,7 @@ class LlmClientRuntimeTests(unittest.TestCase):
 
         llm_client._call_llm_tools_once(
             client,
-            "glm-5.3-flash",
+            "glm-5.3-flashx",
             [{"role": "user", "content": "test"}],
             [],
             1.0,

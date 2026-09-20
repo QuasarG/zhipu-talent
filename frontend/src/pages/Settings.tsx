@@ -45,7 +45,7 @@ type ConfigAudit = Record<string, { changed_by: string; changed_at: string }>;
 const KEY_META: Record<string, { label: string; desc: string; icon: string }> = {
   LLM_API_KEY: {
     label: "智谱开放平台",
-    desc: "一把 Key 通吃：GLM-5.3-Flash 主模型（文本与多模态），以及 Web Search、Embedding 与云端 OCR",
+    desc: "一把 Key 通吃：GLM-5.3-FlashX 主模型（文本与多模态），以及 Web Search、Embedding 与云端 OCR",
     icon: "neurology",
   },
   AMINER_API_TOKEN: {
