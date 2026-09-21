@@ -21,8 +21,8 @@ from agi_talent_radar.scholarship.scoring import DIMENSIONS, EVIDENCE_LEVELS, RE
 
 logger = logging.getLogger(__name__)
 
-# 视觉转译模型：实测该 key 上 GLM-5.3-FlashX 可用（驼峰名 1214 不存在），可 env 覆盖
-_VISION_MODEL = os.getenv("SCORER_VISION_MODEL", "GLM-5.3-FlashX")
+# 视觉转译模型：实测该 key 上 GLM-5.3-Flash 可用（驼峰名 1214 不存在），可 env 覆盖
+_VISION_MODEL = os.getenv("SCORER_VISION_MODEL", "GLM-5.3-Flash")
 PAGE_CHARS = 4000          # read_file 文本分页
 TOOL_RESULT_MAX_CHARS = 6000
 MAX_ROUNDS = 20

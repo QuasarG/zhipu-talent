@@ -308,11 +308,11 @@
 线程池默认也放开到 50，但所有请求仍必须经过同一个全局信号量，不能相乘绕过限制；
 部署时仍可通过对应环境变量按资源情况设置更小的并行度。
 
-文本、结构化、评估、学术核验与视觉 OCR 统一使用支持多模态的 GLM-5.3-FlashX；
+文本、结构化、评估、学术核验与视觉 OCR 统一使用支持多模态的 GLM-5.3-Flash；
 对话 Agent 也使用同一模型，不再在 GLM-5.3 与 GLM-5.2 之间切换：
 
-- `OPENAI_MODEL`：对话主模型，默认 `glm-5.3-flashx`；
-- `OPENAI_MODEL_NON_CONVERSATION`：非对话节点模型，默认 `glm-5.3-flashx`；
+- `OPENAI_MODEL`：对话主模型，默认 `glm-5.3-flash`；
+- `OPENAI_MODEL_NON_CONVERSATION`：非对话节点模型，默认 `glm-5.3-flash`；
 - Flash 请求强制启用 thinking；非对话节点默认 `reasoning_effort=low` 以保证时效，
   对话 Agent 默认 `reasoning_effort=max` 并保留完整思考内容；
 - 每个节点继续记录实际模型、时间与错误信息；

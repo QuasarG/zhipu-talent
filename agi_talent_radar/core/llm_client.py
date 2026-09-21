@@ -372,7 +372,7 @@ def _fallback_model(primary_model: str) -> str:
     configured = os.getenv("OPENAI_MODEL_FALLBACK", "").strip()
     if configured:
         return configured
-    if primary_model.startswith("glm-5.3-flashx"):
+    if primary_model.startswith("glm-5.3-flash"):
         # Flash 账号并发额度更高，默认不切回旧模型，避免新旧模型混跑。
         return primary_model
     if primary_model.startswith("glm-5.3"):
@@ -438,12 +438,12 @@ def _deep_model() -> str:
 
 
 def _non_conversation_model() -> str:
-    """所有非对话 LLM 节点的模型；默认固定为 GLM-5.3-FlashX。"""
-    return os.getenv("OPENAI_MODEL_NON_CONVERSATION", "").strip() or "glm-5.3-flashx"
+    """所有非对话 LLM 节点的模型；默认固定为 GLM-5.3-Flash。"""
+    return os.getenv("OPENAI_MODEL_NON_CONVERSATION", "").strip() or "glm-5.3-flash"
 
 
 def _conversation_model() -> str:
-    """对话 Agent 使用的主模型，沿用 OPENAI_MODEL（生产环境为 GLM-5.3-FlashX）。"""
+    """对话 Agent 使用的主模型，沿用 OPENAI_MODEL（生产环境为 GLM-5.3-Flash）。"""
     return _required_env("OPENAI_MODEL")
 
 
@@ -454,7 +454,7 @@ def _thinking_kwargs_for(model: str, effort_override: str | None = None) -> dict
     Flash 非对话节点默认走 OPENAI_EFFORT_NON_CONVERSATION=low；对话工具调用会由
     call_llm_tools 显式传入 OPENAI_EFFORT_CHAT（默认 max）。
     """
-    if model.startswith("glm-5.3-flashx"):
+    if model.startswith("glm-5.3-flash"):
         effort = (
             effort_override
             or os.getenv("OPENAI_EFFORT_NON_CONVERSATION", "low").strip()

@@ -22,7 +22,7 @@
 |---|---|
 | 后端 | Flask、SQLAlchemy、LangGraph |
 | 前端 | React 19、TypeScript、Tailwind CSS 4、Vite |
-| LLM | 智谱 GLM-5.3-FlashX（评估/问答/多模态，OpenAI 兼容端点）、智谱 ZAI（Embedding/Web Search） |
+| LLM | 智谱 GLM-5.3-Flash（评估/问答/多模态，OpenAI 兼容端点）、智谱 ZAI（Embedding/Web Search） |
 | 向量库 | Qdrant（人才知识 talent_knowledge / 岗位库 grill_jobs 双集合） |
 | 数据库 | MySQL（生产）/ SQLite（本地可选） |
 
@@ -63,9 +63,9 @@ sudo cp deploy/nginx-talent-radar.conf /etc/nginx/sites-enabled/
 
 | 变量 | 说明 |
 |---|---|
-| `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.3-FlashX + 多模态 + Web Search + Embedding 一把通吃） |
-| `OPENAI_MODEL` | 对话 Agent 主模型（默认 `glm-5.3-flashx`） |
-| `OPENAI_MODEL_NON_CONVERSATION` | 非对话节点统一模型（默认 `glm-5.3-flashx`） |
+| `LLM_API_KEY` | 智谱开放平台 Key（GLM-5.3-Flash + 多模态 + Web Search + Embedding 一把通吃） |
+| `OPENAI_MODEL` | 对话 Agent 主模型（默认 `glm-5.3-flash`） |
+| `OPENAI_MODEL_NON_CONVERSATION` | 非对话节点统一模型（默认 `glm-5.3-flash`） |
 | `OPENAI_EFFORT_NON_CONVERSATION` | 非对话节点思考强度（默认 `low`，优先时效） |
 | `OPENAI_EFFORT_CHAT` | 对话 Agent 思考强度（默认 `max`） |
 | `OPENAI_EFFORT_OCR` | 多模态 OCR 思考强度（默认 `low`） |
