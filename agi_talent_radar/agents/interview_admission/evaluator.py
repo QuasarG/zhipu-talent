@@ -82,6 +82,8 @@ ADMISSION_MAIN_TOOLS = WORKER_TOOLS + _ADMISSION_SPAWN_SCHEMA
 FINAL_RETRIES = 3
 AGENT_ROUNDS = max(1, int(os.getenv("ADMISSION_AGENT_ROUNDS", "8")))
 MAIN_WORK_ROUNDS = max(1, int(os.getenv("ADMISSION_MAIN_WORK_ROUNDS", "15")))
+# 主 agent 提前收工（不再派工但核心任务未覆盖）时的催工次数；催完仍缺再走兜底补齐
+ORCHESTRATION_NUDGES = max(0, int(os.getenv("ADMISSION_ORCHESTRATION_NUDGES", "2")))
 
 _EVIDENCE_TYPES = {"direct", "transferable", "background"}
 _CONFIDENCE_LEVELS = {"high", "medium", "low"}
@@ -259,6 +261,16 @@ def evaluate_candidate_for_job(
     )
 
 
+class _CoverageIncomplete(RuntimeError):
+    """主 agent 编排提前收工且催工无效；携带已完成的部分结果供兜底合并，避免整场作废。"""
+
+    def __init__(self, message: str, assessments: dict[str, TaskAssessment],
+                 sessions: dict[str, list[dict[str, Any]]]):
+        super().__init__(message)
+        self.assessments = assessments
+        self.sessions = sessions
+
+
 def _score_tasks(
     resume: dict[str, Any],
     card: AssessmentCard,
@@ -268,6 +280,18 @@ def _score_tasks(
     """主 agent 编排评估；模型不可用或未覆盖全部任务时兼容旧链路。"""
     try:
         return _score_tasks_agentic(resume, card, trace, materials)
+    except _CoverageIncomplete as exc:
+        partial: dict[str, TaskAssessment] = dict(exc.assessments)
+        merged_sessions: dict[str, list[dict[str, Any]]] = dict(exc.sessions)
+        missing = [task for task in card.core_tasks if task.id not in partial]
+        trace.text(
+            f"主 agent 编排提前收工（{str(exc)[:80]}），保留已完成的 {len(partial)} 项，"
+            f"兜底补齐剩余 {len(missing)} 项核心任务。")
+        patched, extra_sessions = _score_tasks_fallback(
+            resume, card, trace, materials, only_tasks=missing)
+        merged_sessions.update(extra_sessions)
+        by_id = {**partial, **{item.task_id: item for item in patched}}
+        return [by_id[task.id] for task in card.core_tasks], merged_sessions
     except (RuntimeError, AssertionError, KeyError, ValidationError, ValueError) as exc:
         if any(item.get("type") == "spawn" for item in trace.segments):
             raise RuntimeError(f"主 agent 编排中断：{str(exc)[:160]}") from exc
@@ -319,6 +343,7 @@ def _score_tasks_agentic(
             "开始评估。先说明材料与核心任务的拆分思路，然后按不同材料和评估方向派工；"
             "每轮最多并行两个子 agent。")},
     ]
+    nudges = 0
 
     for round_index in range(MAIN_WORK_ROUNDS):
         chunks: list[str] = []
@@ -339,7 +364,16 @@ def _score_tasks_agentic(
         if not calls:
             if len(assessments) == len(task_by_id):
                 break
-            raise RuntimeError("主 agent 尚未覆盖全部核心任务")
+            missing_now = [task.id for task in card.core_tasks if task.id not in assessments]
+            if nudges < ORCHESTRATION_NUDGES:
+                nudges += 1
+                if text:
+                    messages.append({"role": "assistant", "content": text})
+                messages.append({"role": "user", "content": (
+                    f"核心任务尚未全部覆盖（缺：{', '.join(missing_now)}）。"
+                    "请继续调用 spawn_agent 派工补齐，全部任务都有报告后才能收尾总结。")})
+                continue
+            raise _CoverageIncomplete("主 agent 尚未覆盖全部核心任务", assessments, sessions)
         messages.append({"role": "assistant", "content": text,
                          "tool_calls": [{"id": tc["id"], "type": "function",
                                          "function": {"name": tc["name"], "arguments": tc["arguments"]}}
@@ -424,7 +458,8 @@ def _score_tasks_agentic(
 
     missing = [task.id for task in card.core_tasks if task.id not in assessments]
     if missing:
-        raise RuntimeError(f"主 agent 未完成核心任务：{', '.join(missing)}")
+        raise _CoverageIncomplete(
+            f"主 agent 未完成核心任务：{', '.join(missing)}", assessments, sessions)
     return [assessments[task.id] for task in card.core_tasks], sessions
 
 
@@ -433,10 +468,13 @@ def _score_tasks_fallback(
     card: AssessmentCard,
     trace: _Trace,
     materials: MaterialsContext | None,
+    only_tasks: list[Any] | None = None,
 ) -> tuple[list[TaskAssessment], dict[str, list[dict[str, Any]]]]:
     """按核心任务并发 spawn 子评估 agent（过程实时进 trace）。
 
-    返回 (评分列表, 各子 agent 会话上下文)——上下文供主席续命（证据修正时复用）。"""
+    only_tasks 指定时只评这些任务（编排补漏场景，保留主 agent 已完成部分），
+    缺省评全部。返回 (评分列表, 各子 agent 会话上下文)——上下文供主席续命。"""
+    tasks = only_tasks if only_tasks is not None else card.core_tasks
     segments_by_task: dict[str, dict[str, Any]] = {}
     sessions: dict[str, list[dict[str, Any]]] = {}
     first_error: RuntimeError | None = None
@@ -454,7 +492,7 @@ def _score_tasks_fallback(
             sessions[task.id] = messages
         return assessment
 
-    futures = {_TASK_EXECUTOR.submit(score_task, task): task for task in card.core_tasks}
+    futures = {_TASK_EXECUTOR.submit(score_task, task): task for task in tasks}
     by_id: dict[str, TaskAssessment] = {}
     for future in as_completed(futures):
         task = futures[future]
@@ -472,7 +510,7 @@ def _score_tasks_fallback(
         by_id[task.id] = assessment
     if first_error is not None:
         raise first_error
-    return [by_id[task.id] for task in card.core_tasks], sessions
+    return [by_id[task.id] for task in tasks], sessions
 
 
 def _assessment_markdown(assessment: TaskAssessment) -> str:
