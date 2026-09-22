@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
@@ -41,6 +42,12 @@ _PAIR_EXECUTOR = ThreadPoolExecutor(
 )
 _RUN_LOCKS: dict[str, threading.Lock] = {}
 _RUN_LOCKS_GUARD = threading.Lock()
+
+# run_trace 落库节流：评估事件先积累在内存，距上次落库超过间隔才写库。
+# 此前每个事件（含高频文本增量）都整行重写 run_trace JSON，行越写越大，
+# 单场评估可产生上万次全行写。spawn 状态转换仍即时落库保住前端状态可见性。
+_TRACE_FLUSH_INTERVAL = max(0.5, float(os.getenv("TRACE_FLUSH_INTERVAL_SECONDS", "2.0")))
+_TRACE_BUFFERS: dict[str, dict[str, Any]] = {}
 
 
 def _candidate_materials(candidate_id: str) -> MaterialsContext | None:
@@ -419,17 +426,21 @@ def _run_pair(run_id: str) -> None:
                     _release_pair_lock(session, run)
                     session.commit()
                     _refresh_batch(session, run.batch_id)
+    finally:
+        _finalize_run_trace(run_id)
 
 
 def _append_run_event(run_id: str, event: dict[str, Any]) -> None:
-    """评估过程叙事（聊天段）落 run_trace：spawn 段按 spawn_id 原位替换（状态落位可见）。"""
+    """评估过程叙事（聊天段）进内存缓冲，节流落 run_trace。
+
+    spawn 段按 spawn_id 原位替换（状态落位可见）；取消检测挪到落库时刻，
+    最多延迟一个刷新间隔（默认 2s）。"""
     lock = _run_lock(run_id)
-    with lock, get_session() as session:
-        run = session.get(InterviewAssessmentRunORM, run_id)
-        if run is None or run.cancellation_requested:
-            raise AssessmentCancelled("评估已取消。")
-        run.current_node = str(event.get("spawn_id") or event.get("type") or "")
-        trace = list(run.run_trace or [])
+    with lock:
+        buffer = _TRACE_BUFFERS.get(run_id)
+        if buffer is None:
+            buffer = _TRACE_BUFFERS[run_id] = {"trace": [], "node": "", "dirty": False, "last": 0.0}
+        trace: list[dict[str, Any]] = buffer["trace"]
         replaced = False
         if event.get("_key"):
             for index, existing in enumerate(trace):
@@ -445,8 +456,51 @@ def _append_run_event(run_id: str, event: dict[str, Any]) -> None:
                     break
         if not replaced:
             trace.append(event)
-        run.run_trace = trace
-        session.commit()
+        buffer["node"] = str(event.get("spawn_id") or event.get("type") or "")
+        buffer["dirty"] = True
+        due = (time.monotonic() - buffer["last"]) >= _TRACE_FLUSH_INTERVAL
+    if event.get("type") == "spawn" or due:
+        _flush_run_trace(run_id)
+
+
+def _flush_run_trace(run_id: str) -> None:
+    """把内存缓冲的叙事写回 run_trace；取消时抛 AssessmentCancelled 中断评估。"""
+    lock = _run_lock(run_id)
+    with lock:
+        buffer = _TRACE_BUFFERS.get(run_id)
+        if buffer is None or not buffer["dirty"]:
+            return
+        with get_session() as session:
+            run = session.get(InterviewAssessmentRunORM, run_id)
+            if run is None or run.cancellation_requested:
+                raise AssessmentCancelled("评估已取消。")
+            run.current_node = buffer["node"]
+            run.run_trace = list(buffer["trace"])
+            session.commit()
+        buffer["dirty"] = False
+        buffer["last"] = time.monotonic()
+
+
+def _finalize_run_trace(run_id: str) -> None:
+    """run 终局收尾：丢弃缓冲前，失败的 run 补刷最后的叙事便于排查。
+
+    completed/cancelled 的终态叙事已由 _promote_result/_discard 全量落库，
+    再刷缓冲反而会用旧内容覆盖，直接跳过。"""
+    lock = _run_lock(run_id)
+    with lock:
+        buffer = _TRACE_BUFFERS.pop(run_id, None)
+    if buffer is None or not buffer["dirty"]:
+        return
+    try:
+        with get_session() as session:
+            run = session.get(InterviewAssessmentRunORM, run_id)
+            if run is None or run.status in ("completed", "cancelled"):
+                return
+            run.current_node = buffer["node"]
+            run.run_trace = list(buffer["trace"])
+            session.commit()
+    except Exception:  # noqa: BLE001 — 收尾刷盘失败不影响终态落库
+        logger.warning("run %s trace finalize failed", run_id, exc_info=True)
 
 
 def _promote_result(session, run: InterviewAssessmentRunORM, result: dict[str, Any]) -> None:
