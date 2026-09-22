@@ -192,6 +192,34 @@ def build_scholarship_blueprint() -> Blueprint:
             or str(body.get("自动编号") or "").strip()
         )
 
+        # 快速返回 202：飞书自动化 HTTP 超时约 15-20s，同步处理（拉附件+LLM 解析+
+        # 筛选+评估）经常超时导致飞书误判失败。耗时操作全部移到后台线程。
+        import threading as _threading
+
+        def _process_webhook_async() -> None:
+            try:
+                _process_feishu_payload(record_id, body)
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger(__name__).exception(
+                    "feishu webhook async processing failed: %s", record_id)
+                try:
+                    from agi_talent_radar.web.workbench import create_notification
+
+                    create_notification(
+                        title=f"飞书数据处理失败：{record_id or '未知记录'}",
+                        body=str(exc)[:2000],
+                        notif_type="webhook_error",
+                        related_id=record_id,
+                    )
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "failed to create notification for webhook error", exc_info=True)
+
+        _threading.Thread(target=_process_webhook_async, daemon=True).start()
+        return jsonify({"ok": True, "processing": True, "record_id": record_id}), 202
+
+    def _process_feishu_payload(record_id: str, body: dict) -> None:
+        """飞书 webhook 后台处理：反查/平铺 → LLM 解析 → 入库 → 筛选 → 自动评估。"""
         # 模式 B：record_id 反查（凭证齐备时优先，能顺带拉附件）
         payload: dict = {}
         real_id = ""
@@ -201,7 +229,6 @@ def build_scholarship_blueprint() -> Blueprint:
 
                 real_id = record_id
                 if not re.fullmatch(r"rec[A-Za-z0-9]+", real_id):
-                    # 自动化变量里没有「记录ID」，body 只带「自动编号」业务键，先反解
                     resolved = feishu_pull.resolve_auto_number(real_id)
                     if resolved:
                         real_id = resolved
@@ -210,15 +237,13 @@ def build_scholarship_blueprint() -> Blueprint:
                 payload = feishu_pull.fetch_record(real_id)
                 payload["record_id"] = real_id
                 if real_id != record_id:
-                    # 旧档可能以「自动编号」为幂等键存过，带上让 upsert 迁移，避免重复建档
                     payload["legacy_record_id"] = record_id
-            except Exception as exc:  # noqa: BLE001 — 反查失败降级平铺，不阻断推送
+            except Exception as exc:  # noqa: BLE001
                 payload = {}
                 real_id = ""
                 logging.getLogger(__name__).warning("feishu pull failed, fallback to flat body: %s", exc)
 
         if not payload:
-            # 模式 A：平铺字段直收（自动化里把问卷字段原样放进 body）
             from agi_talent_radar.scholarship.feishu_pull import _normalize_text
 
             payload = {"record_id": record_id}
@@ -245,8 +270,7 @@ def build_scholarship_blueprint() -> Blueprint:
             elif "硕士" in grade or "master" in grade.lower():
                 payload["degree_type"] = "master"
 
-        # LLM 语义解析层：导师连写拆分/职务重排/方向分隔符清洗/年级毕业时间规范化。
-        # 只对原文做重排（字符多重集校验防幻觉），失败逐字段降级，永不阻断入库
+        # LLM 语义解析层
         try:
             from agi_talent_radar.scholarship import field_parser
 
@@ -266,7 +290,6 @@ def build_scholarship_blueprint() -> Blueprint:
             logging.getLogger(__name__).warning("field parse failed, keep raw: %s", exc)
 
         with get_session() as session:
-            # 发信门用：upsert 前拍已有档字段快照（upsert 会覆盖，事后没法 diff）
             pre_fields_changed = False
             if payload.get("record_id"):
                 existing = (
@@ -279,18 +302,15 @@ def build_scholarship_blueprint() -> Blueprint:
             try:
                 app_row, created = ingest.upsert_application_from_feishu(session, payload)
             except ValueError as exc:
-                return jsonify({"detail": str(exc)}), 400
-            # 新材料进来后回到 imported，随后立即自动筛选
+                raise RuntimeError(f"入库失败: {exc}") from exc
             app_row.status = "imported"
             try:
                 screen_result = pipeline.screen_application(session, app_row)
-            except Exception as exc:  # noqa: BLE001 — 筛选失败不回滚落库，细节留在状态里
+            except Exception as exc:  # noqa: BLE001
                 screen_result = {"status": "imported", "missing": [], "reasons": [f"自动筛选失败: {exc}"]}
                 logging.getLogger(__name__).warning("feishu webhook auto-screen failed: %s", exc)
             session.commit()
-            # 确认邮件草稿生成门（三重闸，2026-09-01 重复发信事故后加死）：
-            # ① 新档才生成首封；② 已有档仅在问卷字段有实质变化时生成更新版；
-            # ③ 12 小时冷却兜底。草稿只进草稿箱，人工审核后手动发送。
+            # 确认邮件草稿
             email_result = {"drafted": False, "skipped": "no-change"}
             from agi_talent_radar.scholarship import mail_sender
 
@@ -301,8 +321,6 @@ def build_scholarship_blueprint() -> Blueprint:
                 cooled = _within_mail_cooldown(last_draft_at)
                 if cooled:
                     email_result = {"drafted": False, "skipped": "cooldown"}
-                    logging.getLogger(__name__).info(
-                        "confirmation draft cooldown skip: %s", app_row.name)
                 else:
                     try:
                         email_result = mail_sender.create_confirmation_draft(
@@ -311,16 +329,6 @@ def build_scholarship_blueprint() -> Blueprint:
                             country=getattr(app_row, "country", "") or "",
                             applicant_name_en=getattr(app_row, "name_en", "") or "",
                         )
-                        if not email_result.get("drafted"):
-                            logging.getLogger(__name__).warning(
-                                "confirmation draft failed: %s %s",
-                                app_row.name, email_result.get("error"),
-                            )
-                        elif not email_result.get("marked"):
-                            logging.getLogger(__name__).warning(
-                                "table mark failed after draft created: %s %s",
-                                app_row.name, email_result.get("mark_error"),
-                            )
                     except Exception as exc:  # noqa: BLE001
                         email_result = {"drafted": False, "error": str(exc)}
                         logging.getLogger(__name__).warning("confirmation draft error: %s", exc)
@@ -332,26 +340,15 @@ def build_scholarship_blueprint() -> Blueprint:
                             detail["last_draft_at"] = _dt.now().isoformat(timespec="seconds")
                             app_row.screening_detail = detail
                             session.commit()
-        # 自动评估：资格筛过（eligible/scored）即自动发起后台评分 agent，
-        # 不等人工点「开始评估」。材料不齐/不合格的档跳过；失败可人工重发。
-        auto_eval_id = None
+        # 自动评估
         if screen_result.get("status") in ("eligible", "scored"):
             try:
                 auto_eval_id = _launch_background_evaluation(app_row.id)
                 if auto_eval_id:
                     logging.getLogger(__name__).info(
                         "auto evaluation launched: %s (eval=%s)", app_row.name, auto_eval_id)
-            except Exception as exc:  # noqa: BLE001 — 自动评估失败不影响同步
+            except Exception as exc:  # noqa: BLE001
                 logging.getLogger(__name__).warning("auto evaluation launch failed: %s", exc)
-        return jsonify({
-            "ok": True,
-            "duplicate": not created,
-            "application_id": app_row.id,
-            "status": screen_result.get("status"),
-            "email_drafted": bool(email_result.get("drafted")),
-            "table_marked": bool(email_result.get("marked")),
-            "evaluation_started": auto_eval_id is not None,
-        }), 201 if created else 200
 
     @bp.post("/api/scholarship/applications")
     def create_application():

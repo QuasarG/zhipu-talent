@@ -1130,3 +1130,23 @@ class TalentBundleORM(Base):
     total_bytes = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# 站内通知：后台异步任务（飞书 webhook 等）失败时写入，前端铃铛展示
+# ---------------------------------------------------------------------------
+
+
+class NotificationORM(Base):
+    """一条站内通知。type 标识来源（webhook_error / evaluation_error 等），status 控制已读。"""
+
+    __tablename__ = "notifications"
+
+    id = Column(String(36), primary_key=True)
+    type = Column(String(32), default="info", index=True)
+    title = Column(String(256), default="")
+    body = Column(Text, default="")
+    status = Column(String(16), default="unread", index=True)   # unread / read
+    related_id = Column(String(64), default="")                  # 关联对象 ID（可选）
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    read_at = Column(DateTime, nullable=True)

@@ -230,6 +230,32 @@ def _sync_person_vectors_best_effort(person_id: str | None) -> None:
         logger.warning("person %s 导入后向量同步失败，等待后续重试", person_id, exc_info=True)
 
 
+def create_notification(
+    title: str,
+    body: str = "",
+    notif_type: str = "warning",
+    related_id: str = "",
+) -> None:
+    """写一条站内通知（供后台线程调用）。失败只记日志，不影响主流程。"""
+    try:
+        from uuid import uuid4
+        from agi_talent_radar.core.db.orm import NotificationORM
+        from agi_talent_radar.core.db.runtime import get_session
+
+        with get_session() as session:
+            session.add(NotificationORM(
+                id=uuid4().hex,
+                type=notif_type,
+                title=title[:256],
+                body=body[:4000],
+                status="unread",
+                related_id=related_id[:64],
+            ))
+            session.commit()
+    except Exception:
+        logger.warning("create_notification failed: %s", title, exc_info=True)
+
+
 def create_app() -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config["JSON_AS_ASCII"] = False
@@ -1188,6 +1214,64 @@ def create_app() -> Flask:
         with get_session() as session:
             rows = list_active_jds(session)
             return jsonify([{"key": row.id, "label": row.title} for row in rows])
+
+    # ---- 站内通知 ----
+
+    @app.get("/api/notifications")
+    def list_notifications():
+        from agi_talent_radar.core.db.orm import NotificationORM
+        from agi_talent_radar.core.db.runtime import get_session
+
+        with get_session() as session:
+            unread = session.query(NotificationORM).filter_by(status="unread").count()
+            rows = (
+                session.query(NotificationORM)
+                .order_by(NotificationORM.created_at.desc())
+                .limit(50)
+                .all()
+            )
+            return jsonify({
+                "unread_count": unread,
+                "items": [
+                    {
+                        "id": r.id, "type": r.type, "title": r.title,
+                        "body": r.body, "status": r.status,
+                        "related_id": r.related_id or "",
+                        "created_at": r.created_at.isoformat() if r.created_at else "",
+                        "read_at": r.read_at.isoformat() if r.read_at else "",
+                    }
+                    for r in rows
+                ],
+            })
+
+    @app.post("/api/notifications/<notif_id>/read")
+    def mark_notification_read(notif_id: str):
+        from datetime import datetime
+        from agi_talent_radar.core.db.orm import NotificationORM
+        from agi_talent_radar.core.db.runtime import get_session
+
+        with get_session() as session:
+            row = session.get(NotificationORM, notif_id)
+            if row is None:
+                return jsonify({"detail": "通知不存在"}), 404
+            if row.status == "unread":
+                row.status = "read"
+                row.read_at = datetime.now()
+                session.commit()
+            return jsonify({"ok": True})
+
+    @app.post("/api/notifications/read-all")
+    def mark_all_notifications_read():
+        from datetime import datetime
+        from agi_talent_radar.core.db.orm import NotificationORM
+        from agi_talent_radar.core.db.runtime import get_session
+
+        with get_session() as session:
+            session.query(NotificationORM).filter_by(status="unread").update(
+                {"status": "read", "read_at": datetime.now()}
+            )
+            session.commit()
+            return jsonify({"ok": True})
 
     @app.post("/api/persons/<person_id>/move")
     def move_person(person_id: str):

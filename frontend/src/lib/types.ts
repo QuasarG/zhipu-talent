@@ -972,3 +972,14 @@ export interface TalentBundle extends TalentBundleSummary {
   trace: ChatSegment[];
   profile: Record<string, unknown> | null;
 }
+
+export interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  status: "unread" | "read";
+  related_id: string;
+  created_at: string;
+  read_at: string;
+}

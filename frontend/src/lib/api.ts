@@ -11,6 +11,7 @@ import type {
   InterviewAssessment,
   InterviewAssessmentBatch,
   InterviewAssessmentRun,
+  NotificationItem,
   PersonBrief,
   PersonDetail,
   ReputationReport,
@@ -393,6 +394,14 @@ export const api = {
       fetchJSON<{ authenticated: boolean; user: { id: string; username: string; display_name: string } | null }>(
         "/api/auth/status"
       ),
+  },
+  notifications: {
+    list: () =>
+      fetchJSON<{ unread_count: number; items: NotificationItem[] }>("/api/notifications"),
+    markRead: (id: string) =>
+      fetchJSON(`/api/notifications/${id}/read`, { method: "POST" }),
+    markAllRead: () =>
+      fetchJSON("/api/notifications/read-all", { method: "POST" }),
   },
   grill: {
     listSessions: () => fetchJSON<{ sessions: GrillSessionSummary[] }>("/api/grill/sessions"),

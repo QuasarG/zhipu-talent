@@ -6,6 +6,7 @@ import { useTheme } from "@/lib/theme";
 import Icon from "@/components/ui/Icon";
 import LangToggle from "@/components/LangToggle";
 import ThemeToggle from "@/components/ThemeToggle";
+import NotificationBell from "@/components/NotificationBell";
 import logoUrl from "@/assets/zhipu-logo.svg";
 import logoWhiteUrl from "@/assets/zhipu-logo-white.svg";
 import logoEnUrl from "@/assets/zai-logo-en.svg";
@@ -112,6 +113,7 @@ export default function NavRail({ username }: { username?: string }) {
             {t("反馈建议")}
           </span>
         </a>
+        <NotificationBell className="w-20" />
         <LangToggle className="w-20 h-9 rounded-full" />
         <ThemeToggle />
         <button
