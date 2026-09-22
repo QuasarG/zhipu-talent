@@ -358,18 +358,15 @@ function TaskAssessmentCard({
           <span className="mt-1 block truncate text-label leading-4 text-on-surface-variant">
             {task.reasoning_summary || t("暂无推理摘要")}
           </span>
-          <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-on-surface-variant">
-            <span>{confidenceLabel(task.confidence, t)}</span>
-            {!!evidence.length && <span>{t("{n} 条证据", { n: evidence.length })}</span>}
-          </span>
-        </span>
-        <span className="shrink-0 text-right">
-          <span className="text-[10px] text-on-surface-variant">{t("契合度")}</span>
-          <span className={cn(
-            "mt-1 block rounded-sm px-2 py-1 font-mono text-label font-medium tabular-nums",
-            level >= 2 ? "bg-success-container text-success" : "bg-warning-container text-warning",
-          )}>
-            L{level}<span className="ml-0.5 opacity-70">/4</span>
+          <span className="mt-1.5 flex flex-nowrap items-center gap-x-3 text-[11px] text-on-surface-variant">
+            <span className="shrink-0">{confidenceLabel(task.confidence, t)}</span>
+            {!!evidence.length && <span className="shrink-0">{t("{n} 条证据", { n: evidence.length })}</span>}
+            <span className={cn(
+              "ml-auto shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-medium tabular-nums",
+              level >= 2 ? "bg-success-container text-success" : "bg-warning-container text-warning",
+            )}>
+              L{level}/4
+            </span>
           </span>
         </span>
         <Icon
