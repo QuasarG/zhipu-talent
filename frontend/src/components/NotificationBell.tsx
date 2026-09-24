@@ -56,7 +56,7 @@ export default function NotificationBell({ className }: { className?: string }) 
   };
 
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative flex items-center justify-center", className)}>
       <button
         ref={btnRef}
         onClick={() => {
