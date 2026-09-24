@@ -100,5 +100,6 @@
   "dataset": "database",
   "presentation": "presentation",
   "trophy": "trophy",
-  "visibility_off": "eye-off"
+  "visibility_off": "eye-off",
+  "notifications": "megaphone"
 }
