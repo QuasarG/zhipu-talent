@@ -220,28 +220,45 @@ def build_scholarship_blueprint() -> Blueprint:
 
     def _process_feishu_payload(record_id: str, body: dict) -> None:
         """飞书 webhook 后台处理：反查/平铺 → LLM 解析 → 入库 → 筛选 → 自动评估。"""
-        # 模式 B：record_id 反查（凭证齐备时优先，能顺带拉附件）
+        # 模式 B：record_id 反查（凭证齐备时优先，能顺带拉附件）。
+        # 瞬时 400/网络抖动重试 3 次（1s/2s 递增），降级平铺前先兜住。
         payload: dict = {}
         real_id = ""
         if record_id and feishu_configured():
-            try:
-                from agi_talent_radar.scholarship import feishu_pull
+            import time as _time
 
-                real_id = record_id
+            from agi_talent_radar.scholarship import feishu_pull
+
+            real_id = record_id
+            try:
                 if not re.fullmatch(r"rec[A-Za-z0-9]+", real_id):
                     resolved = feishu_pull.resolve_auto_number(real_id)
                     if resolved:
                         real_id = resolved
                         logging.getLogger(__name__).info(
                             "auto-number %s resolved to %s", record_id, real_id)
-                payload = feishu_pull.fetch_record(real_id)
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger(__name__).warning("auto-number resolve failed: %s", exc)
+
+            pull_error: Exception | None = None
+            for attempt in range(3):
+                try:
+                    payload = feishu_pull.fetch_record(real_id)
+                    pull_error = None
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    pull_error = exc
+                    if attempt < 2:
+                        _time.sleep(2 ** attempt)
+            if pull_error is None:
                 payload["record_id"] = real_id
                 if real_id != record_id:
                     payload["legacy_record_id"] = record_id
-            except Exception as exc:  # noqa: BLE001
+            else:
+                logging.getLogger(__name__).warning(
+                    "feishu pull failed after 3 retries: %s", pull_error)
                 payload = {}
                 real_id = ""
-                logging.getLogger(__name__).warning("feishu pull failed, fallback to flat body: %s", exc)
 
         if not payload:
             from agi_talent_radar.scholarship.feishu_pull import _normalize_text
@@ -252,6 +269,11 @@ def build_scholarship_blueprint() -> Blueprint:
                 if value in (None, ""):
                     continue
                 payload[en] = _normalize_text(value)
+            # 反查失败降级平铺时缺姓名：数据源不完整，不建半成品档案，
+            # 报错让下次触发（或人工重传）走完整反查
+            if not payload.get("name") and feishu_configured() and record_id:
+                raise RuntimeError(
+                    f"飞书反查失败且平铺数据缺姓名，跳过建档待重试（record: {record_id}）")
             if payload.get("expected_graduation"):
                 from agi_talent_radar.scholarship.feishu_pull import _normalize_datetime
 
