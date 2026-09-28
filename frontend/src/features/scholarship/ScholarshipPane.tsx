@@ -203,6 +203,15 @@ const EVIDENCE_LABELS: Record<string, string> = {
   supported: "佐证可信",
   claimed: "仅自述",
 };
+/** 评分维度展示标题（前端覆盖后端 label）：中文主标题 + 英文副标题 */
+const DIMENSION_TITLES: Record<string, { zh: string; en: string }> = {
+  academic_impact: { zh: "学术贡献与影响力", en: "Academic Impact" },
+  originality: { zh: "原创能力与研究品味", en: "Originality" },
+  independence: { zh: "独立研究能力与成长潜力", en: "Independence" },
+  engineering: { zh: "技术实现与工程能力", en: "Execution" },
+  letter_endorsement: { zh: "导师评价", en: "Recommendation" },
+  integrity_risk: { zh: "材料真实性与学术诚信", en: "Integrity" },
+};
 const TIER_LABELS: Record<string, string> = {
   strong: "强推荐",
   recommend: "推荐",
@@ -742,12 +751,22 @@ export default function ScholarshipPane({
                     <div className="divide-y divide-outline-variant">
                       {latestCompleted.dimensions.map((dimension, index) => {
                         const max = dimension.key === "integrity_risk" ? 10 : 5;
+                        const dimTitle = DIMENSION_TITLES[dimension.key];
                         return (
                           <article key={dimension.key} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 px-4 py-3.5">
                             <RecordIndex value={index + 1} />
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <h4 className="text-title font-bold text-on-surface">{dimension.label}</h4>
+                                <h4 className="text-title font-bold text-on-surface">
+                                  {dimTitle ? (
+                                    <>
+                                      {t(dimTitle.zh)}
+                                      <span className="ml-1.5 text-label font-medium text-on-surface-variant">{dimTitle.en}</span>
+                                    </>
+                                  ) : (
+                                    dimension.label
+                                  )}
+                                </h4>
                                 {dimension.evidence_level && (
                                   <StatusChip tone={dimension.evidence_level === "verified" ? "success" : dimension.evidence_level === "supported" ? "info" : "neutral"}>
                                     {t(EVIDENCE_LABELS[dimension.evidence_level] ?? dimension.evidence_level)}
