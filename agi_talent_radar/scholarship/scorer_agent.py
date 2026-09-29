@@ -26,7 +26,7 @@ from agi_talent_radar.scholarship.scorer_tools import (
     execute_tool,
     tools_schema,
 )
-from agi_talent_radar.scholarship.scoring import DIMENSIONS, EVIDENCE_LEVELS, FOCUS_DIRECTIONS, config_version
+from agi_talent_radar.scholarship.scoring import DIMENSIONS, EVIDENCE_LEVELS, FAIRNESS_RULES, FOCUS_DIRECTIONS, config_version
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +35,23 @@ Emit = Callable[[str, dict[str, Any]], None]
 
 def _system_prompt(app: ScholarshipApplicationORM, ctx: ScorerContext) -> str:
     dims = "\n".join(
-        f"- {d['key']}｜{d['label']}｜满分折算 {d['max_points']} 分｜锚点：{d['anchors']}" for d in DIMENSIONS
+        f"- {d['key']}（{d['label']} / {d['label_en']}）｜满分 {d['max_points']} 分\n"
+        f"  考察要点：{d['focus']}\n"
+        f"  加分参考：{d['bonus_hints']}"
+        for d in DIMENSIONS
     )
     levels = "\n".join(f"- {k}：{v}" for k, v in EVIDENCE_LEVELS.items())
     return f"""你是 Z.AI Scholarship 的匿名评审 agent。所有材料已脱敏（[申请人A]/[学校A]/[导师B] 等占位符），
 严禁猜测或还原任何身份，只依据材料与公开查证结果评分。
 
-# 评分维度与行为锚点
+# 评分维度（五维权重制，总分 100）
 {dims}
+
+**打分方式**：没有等级锚点，由你在每个维度的满分区间内自由判断给分。敢于拉开分差——
+平庸者给低分、突出者给高分，不要把所有人都挤在中间地带。每个维度的分数必须能被
+理由和证据支撑，但分值的裁量权完全在你。
+
+{FAIRNESS_RULES}
 
 # 申请人概况（脱敏）
 - 年级：{anonymize_text(app.grade or '未知', ctx.identities)}｜学位：{app.degree_type or '未知'}｜预计毕业：{app.expected_graduation or '未知'}
@@ -50,23 +59,27 @@ def _system_prompt(app: ScholarshipApplicationORM, ctx: ScorerContext) -> str:
 - 教育与科研经历（脱敏节选）：{anonymize_text((app.education_history or '')[:800], ctx.identities)}
 
 # 工作方式
-0. 表达要求：每次调用工具前，先用一两句话说明「为什么调它、想从里面确认什么」
-   （如"接下来查证简历中列出的 X 论文是否真实存在于公开库，以定证据分级"）。
+0. 表达要求：每次调用工具前，先用一两句话说明「为什么调它、想从里面确认什么」。
    这些说明会展示给评审老师，写清楚目的与预期，不要沉默地连续调用。
 1. 先 list_files 盘点全部材料；逐一 read_file（分页读完关键材料；图片/视频会自动转译为文字描述）。
 2. 核心产出 claim（论文/奖项/系统）走证据分级瀑布：
    verify_paper 查到 → verified；
    未查到 → 读佐证原文，完整可信 → supported；
    仅自述/截图 → claimed。
-3. 简要 web_search 申请人方向与导师的公开负面信息（学术不端/撤稿/争议），发现记入 reputation_findings。
-4. 全部材料读过、证据定级完成后 submit_scores。
+3. 材料中若出现申请人个人网站/项目主页/GitHub 等链接，用 web_fetch 抓取正文——
+   自述信息（项目介绍、Star 数、获奖列表）以页面实际内容为准，抓取结果同时会展示给评审老师。
+4. 简要 web_search 申请人方向与导师的公开负面信息（学术不端/撤稿/争议），发现记入 reputation_findings。
+5. 全部材料读过、证据定级完成后 submit_scores。提交内容除各维度分数理由外，还包括：
+   - 每维度的 highlights[]（亮点）与 anomalies[]（疑点）——疑点仅提出供人工复核，你无权判定取消资格；
+   - verified_papers[]：评审过程中 verify_paper 查证过的论文（含 venue/年份/引用/doi/similar），
+     材料里附了原文 PDF 的标注 has_pdf 和 pdf_file_id；
+   - special_sections[]：特别栏目（如"开源贡献""特别获奖"），标题与数量由你按材料实际情况决定；
+   - highlights/risks（全局亮点与风险）：不限条数，尽量详细充分，宁可多写不可遗漏关键信息。
 
 # 反偏差铁律（违反即无效评分）
-1. 材料的数量与包装精美度不计分——30MB 作品集和 1 页 CV 起点完全相同。
-2. 分数锚定在可验证的实质上：一篇 verified 论文 > 十份 claimed 截图；claimed 证据相关维度封顶 2.5 分。
-3. 佐证材料的详细程度只证明"存在性"，不构成额外分数。
-4. 舆情结果只作风险标注（reputation_findings），绝不因搜到负面直接扣分、也绝不因搜到荣誉加分。
-5. 每条 reason 必须引用具体证据（材料名/论文标题/数据）并给出该维度主要证据分级。
+1. 舆情结果只作风险标注（reputation_findings），绝不因搜到负面直接扣分、也绝不因搜到荣誉加分。
+2. 每条 reason 必须引用具体证据（材料名/论文标题/数据）并给出该维度主要证据分级。
+3. anomalies 只描述疑点本身与依据，不做"取消资格"之类的资格判断——那是人工评审的权力。
 
 # 证据分级
 {levels}
@@ -258,21 +271,30 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
 
 def _finalize(evaluation: ScholarshipEvaluationORM, ctx: ScorerContext, segments: list[dict[str, Any]]) -> None:
     final = ctx.final
-    by_key = {d["key"]: d for d in DIMENSIONS}
+    spec_by_key = {d["key"]: d for d in DIMENSIONS}
     dims = []
     for d in final["dimensions"]:
-        spec = by_key.get(str(d.get("key")))
+        spec = spec_by_key.get(str(d.get("key")))
         if not spec:
             continue
-        hi = 10.0 if spec["key"] == "integrity_risk" else 5.0
-        dims.append({**spec, "score": max(0.0, min(hi, float(d.get("score") or 0))),
-                     "reason": str(d.get("reason") or ""),
-                     "evidence_level": str(d.get("evidence_level") or "")})
-    blind = round(sum(d["score"] / (10.0 if d["key"] == "integrity_risk" else 5.0) * d["max_points"] for d in dims), 1)
+        hi = float(spec["max_points"])
+        dims.append({
+            **spec,
+            "score": max(0.0, min(hi, float(d.get("score") or 0))),
+            "reason": str(d.get("reason") or ""),
+            "evidence_level": str(d.get("evidence_level") or ""),
+            "highlights": [str(x) for x in (d.get("highlights") or [])],
+            "anomalies": [str(x) for x in (d.get("anomalies") or [])],
+        })
+    # v3 权重制：维度分即实得分（0..max_points），总分直接加总
+    blind = round(sum(d["score"] for d in dims), 1)
     evaluation.dimensions = dims
     evaluation.blind_score = blind
     evaluation.highlights = final["highlights"]
     evaluation.risks = final["risks"]
+    evaluation.verified_papers = final["verified_papers"]
+    evaluation.special_sections = final["special_sections"]
+    evaluation.fetched_pages = final["fetched_pages"]
     evaluation.config_version = config_version()
     evaluation.status = "completed"
     evaluation.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -288,9 +310,8 @@ def _finalize(evaluation: ScholarshipEvaluationORM, ctx: ScorerContext, segments
     ]
     segments.append({
         "type": "final",
-        "text": f"评分完成：盲评 {blind} 分，推荐档位 {final['recommend_tier']}",
+        "text": f"评分完成：盲评 {blind} 分",
         "blind_score": blind,
-        "recommend_tier": final["recommend_tier"],
         "reputation_findings": findings,
     })
 
@@ -300,6 +321,7 @@ _TOOL_LABELS = {
     "read_file": "读取材料",
     "verify_paper": "论文查证",
     "web_search": "全网检索",
+    "web_fetch": "抓取网页",
     "submit_scores": "提交评分",
 }
 

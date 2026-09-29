@@ -17,7 +17,7 @@ import re
 from typing import Any, Callable
 
 from agi_talent_radar.scholarship.anonymize import anonymize_text, build_identities, check_leak
-from agi_talent_radar.scholarship.scoring import DIMENSIONS, EVIDENCE_LEVELS, RECOMMEND_TIERS
+from agi_talent_radar.scholarship.scoring import DIMENSIONS, EVIDENCE_LEVELS
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,8 @@ class ScorerContext:
         # 转译缓存（入库不再抽文本，全部延迟到评估时）：文字层按材料缓存；视觉转译按材料缓存
         self.text_cache: dict[int, str] = {}
         self.vision_cache: dict[int, str] = {}
+        # web_fetch 抓取过的页面（url/title/summary，已脱敏）——随评分统一落库
+        self.fetched_pages: list[dict[str, Any]] = []
 
 
 def _suffix(filename: str) -> str:
@@ -257,11 +259,31 @@ def tools_schema() -> list[dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "web_fetch",
+                "description": (
+                    "抓取一个网页的正文内容（如申请材料中附的个人网站/主页/项目页）。"
+                    "用于补充评估材料之外的自述信息（个人主页、开源项目介绍等）。"
+                    "返回正文文本（截断）。参数：url。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {"url": {"type": "string"}},
+                    "required": ["url"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "submit_scores",
                 "description": (
-                    "提交最终评分。每个维度：score(0-5) + reason（必须引用具体证据并标注证据分级"
-                    "verified/supported/claimed）。另附 highlights/risks/recommend_tier/"
-                    "reputation_findings（舆情发现，供人工参考）。提交前必须已读过全部材料。"
+                    "提交最终评分。每个维度：score（0 到该维度满分）+ reason（必须引用具体证据并标注"
+                    "证据分级 verified/supported/claimed）+ highlights[]（该维度亮点）+ anomalies[]"
+                    "（该维度疑点，仅提出供人工复核，无判定权）。另附：verified_papers[]（评审过程中"
+                    "verify_paper 查证过的论文清单，含 venue/年份/引用/doi）；special_sections[]"
+                    "（特别栏目：开源贡献/特别获奖等，标题自定）；fetched_pages[]（web_fetch 抓取过的"
+                    "页面）；highlights/risks（全局亮点与风险，不限条数，尽量详细）；"
+                    "reputation_findings（舆情发现）。提交前必须已读过全部材料。"
                 ),
                 "parameters": _submit_schema(),
             },
@@ -282,13 +304,55 @@ def _submit_schema() -> dict[str, Any]:
                         "score": {"type": "number"},
                         "reason": {"type": "string"},
                         "evidence_level": {"type": "string", "enum": list(EVIDENCE_LEVELS)},
+                        "highlights": {"type": "array", "items": {"type": "string"}},
+                        "anomalies": {"type": "array", "items": {"type": "string"}},
                     },
                     "required": ["key", "score", "reason"],
                 },
             },
+            "verified_papers": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "venue": {"type": "string"},
+                        "year": {"type": "string"},
+                        "citations": {"type": "string"},
+                        "doi": {"type": "string"},
+                        "similar": {"type": "boolean"},
+                        "evidence_level": {"type": "string"},
+                        "has_pdf": {"type": "boolean"},
+                        "pdf_file_id": {"type": "integer"},
+                    },
+                    "required": ["title"],
+                },
+            },
+            "special_sections": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "content": {"type": "string"},
+                        "evidence": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["title", "content"],
+                },
+            },
+            "fetched_pages": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "summary": {"type": "string"},
+                    },
+                    "required": ["url"],
+                },
+            },
             "highlights": {"type": "array", "items": {"type": "string"}},
             "risks": {"type": "array", "items": {"type": "string"}},
-            "recommend_tier": {"type": "string", "enum": RECOMMEND_TIERS},
             "reputation_findings": {
                 "type": "array",
                 "items": {
@@ -304,7 +368,7 @@ def _submit_schema() -> dict[str, Any]:
                 },
             },
         },
-        "required": ["dimensions", "recommend_tier"],
+        "required": ["dimensions"],
     }
 
 
@@ -319,6 +383,8 @@ def execute_tool(ctx: ScorerContext, name: str, args: dict[str, Any]) -> dict[st
         return _tool_verify_paper(args)
     if name == "web_search":
         return _tool_web_search(ctx, args)
+    if name == "web_fetch":
+        return _tool_web_fetch(ctx, args)
     if name == "submit_scores":
         return _tool_submit(ctx, args)
     return {"summary": f"未知工具 {name}", "detail": {}}
@@ -421,6 +487,7 @@ def _tool_verify_paper(args: dict[str, Any]) -> dict[str, Any]:
             "venue": str((f.payload or {}).get("venue") or (f.payload or {}).get("source") or ""),
             "year": (f.payload or {}).get("year"),
             "citations": (f.payload or {}).get("citations"),
+            "doi": str((f.payload or {}).get("doi") or ""),
         }
         for f in results
     ]
@@ -464,15 +531,64 @@ def _tool_web_search(ctx: ScorerContext, args: dict[str, Any]) -> dict[str, Any]
     return {"summary": f"{len(safe_items)} 条结果", "detail": {"query": safe_query, "results": safe_items}}
 
 
+def _tool_web_fetch(ctx: ScorerContext, args: dict[str, Any]) -> dict[str, Any]:
+    """抓取网页正文：智谱网页阅读 API（/paas/v4/reader，LLM_API_KEY 复用）。"""
+    url = str(args.get("url") or "").strip()
+    if not url or not re.match(r"^https?://", url):
+        return {"summary": "URL 非法", "detail": {"url": url, "error": "需要 http(s):// 开头的地址"}}
+    try:
+        import urllib.request
+
+        api_key = (os.getenv("LLM_API_KEY") or os.getenv("Z_AI_API_KEY", "")).strip()
+        req = urllib.request.Request(
+            "https://open.bigmodel.cn/api/paas/v4/reader",
+            data=json.dumps({
+                "url": url,
+                "return_format": "markdown",
+                "retain_images": False,
+                "timeout": 20,
+            }).encode(),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+        result = (data.get("reader_result") or {})
+        content = str(result.get("content") or "").strip()
+        title = str(result.get("title") or "").strip()
+        if not content:
+            return {"summary": "页面无正文", "detail": {"url": url, "title": title}}
+        safe_title = _scrub(title, ctx)
+        safe_content = _scrub(content[:TOOL_RESULT_MAX_CHARS], ctx)
+        ctx.fetched_pages.append({"url": url, "title": safe_title, "summary": safe_content[:400]})
+        return {
+            "summary": f"已抓取：{safe_title or url[:60]}",
+            "detail": {"url": url, "title": safe_title, "content": safe_content},
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("web_fetch 失败 %s：%s", url, exc)
+        return {"summary": "抓取失败", "detail": {"url": url, "error": str(exc)[:200]}}
+
+
 def _tool_submit(ctx: ScorerContext, args: dict[str, Any]) -> dict[str, Any]:
     error = _validate_final(ctx, args)
     if error:
         return {"summary": "提交被驳回，需修正后重交", "detail": {"error": error}}
+    # fetched_pages：agent 自报 + 工具自动记录，按 url 去重（工具记录优先，信息更全）
+    submitted_pages = [{"url": str(p.get("url") or ""), "title": "", "summary": str(p.get("summary") or "")[:400]}
+                       for p in (args.get("fetched_pages") or []) if str(p.get("url") or "").startswith("http")]
+    seen_urls = {p["url"] for p in submitted_pages}
+    fetched_pages = [p for p in ctx.fetched_pages if p["url"] not in seen_urls] + submitted_pages
     ctx.final = {
         "dimensions": args.get("dimensions") or [],
-        "highlights": [str(x) for x in (args.get("highlights") or [])][:8],
-        "risks": [str(x) for x in (args.get("risks") or [])][:8],
-        "recommend_tier": str(args.get("recommend_tier") or ""),
+        "highlights": [str(x) for x in (args.get("highlights") or [])],
+        "risks": [str(x) for x in (args.get("risks") or [])],
+        "verified_papers": args.get("verified_papers") or [],
+        "special_sections": args.get("special_sections") or [],
+        "fetched_pages": fetched_pages,
         "reputation_findings": args.get("reputation_findings") or [],
     }
     return {"summary": "评分已受理", "detail": {"accepted": True}}
@@ -494,15 +610,16 @@ def _validate_final(ctx: ScorerContext, data: dict[str, Any]) -> str:
     """终态硬校验：返回错误文案（空串=通过）。"""
     dims = data.get("dimensions") or []
     by_key = {}
+    spec_by_key = {d["key"]: d for d in DIMENSIONS}
     for d in dims:
         key = str(d.get("key") or "")
-        spec = next((x for x in DIMENSIONS if x["key"] == key), None)
+        spec = spec_by_key.get(key)
         score = _coerce_score(d.get("score"))
         if score is None:
-            return f"维度 {key} 的 score 不是数字（收到 {d.get('score')!r}，请提交纯数字如 4.5）"
+            return f"维度 {key} 的 score 不是数字（收到 {d.get('score')!r}，请提交纯数字如 12.5）"
         d["score"] = score  # 回写清洗后的值，_finalize 直接可用
-        # 诚信维度按锚点用 0-10，其余 0-5
-        hi = 10.0 if spec and spec["key"] == "integrity_risk" else 5.0
+        # v3：每个维度按自身满分（max_points）校验，不再用统一 0-5/0-10
+        hi = float(spec["max_points"]) if spec else 100.0
         if not 0 <= score <= hi:
             return f"维度 {key} 的 score 超出 0-{hi:.0f}：{score}"
         reason = str(d.get("reason") or "")
@@ -515,9 +632,6 @@ def _validate_final(ctx: ScorerContext, data: dict[str, Any]) -> str:
     missing = [d["key"] for d in DIMENSIONS if d["key"] not in by_key]
     if missing:
         return f"缺少维度：{', '.join(missing)}"
-    tier = str(data.get("recommend_tier") or "")
-    if tier not in RECOMMEND_TIERS:
-        return f"recommend_tier 非法：{tier}"
     unread = [m.filename for m in ctx.materials if m.id not in ctx.read_ids]
     if unread and not ctx.force_submit:
         return "以下材料尚未读取，读完才能提交：" + "、".join(unread[:6]) + ("等" if len(unread) > 6 else "")

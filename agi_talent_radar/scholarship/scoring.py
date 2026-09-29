@@ -1,9 +1,11 @@
 """奖学金评分参数单一真相源（与书院评估的 scoring_config 完全独立）。
 
 调参只改这里；config_version 随内容变化，用于标注历史分数可比性。
-v2 维度重构（评分 agent 版）：拆掉笼统的"研究能力"，正交化为
-学术贡献/原创性/独立性三轴；方向契合降为 0（资格 gate 已管），
-仅作为同分 tie-breaker 描述注入 prompt，不占分数。
+v3 维度重构（2026-09 评审章程版）：五维百分制权重（40/30/20/5/5），
+去掉 0-5 级锚点改为考察要点软引导，评分 agent 在权重区间内自由打分
+以拉开分差；亮点/异常点/特别栏目不设条数上限；Integrity 维度 agent
+仅有提出疑点的权力，判定与取消资格由人工完成；不再输出推荐档位，
+列表按总分排序。论文核验数据由 agent 工作过程中产生并随评分统一返回。
 """
 from __future__ import annotations
 
@@ -32,36 +34,51 @@ REQUIRED_KINDS = ("resume", "achievement")
 MIN_LETTERS = 1
 MAX_LETTERS = 2
 
-# 脱敏评分维度：每项 0-5，加权到 100（v2 正交化 + 年级校准锚点）
+# v3 五维权重制：无等级锚点，focus 为考察要点软引导（来自 2026-09 评审章程），
+# bonus_hints 为叙述性加分参考——不写死分值，全权由评分 agent 判断。
 DIMENSIONS = [
     {
-        "key": "academic_impact", "label": "学术贡献与影响力", "max_points": 25,
-        "anchors": "0-1 无可验证学术产出；2 有 workshop/普通刊物或合作署名；3 该年级扎实水平（博士中期=主流会议一作）；4 顶会顶刊一作或高被引/开源广泛复用；5 按在读年限看显著超出预期（如低年级顶会一作多篇）",
+        "key": "academic_impact", "label": "学术成果与影响力", "label_en": "Academic Achievement & Impact",
+        "max_points": 40,
+        "focus": "重点考察申请人的代表性学术成果，包括论文质量、学术贡献及国际影响力。综合考虑论文发表情况（CCF A、顶会、顶刊）、第一作者或共同第一作者贡献、论文引用情况等。",
+        "bonus_hints": "Best Paper / Best Paper Nomination、Nature / Science 等顶级期刊、顶会 Oral、Findings、高引用代表性论文等。",
     },
     {
-        "key": "originality", "label": "原创性与问题品味", "max_points": 20,
-        "anchors": "0-1 跟随性工作或无明确问题；2 在已有框架内做增量改进；3 提出有新意的角度或非常规路径，有一定佐证；4 提出新问题/新范式且有初步验证；5 开创性问题定义，社区可见的独立思想（不依赖是否已发表）",
+        "key": "originality", "label": "原创能力与生态贡献", "label_en": "Originality & Ecosystem Contribution",
+        "max_points": 30,
+        "focus": "重点考察申请人的原创能力、技术创新性及对 AI 开源生态的贡献。关注是否提出新的研究方法、技术框架或研究方向，以及开源项目、Benchmark、数据集、工具链等对社区的实际影响。",
+        "bonus_hints": "高质量开源项目、GitHub Stars、Downloads、Benchmark 被广泛采用、社区影响力、生态贡献等。",
     },
     {
-        "key": "independence", "label": "独立性与成长斜率", "max_points": 20,
-        "anchors": "0-1 全部工作为课程/导师指令产物；2 参与明确分工的项目；3 有自主发起的子课题并完成闭环；4 主导 0→1 项目（自己定义方案并驱动完成），近两年产出斜率陡；5 多次从零发起并产出有影响力成果，导师角色是支持者而非驱动者",
+        "key": "independence", "label": "独立研究与技术工程能力", "label_en": "Independence & Execution",
+        "max_points": 20,
+        "focus": "重点考察申请人独立开展研究和技术实现的能力，是否能够将研究想法转化为系统、平台或工程成果，并完成完整验证。",
+        "bonus_hints": "独立完成系统性创新、实际应用落地、产业应用、完整系统开发等。",
     },
     {
-        "key": "engineering", "label": "工程与落地能力", "max_points": 15,
-        "anchors": "0-1 无工程痕迹或仅调用 API；2 完成课程级/复现级系统；3 独立实现可运行的完整系统（代码/工件佐证）；4 系统有真实用户/开源影响力/复现细节严谨；5 大规模基础设施级贡献或开源社区核心维护者",
+        "key": "letter_endorsement", "label": "导师评价", "label_en": "Recommendation",
+        "max_points": 5,
+        "focus": "综合参考导师推荐意见，重点关注申请人的研究能力、成长潜力、科研态度及综合表现。",
+        "bonus_hints": "推荐意见具体、长期指导关系明确、有充分事实支撑。",
     },
     {
-        "key": "letter_endorsement", "label": "推荐信背书强度", "max_points": 10,
-        "anchors": "0-1 模板化泛泛之词；2 具体描述了工作内容；3 有具体事例+横向比较（如近年学生前 X%）；4 强比较陈述（如十年最强三人）+具体证据支撑；5 极强背书且证据链完整可信",
-    },
-    {
-        "key": "integrity_risk", "label": "诚信与一致性", "max_points": 10,
-        "anchors": "0-1 经历明显矛盾或成果存疑且无解释；2-3 存在未解释的疑点；4-5 有轻微矛盾但可解释（本维度反向：分高=一致可信）；6-7 基本一致，个别处信息不足；8-10 材料内部一致、时间线合理、佐证互洽。理由中必须写明发现的任何疑点供人工复核",
+        "key": "integrity_risk", "label": "材料真实性与学术诚信", "label_en": "Integrity",
+        "max_points": 5,
+        "focus": "对申请材料真实性、成果归属、学术诚信及信息一致性进行核验。注意：本维度分数仅反映材料一致性程度；发现的任何疑点必须写入 anomalies 列表供人工复核，评分 agent 无权判定取消评审资格。",
+        "bonus_hints": "（本维度无加分项）如发现学术不端、虚假陈述或材料造假的迹象，在 anomalies 中详细描述，由人工决定后续处理。",
     },
 ]
 
-# 推荐档位（LLM 输出，辅助组合选择，不替代总分排序）
-RECOMMEND_TIERS = ["strong", "recommend", "borderline", "not_recommend"]
+# 评分公平性约束（注入评分 agent prompt）：材料丰富度 ≠ 能力
+FAIRNESS_RULES = """
+评分公平性约束（必须遵守）：
+- 评估的是能力与贡献，不是材料的详细程度。附件多、论文全上传不构成任何加分依据；
+  附件少、只有代表作的候选人，若单篇质量与影响力更高，应得更高的分。
+- 材料缺失只降低对应 claim 的证据置信度（evidence_level 降级），不直接扣能力分。
+- 自述与已核验的事实必须区分：核验过的成果按实际水平计分，仅自述的按 claimed
+  证据处理并在 anomalies 里提示，而不是直接按自述内容给高分。
+- 对不同年级的申请人使用同一能力标尺，不因低年级而放水，也不因高年级而苛求。
+""".strip()
 
 # 证据分级（submit_scores 里每条关键 claim 必须标注）
 EVIDENCE_LEVELS = {
@@ -76,9 +93,9 @@ def config_version() -> str:
     payload = {
         "eligibility": {k: sorted(v) if isinstance(v, set) else v for k, v in ELIGIBILITY.items()},
         "dimensions": DIMENSIONS,
+        "fairness": FAIRNESS_RULES,
         "directions": FOCUS_DIRECTIONS,
-        "tiers": RECOMMEND_TIERS,
         "evidence_levels": EVIDENCE_LEVELS,
     }
     digest = hashlib.sha1(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-    return f"scholarship-v2-{digest[:8]}"
+    return f"scholarship-v3-{digest[:8]}"

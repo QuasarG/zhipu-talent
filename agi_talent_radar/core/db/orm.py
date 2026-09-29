@@ -1038,9 +1038,12 @@ class ScholarshipEvaluationORM(Base):
     config_version = Column(String(64), default="")
     status = Column(String(24), default="running", nullable=False)  # running/completed/failed
     blind_score = Column(Float, default=0.0)
-    dimensions = Column(JSON, default=list)   # [{key,label,score,max_points,reason}]
+    dimensions = Column(JSON, default=list)   # [{key,label,score,max_points,reason,highlights,anomalies}]
     highlights = Column(JSON, default=list)
     risks = Column(JSON, default=list)
+    verified_papers = Column(JSON, default=list)     # verify_paper 查证记录（含 doi，前端出链接）
+    special_sections = Column(JSON, default=list)    # 特别栏目（开源贡献/特别获奖等，agent 自定标题）
+    fetched_pages = Column(JSON, default=list)       # web_fetch 抓取的页面（url/title/summary）
     error_message = Column(Text, default="")
     trace = Column(JSON, default=list)   # 评分 agent 轨迹 segments（thinking/tool/final）
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

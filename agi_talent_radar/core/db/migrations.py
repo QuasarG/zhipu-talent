@@ -21,7 +21,7 @@ from agi_talent_radar.core.db.repository import _replace_evaluation_details
 logger = logging.getLogger(__name__)
 
 
-LATEST_SCHEMA_VERSION = 33
+LATEST_SCHEMA_VERSION = 34
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -408,6 +408,14 @@ def ensure_schema(engine) -> None:
             engine,
             33,
             "phase 33: users.role (admin/reviewer) for role-scoped API access and navigation",
+        )
+    if current_version < 34:
+        # 奖学金 v3 评分：评估结果新增三列（论文查证记录/特别栏目/网页抓取记录）
+        _ensure_eval_v3_columns(engine)
+        _record_version(
+            engine,
+            34,
+            "phase 34: scholarship_evaluations v3 (verified_papers/special_sections/fetched_pages)",
         )
     if current_version < 27:
         existing = {c["name"] for c in inspect(engine).get_columns("scholarship_materials")}
@@ -960,6 +968,23 @@ def _migrate_user_roles(engine) -> None:
             connection.execute(
                 text("UPDATE users SET role = 'admin' WHERE role IS NULL OR role = ''")
             )
+
+
+def _ensure_eval_v3_columns(engine) -> None:
+    """v34：scholarship_evaluations 加 v3 评分三列（JSON，可空，老数据不受影响）。"""
+    inspector = inspect(engine)
+    if "scholarship_evaluations" not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns("scholarship_evaluations")}
+    missing = []
+    if "verified_papers" not in columns:
+        missing.append("verified_papers JSON NULL")
+    if "special_sections" not in columns:
+        missing.append("special_sections JSON NULL")
+    if "fetched_pages" not in columns:
+        missing.append("fetched_pages JSON NULL")
+    if missing:
+        _add_columns(engine, "scholarship_evaluations", missing)
 
 
 def _migrate_users_and_conversation_owner(engine) -> None:

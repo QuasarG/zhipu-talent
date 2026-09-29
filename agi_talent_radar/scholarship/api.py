@@ -68,10 +68,12 @@ def _eval_to_dict(evaluation) -> dict:
         "dimensions": evaluation.dimensions or [],
         "highlights": evaluation.highlights or [],
         "risks": evaluation.risks or [],
+        "verified_papers": getattr(evaluation, "verified_papers", None) or [],
+        "special_sections": getattr(evaluation, "special_sections", None) or [],
+        "fetched_pages": getattr(evaluation, "fetched_pages", None) or [],
         "error_message": evaluation.error_message or "",
         "created_at": evaluation.created_at.isoformat() if evaluation.created_at else None,
         "trace": evaluation.trace or [],
-        "recommend_tier": (final_segment or {}).get("recommend_tier") or "",
         "reputation_findings": (final_segment or {}).get("reputation_findings") or [],
     }
 

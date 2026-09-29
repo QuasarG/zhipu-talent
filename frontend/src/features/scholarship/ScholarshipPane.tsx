@@ -1,6 +1,5 @@
 // 奖学金资料工作台：申请人信息 / 材料预览 / 评估与核验
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { ChatCitation, ChatEvent, ChatMessage, ChatSegment, ScholarshipApplication, ScholarshipEvaluation, ScholarshipMaterial, ScorerTraceSegment } from "@/lib/types";
@@ -8,6 +7,7 @@ import Button, { IconButton } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
+import ScoreRing from "@/components/ui/ScoreRing";
 import { parseSSE } from "@/lib/api";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import { applyEvent, type LocalMessage as LocalChatMessage } from "@/pages/TalentChat";
@@ -34,22 +34,6 @@ function StatusBadge({ status }: { status: string }) {
     <StatusChip tone={STATUS_TONES[status] ?? "neutral"}>
       {t(STATUS_LABELS[status] ?? status)}
     </StatusChip>
-  );
-}
-
-/** 评分总览统计带单元格：对齐结构化简历的 MetaField 语系（小标签在上，值在下），数字用等宽 */
-function StatCell({ label, value, emphasis = false }: { label: string; value: ReactNode; emphasis?: boolean }) {
-  const numeric = typeof value === "string";
-  return (
-    <div className="min-w-0 bg-surface-lowest px-4 py-3">
-      <p className="text-label text-on-surface-variant">{label}</p>
-      <div className={cn(
-        "mt-1.5 flex min-h-7 items-center",
-        numeric ? cn("font-mono tabular-nums leading-none text-on-surface", emphasis ? "text-display" : "text-headline") : "",
-      )}>
-        {value}
-      </div>
-    </div>
   );
 }
 
@@ -205,24 +189,11 @@ const EVIDENCE_LABELS: Record<string, string> = {
 };
 /** 评分维度展示标题（前端覆盖后端 label）：中文主标题 + 英文副标题 */
 const DIMENSION_TITLES: Record<string, { zh: string; en: string }> = {
-  academic_impact: { zh: "学术贡献与影响力", en: "Academic Impact" },
-  originality: { zh: "原创能力与研究品味", en: "Originality" },
-  independence: { zh: "独立研究能力与成长潜力", en: "Independence" },
-  engineering: { zh: "技术实现与工程能力", en: "Execution" },
+  academic_impact: { zh: "学术成果与影响力", en: "Academic Achievement & Impact" },
+  originality: { zh: "原创能力与生态贡献", en: "Originality & Ecosystem Contribution" },
+  independence: { zh: "独立研究与技术工程能力", en: "Independence & Execution" },
   letter_endorsement: { zh: "导师评价", en: "Recommendation" },
   integrity_risk: { zh: "材料真实性与学术诚信", en: "Integrity" },
-};
-const TIER_LABELS: Record<string, string> = {
-  strong: "强推荐",
-  recommend: "推荐",
-  borderline: "边缘",
-  not_recommend: "不推荐",
-};
-const TIER_TONES: Record<string, "success" | "primary" | "warning" | "error"> = {
-  strong: "success",
-  recommend: "primary",
-  borderline: "warning",
-  not_recommend: "error",
 };
 type AssessmentTab = "score" | "process";
 const EMPTY_MATERIALS: ScholarshipMaterial[] = [];
@@ -722,21 +693,21 @@ export default function ScholarshipPane({
                         </p>
                       )}
                       {latestCompleted ? (
-                        <>
-                          <div className="grid grid-cols-2 gap-px bg-outline-variant sm:grid-cols-4">
-                            <StatCell label={t("当前总分")} emphasis value={fmtScore(app.total_score)} />
-                            <StatCell label={t("脱敏盲评分")} value={fmtScore(app.blind_score)} />
-                            <StatCell label={t("推荐档位")} value={
-                              latestCompleted.recommend_tier
-                                ? <StatusChip tone={TIER_TONES[latestCompleted.recommend_tier] ?? "neutral"} variant="filled">{t(TIER_LABELS[latestCompleted.recommend_tier] ?? latestCompleted.recommend_tier)}</StatusChip>
-                                : "—"
-                            } />
-                            <StatCell label={t("评估状态")} value={
-                              <StatusChip tone={latestEval?.status === "failed" ? "error" : "success"}>{latestEval?.status === "failed" ? t("评估失败") : t("已完成")}</StatusChip>
-                            } />
-                          </div>
-                          <p className="border-t border-outline-variant px-4 py-2 text-label text-on-surface-variant">{t("已按脱敏分与舆情调整汇总")}</p>
-                        </>
+                        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-5 px-4 py-5">
+                          <ScoreRing value={latestCompleted.blind_score} max={100} label={t("总分")} size={120} stroke={10} />
+                          {latestCompleted.dimensions.map((d) => (
+                            <ScoreRing
+                              key={d.key}
+                              value={d.score}
+                              max={d.max_points}
+                              label={t(d.label)}
+                              labelEn={d.label_en}
+                              size={78}
+                              stroke={7}
+                              className="cursor-pointer"
+                            />
+                          ))}
+                        </div>
                       ) : (
                         <div className="flex flex-col items-center gap-1 px-4 py-10 text-center">
                           <p className="text-body-sm text-on-surface-variant">{t("尚未生成评分结果")}</p>
@@ -744,14 +715,14 @@ export default function ScholarshipPane({
                       )}
                     </>
                   )}
-                </RecordSection>
+            </RecordSection>
 
                 {latestCompleted && (
-                  <RecordSection title={t("评分明细")} icon="checklist" count={latestCompleted.dimensions.length} className="mb-4">
+                  <RecordSection title={t("维度详情")} icon="checklist" count={latestCompleted.dimensions.length} className="mb-4">
                     <div className="divide-y divide-outline-variant">
                       {latestCompleted.dimensions.map((dimension, index) => {
-                        const max = dimension.key === "integrity_risk" ? 10 : 5;
                         const dimTitle = DIMENSION_TITLES[dimension.key];
+                        const dimAnomalies = dimension.anomalies ?? [];
                         return (
                           <article key={dimension.key} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 px-4 py-3.5">
                             <RecordIndex value={index + 1} />
@@ -773,12 +744,29 @@ export default function ScholarshipPane({
                                   </StatusChip>
                                 )}
                                 <span className="ml-auto shrink-0 font-mono text-body font-medium tabular-nums text-on-surface">
-                                  {fmtScore(dimension.score)}<span className="text-on-surface-variant">/{max}</span>
+                                  {fmtScore(dimension.score)}<span className="text-on-surface-variant">/{dimension.max_points}</span>
                                 </span>
-                                <span className="shrink-0 text-label text-on-surface-variant">{t("满分 {n}", { n: dimension.max_points })}</span>
                               </div>
-                              <Progress value={(dimension.score / max) * 100} className="mt-2.5" />
+                              <Progress value={(dimension.score / Math.max(1, dimension.max_points)) * 100} className="mt-2.5" />
                               {dimension.reason && <p className="mt-2 text-body-sm leading-6 text-on-surface-variant">{dimension.reason}</p>}
+                              {(dimension.highlights ?? []).length > 0 && (
+                                <ul className="mt-2 space-y-1">
+                                  {(dimension.highlights ?? []).map((h, i) => (
+                                    <li key={i} className="flex items-start gap-1.5 text-body-sm text-on-surface">
+                                      <Icon name="check_circle" size={14} className="mt-1 shrink-0 text-success" />{h}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {dimAnomalies.length > 0 && (
+                                <ul className="mt-2 space-y-1">
+                                  {dimAnomalies.map((a, i) => (
+                                    <li key={i} className="flex items-start gap-1.5 text-body-sm text-on-surface">
+                                      <Icon name="warning" size={14} className="mt-1 shrink-0 text-warning" />{a}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                             </div>
                           </article>
                         );
@@ -789,23 +777,111 @@ export default function ScholarshipPane({
 
                 {latestCompleted && (
                   <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <RecordSection title={t("亮点")} icon="auto_awesome">
-                      <ul className="divide-y divide-outline-variant">
+                    <RecordSection title={t("亮点")} icon="auto_awesome" count={latestCompleted.highlights.length}>
+                      <ul className="max-h-96 divide-y divide-outline-variant overflow-y-auto admission-panel-scrollbar">
                         {latestCompleted.highlights.map((highlight) => (
                           <li key={highlight} className="flex items-start gap-2 px-4 py-2.5 text-body-sm text-on-surface"><Icon name="check_circle" size={16} className="mt-0.5 shrink-0 text-success" />{highlight}</li>
                         ))}
                         {!latestCompleted.highlights.length && <li className="px-4 py-3 text-body-sm text-on-surface-variant">—</li>}
                       </ul>
                     </RecordSection>
-                    <RecordSection title={t("风险")} icon="warning">
-                      <ul className="divide-y divide-outline-variant">
+                    <RecordSection title={t("异常点（供人工复核）")} icon="warning" count={latestCompleted.risks.length}>
+                      <ul className="max-h-96 divide-y divide-outline-variant overflow-y-auto admission-panel-scrollbar">
                         {latestCompleted.risks.map((risk) => (
                           <li key={risk} className="flex items-start gap-2 px-4 py-2.5 text-body-sm text-on-surface"><Icon name="warning" size={16} className="mt-0.5 shrink-0 text-warning" />{risk}</li>
                         ))}
                         {!latestCompleted.risks.length && <li className="px-4 py-3 text-body-sm text-on-surface-variant">—</li>}
                       </ul>
+                      <p className="border-t border-outline-variant px-4 py-2 text-label text-on-surface-variant">{t("agent 仅提出疑点，判定与决策由人工完成")}</p>
                     </RecordSection>
                   </div>
+                )}
+
+                {latestCompleted && (latestCompleted.verified_papers ?? []).length > 0 && (
+                  <RecordSection title={t("论文核验")} icon="fact_check" count={(latestCompleted.verified_papers ?? []).length} className="mb-4">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-body-sm">
+                        <thead>
+                          <tr className="border-b border-outline-variant text-left text-label text-on-surface-variant">
+                            <th className="px-4 py-2 font-medium">{t("标题")}</th>
+                            <th className="px-3 py-2 font-medium">{t("venue")}</th>
+                            <th className="px-3 py-2 font-medium">{t("年份")}</th>
+                            <th className="px-3 py-2 font-medium">{t("引用")}</th>
+                            <th className="px-3 py-2 font-medium">{t("状态")}</th>
+                            <th className="px-3 py-2 font-medium" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-outline-variant">
+                          {(latestCompleted.verified_papers ?? []).map((p, i) => (
+                            <tr key={`${p.title}-${i}`} className="align-top">
+                              <td className="max-w-[320px] px-4 py-2.5">
+                                {p.doi ? (
+                                  <a href={`https://doi.org/${p.doi}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">{p.title}</a>
+                                ) : (
+                                  <span className="text-on-surface">{p.title}</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-on-surface-variant">{p.venue || "—"}</td>
+                              <td className="px-3 py-2.5 tabular-nums text-on-surface-variant">{p.year || "—"}</td>
+                              <td className="px-3 py-2.5 tabular-nums text-on-surface-variant">{p.citations || "—"}</td>
+                              <td className="px-3 py-2.5">
+                                <StatusChip tone={p.evidence_level === "verified" ? "success" : p.evidence_level === "supported" ? "info" : "neutral"}>
+                                  {p.evidence_level === "verified" ? t("已核验") : p.evidence_level === "supported" ? t("佐证可信") : p.evidence_level === "claimed" ? t("仅自述") : p.similar === false ? t("相似匹配") : "—"}
+                                </StatusChip>
+                              </td>
+                              <td className="px-3 py-2.5">
+                                {p.has_pdf && p.pdf_file_id != null && (
+                                  <Button variant="text" icon="picture_as_pdf" className="h-7 px-2 text-label"
+                                    onClick={() => window.open(api.scholarship.materialPreviewUrl(p.pdf_file_id!), "_blank")}>
+                                    PDF
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="border-t border-outline-variant px-4 py-2 text-label text-on-surface-variant">{t("agent 评审过程中的论文查证记录；已核验的论文可点击跳转 DOI")}</p>
+                  </RecordSection>
+                )}
+
+                {(latestCompleted?.special_sections ?? []).length > 0 && (
+                  <RecordSection title={t("特别栏目")} icon="star" count={(latestCompleted?.special_sections ?? []).length} className="mb-4">
+                    <div className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-2">
+                      {(latestCompleted?.special_sections ?? []).map((s, i) => (
+                        <article key={`${s.title}-${i}`} className="rounded-md border border-outline-variant bg-surface-lowest px-3.5 py-3">
+                          <h4 className="flex items-center gap-1.5 text-title font-bold text-on-surface">
+                            <Icon name="star" size={15} className="text-warning" />{s.title}
+                          </h4>
+                          <p className="mt-1.5 whitespace-pre-wrap text-body-sm leading-6 text-on-surface-variant">{s.content}</p>
+                          {(s.evidence ?? []).length > 0 && (
+                            <ul className="mt-2 space-y-0.5">
+                              {(s.evidence ?? []).map((e, j) => (
+                                <li key={j} className="text-label text-on-surface-variant">· {e}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  </RecordSection>
+                )}
+
+                {(latestCompleted?.fetched_pages ?? []).length > 0 && (
+                  <RecordSection title={t("抓取页面")} icon="language" count={(latestCompleted?.fetched_pages ?? []).length} className="mb-4">
+                    <div className="max-h-72 divide-y divide-outline-variant overflow-y-auto admission-panel-scrollbar">
+                      {(latestCompleted?.fetched_pages ?? []).map((p, i) => (
+                        <div key={`${p.url}-${i}`} className="px-4 py-2.5">
+                          <a href={p.url} target="_blank" rel="noreferrer" className="text-body-sm font-medium text-primary hover:underline">
+                            {p.title || p.url}
+                          </a>
+                          <p className="mt-0.5 text-label break-all text-on-surface-variant">{p.url}</p>
+                          {p.summary && <p className="mt-1 text-body-sm leading-5 text-on-surface-variant">{p.summary.slice(0, 300)}{(p.summary.length > 300 ? "…" : "")}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </RecordSection>
                 )}
 
                 {findings.length > 0 && (

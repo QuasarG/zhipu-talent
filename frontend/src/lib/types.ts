@@ -735,14 +735,51 @@ export interface ReputationFinding {
   note: string;
 }
 
+export interface VerifiedPaper {
+  title: string;
+  venue: string;
+  year: string;
+  citations: string;
+  doi: string;
+  similar?: boolean;
+  evidence_level?: string;
+  has_pdf?: boolean;
+  pdf_file_id?: number;
+}
+
+export interface SpecialSection {
+  title: string;
+  content: string;
+  evidence?: string[];
+}
+
+export interface FetchedPage {
+  url: string;
+  title: string;
+  summary: string;
+}
+
 export interface ScholarshipEvaluation {
   id: number;
   config_version: string;
   status: string;
   blind_score: number;
-  dimensions: { key: string; label: string; score: number; max_points: number; reason: string; evidence_level?: string }[];
+  dimensions: {
+    key: string;
+    label: string;
+    label_en?: string;
+    score: number;
+    max_points: number;
+    reason: string;
+    evidence_level?: string;
+    highlights?: string[];
+    anomalies?: string[];
+  }[];
   highlights: string[];
   risks: string[];
+  verified_papers?: VerifiedPaper[];
+  special_sections?: SpecialSection[];
+  fetched_pages?: FetchedPage[];
   error_message: string;
   created_at: string | null;
   trace?: ScorerTraceSegment[];
