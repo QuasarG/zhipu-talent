@@ -144,8 +144,9 @@ def main() -> int:
                 continue
             advisor = get_or_create_advisor(advisor_name)
             exists = any(
-                link.advisor_id == advisor.id and link.application_id == target.id
-                for link in session.new  # 同事务内去重（Query 对 session.new 无效）
+                isinstance(link, AdvisorStudentLinkORM)
+                and link.advisor_id == advisor.id and link.application_id == target.id
+                for link in session.new
             ) if session.new else False
             if not exists:
                 session.add(AdvisorStudentLinkORM(
