@@ -342,9 +342,11 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
         ctx.fillStyle = crest ? shade(crest, 0.76) : graphModeRef.current && n.schools?.length ? schoolFallbackTint(n.schools) : pal.avatarBg;
         ctx.fill();
-        ctx.strokeStyle = n.color;
-        ctx.lineWidth = isSelected ? 3 : 2;
-        ctx.stroke();
+        if (n.type !== "student") {
+          ctx.strokeStyle = n.color;
+          ctx.lineWidth = isSelected ? 3 : 2;
+          ctx.stroke();
+        }
         ctx.fillStyle = pal.avatarText;
         ctx.font = `600 ${Math.round(r * 0.85)}px "Smiley Moon", "MiSans", sans-serif`;
         ctx.textAlign = "center";
