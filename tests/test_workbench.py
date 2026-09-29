@@ -55,14 +55,26 @@ class WorkbenchTest(unittest.TestCase):
     def setUp(self) -> None:
         # 阶段 8 之后 create_app 注册了鉴权 middleware；
         # 既有 workbench 测试关注路由行为而非鉴权，统一放行。
+        # 角色中间件（v33）要求 is_authenticated 为真且 current_user 返回用户，
+        # 两处都要 patch，否则 fail-closed 会把测试请求全部踢到 /login。
+        from types import SimpleNamespace
+
         self._auth_patch = patch(
             "agi_talent_radar.web.auth.is_authenticated",
             return_value=True,
         )
+        self._user_patch = patch(
+            "agi_talent_radar.web.auth.current_user",
+            return_value=SimpleNamespace(
+                id="test-admin", username="admin", display_name="管理员", role="admin",
+            ),
+        )
         self._auth_patch.start()
+        self._user_patch.start()
         self.app = create_app().test_client()
 
     def tearDown(self) -> None:
+        self._user_patch.stop()
         self._auth_patch.stop()
 
     def _parse_sse(self, response) -> list[dict]:
