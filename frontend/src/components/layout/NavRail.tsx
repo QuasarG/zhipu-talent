@@ -28,6 +28,7 @@ const navItems: NavItem[] = [
   { to: "/chat", icon: "forum", label: "人才问答", adminOnly: true },
   { to: "/jd-pool", icon: "work", label: "JD 池", adminOnly: true },
   { to: "/scholarship", icon: "workspace_premium", label: "奖学金" },
+  { to: "/scholarship/graph", icon: "account_tree", label: "师生图谱" },
   { to: "/settings", icon: "settings", label: "设置" },
 ];
 
@@ -65,7 +66,7 @@ export default function NavRail({ username, role }: { username?: string; role?: 
           <li key={to} className="w-full flex justify-center">
             <NavLink
               to={to}
-              end={to === "/"}
+              end={to === "/" || to === "/scholarship"}
               data-tour={tourKey}
               className="flex flex-col items-center gap-1.5 w-20 no-underline group"
             >

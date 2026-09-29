@@ -1,5 +1,5 @@
 // 奖学金资料工作台：申请人信息 / 材料预览 / 评估与核验
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { ChatCitation, ChatEvent, ChatMessage, ChatSegment, ScholarshipApplication, ScholarshipEvaluation, ScholarshipMaterial, ScorerTraceSegment } from "@/lib/types";
@@ -7,13 +7,12 @@ import Button, { IconButton } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
 import { StatusChip } from "@/components/ui/Chip";
-import ScoreRing from "@/components/ui/ScoreRing";
+import ScholarshipScoreWheel from "./ScholarshipScoreWheel";
 import { parseSSE } from "@/lib/api";
 import AssistantMessage from "@/features/chat/AssistantMessage";
 import { applyEvent, type LocalMessage as LocalChatMessage } from "@/pages/TalentChat";
-import { RecordSection, MetaField, RecordIndex } from "@/features/resume/ResumeContent";
+import { RecordSection } from "@/features/resume/ResumeContent";
 import LoadingIndicator from "@/components/ui/LoadingIndicator";
-import Progress from "@/components/ui/Progress";
 import Tabs from "@/components/ui/Tabs";
 import { cn } from "@/lib/cn";
 import {
@@ -22,7 +21,6 @@ import {
   MATERIAL_KIND_LABELS,
   STATUS_LABELS,
   STATUS_TONES,
-  fmtScore,
 } from "./scholarshipModel";
 
 const inputClass =
@@ -34,6 +32,15 @@ function StatusBadge({ status }: { status: string }) {
     <StatusChip tone={STATUS_TONES[status] ?? "neutral"}>
       {t(STATUS_LABELS[status] ?? status)}
     </StatusChip>
+  );
+}
+
+function ProfileFact({ label, value, icon }: { label: string; value: ReactNode; icon?: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-outline-variant bg-surface-lowest px-3 py-2.5 shadow-sm">
+      <p className="flex items-center gap-1.5 text-label text-on-surface-variant">{icon && <Icon name={icon} size={14} />}{label}</p>
+      <div className="mt-1 break-words text-body-sm font-medium leading-5 text-on-surface">{value || "—"}</div>
+    </div>
   );
 }
 
@@ -173,7 +180,7 @@ function AddApplicantDialog({ onClose, onDone }: AddDialogProps) {
   );
 }
 
-export type ScholarshipView = "overview" | "materials" | "assessment" | "graph";
+export type ScholarshipView = "overview" | "materials" | "assessment";
 
 const TOOL_LABELS: Record<string, string> = {
   list_files: "盘点材料",
@@ -181,19 +188,6 @@ const TOOL_LABELS: Record<string, string> = {
   verify_paper: "论文查证",
   web_search: "全网检索",
   submit_scores: "提交评分",
-};
-const EVIDENCE_LABELS: Record<string, string> = {
-  verified: "已验证",
-  supported: "佐证可信",
-  claimed: "仅自述",
-};
-/** 评分维度展示标题（前端覆盖后端 label）：中文主标题 + 英文副标题 */
-const DIMENSION_TITLES: Record<string, { zh: string; en: string }> = {
-  academic_impact: { zh: "学术成果与影响力", en: "Academic Achievement & Impact" },
-  originality: { zh: "原创能力与生态贡献", en: "Originality & Ecosystem Contribution" },
-  independence: { zh: "独立研究与技术工程能力", en: "Independence & Execution" },
-  letter_endorsement: { zh: "导师评价", en: "Recommendation" },
-  integrity_risk: { zh: "材料真实性与学术诚信", en: "Integrity" },
 };
 type AssessmentTab = "score" | "process";
 const EMPTY_MATERIALS: ScholarshipMaterial[] = [];
@@ -578,13 +572,13 @@ export default function ScholarshipPane({
                 <StatusBadge status={app.status} />
                 {app.feishu_record_id && <span className="inline-flex items-center gap-1 text-label text-on-surface-variant"><Icon name="cloud_done" size={13} />{t("飞书同步")}</span>}
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 xl:grid-cols-4">
-                <MetaField label={t("学校")} value={app.school} />
-                <MetaField label={t("实验室")} value={app.lab} />
-                <MetaField label={t("研究方向")} value={app.direction} />
-                <MetaField label={t("学位与年级")} value={[app.degree_type ? t(DEGREE_LABELS[app.degree_type] ?? app.degree_type) : "", app.grade].filter(Boolean).join(" · ")} />
-                <MetaField label={t("预计毕业")} value={app.expected_graduation} />
-                <MetaField label={t("推荐导师")} wide value={
+              <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-3">
+                <ProfileFact label={t("学校")} value={app.school} icon="school" />
+                <ProfileFact label={t("实验室")} value={app.lab} icon="science" />
+                <ProfileFact label={t("研究方向")} value={app.direction} icon="explore" />
+                <ProfileFact label={t("学位与年级")} value={[app.degree_type ? t(DEGREE_LABELS[app.degree_type] ?? app.degree_type) : "", app.grade].filter(Boolean).join(" · ")} icon="workspace_premium" />
+                <ProfileFact label={t("预计毕业")} value={app.expected_graduation} icon="event" />
+                <ProfileFact label={t("推荐导师")} icon="person" value={
                   <>
                     {app.advisors?.join(t("、")) || "—"}
                     {app.advisor_title && <span className="ml-2 text-label text-on-surface-variant">{app.advisor_title}</span>}
@@ -620,7 +614,7 @@ export default function ScholarshipPane({
 
         {view === "overview" && (
           <div className="min-h-0 flex-1 overflow-y-auto bg-surface px-4 py-4 md:px-6">
-            <div className="mx-auto max-w-5xl space-y-4">
+            <div className="space-y-4">
               {(app.status === "material_incomplete" || app.status === "ineligible") && (
                 <section className="mb-4 rounded-md border border-warning/40 bg-warning-container/40 px-4 py-3">
                   <div className="flex items-center gap-2 text-body-sm font-medium text-warning"><Icon name="warning" size={17} />{t("筛选需要处理")}</div>
@@ -637,34 +631,24 @@ export default function ScholarshipPane({
                 </div>
               </RecordSection>
 
-              <RecordSection title={t("关键资料")} icon="badge" className="shadow-sm">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
-                  <MetaField label={t("学校")} value={app.school} />
-                  <MetaField label={t("实验室")} value={app.lab} />
-                  <MetaField label={t("研究方向")} value={app.direction} />
-                  <MetaField label={t("学位与年级")} value={[app.degree_type ? t(DEGREE_LABELS[app.degree_type] ?? app.degree_type) : "", app.grade].filter(Boolean).join(" · ")} />
-                  <MetaField label={t("预计毕业")} value={app.expected_graduation} />
-                  <MetaField label={t("申请来源")} value={app.feishu_record_id ? t("飞书问卷") : t("手动添加")} />
-                  <MetaField label={t("导师")} wide value={app.advisors?.join(t("、"))} />
-                </div>
-              </RecordSection>
-
-              <RecordSection title={t("教育与科研经历")} icon="school" className="shadow-sm" meta={app.submitted_at ? t("提交于 {v}", { v: formatDate(app.submitted_at) }) : undefined}>
-                <div className="px-4 py-3">
-                  <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-body-sm leading-6 text-on-surface">
-                    {app.education_history || t("暂无教育与科研经历")}
-                  </p>
-                </div>
-              </RecordSection>
-
-              <RecordSection title={t("联系方式")} icon="contact_mail" className="shadow-sm">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
-                  <MetaField label={t("邮箱")} value={app.email} />
-                  <MetaField label={t("电话")} value={app.phone} />
-                  <MetaField label={t("所在地区")} value={app.country} />
-                  <MetaField label={t("材料数量")} value={t("{n} 份", { n: materials.length })} />
-                </div>
-              </RecordSection>
+              <div className="grid gap-4 xl:grid-cols-2">
+                <RecordSection title={t("教育与科研经历")} icon="school" className="shadow-sm" meta={app.submitted_at ? t("提交于 {v}", { v: formatDate(app.submitted_at) }) : undefined}>
+                  <div className="grid gap-2 p-3 sm:grid-cols-2">
+                    <ProfileFact label={t("教育与科研经历")} icon="history_edu" value={app.education_history || t("暂无教育与科研经历")} />
+                    <div className="grid gap-2">
+                      <ProfileFact label={t("申请来源")} icon="source" value={app.feishu_record_id ? t("飞书问卷") : t("手动添加")} />
+                      <ProfileFact label={t("材料数量")} icon="folder" value={t("{n} 份", { n: materials.length })} />
+                    </div>
+                  </div>
+                </RecordSection>
+                <RecordSection title={t("联系方式")} icon="contact_mail" className="shadow-sm">
+                  <div className="grid gap-2 p-3 sm:grid-cols-2">
+                    <ProfileFact label={t("邮箱")} icon="mail" value={app.email} />
+                    <ProfileFact label={t("电话")} icon="call" value={app.phone} />
+                    <ProfileFact label={t("所在地区")} icon="public" value={app.country} />
+                  </div>
+                </RecordSection>
+              </div>
             </div>
           </div>
         )}
@@ -678,119 +662,35 @@ export default function ScholarshipPane({
           <div className="grid min-h-0 flex-1 grid-cols-1 bg-surface lg:grid-cols-[220px_minmax(0,1fr)]">
             <nav aria-label={t("评估结果大纲")} className="flex gap-1 overflow-x-auto border-b border-outline-variant bg-surface-lowest p-3 lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r">
               {([
-                ["overview", "评分总览"], ["dimensions", "维度详情"], ["highlights", "亮点与风险"],
+                ["overview", "评分总览"], ["highlights", "亮点与风险"],
                 ["papers", "论文核验"], ["special", "特别栏目"], ["pages", "抓取页面"], ["findings", "舆情发现"],
-              ] as const).filter(([id]) => id === "overview" || (latestCompleted && (id === "dimensions" || id === "highlights" || (id === "papers" && latestCompleted.verified_papers?.length) || (id === "special" && latestCompleted.special_sections?.length) || (id === "pages" && latestCompleted.fetched_pages?.length) || (id === "findings" && findings.length)))).map(([id, label]) => (
+              ] as const).filter(([id]) => id === "overview" || (latestCompleted && (id === "highlights" || (id === "papers" && latestCompleted.verified_papers?.length) || (id === "special" && latestCompleted.special_sections?.length) || (id === "pages" && latestCompleted.fetched_pages?.length) || (id === "findings" && findings.length)))).map(([id, label]) => (
                 <button key={id} type="button" aria-current={activeSection === id ? "location" : undefined} onClick={() => goToSection(id)} className={cn("shrink-0 rounded-md px-3 py-2 text-left text-body-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary", activeSection === id ? "bg-primary-container font-semibold text-on-primary-container" : "text-on-surface-variant hover:bg-surface-low")}>{t(label)}</button>
               ))}
             </nav>
             <div ref={scoreScrollRef} className="min-h-0 overflow-y-auto scroll-smooth px-4 py-4 md:px-6">
             <div className="mx-auto w-full max-w-5xl space-y-4">
             <div data-score-section="overview">
-            <RecordSection
-              title={t("评分总览")}
-              icon="workspace_premium"
-              className="mb-4"
-              meta={latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : undefined}
-              action={
-                <Button variant={latestCompleted || latestEval?.status === "failed" ? "tonal" : "filled"} icon="refresh" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>
-                  {latestCompleted || latestEval?.status === "failed" ? t("重新评估") : t("开始评估")}
-                </Button>
-              }
-            >
-                  {latestEval?.status === "running" ? (
-                    <div className="flex items-center justify-center px-4 py-10"><LoadingIndicator size={22} label={t("评估中…")} /></div>
-                  ) : (
-                    <>
-                      {latestEval?.status === "failed" && (
-                        <p className="border-b border-outline-variant bg-error-container/40 px-4 py-3 text-body-sm text-error">
-                          {t("评估失败：{msg}", { msg: latestEval.error_message || t("未知错误") })}
-                        </p>
-                      )}
-                      {latestCompleted ? (
-                        <div className="grid gap-6 p-5 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
-                          <div className="flex flex-col items-center justify-center rounded-xl bg-surface p-5 shadow-sm">
-                            <ScoreRing value={latestCompleted.blind_score} max={100} label={t("总分")} size={176} stroke={12} />
-                          </div>
-                          <div className="space-y-2">
-                            <p className="text-label text-on-surface-variant">{t("点击评分维度查看依据")}</p>
-                            {latestCompleted.dimensions.map((d, index) => (
-                              <button key={d.key} type="button" onClick={() => goToSection(`dimension-${d.key}`)} className="flex w-full items-center gap-3 rounded-lg border border-outline-variant bg-surface-lowest p-3 text-left shadow-sm transition-all hover:border-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-primary">
-                                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-label font-semibold text-on-primary-container">{String(index + 1).padStart(2, "0")}</span>
-                                <span className="min-w-0 flex-1"><span className="block text-body-sm font-semibold text-on-surface">{t(DIMENSION_TITLES[d.key]?.zh ?? d.label)}</span><span className="block truncate text-label text-on-surface-variant">{d.reason || t("查看评分依据")}</span></span>
-                                <span className="shrink-0 font-mono text-body-sm font-semibold tabular-nums">{fmtScore(d.score)}<span className="text-on-surface-variant">/{d.max_points}</span></span>
-                                <Icon name="arrow_forward" size={16} className="shrink-0 text-on-surface-variant" />
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-1 px-4 py-10 text-center">
-                          <p className="text-body-sm text-on-surface-variant">{t("尚未生成评分结果")}</p>
-                        </div>
-                      )}
-                    </>
-                  )}
-            </RecordSection>
-            </div>
-
-                {latestCompleted && (
-                  <div data-score-section="dimensions"><RecordSection title={t("维度详情")} icon="checklist" count={latestCompleted.dimensions.length} className="shadow-sm">
-                    <div className="divide-y divide-outline-variant">
-                      {latestCompleted.dimensions.map((dimension, index) => {
-                        const dimTitle = DIMENSION_TITLES[dimension.key];
-                        const dimAnomalies = dimension.anomalies ?? [];
-                        return (
-                          <article key={dimension.key} data-score-section={`dimension-${dimension.key}`} className="grid scroll-mt-3 grid-cols-[28px_minmax(0,1fr)] gap-3 px-4 py-4">
-                            <RecordIndex value={index + 1} />
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <h4 className="text-title font-bold text-on-surface">
-                                  {dimTitle ? (
-                                    <>
-                                      {t(dimTitle.zh)}
-                                      <span className="ml-1.5 text-label font-medium text-on-surface-variant">{dimTitle.en}</span>
-                                    </>
-                                  ) : (
-                                    dimension.label
-                                  )}
-                                </h4>
-                                {dimension.evidence_level && (
-                                  <StatusChip tone={dimension.evidence_level === "verified" ? "success" : dimension.evidence_level === "supported" ? "info" : "neutral"}>
-                                    {t(EVIDENCE_LABELS[dimension.evidence_level] ?? dimension.evidence_level)}
-                                  </StatusChip>
-                                )}
-                                <span className="ml-auto shrink-0 font-mono text-body font-medium tabular-nums text-on-surface">
-                                  {fmtScore(dimension.score)}<span className="text-on-surface-variant">/{dimension.max_points}</span>
-                                </span>
-                              </div>
-                              <Progress value={(dimension.score / Math.max(1, dimension.max_points)) * 100} className="mt-2.5" />
-                              {dimension.reason && <p className="mt-2 text-body-sm leading-6 text-on-surface-variant">{dimension.reason}</p>}
-                              {(dimension.highlights ?? []).length > 0 && (
-                                <ul className="mt-2 space-y-1">
-                                  {(dimension.highlights ?? []).map((h, i) => (
-                                    <li key={i} className="flex items-start gap-1.5 text-body-sm text-on-surface">
-                                      <Icon name="check_circle" size={14} className="mt-1 shrink-0 text-success" />{h}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              {dimAnomalies.length > 0 && (
-                                <ul className="mt-2 space-y-1">
-                                  {dimAnomalies.map((a, i) => (
-                                    <li key={i} className="flex items-start gap-1.5 text-body-sm text-on-surface">
-                                      <Icon name="warning" size={14} className="mt-1 shrink-0 text-warning" />{a}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </RecordSection></div>
+              <RecordSection
+                title={t("评分总览")}
+                icon="workspace_premium"
+                meta={latestCompleted ? `${latestCompleted.config_version} · ${formatDate(latestCompleted.created_at)}` : undefined}
+                action={
+                  <Button variant={latestCompleted || latestEval?.status === "failed" ? "tonal" : "filled"} icon="refresh" disabled={!!acting || !canEvaluate} onClick={handleEvaluate}>
+                    {latestCompleted || latestEval?.status === "failed" ? t("重新评估") : t("开始评估")}
+                  </Button>
+                }
+              >
+                {latestEval?.status === "running" ? (
+                  <div className="flex items-center justify-center px-4 py-10"><LoadingIndicator size={22} label={t("评估中…")} /></div>
+                ) : (
+                  <>
+                    {latestEval?.status === "failed" && <p className="border-b border-outline-variant bg-error-container/40 px-4 py-3 text-body-sm text-error">{t("评估失败：{msg}", { msg: latestEval.error_message || t("未知错误") })}</p>}
+                    {latestCompleted ? <ScholarshipScoreWheel evaluation={latestCompleted} /> : <p className="px-4 py-10 text-center text-body-sm text-on-surface-variant">{t("尚未生成评分结果")}</p>}
+                  </>
                 )}
+              </RecordSection>
+            </div>
 
                 {latestCompleted && (
                   <div data-score-section="highlights" className="grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -65,6 +65,7 @@ export default function AdvisorGraph() {
   const [selected, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "school" | "advisor" | "student">("all");
   const [showLabels, setShowLabels] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const simRef = useRef<{ nodes: SimNode[]; edges: { a: number; b: number }[]; neighbor: Map<string, Set<number>> }>({ nodes: [], edges: [], neighbor: new Map() });
@@ -77,23 +78,39 @@ export default function AdvisorGraph() {
     api.scholarship.advisorGraph().then((d) => { setPayload(d); setLoading(false); }).catch(() => setLoading(false));
   };
   useEffect(load, []);
-  useEffect(() => {
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, []);
+  const searchResults = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return (payload?.nodes ?? [])
+      .filter((node) => typeFilter === "all" || node.type === typeFilter)
+      .filter((node) => !query || node.label.toLocaleLowerCase().includes(query))
+      .sort((a, b) => a.type.localeCompare(b.type) || a.label.localeCompare(b.label, "zh"))
+      .slice(0, 80);
+  }, [payload, search, typeFilter]);
+
+  const focusedPayload = useMemo(() => {
+    if (!payload || !selected) return { nodes: [], edges: [] };
+    const center = payload.nodes.find((node) => node.id === selected);
+    if (!center) return { nodes: [], edges: [] };
+    const neighborIds = new Set<string>();
+    for (const edge of payload.edges) {
+      if (edge.from === selected) neighborIds.add(edge.to);
+      if (edge.to === selected) neighborIds.add(edge.from);
+    }
+    const nodes = [center, ...payload.nodes.filter((node) => neighborIds.has(node.id)).slice(0, 24)];
+    const ids = new Set(nodes.map((node) => node.id));
+    return { nodes, edges: payload.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to)) };
+  }, [payload, selected]);
 
   // 构建模拟
   useEffect(() => {
-    if (!payload) return;
-    const typeCounts = { school: 0, advisor: 0, student: 0 };
-    const nodes: SimNode[] = payload.nodes.map((n) => ({
+    const nodes: SimNode[] = focusedPayload.nodes.map((n, i) => ({
       id: n.id, type: n.type, label: n.label, title: n.title ?? "", score: n.score ?? 0,
-      x: n.type === "school" ? 140 : n.type === "advisor" ? 400 : 660,
-      y: 100 + (typeCounts[n.type]++) * 72,
+      x: i === 0 ? 400 : 400 + Math.cos((i - 1) * 2 * Math.PI / Math.max(1, focusedPayload.nodes.length - 1)) * 220,
+      y: i === 0 ? 300 : 300 + Math.sin((i - 1) * 2 * Math.PI / Math.max(1, focusedPayload.nodes.length - 1)) * 200,
       vx: 0, vy: 0,
     }));
     const idx = new Map(nodes.map((n, i) => [n.id, i]));
-    const edges = payload.edges
+    const edges = focusedPayload.edges
       .map((e) => ({ a: idx.get(e.from) ?? -1, b: idx.get(e.to) ?? -1 }))
       .filter((e) => e.a >= 0 && e.b >= 0);
     const neighbor = new Map<string, Set<number>>();
@@ -101,8 +118,9 @@ export default function AdvisorGraph() {
     edges.forEach((e) => { add(nodes[e.a].id, e.b); add(nodes[e.b].id, e.a); });
     simRef.current = { nodes, edges, neighbor };
     // 预热迭代让初始布局稳定
-    for (let i = 0; i < 120; i++) step(0.9);
-  }, [payload]);
+    for (let i = 0; i < 30; i++) step(0.9);
+    viewRef.current = { scale: 1, ox: 0, oy: 0 };
+  }, [focusedPayload]);
 
   const step = (damping: number) => {
     const { nodes, edges } = simRef.current;
@@ -225,7 +243,6 @@ export default function AdvisorGraph() {
           ctx.globalAlpha = 1;
         }
       }
-      step(0.86);
       rafRef.current = requestAnimationFrame(render);
     };
     rafRef.current = requestAnimationFrame(render);
@@ -245,13 +262,16 @@ export default function AdvisorGraph() {
   };
 
   const detail = useMemo(() => {
-    if (!selected) return null;
-    const node = simRef.current.nodes.find((n) => n.id === selected);
-    if (!node) return null;
-    const ns = simRef.current.neighbor.get(selected) ?? new Set<number>();
-    const neighbors = simRef.current.nodes.filter((_, i) => ns.has(i)).map((n) => ({ label: n.label, type: n.type }));
-    const src = payload?.nodes.find((n) => n.id === selected);
-    return { node, neighbors, src };
+    if (!selected || !payload) return null;
+    const src = payload.nodes.find((node) => node.id === selected);
+    if (!src) return null;
+    const ids = new Set<string>();
+    for (const edge of payload.edges) {
+      if (edge.from === selected) ids.add(edge.to);
+      if (edge.to === selected) ids.add(edge.from);
+    }
+    const neighbors = payload.nodes.filter((node) => ids.has(node.id));
+    return { node: { ...src, title: src.title ?? "", score: src.score ?? 0 }, neighbors, src };
   }, [selected, payload]);
 
   return (
@@ -266,15 +286,34 @@ export default function AdvisorGraph() {
         )}
         <input
           value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder={t("搜索姓名…")}
-          className="ml-auto h-8 w-44 rounded-full border border-outline bg-surface-lowest px-3 text-body-sm outline-none focus:border-primary"
+          placeholder={t("搜索学校 / 导师 / 学生")}
+          className="ml-auto h-8 w-56 rounded-full border border-outline bg-surface-lowest px-3 text-body-sm outline-none focus:border-primary"
         />
         <Button variant="text" className="h-8 px-2 text-label" onClick={() => setShowLabels(!showLabels)}>
           {showLabels ? t("隐藏标签") : t("显示标签")}
         </Button>
         <Button variant="tonal" icon="refresh" className="h-8 px-3 text-label" onClick={load}>{t("刷新")}</Button>
       </div>
-      <div className="relative min-h-0 flex-1">
+      <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="min-h-0 overflow-y-auto border-r border-outline-variant bg-surface-lowest p-2">
+          <div className="flex flex-wrap gap-1 px-1 py-2">
+            {(["all", "school", "advisor", "student"] as const).map((kind) => (
+              <button key={kind} type="button" onClick={() => setTypeFilter(kind)} aria-pressed={typeFilter === kind}
+                className={`rounded-full px-2 py-1 text-label ${typeFilter === kind ? "bg-primary text-on-primary" : "bg-surface-low text-on-surface-variant hover:bg-surface-high"}`}>
+                {t(kind === "all" ? "全部" : TYPE_META[kind].name)}
+              </button>
+            ))}
+          </div>
+          <p className="px-2 py-2 text-label text-on-surface-variant">{t("选择实体查看直接关联")} · {searchResults.length}{(payload?.nodes.length ?? 0) > searchResults.length ? "+" : ""}</p>
+          {searchResults.map((node) => (
+            <button key={node.id} type="button" onClick={() => setSelected(node.id)}
+              className={`mb-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-body-sm hover:bg-surface-low ${selected === node.id ? "bg-primary-container text-on-primary-container" : "text-on-surface"}`}>
+              <span className="shrink-0 text-label text-on-surface-variant">{t(TYPE_META[node.type]?.name ?? node.type)}</span>
+              <span className="min-w-0 truncate">{node.label}</span>
+            </button>
+          ))}
+        </aside>
+        <div className="relative min-h-0">
         <canvas
           ref={canvasRef}
           className="h-full w-full cursor-pointer"
@@ -323,6 +362,8 @@ export default function AdvisorGraph() {
             v.scale = ns;
           }}
         />
+        {!selected && !loading && <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-body-sm text-on-surface-variant">{t("从左侧选择实体查看关系")}</div>}
+        {selected && focusedPayload.nodes.length >= 25 && <div className="absolute left-3 top-3 rounded-md bg-surface-lowest/90 px-3 py-2 text-label text-on-surface-variant shadow-sm">{t("仅展示前 24 个直接关联；点击其他实体继续探索")}</div>}
         {/* 图例 */}
         <div className="absolute bottom-3 left-3 flex gap-3 rounded-full bg-surface-lowest/90 px-3 py-1.5 text-label text-on-surface-variant shadow-sm">
           {Object.entries(TYPE_META).map(([k, m]) => (
@@ -350,12 +391,9 @@ export default function AdvisorGraph() {
                 <p className="text-label font-medium text-on-surface-variant">{t("关联（{n}）", { n: detail.neighbors.length })}</p>
                 <div className="mt-1 max-h-40 space-y-0.5 overflow-y-auto">
                   {detail.neighbors.map((nb) => (
-                    <button key={nb.label + nb.type} className="block w-full cursor-pointer truncate text-left text-label text-on-surface hover:text-primary"
-                      onClick={() => {
-                        const target = simRef.current.nodes.find((n) => n.label === nb.label && n.type === nb.type);
-                        if (target) setSelected(target.id);
-                      }}>
-                      · {nb.label}
+                    <button key={nb.id} className="block w-full cursor-pointer truncate text-left text-label text-on-surface hover:text-primary"
+                      onClick={() => setSelected(nb.id)}>
+                      · {t(TYPE_META[nb.type]?.name ?? nb.type)}：{nb.label}
                     </button>
                   ))}
                 </div>
@@ -364,6 +402,7 @@ export default function AdvisorGraph() {
           </div>
         )}
         {loading && <div className="absolute inset-0 flex items-center justify-center bg-surface-lowest/60 text-body-sm text-on-surface-variant">{t("加载中…")}</div>}
+        </div>
       </div>
     </div>
   );

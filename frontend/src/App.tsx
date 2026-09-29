@@ -7,6 +7,7 @@ import NavRail from "./components/layout/NavRail";
 import LoadingIndicator from "./components/ui/LoadingIndicator";
 import Login from "./pages/Login";
 import Scholarship from "./pages/Scholarship";
+import ScholarshipGraph from "./pages/ScholarshipGraph";
 import OnboardingTour from "./components/OnboardingTour";
 
 const TalentChat = lazy(() => import("./pages/TalentChat"));
@@ -71,7 +72,7 @@ function App() {
     return <Login onLogin={() => api.auth.status().then((d) => setCurrentUser(d.user))} />;
   }
 
-  // 评审账户：只开放奖学金与设置，其余地址（含兜底 /）统一回到奖学金
+  // 评审账户：开放奖学金、师生图谱与设置，其余地址回到奖学金
   const isReviewer = currentUser.role === "reviewer";
 
   return (
@@ -83,6 +84,7 @@ function App() {
           {isReviewer ? (
           <Routes>
             <Route path="/scholarship" element={<Scholarship />} />
+            <Route path="/scholarship/graph" element={<ScholarshipGraph />} />
             <Route path="/settings" element={<Settings role={currentUser.role} />} />
             <Route path="*" element={<Navigate to="/scholarship" replace />} />
           </Routes>
@@ -101,6 +103,7 @@ function App() {
             <Route path="/talent-pool/:personId" element={<TalentProfile />} />
             <Route path="/jd-pool" element={<JdPool />} />
             <Route path="/scholarship" element={<Scholarship />} />
+            <Route path="/scholarship/graph" element={<ScholarshipGraph />} />
             <Route path="/settings" element={<Settings role={currentUser.role} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
