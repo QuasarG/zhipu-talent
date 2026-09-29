@@ -5,7 +5,7 @@ import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import { getSchoolLogo } from "@/lib/schoolLogos";
 
-interface GNodeData { id: string; type: "student" | "advisor" | "school"; label: string; score?: number; title?: string; status?: string }
+interface GNodeData { id: string; type: "student" | "advisor" | "school"; label: string; score?: number; title?: string; status?: string; school?: string }
 interface GEdgeData { from: string; to: string; source: string; confidence: string }
 interface GraphPayload { nodes: GNodeData[]; edges: GEdgeData[]; counts: { students: number; advisors: number; schools: number } }
 
@@ -78,14 +78,29 @@ export default function AdvisorGraph() {
     api.scholarship.advisorGraph().then((d) => { setPayload(d); setLoading(false); }).catch(() => setLoading(false));
   };
   useEffect(load, []);
+  const relationCounts = useMemo(() => {
+    const counts = new Map<string, Set<string>>();
+    for (const edge of payload?.edges ?? []) {
+      if (!counts.has(edge.from)) counts.set(edge.from, new Set());
+      if (!counts.has(edge.to)) counts.set(edge.to, new Set());
+      counts.get(edge.from)!.add(edge.to);
+      counts.get(edge.to)!.add(edge.from);
+    }
+    return new Map([...counts].map(([id, neighbors]) => [id, neighbors.size]));
+  }, [payload]);
   const searchResults = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return (payload?.nodes ?? [])
       .filter((node) => typeFilter === "all" || node.type === typeFilter)
-      .filter((node) => !query || node.label.toLocaleLowerCase().includes(query))
-      .sort((a, b) => a.type.localeCompare(b.type) || a.label.localeCompare(b.label, "zh"))
-      .slice(0, 80);
-  }, [payload, search, typeFilter]);
+      .filter((node) => !query || node.label.toLocaleLowerCase().includes(query) || (node.school ?? "").toLocaleLowerCase().includes(query))
+      .sort((a, b) => (relationCounts.get(b.id) ?? 0) - (relationCounts.get(a.id) ?? 0) || a.label.localeCompare(b.label, "zh"));
+  }, [payload, search, typeFilter, relationCounts]);
+  const groupedResults = useMemo(() => (
+    (["school", "advisor", "student"] as const).map((type) => ({
+      type,
+      nodes: searchResults.filter((node) => node.type === type),
+    })).filter((group) => group.nodes.length > 0)
+  ), [searchResults]);
 
   const focusedPayload = useMemo(() => {
     if (!payload || !selected) return { nodes: [], edges: [] };
@@ -284,36 +299,61 @@ export default function AdvisorGraph() {
             {t("学生 {a} · 导师 {b} · 学校 {c}", { a: payload.counts.students, b: payload.counts.advisors, c: payload.counts.schools })}
           </span>
         )}
-        <input
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder={t("搜索学校 / 导师 / 学生")}
-          className="ml-auto h-8 w-56 rounded-full border border-outline bg-surface-lowest px-3 text-body-sm outline-none focus:border-primary"
-        />
-        <Button variant="text" className="h-8 px-2 text-label" onClick={() => setShowLabels(!showLabels)}>
+        <Button variant="text" className="ml-auto h-8 px-2 text-label" onClick={() => setShowLabels(!showLabels)}>
           {showLabels ? t("隐藏标签") : t("显示标签")}
         </Button>
         <Button variant="tonal" icon="refresh" className="h-8 px-3 text-label" onClick={load}>{t("刷新")}</Button>
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="min-h-0 overflow-y-auto border-r border-outline-variant bg-surface-lowest p-2">
-          <div className="flex flex-wrap gap-1 px-1 py-2">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="flex max-h-72 min-h-0 flex-col border-b border-outline-variant bg-surface-lowest lg:max-h-none lg:border-b-0 lg:border-r">
+          <div className="shrink-0 border-b border-outline-variant p-3">
+            <div className="flex items-center gap-2 rounded-md border border-outline-variant bg-surface px-3">
+              <Icon name="search" size={17} className="shrink-0 text-on-surface-variant" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t("搜索学校 / 导师 / 学生")} placeholder={t("搜索学校 / 导师 / 学生")}
+                className="h-9 min-w-0 flex-1 bg-transparent text-body-sm outline-none" />
+              {search && <button type="button" onClick={() => setSearch("")} aria-label={t("清空搜索")} className="text-on-surface-variant hover:text-on-surface"><Icon name="close" size={15} /></button>}
+            </div>
+          <div className="mt-3 grid grid-cols-4 gap-1">
             {(["all", "school", "advisor", "student"] as const).map((kind) => (
               <button key={kind} type="button" onClick={() => setTypeFilter(kind)} aria-pressed={typeFilter === kind}
-                className={`rounded-full px-2 py-1 text-label ${typeFilter === kind ? "bg-primary text-on-primary" : "bg-surface-low text-on-surface-variant hover:bg-surface-high"}`}>
+                className={`rounded-md px-1 py-1.5 text-label ${typeFilter === kind ? "bg-primary text-on-primary" : "bg-surface-low text-on-surface-variant hover:bg-surface-high"}`}>
                 {t(kind === "all" ? "全部" : TYPE_META[kind].name)}
               </button>
             ))}
           </div>
-          <p className="px-2 py-2 text-label text-on-surface-variant">{t("选择实体查看直接关联")} · {searchResults.length}{(payload?.nodes.length ?? 0) > searchResults.length ? "+" : ""}</p>
-          {searchResults.map((node) => (
-            <button key={node.id} type="button" onClick={() => setSelected(node.id)}
-              className={`mb-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-body-sm hover:bg-surface-low ${selected === node.id ? "bg-primary-container text-on-primary-container" : "text-on-surface"}`}>
-              <span className="shrink-0 text-label text-on-surface-variant">{t(TYPE_META[node.type]?.name ?? node.type)}</span>
-              <span className="min-w-0 truncate">{node.label}</span>
-            </button>
-          ))}
+            <p className="mt-2 text-label tabular-nums text-on-surface-variant">{t("展示 {n} 个实体", { n: searchResults.length })}</p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {groupedResults.map(({ type, nodes }) => (
+              <section key={type} aria-label={t(TYPE_META[type].name)}>
+                <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-outline-variant bg-surface-lowest/95 px-2 py-2 backdrop-blur-sm">
+                  <Icon name={type === "school" ? "school" : type === "advisor" ? "supervisor_account" : "person"} size={16} className="text-primary" />
+                  <h2 className="text-label font-semibold">{t(TYPE_META[type].name)}</h2>
+                  <span className="ml-auto text-label tabular-nums text-on-surface-variant">{nodes.length}</span>
+                </div>
+                <div className="space-y-0.5 py-1">
+                  {nodes.map((node) => {
+                    const logo = type === "school" ? getSchoolLogo(node.label) : null;
+                    return <button key={node.id} type="button" onClick={() => setSelected(node.id)} aria-pressed={selected === node.id}
+                      className={`flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-surface-low ${selected === node.id ? "bg-primary-container text-on-primary-container" : "text-on-surface"}`}>
+                      <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-low text-label font-semibold">
+                        {logo ? <img src={logo} alt="" className="size-7 object-contain" /> : <Icon name={type === "school" ? "school" : type === "advisor" ? "person" : "badge"} size={17} />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words text-body-sm font-medium leading-5">{node.label}</span>
+                        {node.title && type === "advisor" && <span className="block truncate text-label text-on-surface-variant">{node.title}</span>}
+                        {node.school && type === "student" && <span className="block truncate text-label text-on-surface-variant">{node.school}</span>}
+                      </span>
+                      <span className="shrink-0 rounded-full bg-surface-low px-1.5 py-0.5 text-label tabular-nums text-on-surface-variant">{relationCounts.get(node.id) ?? 0}</span>
+                    </button>;
+                  })}
+                </div>
+              </section>
+            ))}
+            {!searchResults.length && !loading && <p className="px-2 py-8 text-center text-body-sm text-on-surface-variant">{t("没有匹配的实体")}</p>}
+          </div>
         </aside>
-        <div className="relative min-h-0">
+        <div className="relative min-h-[360px] lg:min-h-0">
         <canvas
           ref={canvasRef}
           className="h-full w-full cursor-pointer"

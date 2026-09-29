@@ -674,6 +674,7 @@ def build_scholarship_blueprint() -> Blueprint:
     def advisor_graph():
         """nodes/edges：学校 / 导师 / 学生三类节点 + 师生/校生两类边（数据由回填脚本维护）。"""
         from agi_talent_radar.core.db.orm import AdvisorORM, AdvisorStudentLinkORM, ScholarshipEvaluationORM
+        from agi_talent_radar.scholarship.graph_identity import canonical_advisor, canonical_school
 
         with get_session() as session:
             # 学生 → 最近完成评估的盲评分（快照展示用）
@@ -693,7 +694,7 @@ def build_scholarship_blueprint() -> Blueprint:
                 .all()
             )
             nodes: dict[str, dict] = {}
-            edges: list[dict] = []
+            edges: dict[tuple[str, str], dict] = {}
             for link, advisor, app in links:
                 student_id = f"student:{app.id}"
                 if student_id not in nodes:
@@ -704,27 +705,34 @@ def build_scholarship_blueprint() -> Blueprint:
                         "school": app.school or "",
                         "status": app.status,
                     }
-                advisor_id = f"advisor:{advisor.id}"
+                advisor_name = canonical_advisor(advisor.name)
+                advisor_id = f"advisor:{advisor_name}"
+                clean_title = advisor.title if advisor.name == advisor_name and len(advisor.title or "") <= 100 and "；" not in (advisor.title or "") else ""
                 if advisor_id not in nodes:
                     nodes[advisor_id] = {
                         "id": advisor_id, "type": "advisor",
-                        "label": advisor.name,
-                        "title": advisor.title or "",
+                        "label": advisor_name,
+                        "title": clean_title,
                     }
-                edges.append({
+                elif clean_title and not nodes[advisor_id]["title"]:
+                    nodes[advisor_id]["title"] = clean_title
+                edges.setdefault((student_id, advisor_id), {
                     "from": student_id, "to": advisor_id,
                     "source": link.source, "confidence": link.confidence,
                 })
                 # 校生边：学校作为独立节点（有导师关联的学生才入图，保持图聚焦）
-                school = (app.school or "").strip()
+                school = canonical_school(app.school)
                 if school:
                     school_id = f"school:{school}"
                     if school_id not in nodes:
                         nodes[school_id] = {"id": school_id, "type": "school", "label": school}
-                    edges.append({"from": student_id, "to": school_id, "source": "application", "confidence": "high"})
+                    edges.setdefault((student_id, school_id), {
+                        "from": student_id, "to": school_id,
+                        "source": "application", "confidence": "high",
+                    })
             return jsonify({
                 "nodes": list(nodes.values()),
-                "edges": edges,
+                "edges": list(edges.values()),
                 "counts": {
                     "students": sum(1 for n in nodes.values() if n["type"] == "student"),
                     "advisors": sum(1 for n in nodes.values() if n["type"] == "advisor"),

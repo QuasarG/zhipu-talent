@@ -265,7 +265,7 @@ export const api = {
     list: () => fetchJSON<ScholarshipApplication[]>("/api/scholarship/applications"),
     advisorGraph: () =>
       fetchJSON<{
-        nodes: { id: string; type: "student" | "advisor" | "school"; label: string; score?: number; title?: string; status?: string }[];
+        nodes: { id: string; type: "student" | "advisor" | "school"; label: string; score?: number; title?: string; status?: string; school?: string }[];
         edges: { from: string; to: string; source: string; confidence: string }[];
         counts: { students: number; advisors: number; schools: number };
       }>("/api/scholarship/advisor-graph"),

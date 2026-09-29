@@ -25,6 +25,7 @@ if str(ROOT) not in sys.path:
 from agi_talent_radar.core.db.orm import AdvisorORM, AdvisorStudentLinkORM, ScholarshipApplicationORM
 from agi_talent_radar.core.db.runtime import get_session
 from agi_talent_radar.core.database import init_db
+from agi_talent_radar.scholarship.graph_identity import canonical_advisor
 
 LETTER_TABLE_ID = "tbl6bjudNeN4ezGW"  # 已经邮件收到的导师推荐信
 
@@ -88,17 +89,24 @@ def main() -> int:
         # 导师 upsert 缓存：norm(name) → AdvisorORM
         advisors_by_key: dict[str, AdvisorORM] = {}
         for a in session.query(AdvisorORM).all():
-            advisors_by_key[_norm_name(a.name)] = a
+            canonical_name = canonical_advisor(a.name)
+            key = _norm_name(canonical_name)
+            if key not in advisors_by_key or a.name == canonical_name:
+                advisors_by_key[key] = a
 
         def get_or_create_advisor(name: str, title: str = "") -> AdvisorORM:
-            key = _norm_name(name)
+            canonical_name = canonical_advisor(name)
+            key = _norm_name(canonical_name)
             found = advisors_by_key.get(key)
             if found is None:
-                found = AdvisorORM(id=uuid.uuid4().hex, name=name.strip(), title=(title or "")[:256])
+                found = AdvisorORM(id=uuid.uuid4().hex, name=canonical_name, title=(title or "")[:256])
                 session.add(found)
                 advisors_by_key[key] = found
-            elif title and not found.title:
-                found.title = title[:256]
+            else:
+                if found.name != canonical_name:
+                    found.name = canonical_name
+                if title and not found.title:
+                    found.title = title[:256]
             return found
 
         # 幂等：清掉本脚本管的 source 范围，重建
@@ -158,10 +166,9 @@ def main() -> int:
 
         # 清掉没有任何 link 的孤儿导师（重跑时上轮残留）
         linked_ids = {lid for (lid,) in session.query(AdvisorStudentLinkORM.advisor_id).distinct()}
-        for key, advisor in list(advisors_by_key.items()):
+        for advisor in session.query(AdvisorORM).all():
             if advisor.id not in linked_ids:
                 session.delete(advisor)
-                advisors_by_key.pop(key, None)
 
         session.commit()
         n_advisors = session.query(AdvisorORM).count()
