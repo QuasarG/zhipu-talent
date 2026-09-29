@@ -673,9 +673,18 @@ def build_scholarship_blueprint() -> Blueprint:
     @bp.get("/api/scholarship/advisor-graph")
     def advisor_graph():
         """nodes/edges：学校 / 导师 / 学生三类节点 + 师生/校生两类边（数据由回填脚本维护）。"""
-        from agi_talent_radar.core.db.orm import AdvisorORM, AdvisorStudentLinkORM
+        from agi_talent_radar.core.db.orm import AdvisorORM, AdvisorStudentLinkORM, ScholarshipEvaluationORM
 
         with get_session() as session:
+            # 学生 → 最近完成评估的盲评分（快照展示用）
+            score_by_app: dict[str, float] = {}
+            for app_id, blind in (
+                session.query(ScholarshipEvaluationORM.application_id, ScholarshipEvaluationORM.blind_score)
+                .filter(ScholarshipEvaluationORM.status == "completed")
+                .order_by(ScholarshipEvaluationORM.completed_at.desc())
+                .all()
+            ):
+                score_by_app.setdefault(app_id, blind or 0.0)
             links = (
                 session.query(AdvisorStudentLinkORM, AdvisorORM, ScholarshipApplicationORM)
                 .join(AdvisorORM, AdvisorStudentLinkORM.advisor_id == AdvisorORM.id)
@@ -691,7 +700,7 @@ def build_scholarship_blueprint() -> Blueprint:
                     nodes[student_id] = {
                         "id": student_id, "type": "student",
                         "label": app.name or "（未署名）",
-                        "score": app.blind_score or 0,
+                        "score": score_by_app.get(app.id, 0.0),
                         "school": app.school or "",
                         "status": app.status,
                     }
