@@ -157,6 +157,14 @@ export default function Scholarship() {
         }
       />
 
+      {/* 评分系统升级公告：v3 重评完成前提示暂无评估数据 */}
+      <div className="mx-2 mb-3 flex items-center gap-2 rounded-md border border-primary/40 bg-primary-container/40 px-4 py-2.5 text-body-sm text-on-surface">
+        <Icon name="campaign" size={18} className="shrink-0 text-primary" />
+        <span>
+          {t("评分系统正在改进升级（v3 五维权重制），历史评估数据已清空，当前暂无评估数据。新材料接入不受影响，升级完成后将统一重新评估。")}
+        </span>
+      </div>
+
       {error && (
         <div className="mx-2 mb-3 flex items-center gap-2 rounded-md bg-error-container px-4 py-2 text-body-sm text-on-error-container">
           <Icon name="error" size={17} />
