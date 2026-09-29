@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
+import { getSchoolLogo } from "@/lib/schoolLogos";
 
 interface GNodeData { id: string; type: "student" | "advisor" | "school"; label: string; score?: number; title?: string; status?: string }
 interface GEdgeData { from: string; to: string; source: string; confidence: string }
@@ -38,10 +39,23 @@ function palette(): Palette {
 }
 
 const TYPE_META: Record<string, { token: keyof Palette; r: number; name: string }> = {
-  student: { token: "student", r: 7, name: "学生" },
-  advisor: { token: "advisor", r: 9, name: "导师" },
-  school: { token: "school", r: 11, name: "学校" },
+  student: { token: "student", r: 13, name: "学生" },
+  advisor: { token: "advisor", r: 15, name: "导师" },
+  school: { token: "school", r: 17, name: "学校" },
 };
+
+const schoolImages = new Map<string, HTMLImageElement>();
+function schoolImage(name: string): HTMLImageElement | null {
+  const url = getSchoolLogo(name);
+  if (!url) return null;
+  let image = schoolImages.get(url);
+  if (!image) {
+    image = new Image();
+    image.src = url;
+    schoolImages.set(url, image);
+  }
+  return image.complete && image.naturalWidth > 0 ? image : null;
+}
 
 /** 师生知识图谱：简单力导向（斥力+边弹簧+中心引力），Canvas 渲染，点选高亮邻域 */
 export default function AdvisorGraph() {
@@ -71,10 +85,11 @@ export default function AdvisorGraph() {
   // 构建模拟
   useEffect(() => {
     if (!payload) return;
-    const nodes: SimNode[] = payload.nodes.map((n, i) => ({
+    const typeCounts = { school: 0, advisor: 0, student: 0 };
+    const nodes: SimNode[] = payload.nodes.map((n) => ({
       id: n.id, type: n.type, label: n.label, title: n.title ?? "", score: n.score ?? 0,
-      x: 400 + Math.cos(i * 2.4) * (60 + (i % 7) * 40),
-      y: 300 + Math.sin(i * 2.4) * (60 + (i % 5) * 40),
+      x: n.type === "school" ? 140 : n.type === "advisor" ? 400 : 660,
+      y: 100 + (typeCounts[n.type]++) * 72,
       vx: 0, vy: 0,
     }));
     const idx = new Map(nodes.map((n, i) => [n.id, i]));
@@ -115,7 +130,9 @@ export default function AdvisorGraph() {
       a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
     }
     for (const n of nodes) {
-      n.vx += (400 - n.x) * 0.0008; n.vy += (300 - n.y) * 0.0008; // 中心引力
+      const laneX = n.type === "school" ? 140 : n.type === "advisor" ? 400 : 660;
+      n.vx += (laneX - n.x) * 0.006;
+      n.vy += (300 - n.y) * 0.0008;
       n.vx *= damping; n.vy *= damping;
       n.x += n.vx; n.y += n.vy;
     }
@@ -169,10 +186,30 @@ export default function AdvisorGraph() {
           const dimmed = (focus && !inFocus(n.id)) && !(searchHit && searchHit.includes(n.id));
           const highlighted = n.id === selected || n.id === hover || (searchHit && searchHit.includes(n.id));
           ctx.globalAlpha = dimmed ? 0.15 : 1;
+          const radius = meta.r * Math.max(0.8, scale);
           ctx.beginPath();
-          ctx.arc(px, py, meta.r * Math.max(0.8, scale), 0, Math.PI * 2);
+          if (n.type === "school") ctx.roundRect(px - radius, py - radius, radius * 2, radius * 2, 5);
+          else if (n.type === "advisor") {
+            ctx.moveTo(px, py - radius); ctx.lineTo(px + radius, py);
+            ctx.lineTo(px, py + radius); ctx.lineTo(px - radius, py); ctx.closePath();
+          } else ctx.arc(px, py, radius, 0, Math.PI * 2);
           ctx.fillStyle = pal[meta.token];
           ctx.fill();
+          const logo = n.type === "school" ? schoolImage(n.label) : null;
+          if (logo) {
+            ctx.save();
+            ctx.clip();
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(px - radius + 2, py - radius + 2, radius * 2 - 4, radius * 2 - 4);
+            ctx.drawImage(logo, px - radius + 3, py - radius + 3, radius * 2 - 6, radius * 2 - 6);
+            ctx.restore();
+          } else {
+            ctx.fillStyle = "#fff";
+            ctx.font = `bold ${Math.max(10, 12 * scale)}px system-ui`;
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(n.label.slice(0, 1), px, py);
+            ctx.textBaseline = "alphabetic";
+          }
           if (highlighted) {
             ctx.lineWidth = 2.5;
             ctx.strokeStyle = pal.focus;
@@ -183,7 +220,7 @@ export default function AdvisorGraph() {
             ctx.fillStyle = highlighted ? pal.labelStrong : pal.label;
             ctx.textAlign = "center";
             const text = n.label.length > 14 ? n.label.slice(0, 13) + "…" : n.label;
-            ctx.fillText(text, px, py + meta.r * Math.max(0.8, scale) + 12);
+            ctx.fillText(`${t(meta.name)} · ${text}`, px, py + radius + 14);
           }
           ctx.globalAlpha = 1;
         }
@@ -289,8 +326,8 @@ export default function AdvisorGraph() {
         {/* 图例 */}
         <div className="absolute bottom-3 left-3 flex gap-3 rounded-full bg-surface-lowest/90 px-3 py-1.5 text-label text-on-surface-variant shadow-sm">
           {Object.entries(TYPE_META).map(([k, m]) => (
-            <span key={k} className="flex items-center gap-1.5">
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: palette()[m.token] }} />
+          <span key={k} className="flex items-center gap-1.5">
+              <span className={`inline-block h-3 w-3 ${k === "school" ? "rounded-sm" : k === "advisor" ? "rotate-45 rounded-[2px]" : "rounded-full"}`} style={{ background: palette()[m.token] }} />
               {t(m.name)}
             </span>
           ))}

@@ -435,6 +435,14 @@ export default function ScholarshipPane({
   const processRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const [assessmentTab, setAssessmentTab] = useState<AssessmentTab>("score");
+  const [activeSection, setActiveSection] = useState("overview");
+  const scoreScrollRef = useRef<HTMLDivElement>(null);
+  const goToSection = (id: string) => {
+    setActiveSection(id);
+    const root = scoreScrollRef.current;
+    const target = root?.querySelector<HTMLElement>(`[data-score-section="${id}"]`);
+    if (root && target) root.scrollTo({ top: root.scrollTop + target.getBoundingClientRect().top - root.getBoundingClientRect().top - 12, behavior: "smooth" });
+  };
 
   const latestCompleted = useMemo(
     () => [...(app?.evaluations ?? [])].reverse().find((e) => e.status === "completed"),
@@ -611,8 +619,8 @@ export default function ScholarshipPane({
         )}
 
         {view === "overview" && (
-          <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.62fr)]">
-            <div className="min-h-0 overflow-y-auto px-5 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-surface px-4 py-4 md:px-6">
+            <div className="mx-auto max-w-5xl space-y-4">
               {(app.status === "material_incomplete" || app.status === "ineligible") && (
                 <section className="mb-4 rounded-md border border-warning/40 bg-warning-container/40 px-4 py-3">
                   <div className="flex items-center gap-2 text-body-sm font-medium text-warning"><Icon name="warning" size={17} />{t("筛选需要处理")}</div>
@@ -621,7 +629,7 @@ export default function ScholarshipPane({
                 </section>
               )}
 
-              <RecordSection title={t("研究方向简述")} icon="edit_note" meta={t("申请人自述")} className="mb-4">
+              <RecordSection title={t("研究方向简述")} icon="edit_note" meta={t("申请人自述")} className="shadow-sm">
                 <div className="px-4 py-3">
                   <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-body-sm leading-6 text-on-surface">
                     {app.research_summary || t("暂无研究方向简述")}
@@ -629,7 +637,7 @@ export default function ScholarshipPane({
                 </div>
               </RecordSection>
 
-              <RecordSection title={t("关键资料")} icon="badge" className="mb-4">
+              <RecordSection title={t("关键资料")} icon="badge" className="shadow-sm">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
                   <MetaField label={t("学校")} value={app.school} />
                   <MetaField label={t("实验室")} value={app.lab} />
@@ -641,7 +649,7 @@ export default function ScholarshipPane({
                 </div>
               </RecordSection>
 
-              <RecordSection title={t("教育与科研经历")} icon="school" className="mb-4" meta={app.submitted_at ? t("提交于 {v}", { v: formatDate(app.submitted_at) }) : undefined}>
+              <RecordSection title={t("教育与科研经历")} icon="school" className="shadow-sm" meta={app.submitted_at ? t("提交于 {v}", { v: formatDate(app.submitted_at) }) : undefined}>
                 <div className="px-4 py-3">
                   <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-body-sm leading-6 text-on-surface">
                     {app.education_history || t("暂无教育与科研经历")}
@@ -649,7 +657,7 @@ export default function ScholarshipPane({
                 </div>
               </RecordSection>
 
-              <RecordSection title={t("联系方式")} icon="contact_mail">
+              <RecordSection title={t("联系方式")} icon="contact_mail" className="shadow-sm">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
                   <MetaField label={t("邮箱")} value={app.email} />
                   <MetaField label={t("电话")} value={app.phone} />
@@ -657,9 +665,6 @@ export default function ScholarshipPane({
                   <MetaField label={t("材料数量")} value={t("{n} 份", { n: materials.length })} />
                 </div>
               </RecordSection>
-            </div>
-            <div className="min-h-0 border-t border-outline-variant p-4 lg:border-l lg:border-t-0">
-              <MaterialExplorer materials={materials} groupedMaterials={groupedMaterials} compact />
             </div>
           </div>
         )}
@@ -670,8 +675,18 @@ export default function ScholarshipPane({
 
         {view === "assessment" && assessmentTab === "score" && (
           // 常规滚动视图：整页随内容增高滚动（不强制一页内滚，避免不同分辨率下显示问题）
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="w-full px-5 py-4">
+          <div className="grid min-h-0 flex-1 grid-cols-1 bg-surface lg:grid-cols-[220px_minmax(0,1fr)]">
+            <nav aria-label={t("评估结果大纲")} className="flex gap-1 overflow-x-auto border-b border-outline-variant bg-surface-lowest p-3 lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r">
+              {([
+                ["overview", "评分总览"], ["dimensions", "维度详情"], ["highlights", "亮点与风险"],
+                ["papers", "论文核验"], ["special", "特别栏目"], ["pages", "抓取页面"], ["findings", "舆情发现"],
+              ] as const).filter(([id]) => id === "overview" || (latestCompleted && (id === "dimensions" || id === "highlights" || (id === "papers" && latestCompleted.verified_papers?.length) || (id === "special" && latestCompleted.special_sections?.length) || (id === "pages" && latestCompleted.fetched_pages?.length) || (id === "findings" && findings.length)))).map(([id, label]) => (
+                <button key={id} type="button" aria-current={activeSection === id ? "location" : undefined} onClick={() => goToSection(id)} className={cn("shrink-0 rounded-md px-3 py-2 text-left text-body-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary", activeSection === id ? "bg-primary-container font-semibold text-on-primary-container" : "text-on-surface-variant hover:bg-surface-low")}>{t(label)}</button>
+              ))}
+            </nav>
+            <div ref={scoreScrollRef} className="min-h-0 overflow-y-auto scroll-smooth px-4 py-4 md:px-6">
+            <div className="mx-auto w-full max-w-5xl space-y-4">
+            <div data-score-section="overview">
             <RecordSection
               title={t("评分总览")}
               icon="workspace_premium"
@@ -693,20 +708,21 @@ export default function ScholarshipPane({
                         </p>
                       )}
                       {latestCompleted ? (
-                        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-5 px-4 py-5">
-                          <ScoreRing value={latestCompleted.blind_score} max={100} label={t("总分")} size={120} stroke={10} />
-                          {latestCompleted.dimensions.map((d) => (
-                            <ScoreRing
-                              key={d.key}
-                              value={d.score}
-                              max={d.max_points}
-                              label={t(d.label)}
-                              labelEn={d.label_en}
-                              size={78}
-                              stroke={7}
-                              className="cursor-pointer"
-                            />
-                          ))}
+                        <div className="grid gap-6 p-5 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                          <div className="flex flex-col items-center justify-center rounded-xl bg-surface p-5 shadow-sm">
+                            <ScoreRing value={latestCompleted.blind_score} max={100} label={t("总分")} size={176} stroke={12} />
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-label text-on-surface-variant">{t("点击评分维度查看依据")}</p>
+                            {latestCompleted.dimensions.map((d, index) => (
+                              <button key={d.key} type="button" onClick={() => goToSection(`dimension-${d.key}`)} className="flex w-full items-center gap-3 rounded-lg border border-outline-variant bg-surface-lowest p-3 text-left shadow-sm transition-all hover:border-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-primary">
+                                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-label font-semibold text-on-primary-container">{String(index + 1).padStart(2, "0")}</span>
+                                <span className="min-w-0 flex-1"><span className="block text-body-sm font-semibold text-on-surface">{t(DIMENSION_TITLES[d.key]?.zh ?? d.label)}</span><span className="block truncate text-label text-on-surface-variant">{d.reason || t("查看评分依据")}</span></span>
+                                <span className="shrink-0 font-mono text-body-sm font-semibold tabular-nums">{fmtScore(d.score)}<span className="text-on-surface-variant">/{d.max_points}</span></span>
+                                <Icon name="arrow_forward" size={16} className="shrink-0 text-on-surface-variant" />
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center gap-1 px-4 py-10 text-center">
@@ -716,15 +732,16 @@ export default function ScholarshipPane({
                     </>
                   )}
             </RecordSection>
+            </div>
 
                 {latestCompleted && (
-                  <RecordSection title={t("维度详情")} icon="checklist" count={latestCompleted.dimensions.length} className="mb-4">
+                  <div data-score-section="dimensions"><RecordSection title={t("维度详情")} icon="checklist" count={latestCompleted.dimensions.length} className="shadow-sm">
                     <div className="divide-y divide-outline-variant">
                       {latestCompleted.dimensions.map((dimension, index) => {
                         const dimTitle = DIMENSION_TITLES[dimension.key];
                         const dimAnomalies = dimension.anomalies ?? [];
                         return (
-                          <article key={dimension.key} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 px-4 py-3.5">
+                          <article key={dimension.key} data-score-section={`dimension-${dimension.key}`} className="grid scroll-mt-3 grid-cols-[28px_minmax(0,1fr)] gap-3 px-4 py-4">
                             <RecordIndex value={index + 1} />
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -772,11 +789,11 @@ export default function ScholarshipPane({
                         );
                       })}
                     </div>
-                  </RecordSection>
+                  </RecordSection></div>
                 )}
 
                 {latestCompleted && (
-                  <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div data-score-section="highlights" className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <RecordSection title={t("亮点")} icon="auto_awesome" count={latestCompleted.highlights.length}>
                       <ul className="max-h-96 divide-y divide-outline-variant overflow-y-auto admission-panel-scrollbar">
                         {latestCompleted.highlights.map((highlight) => (
@@ -798,7 +815,7 @@ export default function ScholarshipPane({
                 )}
 
                 {latestCompleted && (latestCompleted.verified_papers ?? []).length > 0 && (
-                  <RecordSection title={t("论文核验")} icon="fact_check" count={(latestCompleted.verified_papers ?? []).length} className="mb-4">
+                  <div data-score-section="papers"><RecordSection title={t("论文核验")} icon="fact_check" count={(latestCompleted.verified_papers ?? []).length} className="shadow-sm">
                     <div className="overflow-x-auto">
                       <table className="w-full text-body-sm">
                         <thead>
@@ -843,11 +860,11 @@ export default function ScholarshipPane({
                       </table>
                     </div>
                     <p className="border-t border-outline-variant px-4 py-2 text-label text-on-surface-variant">{t("agent 评审过程中的论文查证记录；已核验的论文可点击跳转 DOI")}</p>
-                  </RecordSection>
+                  </RecordSection></div>
                 )}
 
                 {(latestCompleted?.special_sections ?? []).length > 0 && (
-                  <RecordSection title={t("特别栏目")} icon="star" count={(latestCompleted?.special_sections ?? []).length} className="mb-4">
+                  <div data-score-section="special"><RecordSection title={t("特别栏目")} icon="star" count={(latestCompleted?.special_sections ?? []).length} className="shadow-sm">
                     <div className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-2">
                       {(latestCompleted?.special_sections ?? []).map((s, i) => (
                         <article key={`${s.title}-${i}`} className="rounded-md border border-outline-variant bg-surface-lowest px-3.5 py-3">
@@ -865,11 +882,11 @@ export default function ScholarshipPane({
                         </article>
                       ))}
                     </div>
-                  </RecordSection>
+                  </RecordSection></div>
                 )}
 
                 {(latestCompleted?.fetched_pages ?? []).length > 0 && (
-                  <RecordSection title={t("抓取页面")} icon="language" count={(latestCompleted?.fetched_pages ?? []).length} className="mb-4">
+                  <div data-score-section="pages"><RecordSection title={t("抓取页面")} icon="language" count={(latestCompleted?.fetched_pages ?? []).length} className="shadow-sm">
                     <div className="max-h-72 divide-y divide-outline-variant overflow-y-auto admission-panel-scrollbar">
                       {(latestCompleted?.fetched_pages ?? []).map((p, i) => (
                         <div key={`${p.url}-${i}`} className="px-4 py-2.5">
@@ -881,11 +898,11 @@ export default function ScholarshipPane({
                         </div>
                       ))}
                     </div>
-                  </RecordSection>
+                  </RecordSection></div>
                 )}
 
                 {findings.length > 0 && (
-                  <RecordSection title={t("舆情发现")} icon="public" count={findings.length}>
+                  <div data-score-section="findings"><RecordSection title={t("舆情发现")} icon="public" count={findings.length} className="shadow-sm">
                     <ul className="divide-y divide-outline-variant">
                       {findings.map((f, i) => (
                         <li key={i} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-body-sm">
@@ -896,8 +913,9 @@ export default function ScholarshipPane({
                       ))}
                     </ul>
                     <p className="border-t border-outline-variant px-4 py-2 text-label text-on-surface-variant">{t("舆情发现（供人工参考，不计入自动分）")}</p>
-                  </RecordSection>
+                  </RecordSection></div>
                 )}
+            </div>
             </div>
           </div>
         )}
