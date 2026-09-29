@@ -827,6 +827,27 @@ body {
 .chat-markdown hr { margin: 12px 0; border-color: var(--color-outline-variant); }
 
 /* ---- Scrollbar ---- */
+.scholarship-score-detail {
+  scrollbar-gutter: stable;
+  animation: scholarship-score-spring 520ms cubic-bezier(0.2, 1, 0.32, 1) both;
+}
+
+.scholarship-score-segment {
+  transition: stroke-width 420ms cubic-bezier(0.2, 1.5, 0.4, 1), stroke-opacity 420ms ease;
+}
+
+@keyframes scholarship-score-spring {
+  0% { opacity: 0.55; transform: translateY(10px) scale(0.97); }
+  55% { opacity: 1; transform: translateY(-3px) scale(1.012); }
+  78% { transform: translateY(1px) scale(0.998); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scholarship-score-detail { animation: none; }
+  .scholarship-score-segment { transition: none; }
+}
+
 .app-workspace-frame {
   height: calc(100vh - 56px - 60px);
   min-height: 500px;

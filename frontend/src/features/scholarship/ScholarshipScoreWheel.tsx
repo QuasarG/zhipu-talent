@@ -34,8 +34,8 @@ export default function ScholarshipScoreWheel({ evaluation }: { evaluation: Scho
   });
 
   return (
-    <div className="grid gap-5 p-4 md:grid-cols-[minmax(290px,0.9fr)_minmax(0,1.1fr)] md:items-center md:p-6">
-      <div className="flex flex-col items-center gap-3">
+    <div className="grid h-[860px] min-h-0 grid-rows-[470px_minmax(0,1fr)] gap-5 overflow-hidden p-4 md:h-[560px] md:grid-cols-[minmax(290px,0.9fr)_minmax(0,1.1fr)] md:grid-rows-1 md:items-center md:p-6">
+      <div className="flex min-h-0 flex-col items-center justify-center gap-3">
         <div className="relative size-[300px] shrink-0" role="group" aria-label={t("评分维度圆环")}>
           <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="size-full -rotate-90" aria-hidden="true">
             {segments.map(({ dimension, start, length, color }) => {
@@ -46,10 +46,10 @@ export default function ScholarshipScoreWheel({ evaluation }: { evaluation: Scho
               return (
                 <g key={dimension.key}>
                   <circle cx={150} cy={150} r={RADIUS} fill="none" stroke={color} strokeOpacity={active ? 0.23 : 0.13} strokeWidth={active ? 31 : 27}
-                    onClick={() => setSelectedKey(dimension.key)} className="cursor-pointer"
+                    onClick={() => setSelectedKey(dimension.key)} className="scholarship-score-segment cursor-pointer"
                     strokeDasharray={`${capacity} ${CIRCUMFERENCE - capacity}`} strokeDashoffset={-start} />
                   <circle cx={150} cy={150} r={RADIUS} fill="none" stroke={color} strokeWidth={active ? 31 : 27}
-                    onClick={() => setSelectedKey(dimension.key)} className="cursor-pointer"
+                    onClick={() => setSelectedKey(dimension.key)} className="scholarship-score-segment cursor-pointer"
                     strokeDasharray={`${earned} ${CIRCUMFERENCE - earned}`} strokeDashoffset={-start} />
                 </g>
               );
@@ -93,7 +93,7 @@ export default function ScholarshipScoreWheel({ evaluation }: { evaluation: Scho
           ))}
         </div>
       </div>
-      {selected && <DimensionExplanation dimension={selected} color={segments.find(({ dimension }) => dimension.key === selected.key)?.color ?? COLORS[0]} />}
+      {selected && <DimensionExplanation key={selected.key} dimension={selected} color={segments.find(({ dimension }) => dimension.key === selected.key)?.color ?? COLORS[0]} />}
     </div>
   );
 }
@@ -101,7 +101,7 @@ export default function ScholarshipScoreWheel({ evaluation }: { evaluation: Scho
 function DimensionExplanation({ dimension, color }: { dimension: Dimension; color: string }) {
   const { t } = useI18n();
   return (
-    <div className="min-w-0 rounded-xl border border-outline-variant bg-surface p-5 shadow-sm">
+    <div className="scholarship-score-detail h-full min-h-0 min-w-0 overflow-y-auto overscroll-contain rounded-xl border border-outline-variant bg-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-start gap-3">
         <span className="mt-1 size-3 shrink-0 rounded-full" style={{ background: color }} />
         <div className="min-w-0 flex-1">

@@ -660,12 +660,17 @@ export default function ScholarshipPane({
         {view === "assessment" && assessmentTab === "score" && (
           // 常规滚动视图：整页随内容增高滚动（不强制一页内滚，避免不同分辨率下显示问题）
           <div className="grid min-h-0 flex-1 grid-cols-1 bg-surface lg:grid-cols-[220px_minmax(0,1fr)]">
-            <nav aria-label={t("评估结果大纲")} className="flex gap-1 overflow-x-auto border-b border-outline-variant bg-surface-lowest p-3 lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r">
+            <nav aria-label={t("评估结果大纲")} className="relative flex gap-1 overflow-x-auto border-b border-outline-variant bg-surface-lowest p-3 lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r lg:before:absolute lg:before:bottom-8 lg:before:left-[36px] lg:before:top-8 lg:before:w-px lg:before:bg-outline-variant">
               {([
-                ["overview", "评分总览"], ["highlights", "亮点与风险"],
-                ["papers", "论文核验"], ["special", "特别栏目"], ["pages", "抓取页面"], ["findings", "舆情发现"],
-              ] as const).filter(([id]) => id === "overview" || (latestCompleted && (id === "highlights" || (id === "papers" && latestCompleted.verified_papers?.length) || (id === "special" && latestCompleted.special_sections?.length) || (id === "pages" && latestCompleted.fetched_pages?.length) || (id === "findings" && findings.length)))).map(([id, label]) => (
-                <button key={id} type="button" aria-current={activeSection === id ? "location" : undefined} onClick={() => goToSection(id)} className={cn("shrink-0 rounded-md px-3 py-2 text-left text-body-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary", activeSection === id ? "bg-primary-container font-semibold text-on-primary-container" : "text-on-surface-variant hover:bg-surface-low")}>{t(label)}</button>
+                ["overview", "评分总览", "workspace_premium"], ["highlights", "亮点与风险", "auto_awesome"],
+                ["papers", "论文核验", "fact_check"], ["special", "特别栏目", "star"], ["pages", "抓取页面", "language"], ["findings", "舆情发现", "public"],
+              ] as const).filter(([id]) => id === "overview" || (latestCompleted && (id === "highlights" || (id === "papers" && latestCompleted.verified_papers?.length) || (id === "special" && latestCompleted.special_sections?.length) || (id === "pages" && latestCompleted.fetched_pages?.length) || (id === "findings" && findings.length)))).map(([id, label, icon]) => (
+                <button key={id} type="button" aria-current={activeSection === id ? "location" : undefined} onClick={() => goToSection(id)} className={cn("relative z-10 flex shrink-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-body-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary", activeSection === id ? "bg-primary-container font-semibold text-on-primary-container" : "text-on-surface-variant hover:bg-surface-low")}>
+                  <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full border bg-surface-lowest shadow-sm transition-all", activeSection === id ? "border-primary text-primary" : "border-outline-variant text-on-surface-variant")}>
+                    <Icon name={icon} size={17} />
+                  </span>
+                  <span>{t(label)}</span>
+                </button>
               ))}
             </nav>
             <div ref={scoreScrollRef} className="min-h-0 overflow-y-auto scroll-smooth px-4 py-4 md:px-6">
