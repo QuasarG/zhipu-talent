@@ -1154,3 +1154,35 @@ class NotificationORM(Base):
     related_id = Column(String(64), default="")                  # 关联对象 ID（可选）
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     read_at = Column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# 师生知识图谱：导师去重表 + 师生关联（申请表为主数据源，推荐信表佐证）
+# ---------------------------------------------------------------------------
+
+
+class AdvisorORM(Base):
+    """去重后的导师。同名视为候选同一人，由 (name, title 首段) 归并；低置信度待人工合并。"""
+
+    __tablename__ = "advisors"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(128), nullable=False, index=True)
+    title = Column(String(256), default="")            # 单位/职务（申请表「导师单位/职务」快照）
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class AdvisorStudentLinkORM(Base):
+    """师生关联。source：application=申请表自述（主数据源），letter=推荐信表佐证，letter_parse=推荐信文件解析（三期）。"""
+
+    __tablename__ = "advisor_student_links"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    advisor_id = Column(String(36), ForeignKey("advisors.id", ondelete="CASCADE"), nullable=False, index=True)
+    application_id = Column(String(36), ForeignKey("scholarship_applications.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_name = Column(String(128), default="")     # 冗余快照（联表省事 + 防学生档案删除后断链）
+    source = Column(String(16), default="application", index=True)   # application / letter / letter_parse
+    confidence = Column(String(16), default="high")    # high / medium / low（letter 同名消歧失败为 low）
+    note = Column(String(256), default="")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)

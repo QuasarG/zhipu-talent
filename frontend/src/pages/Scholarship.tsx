@@ -13,6 +13,7 @@ import SegmentedButtons from "@/components/ui/SegmentedButtons";
 import { StatusChip } from "@/components/ui/Chip";
 import { useSessionState } from "@/lib/sessionState";
 import ScholarshipPane, { type ScholarshipView } from "@/features/scholarship/ScholarshipPane";
+import AdvisorGraph from "@/features/scholarship/AdvisorGraph";
 import {
   STATUS_LABELS,
   STATUS_TONES,
@@ -146,6 +147,7 @@ export default function Scholarship() {
                   { value: "overview", label: t("申请资料"), icon: "badge" },
                   { value: "materials", label: t("材料预览"), icon: "description" },
                   { value: "assessment", label: t("评估与核验"), icon: "fact_check" },
+                  { value: "graph", label: t("师生图谱"), icon: "account_tree" },
                 ]}
               />
             </span>
@@ -249,18 +251,24 @@ export default function Scholarship() {
           </div>
         </Card>
 
-        {/* 右：详情 + 评估链路 */}
+        {/* 右：详情 + 评估链路 / 师生图谱 */}
         <div className="min-w-0 min-h-0 flex flex-col">
-          <ScholarshipPane
-            app={detail}
-            loading={detailLoading}
-            missingSelection={!selectedId}
-            view={view}
-            onViewChange={setView}
-            onRefresh={refreshAll}
-            onDeleted={() => { setSelectedId(null); void load(); }}
-            addDialog={showAdd ? { onClose: () => setShowAdd(false), onDone: refreshAll } : null}
-          />
+          {view === "graph" ? (
+            <Card variant="filled" className="min-h-[420px] flex-1 overflow-hidden">
+              <AdvisorGraph />
+            </Card>
+          ) : (
+            <ScholarshipPane
+              app={detail}
+              loading={detailLoading}
+              missingSelection={!selectedId}
+              view={view}
+              onViewChange={setView}
+              onRefresh={refreshAll}
+              onDeleted={() => { setSelectedId(null); void load(); }}
+              addDialog={showAdd ? { onClose: () => setShowAdd(false), onDone: refreshAll } : null}
+            />
+          )}
         </div>
       </div>
     </div>

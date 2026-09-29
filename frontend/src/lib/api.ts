@@ -263,6 +263,14 @@ export const api = {
   // ---- 奖学金初筛 ----
   scholarship: {
     list: () => fetchJSON<ScholarshipApplication[]>("/api/scholarship/applications"),
+    advisorGraph: () =>
+      fetchJSON<{
+        nodes: { id: string; type: "student" | "advisor" | "school"; label: string; score?: number; title?: string; status?: string }[];
+        edges: { from: string; to: string; source: string; confidence: string }[];
+        counts: { students: number; advisors: number; schools: number };
+      }>("/api/scholarship/advisor-graph"),
+    advisorGraphBackfill: () =>
+      fetchJSON<{ ok: boolean; detail: string }>("/api/scholarship/advisor-graph/backfill", { method: "POST" }),
     create: (data: {
       name: string;
       degree_type: string;

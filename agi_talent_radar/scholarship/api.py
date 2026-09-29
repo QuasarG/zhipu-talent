@@ -668,6 +668,82 @@ def build_scholarship_blueprint() -> Blueprint:
                 return jsonify({"detail": "材料不存在"}), 404
             return _material_file_response(material, as_attachment=True)
 
+    # ---- 师生知识图谱 ----
+
+    @bp.get("/api/scholarship/advisor-graph")
+    def advisor_graph():
+        """nodes/edges：学校 / 导师 / 学生三类节点 + 师生/校生两类边（数据由回填脚本维护）。"""
+        from agi_talent_radar.core.db.orm import AdvisorORM, AdvisorStudentLinkORM
+
+        with get_session() as session:
+            links = (
+                session.query(AdvisorStudentLinkORM, AdvisorORM, ScholarshipApplicationORM)
+                .join(AdvisorORM, AdvisorStudentLinkORM.advisor_id == AdvisorORM.id)
+                .join(ScholarshipApplicationORM,
+                      AdvisorStudentLinkORM.application_id == ScholarshipApplicationORM.id)
+                .all()
+            )
+            nodes: dict[str, dict] = {}
+            edges: list[dict] = []
+            for link, advisor, app in links:
+                student_id = f"student:{app.id}"
+                if student_id not in nodes:
+                    nodes[student_id] = {
+                        "id": student_id, "type": "student",
+                        "label": app.name or "（未署名）",
+                        "score": app.blind_score or 0,
+                        "school": app.school or "",
+                        "status": app.status,
+                    }
+                advisor_id = f"advisor:{advisor.id}"
+                if advisor_id not in nodes:
+                    nodes[advisor_id] = {
+                        "id": advisor_id, "type": "advisor",
+                        "label": advisor.name,
+                        "title": advisor.title or "",
+                    }
+                edges.append({
+                    "from": student_id, "to": advisor_id,
+                    "source": link.source, "confidence": link.confidence,
+                })
+                # 校生边：学校作为独立节点（有导师关联的学生才入图，保持图聚焦）
+                school = (app.school or "").strip()
+                if school:
+                    school_id = f"school:{school}"
+                    if school_id not in nodes:
+                        nodes[school_id] = {"id": school_id, "type": "school", "label": school}
+                    edges.append({"from": student_id, "to": school_id, "source": "application", "confidence": "high"})
+            return jsonify({
+                "nodes": list(nodes.values()),
+                "edges": edges,
+                "counts": {
+                    "students": sum(1 for n in nodes.values() if n["type"] == "student"),
+                    "advisors": sum(1 for n in nodes.values() if n["type"] == "advisor"),
+                    "schools": sum(1 for n in nodes.values() if n["type"] == "school"),
+                },
+            })
+
+    @bp.post("/api/scholarship/advisor-graph/backfill")
+    def advisor_graph_backfill():
+        """手动触发回填（平时由 crontab/脚本跑；webhook 侧不自动跑避免拖慢）。"""
+        import threading as _threading
+
+        def _run() -> None:
+            import subprocess
+            try:
+                subprocess.run(
+                    ["/opt/zhipu-talent/venv/bin/python",
+                     "/opt/zhipu-talent/current/scripts/backfill_advisor_graph.py"],
+                    capture_output=True, text=True, timeout=600,
+                    env={**os.environ},
+                )
+            except Exception:  # noqa: BLE001
+                logging.getLogger(__name__).exception("advisor graph backfill failed")
+
+        _threading.Thread(target=_run, daemon=True).start()
+        return jsonify({"ok": True, "detail": "回填已后台启动，稍后刷新图谱查看"})
+
+
     # 视觉 API 拉取视频用的公网素材端点：凭 SCHOLARSHIP_WEBHOOK_TOKEN 自证
     # （同 webhook 的鉴权模型：URL 内随机 token；限视频/图片扩展名）
     @bp.get("/api/scholarship/materials-file/<path:name>")

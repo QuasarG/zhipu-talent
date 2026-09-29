@@ -107,8 +107,8 @@ const REVIEWER_STEPS: TourStep[] = [
   {
     selector: '[data-tour="scholarship-views"]',
     route: "/scholarship",
-    title: "三种视图",
-    desc: "「申请资料」看档案与评分概览，「材料预览」阅读论文等原件，「评估与核验」查看评分明细、Agent 运行轨迹与舆情核验结果。",
+    title: "四种视图",
+    desc: "「申请资料」看档案与评分概览，「材料预览」阅读论文等原件，「评估与核验」查看评分圆环、论文核验与 Agent 运行轨迹，「师生图谱」浏览学校-导师-学生关系网络。",
     placement: "bottom",
   },
   {

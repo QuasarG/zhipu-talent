@@ -173,7 +173,7 @@ function AddApplicantDialog({ onClose, onDone }: AddDialogProps) {
   );
 }
 
-export type ScholarshipView = "overview" | "materials" | "assessment";
+export type ScholarshipView = "overview" | "materials" | "assessment" | "graph";
 
 const TOOL_LABELS: Record<string, string> = {
   list_files: "盘点材料",

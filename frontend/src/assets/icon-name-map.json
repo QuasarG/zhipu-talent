@@ -103,5 +103,6 @@
   "visibility_off": "eye-off",
   "notifications": "megaphone",
   "auto_awesome": "star",
-  "language": "globe"
+  "language": "globe",
+  "visibility": "eye-off"
 }
