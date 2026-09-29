@@ -542,7 +542,13 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       const v = viewRef.current;
-      v.scale = Math.max(graphModeRef.current ? 0.08 : 0.3, Math.min(3, v.scale * delta));
+      const rect = canvas.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left;
+      const cursorY = e.clientY - rect.top;
+      const nextScale = Math.max(graphModeRef.current ? 0.08 : 0.3, Math.min(3, v.scale * delta));
+      v.offsetX = cursorX - ((cursorX - v.offsetX) / v.scale) * nextScale;
+      v.offsetY = cursorY - ((cursorY - v.offsetY) / v.scale) * nextScale;
+      v.scale = nextScale;
     };
 
     canvas.addEventListener("mousedown", onDown);
