@@ -61,13 +61,17 @@ def _make_app() -> Flask:
     def dashboard():
         return "<h1>dashboard</h1>"
 
+    @app.get("/scholarship/graph")
+    def scholarship_graph():
+        return "<h1>graph</h1>"
+
     # reviewer 角色边界测试用的替身路由（只验证中间件放行/拦截，不实现业务）
     from flask import jsonify as _jsonify
 
     def _stub():
         return _jsonify({"ok": True})
 
-    for _path in ("/api/candidates", "/api/scholarship/applications", "/api/notifications", "/api/config", "/api/config/audit"):
+    for _path in ("/api/candidates", "/api/scholarship/applications", "/api/scholarship/advisor-graph", "/api/notifications", "/api/config", "/api/config/audit"):
         app.add_url_rule(_path, f"stub_get{_path.replace('/', '_')}", _stub, methods=["GET"])
     app.add_url_rule("/api/config", "stub_config_put", _stub, methods=["PUT"])
 
@@ -202,6 +206,7 @@ class TestReviewerRole(AuthTestBase):
         self.login(username="reviewer")
         for path in (
             "/api/scholarship/applications",
+            "/api/scholarship/advisor-graph",
             "/api/notifications",
             "/api/config",
             "/api/config/audit",
@@ -225,6 +230,8 @@ class TestReviewerRole(AuthTestBase):
         # 页面统一返回 SPA 外壳；可见范围由前端按角色裁剪
         self.login(username="reviewer")
         rv = self.client.get("/dashboard")
+        self.assertEqual(rv.status_code, 200)
+        rv = self.client.get("/scholarship/graph")
         self.assertEqual(rv.status_code, 200)
 
     def test_admin_unaffected_by_role_rules(self) -> None:
