@@ -702,7 +702,7 @@ def build_scholarship_blueprint() -> Blueprint:
                         "id": student_id, "type": "student",
                         "label": app.name or "（未署名）",
                         "score": score_by_app.get(app.id, 0.0),
-                        "school": app.school or "",
+                        "school": canonical_school(app.school),
                         "status": app.status,
                     }
                 advisor_name = canonical_advisor(advisor.name)

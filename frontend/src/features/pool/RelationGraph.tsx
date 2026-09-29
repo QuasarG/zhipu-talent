@@ -18,6 +18,7 @@ interface GNode {
   id: string; type: NodeType; label: string; tag: string;
   x: number; y: number; vx: number; vy: number;
   radius: number; color: string;
+  schools?: string[];
 }
 interface GEdge {
   from: string; to: string;
@@ -52,6 +53,57 @@ function readPalette(): Palette {
 
 // 校徽图片缓存：加载完由 rAF 循环自然重绘，无需额外触发
 const logoCache = new Map<string, HTMLImageElement>();
+type Rgb = [number, number, number];
+const crestColorCache = new Map<string, Rgb | null>();
+
+function crestColor(org: string): Rgb | null {
+  const url = getSchoolLogo(org);
+  if (!url) return null;
+  if (crestColorCache.has(url)) return crestColorCache.get(url)!;
+  const image = schoolLogoImage(org);
+  if (!image) return null;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 32;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(image, 0, 0, 32, 32);
+    const pixels = ctx.getImageData(0, 0, 32, 32).data;
+    const buckets = new Map<string, { weight: number; rgb: Rgb }>();
+    for (let i = 0; i < pixels.length; i += 4) {
+      const [r, g, b, alpha] = pixels.slice(i, i + 4);
+      const light = (r + g + b) / 3;
+      const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+      if (alpha < 120 || light < 22 || light > 235) continue;
+      const key = `${Math.round(r / 32)}:${Math.round(g / 32)}:${Math.round(b / 32)}`;
+      const entry = buckets.get(key) ?? { weight: 0, rgb: [r, g, b] as Rgb };
+      entry.weight += 1 + saturation / 48;
+      buckets.set(key, entry);
+    }
+    const picked = [...buckets.values()].sort((a, b) => b.weight - a.weight)[0]?.rgb ?? null;
+    crestColorCache.set(url, picked);
+    return picked;
+  } catch {
+    crestColorCache.set(url, null);
+    return null;
+  }
+}
+
+function mixedCrestColor(schools: string[]): Rgb | null {
+  const colors = [...new Set(schools)].map(crestColor).filter((color): color is Rgb => !!color);
+  if (!colors.length) return null;
+  return [0, 1, 2].map((channel) => Math.round(colors.reduce((sum, color) => sum + color[channel], 0) / colors.length)) as Rgb;
+}
+
+function shade(color: Rgb, white: number): string {
+  return `rgb(${color.map((part) => Math.round(part * (1 - white) + 255 * white)).join(",")})`;
+}
+
+function schoolFallbackTint(schools: string[]): string {
+  let hash = 2166136261;
+  for (const char of [...new Set(schools)].sort().join("·")) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  return `hsl(${(hash >>> 0) % 360} 28% 88%)`;
+}
 function schoolLogoImage(org: string): HTMLImageElement | null {
   const url = getSchoolLogo(org);
   if (!url) return null;
@@ -141,6 +193,14 @@ function buildScholarshipGraph(graph: NonNullable<Props["graph"]>, w: number, h:
     if (!schoolColors.has(school)) schoolColors.set(school, pal.schools[schoolColors.size % pal.schools.length]);
     return schoolColors.get(school)!;
   };
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const advisorSchools = new Map<string, string[]>();
+  for (const edge of graph.edges) {
+    const from = nodeById.get(edge.from), to = nodeById.get(edge.to);
+    const school = from?.type === "school" ? from : to?.type === "school" ? to : null;
+    const advisor = from?.type === "advisor" ? from : to?.type === "advisor" ? to : null;
+    if (school && advisor) advisorSchools.set(advisor.id, [...(advisorSchools.get(advisor.id) ?? []), school.label]);
+  }
   const nodes: GNode[] = graph.nodes.map((n) => {
     let hash = 2166136261;
     for (const char of n.id) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
@@ -153,7 +213,8 @@ function buildScholarshipGraph(graph: NonNullable<Props["graph"]>, w: number, h:
       y: h / 2 + Math.sin(angle) * Math.min(230, h * spread) * radius,
       vx: 0, vy: 0,
       radius: n.type === "school" ? 18 : n.type === "advisor" ? 15 : 12,
-      color: n.type === "school" ? colorOf(n.label) : n.type === "advisor" ? pal.group : colorOf(n.school || n.label),
+      color: n.type === "school" ? colorOf(n.label) : n.type === "advisor" ? pal.group : pal.ring,
+      schools: n.type === "school" ? [n.label] : n.type === "advisor" ? advisorSchools.get(n.id) ?? [] : n.school ? [n.school] : [],
     };
   });
   return { nodes, edges: graph.edges };
@@ -274,11 +335,12 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
     const drawNode = (n: GNode, isSelected: boolean) => {
       const pal = palRef.current!;
       const r = n.radius;
-      if (n.type === "person" || n.type === "student") {
+      if (n.type === "person" || n.type === "student" || n.type === "advisor") {
         // 姓氏头像：与列表同款圆形首字
+        const crest = graphModeRef.current ? mixedCrestColor(n.schools ?? []) : null;
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = pal.avatarBg;
+        ctx.fillStyle = crest ? shade(crest, 0.76) : graphModeRef.current && n.schools?.length ? schoolFallbackTint(n.schools) : pal.avatarBg;
         ctx.fill();
         ctx.strokeStyle = n.color;
         ctx.lineWidth = isSelected ? 3 : 2;
@@ -288,17 +350,18 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText((tRef.current(n.label) || "?").charAt(0), n.x, n.y + 1);
-      } else if (n.type === "group" || n.type === "advisor") {
+      } else if (n.type === "group") {
         // 分组：选中态风格高亮——白底圆 + primary 外环（间隙双环），不随选中降透明度
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
         ctx.fillStyle = pal.personFill;
         ctx.fill();
         ctx.lineWidth = 3;
-        ctx.strokeStyle = n.type === "advisor" ? n.color : pal.ring;
+        ctx.strokeStyle = pal.ring;
         ctx.stroke();
       } else {
         const logo = schoolLogoImage(n.label);
+        const schoolColor = crestColor(n.label);
         if (logo) {
           // 有校徽：白底圆裁剪后贴图
           ctx.save();
@@ -311,7 +374,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
           ctx.restore();
           ctx.beginPath();
           ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-          ctx.strokeStyle = n.color;
+          ctx.strokeStyle = schoolColor ? shade(schoolColor, 0) : n.color;
           ctx.lineWidth = 1.5;
           ctx.stroke();
         } else {

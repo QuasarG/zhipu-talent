@@ -104,8 +104,8 @@ export default function AdvisorGraph() {
               const logo = type === "school" ? getSchoolLogo(node.label) : null;
               return <button key={node.id} type="button" onClick={() => setSelected(node.id)} aria-pressed={selected === node.id}
                 className={`flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-surface-low ${selected === node.id ? "bg-primary-container text-on-primary-container" : "text-on-surface"}`}>
-                <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-low">
-                  {logo ? <img src={logo} alt="" className="size-7 object-contain" /> : <Icon name={type === "school" ? "school" : "person"} size={17} />}
+                <span className={`flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 bg-surface-low font-semibold ${type === "advisor" ? "border-tertiary" : type === "student" ? "border-primary" : "border-outline-variant"}`}>
+                  {logo ? <img src={logo} alt="" className="size-7 object-contain" /> : type === "school" ? <Icon name="school" size={17} /> : node.label.slice(0, 1)}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block break-words text-body-sm font-medium leading-5">{node.label}</span>
