@@ -9,7 +9,7 @@ interface GNodeData { id: string; type: "student" | "advisor" | "school"; label:
 interface GEdgeData { from: string; to: string; source: string; confidence: string }
 interface GraphPayload { nodes: GNodeData[]; edges: GEdgeData[]; counts: { students: number; advisors: number; schools: number } }
 
-interface SimNode { id: string; type: GNodeData["type"]; label: string; title: string; score: number; x: number; y: number; homeX: number; homeY: number; vx: number; vy: number }
+interface SimNode { id: string; type: GNodeData["type"]; label: string; title: string; score: number; x: number; y: number; vx: number; vy: number }
 
 // Canvas 不认 CSS 变量：同人才库 RelationGraph，从根元素 getComputedStyle 解析成真实色值
 interface Palette {
@@ -39,9 +39,9 @@ function palette(): Palette {
 }
 
 const TYPE_META: Record<string, { token: keyof Palette; r: number; name: string }> = {
-  student: { token: "student", r: 12, name: "学生" },
-  advisor: { token: "advisor", r: 15, name: "导师" },
-  school: { token: "school", r: 17, name: "学校" },
+  student: { token: "student", r: 10, name: "学生" },
+  advisor: { token: "advisor", r: 16, name: "导师" },
+  school: { token: "school", r: 24, name: "学校" },
 };
 
 const schoolImages = new Map<string, HTMLImageElement>();
@@ -57,7 +57,7 @@ function schoolImage(name: string): HTMLImageElement | null {
   return image.complete && image.naturalWidth > 0 ? image : null;
 }
 
-/** 全量三级图谱：布局与圆形头像沿用人才库图谱，选择只改变高亮。 */
+/** 全量关系图谱：自由力导向聚集，节点类型用视觉样式区分，选择只改变高亮。 */
 export default function AdvisorGraph() {
   const { t } = useI18n();
   const [payload, setPayload] = useState<GraphPayload | null>(null);
@@ -72,6 +72,7 @@ export default function AdvisorGraph() {
   const viewRef = useRef({ scale: 1, ox: 0, oy: 0 });
   const fitRef = useRef<() => void>(() => {});
   const rafRef = useRef(0);
+  const simulationFramesRef = useRef(0);
   const dragRef = useRef<{ node: number | null; panning: boolean; moved: boolean; startX: number; startY: number; lastX: number; lastY: number }>({ node: null, panning: false, moved: false, startX: 0, startY: 0, lastX: 0, lastY: 0 });
 
   const load = () => {
@@ -106,34 +107,12 @@ export default function AdvisorGraph() {
   // 构建模拟
   useEffect(() => {
     if (!payload) return;
-    const related = new Map<string, string[]>();
-    for (const edge of payload.edges) {
-      related.set(edge.from, [...(related.get(edge.from) ?? []), edge.to]);
-      related.set(edge.to, [...(related.get(edge.to) ?? []), edge.from]);
-    }
-    const schools = payload.nodes.filter((n) => n.type === "school").sort((a, b) => a.label.localeCompare(b.label, "zh"));
-    const schoolOrder = new Map(schools.map((n, i) => [n.id, i]));
-    const advisorOrder = new Map<string, number>();
-    for (const n of payload.nodes.filter((item) => item.type === "advisor")) {
-      const ranks = (related.get(n.id) ?? []).map((id) => schoolOrder.get(id)).filter((v): v is number => v !== undefined);
-      advisorOrder.set(n.id, ranks.length ? ranks.reduce((a, b) => a + b, 0) / ranks.length : schools.length);
-    }
-    const rank = (n: GNodeData) => n.type === "school" ? schoolOrder.get(n.id) ?? 0
-      : n.type === "advisor" ? advisorOrder.get(n.id) ?? schools.length
-        : Math.min(...(related.get(n.id) ?? []).map((id) => advisorOrder.get(id) ?? schools.length));
-    const lanes: GNodeData["type"][] = ["school", "advisor", "student"];
-    const ordered = lanes.flatMap((type) => payload.nodes.filter((n) => n.type === type)
-      .sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label, "zh")));
-    const seen = new Map<GNodeData["type"], number>();
-    const nodes: SimNode[] = ordered.map((n) => {
-      const i = seen.get(n.type) ?? 0;
-      seen.set(n.type, i + 1);
-      const columns = n.type === "school" ? 3 : n.type === "advisor" ? 6 : 7;
-      const x = (n.type === "school" ? 90 : n.type === "advisor" ? 390 : 770) + (i % columns) * (n.type === "school" ? 75 : 50);
-      const y = 75 + Math.floor(i / columns) * (n.type === "school" ? 42 : 30);
+    const nodes: SimNode[] = payload.nodes.map((n, i) => {
+      const angle = i * Math.PI * (3 - Math.sqrt(5));
+      const radius = Math.sqrt(i + 1) * 28;
       return {
         id: n.id, type: n.type, label: n.label, title: n.title ?? "", score: n.score ?? 0,
-        x, y, homeX: x, homeY: y,
+        x: Math.cos(angle) * radius, y: Math.sin(angle) * radius,
         vx: 0, vy: 0,
       };
     });
@@ -145,36 +124,42 @@ export default function AdvisorGraph() {
     const add = (k: string, v: number) => { (neighbor.get(k) ?? neighbor.set(k, new Set()).get(k)!).add(v); };
     edges.forEach((e) => { add(nodes[e.a].id, e.b); add(nodes[e.b].id, e.a); });
     simRef.current = { nodes, edges, neighbor };
-    for (let i = 0; i < 18; i++) step(0.8);
+    for (let i = 0; i < 240; i++) step(0.8);
+    simulationFramesRef.current = 120;
     requestAnimationFrame(() => fitRef.current());
   }, [payload]);
 
   const step = (damping: number) => {
     const { nodes, edges } = simRef.current;
     if (!nodes.length) return;
-    // 每列只处理相邻节点，避免全量图谱每帧做 N² 次排斥计算。
-    for (const type of ["school", "advisor", "student"] as const) {
-      const lane = nodes.filter((n) => n.type === type).sort((a, b) => a.y - b.y);
-      for (let i = 1; i < lane.length; i++) {
-        const a = lane[i - 1], b = lane[i];
-        const gap = b.y - a.y;
-        const minimum = type === "school" ? 48 : 22;
-        if (Math.abs(a.x - b.x) < 25 && gap < minimum) {
-          const push = (minimum - gap) * 0.03;
-          a.vy -= push; b.vy += push;
-        }
+    // 与人才库相同的自由力导向：节点排斥、关系弹簧和弱中心引力。
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const gap = TYPE_META[a.type].r + TYPE_META[b.type].r + 16;
+        const force = 2400 / (distance * distance) + Math.max(0, gap - distance) * 0.12;
+        const fx = dx / distance * force, fy = dy / distance * force;
+        a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
       }
     }
     for (const e of edges) {
       const a = nodes[e.a], b = nodes[e.b];
-      const delta = Math.max(-220, Math.min(220, b.y - a.y));
-      a.vy += delta * 0.0006; b.vy -= delta * 0.0006;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const target = a.type === "school" || b.type === "school" ? 120 : 85;
+      const force = (distance - target) * 0.008;
+      const fx = dx / distance * force, fy = dy / distance * force;
+      a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
     }
-    for (const n of nodes) {
-      n.vx += (n.homeX - n.x) * 0.03;
-      n.vy += (n.homeY - n.y) * 0.015;
-      n.vx *= damping; n.vy *= damping;
-      n.x += n.vx; n.y += n.vy;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (dragRef.current.node === i) { n.vx = n.vy = 0; continue; }
+      n.vx = (n.vx - n.x * 0.0008) * damping;
+      n.vy = (n.vy - n.y * 0.0008) * damping;
+      n.x += Math.max(-12, Math.min(12, n.vx));
+      n.y += Math.max(-12, Math.min(12, n.vy));
     }
   };
 
@@ -182,10 +167,12 @@ export default function AdvisorGraph() {
     const canvas = canvasRef.current;
     const nodes = simRef.current.nodes;
     if (!canvas || !nodes.length) return;
+    const minX = Math.min(...nodes.map((n) => n.x)) - 65;
+    const maxX = Math.max(...nodes.map((n) => n.x)) + 65;
     const minY = Math.min(...nodes.map((n) => n.y)) - 50;
     const maxY = Math.max(...nodes.map((n) => n.y)) + 55;
-    const scale = Math.max(0.08, Math.min(1.5, (canvas.clientWidth - 80) / 1100, (canvas.clientHeight - 80) / (maxY - minY)));
-    viewRef.current = { scale, ox: canvas.clientWidth / 2 - 580 * scale, oy: canvas.clientHeight / 2 - (minY + maxY) / 2 * scale };
+    const scale = Math.max(0.08, Math.min(1.5, (canvas.clientWidth - 80) / (maxX - minX), (canvas.clientHeight - 80) / (maxY - minY)));
+    viewRef.current = { scale, ox: canvas.clientWidth / 2 - (minX + maxX) / 2 * scale, oy: canvas.clientHeight / 2 - (minY + maxY) / 2 * scale };
   };
   fitRef.current = fitView;
 
@@ -194,7 +181,10 @@ export default function AdvisorGraph() {
     const render = () => {
       const canvas = canvasRef.current;
       if (canvas) {
-        step(0.86);
+        if (simulationFramesRef.current > 0) {
+          step(0.86);
+          simulationFramesRef.current -= 1;
+        }
         const dpr = window.devicePixelRatio || 1;
         const w = canvas.clientWidth, h = canvas.clientHeight;
         if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
@@ -401,6 +391,7 @@ export default function AdvisorGraph() {
             if ((drag.node !== null || drag.panning) && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 4) drag.moved = true;
             if (drag.node !== null) {
               if (drag.moved) {
+                simulationFramesRef.current = 90;
                 const n = simRef.current.nodes[drag.node];
                 n.x = (e.clientX - rect.left - viewRef.current.ox) / viewRef.current.scale;
                 n.y = (e.clientY - rect.top - viewRef.current.oy) / viewRef.current.scale;
@@ -439,9 +430,6 @@ export default function AdvisorGraph() {
             v.scale = ns;
           }}
         />
-        <div className="pointer-events-none absolute left-3 top-3 flex gap-2 text-label font-medium text-on-surface-variant">
-          {(["school", "advisor", "student"] as const).map((type, i) => <span key={type} className="rounded-full border border-outline-variant bg-surface-lowest/90 px-2.5 py-1 shadow-sm">{i + 1} · {t(TYPE_META[type].name)}</span>)}
-        </div>
         {/* 图例 */}
         <div className="absolute bottom-3 left-3 flex gap-3 rounded-full bg-surface-lowest/90 px-3 py-1.5 text-label text-on-surface-variant shadow-sm">
           {Object.entries(TYPE_META).map(([k, m]) => (
