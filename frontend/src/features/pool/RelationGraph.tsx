@@ -393,11 +393,12 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
           ctx.fillText((n.label || "?").charAt(0), n.x, n.y + 1);
         }
       }
-      if (isSelected) {
+      if (isSelected || (graphModeRef.current && !selectedRef.current && n.type === "school")) {
         ctx.beginPath();
         ctx.arc(n.x, n.y, r + 6, 0, Math.PI * 2);
-        ctx.globalAlpha = 0.4;
-        ctx.strokeStyle = pal.ring;
+        ctx.globalAlpha = isSelected ? 0.4 : 0.3;
+        const schoolColor = n.type === "school" ? crestColor(n.label) : null;
+        ctx.strokeStyle = schoolColor ? shade(schoolColor, 0) : pal.ring;
         ctx.lineWidth = 2;
         ctx.stroke();
         ctx.globalAlpha = 1;
@@ -422,7 +423,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
         if (!a || !b) return;
         const isGroupEdge = a.type === "group" || b.type === "group";
         const dimmed = sel && !isGroupEdge && a.id !== sel && b.id !== sel;
-        ctx.globalAlpha = dimmed ? 0.25 : graphModeRef.current && !sel && (a.type === "student" || b.type === "student") ? 0.28 : 1;
+        ctx.globalAlpha = dimmed ? 0.25 : graphModeRef.current && !sel ? (a.type === "student" || b.type === "student" ? 0.2 : 0.65) : 1;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -435,7 +436,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
       nodesRef.current.forEach((n) => {
         const isSelected = n.id === sel;
         const dimmed = sel && !isSelected && !isRelated(n, sel) && n.type !== "group";
-        ctx.globalAlpha = dimmed ? 0.4 : graphModeRef.current && !sel && n.type === "student" ? 0.45 : 1;
+        ctx.globalAlpha = dimmed ? 0.4 : graphModeRef.current && !sel ? n.type === "student" ? 0.34 : n.type === "advisor" ? 0.65 : 1 : 1;
         drawNode(n, isSelected);
         // 人名 + 学校标签（最高学历学校）；分组标签恒用强色
         ctx.fillStyle = n.type === "group" || isSelected ? pal.labelStrong : pal.label;
