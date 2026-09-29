@@ -672,7 +672,7 @@ def build_scholarship_blueprint() -> Blueprint:
 
     @bp.get("/api/scholarship/advisor-graph")
     def advisor_graph():
-        """nodes/edges：学校 / 导师 / 学生三类节点 + 师生/校生两类边（数据由回填脚本维护）。"""
+        """学校 → 导师 → 学生三级图谱；别名按人工清单归并。"""
         from agi_talent_radar.core.db.orm import AdvisorORM, AdvisorStudentLinkORM, ScholarshipEvaluationORM
         from agi_talent_radar.scholarship.graph_identity import canonical_advisor, canonical_school
 
@@ -720,14 +720,14 @@ def build_scholarship_blueprint() -> Blueprint:
                     "from": student_id, "to": advisor_id,
                     "source": link.source, "confidence": link.confidence,
                 })
-                # 校生边：学校作为独立节点（有导师关联的学生才入图，保持图聚焦）
+                # 同一导师可连接多个学校、多个学生；学生也可连接多位导师。
                 school = canonical_school(app.school)
                 if school:
                     school_id = f"school:{school}"
                     if school_id not in nodes:
                         nodes[school_id] = {"id": school_id, "type": "school", "label": school}
-                    edges.setdefault((student_id, school_id), {
-                        "from": student_id, "to": school_id,
+                    edges.setdefault((school_id, advisor_id), {
+                        "from": school_id, "to": advisor_id,
                         "source": "application", "confidence": "high",
                     })
             return jsonify({

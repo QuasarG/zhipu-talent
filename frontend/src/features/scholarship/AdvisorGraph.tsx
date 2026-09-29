@@ -9,7 +9,7 @@ interface GNodeData { id: string; type: "student" | "advisor" | "school"; label:
 interface GEdgeData { from: string; to: string; source: string; confidence: string }
 interface GraphPayload { nodes: GNodeData[]; edges: GEdgeData[]; counts: { students: number; advisors: number; schools: number } }
 
-interface SimNode { id: string; type: string; label: string; title: string; score: number; x: number; y: number; vx: number; vy: number }
+interface SimNode { id: string; type: GNodeData["type"]; label: string; title: string; score: number; x: number; y: number; homeX: number; homeY: number; vx: number; vy: number }
 
 // Canvas 不认 CSS 变量：同人才库 RelationGraph，从根元素 getComputedStyle 解析成真实色值
 interface Palette {
@@ -39,7 +39,7 @@ function palette(): Palette {
 }
 
 const TYPE_META: Record<string, { token: keyof Palette; r: number; name: string }> = {
-  student: { token: "student", r: 13, name: "学生" },
+  student: { token: "student", r: 12, name: "学生" },
   advisor: { token: "advisor", r: 15, name: "导师" },
   school: { token: "school", r: 17, name: "学校" },
 };
@@ -57,7 +57,7 @@ function schoolImage(name: string): HTMLImageElement | null {
   return image.complete && image.naturalWidth > 0 ? image : null;
 }
 
-/** 师生知识图谱：简单力导向（斥力+边弹簧+中心引力），Canvas 渲染，点选高亮邻域 */
+/** 全量三级图谱：布局与圆形头像沿用人才库图谱，选择只改变高亮。 */
 export default function AdvisorGraph() {
   const { t } = useI18n();
   const [payload, setPayload] = useState<GraphPayload | null>(null);
@@ -70,8 +70,9 @@ export default function AdvisorGraph() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const simRef = useRef<{ nodes: SimNode[]; edges: { a: number; b: number }[]; neighbor: Map<string, Set<number>> }>({ nodes: [], edges: [], neighbor: new Map() });
   const viewRef = useRef({ scale: 1, ox: 0, oy: 0 });
+  const fitRef = useRef<() => void>(() => {});
   const rafRef = useRef(0);
-  const dragRef = useRef<{ node: number | null; panning: boolean; lastX: number; lastY: number }>({ node: null, panning: false, lastX: 0, lastY: 0 });
+  const dragRef = useRef<{ node: number | null; panning: boolean; moved: boolean; startX: number; startY: number; lastX: number; lastY: number }>({ node: null, panning: false, moved: false, startX: 0, startY: 0, lastX: 0, lastY: 0 });
 
   const load = () => {
     setLoading(true);
@@ -102,80 +103,98 @@ export default function AdvisorGraph() {
     })).filter((group) => group.nodes.length > 0)
   ), [searchResults]);
 
-  const focusedPayload = useMemo(() => {
-    if (!payload || !selected) return { nodes: [], edges: [] };
-    const center = payload.nodes.find((node) => node.id === selected);
-    if (!center) return { nodes: [], edges: [] };
-    const neighborIds = new Set<string>();
-    for (const edge of payload.edges) {
-      if (edge.from === selected) neighborIds.add(edge.to);
-      if (edge.to === selected) neighborIds.add(edge.from);
-    }
-    const nodes = [center, ...payload.nodes.filter((node) => neighborIds.has(node.id)).slice(0, 24)];
-    const ids = new Set(nodes.map((node) => node.id));
-    return { nodes, edges: payload.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to)) };
-  }, [payload, selected]);
-
   // 构建模拟
   useEffect(() => {
-    const nodes: SimNode[] = focusedPayload.nodes.map((n, i) => ({
-      id: n.id, type: n.type, label: n.label, title: n.title ?? "", score: n.score ?? 0,
-      x: i === 0 ? 400 : 400 + Math.cos((i - 1) * 2 * Math.PI / Math.max(1, focusedPayload.nodes.length - 1)) * 220,
-      y: i === 0 ? 300 : 300 + Math.sin((i - 1) * 2 * Math.PI / Math.max(1, focusedPayload.nodes.length - 1)) * 200,
-      vx: 0, vy: 0,
-    }));
+    if (!payload) return;
+    const related = new Map<string, string[]>();
+    for (const edge of payload.edges) {
+      related.set(edge.from, [...(related.get(edge.from) ?? []), edge.to]);
+      related.set(edge.to, [...(related.get(edge.to) ?? []), edge.from]);
+    }
+    const schools = payload.nodes.filter((n) => n.type === "school").sort((a, b) => a.label.localeCompare(b.label, "zh"));
+    const schoolOrder = new Map(schools.map((n, i) => [n.id, i]));
+    const advisorOrder = new Map<string, number>();
+    for (const n of payload.nodes.filter((item) => item.type === "advisor")) {
+      const ranks = (related.get(n.id) ?? []).map((id) => schoolOrder.get(id)).filter((v): v is number => v !== undefined);
+      advisorOrder.set(n.id, ranks.length ? ranks.reduce((a, b) => a + b, 0) / ranks.length : schools.length);
+    }
+    const rank = (n: GNodeData) => n.type === "school" ? schoolOrder.get(n.id) ?? 0
+      : n.type === "advisor" ? advisorOrder.get(n.id) ?? schools.length
+        : Math.min(...(related.get(n.id) ?? []).map((id) => advisorOrder.get(id) ?? schools.length));
+    const lanes: GNodeData["type"][] = ["school", "advisor", "student"];
+    const ordered = lanes.flatMap((type) => payload.nodes.filter((n) => n.type === type)
+      .sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label, "zh")));
+    const seen = new Map<GNodeData["type"], number>();
+    const nodes: SimNode[] = ordered.map((n) => {
+      const i = seen.get(n.type) ?? 0;
+      seen.set(n.type, i + 1);
+      const columns = n.type === "school" ? 3 : n.type === "advisor" ? 6 : 7;
+      const x = (n.type === "school" ? 90 : n.type === "advisor" ? 390 : 770) + (i % columns) * (n.type === "school" ? 75 : 50);
+      const y = 75 + Math.floor(i / columns) * (n.type === "school" ? 42 : 30);
+      return {
+        id: n.id, type: n.type, label: n.label, title: n.title ?? "", score: n.score ?? 0,
+        x, y, homeX: x, homeY: y,
+        vx: 0, vy: 0,
+      };
+    });
     const idx = new Map(nodes.map((n, i) => [n.id, i]));
-    const edges = focusedPayload.edges
+    const edges = payload.edges
       .map((e) => ({ a: idx.get(e.from) ?? -1, b: idx.get(e.to) ?? -1 }))
       .filter((e) => e.a >= 0 && e.b >= 0);
     const neighbor = new Map<string, Set<number>>();
     const add = (k: string, v: number) => { (neighbor.get(k) ?? neighbor.set(k, new Set()).get(k)!).add(v); };
     edges.forEach((e) => { add(nodes[e.a].id, e.b); add(nodes[e.b].id, e.a); });
     simRef.current = { nodes, edges, neighbor };
-    // 预热迭代让初始布局稳定
-    for (let i = 0; i < 30; i++) step(0.9);
-    viewRef.current = { scale: 1, ox: 0, oy: 0 };
-  }, [focusedPayload]);
+    for (let i = 0; i < 18; i++) step(0.8);
+    requestAnimationFrame(() => fitRef.current());
+  }, [payload]);
 
   const step = (damping: number) => {
     const { nodes, edges } = simRef.current;
-    const N = nodes.length;
-    if (!N) return;
-    for (let i = 0; i < N; i++) {
-      for (let j = i + 1; j < N; j++) {
-        const a = nodes[i], b = nodes[j];
-        let dx = b.x - a.x, dy = b.y - a.y;
-        let d2 = dx * dx + dy * dy;
-        if (d2 < 1) { d2 = 1; dx = Math.random(); dy = Math.random(); }
-        if (d2 > 160000) continue; // 距离截断（性能）
-        const f = 2200 / d2;
-        const d = Math.sqrt(d2);
-        const fx = (dx / d) * f, fy = (dy / d) * f;
-        a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
+    if (!nodes.length) return;
+    // 每列只处理相邻节点，避免全量图谱每帧做 N² 次排斥计算。
+    for (const type of ["school", "advisor", "student"] as const) {
+      const lane = nodes.filter((n) => n.type === type).sort((a, b) => a.y - b.y);
+      for (let i = 1; i < lane.length; i++) {
+        const a = lane[i - 1], b = lane[i];
+        const gap = b.y - a.y;
+        const minimum = type === "school" ? 48 : 22;
+        if (Math.abs(a.x - b.x) < 25 && gap < minimum) {
+          const push = (minimum - gap) * 0.03;
+          a.vy -= push; b.vy += push;
+        }
       }
     }
     for (const e of edges) {
       const a = nodes[e.a], b = nodes[e.b];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const d = Math.max(1, Math.hypot(dx, dy));
-      const f = (d - 110) * 0.012;
-      const fx = (dx / d) * f, fy = (dy / d) * f;
-      a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+      const delta = Math.max(-220, Math.min(220, b.y - a.y));
+      a.vy += delta * 0.0006; b.vy -= delta * 0.0006;
     }
     for (const n of nodes) {
-      const laneX = n.type === "school" ? 140 : n.type === "advisor" ? 400 : 660;
-      n.vx += (laneX - n.x) * 0.006;
-      n.vy += (300 - n.y) * 0.0008;
+      n.vx += (n.homeX - n.x) * 0.03;
+      n.vy += (n.homeY - n.y) * 0.015;
       n.vx *= damping; n.vy *= damping;
       n.x += n.vx; n.y += n.vy;
     }
   };
+
+  const fitView = () => {
+    const canvas = canvasRef.current;
+    const nodes = simRef.current.nodes;
+    if (!canvas || !nodes.length) return;
+    const minY = Math.min(...nodes.map((n) => n.y)) - 50;
+    const maxY = Math.max(...nodes.map((n) => n.y)) + 55;
+    const scale = Math.max(0.08, Math.min(1.5, (canvas.clientWidth - 80) / 1100, (canvas.clientHeight - 80) / (maxY - minY)));
+    viewRef.current = { scale, ox: canvas.clientWidth / 2 - 580 * scale, oy: canvas.clientHeight / 2 - (minY + maxY) / 2 * scale };
+  };
+  fitRef.current = fitView;
 
   // 渲染循环
   useEffect(() => {
     const render = () => {
       const canvas = canvasRef.current;
       if (canvas) {
+        step(0.86);
         const dpr = window.devicePixelRatio || 1;
         const w = canvas.clientWidth, h = canvas.clientHeight;
         if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
@@ -188,23 +207,27 @@ export default function AdvisorGraph() {
         const sim = simRef.current;
         const focus = hover ?? selected;
         const searchHit = search.trim()
-          ? sim.nodes.filter((n) => n.label.toLowerCase().includes(search.trim().toLowerCase())).map((n) => n.id)
+          ? new Set(sim.nodes.filter((n) => n.label.toLowerCase().includes(search.trim().toLowerCase())).map((n) => n.id))
           : null;
-        const inFocus = (id: string) => {
-          if (!focus) return true;
-          if (id === focus) return true;
-          const ns = sim.neighbor.get(focus);
-          return !!ns && sim.nodes.some((n) => n.id === id && ns.has(sim.nodes.indexOf(n)));
-        };
+        const highlightedIds = new Set<string>(focus ? [focus] : []);
+        if (focus) {
+          for (const index of sim.neighbor.get(focus) ?? []) {
+            const neighbor = sim.nodes[index];
+            highlightedIds.add(neighbor.id);
+            if (neighbor.type === "advisor") {
+              for (const next of sim.neighbor.get(neighbor.id) ?? []) highlightedIds.add(sim.nodes[next].id);
+            }
+          }
+        }
         // 边
         const pal = palette();
         ctx.lineWidth = 1;
         for (const e of sim.edges) {
           const a = sim.nodes[e.a], b = sim.nodes[e.b];
-          const active = !focus || a.id === focus || b.id === focus;
-          const hit = searchHit && (searchHit.includes(a.id) || searchHit.includes(b.id));
+          const active = !focus || (highlightedIds.has(a.id) && highlightedIds.has(b.id));
+          const hit = searchHit && (searchHit.has(a.id) || searchHit.has(b.id));
           ctx.strokeStyle = pal.edge;
-          ctx.globalAlpha = active ? (hit ? 0.95 : 0.5) : 0.07;
+          ctx.globalAlpha = active ? (hit ? 0.85 : a.type === "school" ? 0.4 : 0.16) : 0.025;
           ctx.beginPath();
           ctx.moveTo(ox + a.x * scale, oy + a.y * scale);
           ctx.lineTo(ox + b.x * scale, oy + b.y * scale);
@@ -216,39 +239,37 @@ export default function AdvisorGraph() {
           const meta = TYPE_META[n.type] ?? TYPE_META.student;
           const px = ox + n.x * scale, py = oy + n.y * scale;
           if (px < -40 || py < -40 || px > w + 40 || py > h + 40) continue;
-          const dimmed = (focus && !inFocus(n.id)) && !(searchHit && searchHit.includes(n.id));
-          const highlighted = n.id === selected || n.id === hover || (searchHit && searchHit.includes(n.id));
-          ctx.globalAlpha = dimmed ? 0.15 : 1;
-          const radius = meta.r * Math.max(0.8, scale);
+          const dimmed = (focus ? !highlightedIds.has(n.id) : n.type === "student") && !(searchHit && searchHit.has(n.id));
+          const highlighted = n.id === selected || n.id === hover || !!searchHit?.has(n.id);
+          ctx.globalAlpha = dimmed ? (focus ? 0.09 : 0.28) : 1;
+          const radius = Math.max(2.5, meta.r * scale);
           ctx.beginPath();
-          if (n.type === "school") ctx.roundRect(px - radius, py - radius, radius * 2, radius * 2, 5);
-          else if (n.type === "advisor") {
-            ctx.moveTo(px, py - radius); ctx.lineTo(px + radius, py);
-            ctx.lineTo(px, py + radius); ctx.lineTo(px - radius, py); ctx.closePath();
-          } else ctx.arc(px, py, radius, 0, Math.PI * 2);
-          ctx.fillStyle = pal[meta.token];
+          ctx.arc(px, py, radius, 0, Math.PI * 2);
+          ctx.fillStyle = n.type === "school" ? "#fff" : n.type === "advisor" ? pal.advisor : pal.student;
           ctx.fill();
           const logo = n.type === "school" ? schoolImage(n.label) : null;
           if (logo) {
             ctx.save();
             ctx.clip();
-            ctx.fillStyle = "#fff";
-            ctx.fillRect(px - radius + 2, py - radius + 2, radius * 2 - 4, radius * 2 - 4);
-            ctx.drawImage(logo, px - radius + 3, py - radius + 3, radius * 2 - 6, radius * 2 - 6);
+            ctx.drawImage(logo, px - radius, py - radius, radius * 2, radius * 2);
             ctx.restore();
           } else {
             ctx.fillStyle = "#fff";
-            ctx.font = `bold ${Math.max(10, 12 * scale)}px system-ui`;
+            ctx.font = `600 ${Math.max(4, 12 * scale)}px "Smiley Moon", "MiSans", sans-serif`;
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText(n.label.slice(0, 1), px, py);
+            if (radius >= 7) ctx.fillText(n.label.slice(0, 1), px, py);
             ctx.textBaseline = "alphabetic";
           }
+          ctx.beginPath(); ctx.arc(px, py, radius, 0, Math.PI * 2);
+          ctx.lineWidth = highlighted ? 2.5 : Math.max(0.8, scale);
+          ctx.strokeStyle = pal[meta.token];
+          ctx.stroke();
           if (highlighted) {
-            ctx.lineWidth = 2.5;
-            ctx.strokeStyle = pal.focus;
+            ctx.beginPath(); ctx.arc(px, py, radius + 4, 0, Math.PI * 2);
+            ctx.lineWidth = 2; ctx.strokeStyle = pal.focus;
             ctx.stroke();
           }
-          if (showLabels && (scale > 0.75 || n.type !== "student")) {
+          if (showLabels && !dimmed && (highlighted || (n.type === "school" && scale > 0.75) || (n.type === "advisor" && scale > 1) || scale > 1.25)) {
             ctx.font = `${Math.max(9, 11 * scale)}px system-ui`;
             ctx.fillStyle = highlighted ? pal.labelStrong : pal.label;
             ctx.textAlign = "center";
@@ -262,7 +283,7 @@ export default function AdvisorGraph() {
     };
     rafRef.current = requestAnimationFrame(render);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [selected, hover, search, showLabels]);
+  }, [selected, hover, search, showLabels, payload]);
 
   const pick = (mx: number, my: number): number | null => {
     const { nodes } = simRef.current;
@@ -274,6 +295,17 @@ export default function AdvisorGraph() {
       if (d < bestD) { bestD = d; best = i; }
     });
     return best;
+  };
+
+  const zoomAtCenter = (factor: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const v = viewRef.current;
+    const x = canvas.clientWidth / 2, y = canvas.clientHeight / 2;
+    const scale = Math.max(0.08, Math.min(3, v.scale * factor));
+    v.ox = x - ((x - v.ox) / v.scale) * scale;
+    v.oy = y - ((y - v.oy) / v.scale) * scale;
+    v.scale = scale;
   };
 
   const detail = useMemo(() => {
@@ -360,58 +392,69 @@ export default function AdvisorGraph() {
           onMouseDown={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const hit = pick(e.clientX - rect.left, e.clientY - rect.top);
-            dragRef.current = hit !== null ? { node: hit, panning: false, lastX: e.clientX, lastY: e.clientY }
-                                           : { node: null, panning: true, lastX: e.clientX, lastY: e.clientY };
+            dragRef.current = hit !== null ? { node: hit, panning: false, moved: false, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY }
+                                           : { node: null, panning: true, moved: false, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY };
           }}
           onMouseMove={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const drag = dragRef.current;
+            if ((drag.node !== null || drag.panning) && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 4) drag.moved = true;
             if (drag.node !== null) {
-              const n = simRef.current.nodes[drag.node];
-              n.x = (e.clientX - rect.left - viewRef.current.ox) / viewRef.current.scale;
-              n.y = (e.clientY - rect.top - viewRef.current.oy) / viewRef.current.scale;
-              n.vx = n.vy = 0;
+              if (drag.moved) {
+                const n = simRef.current.nodes[drag.node];
+                n.x = (e.clientX - rect.left - viewRef.current.ox) / viewRef.current.scale;
+                n.y = (e.clientY - rect.top - viewRef.current.oy) / viewRef.current.scale;
+                n.vx = n.vy = 0;
+              }
             } else if (drag.panning) {
-              viewRef.current.ox += e.clientX - drag.lastX;
-              viewRef.current.oy += e.clientY - drag.lastY;
-              drag.lastX = e.clientX; drag.lastY = e.clientY;
+              if (drag.moved) {
+                viewRef.current.ox += e.clientX - drag.lastX;
+                viewRef.current.oy += e.clientY - drag.lastY;
+              }
             } else {
               const hit = pick(e.clientX - rect.left, e.clientY - rect.top);
               setHover(hit !== null ? simRef.current.nodes[hit].id : null);
             }
+            drag.lastX = e.clientX; drag.lastY = e.clientY;
           }}
           onMouseUp={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const hit = pick(e.clientX - rect.left, e.clientY - rect.top);
-            if (hit !== null && dragRef.current.node === hit) {
+            if (!dragRef.current.moved && hit !== null && dragRef.current.node === hit) {
               setSelected((cur) => (cur === simRef.current.nodes[hit].id ? null : simRef.current.nodes[hit].id));
             }
-            if (dragRef.current.node === null && !dragRef.current.panning) setSelected(null);
-            dragRef.current = { node: null, panning: false, lastX: 0, lastY: 0 };
+            if (!dragRef.current.moved && hit === null) setSelected(null);
+            dragRef.current = { node: null, panning: false, moved: false, startX: 0, startY: 0, lastX: 0, lastY: 0 };
           }}
-          onMouseLeave={() => { setHover(null); dragRef.current = { node: null, panning: false, lastX: 0, lastY: 0 }; }}
+          onMouseLeave={() => { setHover(null); dragRef.current = { node: null, panning: false, moved: false, startX: 0, startY: 0, lastX: 0, lastY: 0 }; }}
           onWheel={(e) => {
             e.preventDefault();
             const rect = e.currentTarget.getBoundingClientRect();
             const mx = e.clientX - rect.left, my = e.clientY - rect.top;
             const v = viewRef.current;
             const factor = e.deltaY < 0 ? 1.12 : 0.89;
-            const ns = Math.max(0.35, Math.min(3, v.scale * factor));
+            const ns = Math.max(0.08, Math.min(3, v.scale * factor));
             v.ox = mx - ((mx - v.ox) / v.scale) * ns;
             v.oy = my - ((my - v.oy) / v.scale) * ns;
             v.scale = ns;
           }}
         />
-        {!selected && !loading && <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-body-sm text-on-surface-variant">{t("从左侧选择实体查看关系")}</div>}
-        {selected && focusedPayload.nodes.length >= 25 && <div className="absolute left-3 top-3 rounded-md bg-surface-lowest/90 px-3 py-2 text-label text-on-surface-variant shadow-sm">{t("仅展示前 24 个直接关联；点击其他实体继续探索")}</div>}
+        <div className="pointer-events-none absolute left-3 top-3 flex gap-2 text-label font-medium text-on-surface-variant">
+          {(["school", "advisor", "student"] as const).map((type, i) => <span key={type} className="rounded-full border border-outline-variant bg-surface-lowest/90 px-2.5 py-1 shadow-sm">{i + 1} · {t(TYPE_META[type].name)}</span>)}
+        </div>
         {/* 图例 */}
         <div className="absolute bottom-3 left-3 flex gap-3 rounded-full bg-surface-lowest/90 px-3 py-1.5 text-label text-on-surface-variant shadow-sm">
           {Object.entries(TYPE_META).map(([k, m]) => (
           <span key={k} className="flex items-center gap-1.5">
-              <span className={`inline-block h-3 w-3 ${k === "school" ? "rounded-sm" : k === "advisor" ? "rotate-45 rounded-[2px]" : "rounded-full"}`} style={{ background: palette()[m.token] }} />
+              <span className="inline-block h-3 w-3 rounded-full" style={{ background: palette()[m.token] }} />
               {t(m.name)}
             </span>
           ))}
+        </div>
+        <div className="absolute bottom-3 right-3 flex gap-1 rounded-full border border-outline-variant bg-surface-lowest p-1 shadow-sm">
+          <Button variant="text" icon="remove" className="h-7 min-w-7 px-1" onClick={() => zoomAtCenter(0.8)} />
+          <Button variant="text" icon="add" className="h-7 min-w-7 px-1" onClick={() => zoomAtCenter(1.2)} />
+          <Button variant="text" icon="center_focus_strong" className="h-7 min-w-7 px-1" onClick={() => fitRef.current()} />
         </div>
         {/* 选中详情 */}
         {detail && (
@@ -423,6 +466,7 @@ export default function AdvisorGraph() {
             </div>
             <div className="mt-0.5 text-label text-on-surface-variant">{t(TYPE_META[detail.node.type]?.name ?? detail.node.type)}</div>
             {detail.node.title && <p className="mt-1.5 text-label leading-4 text-on-surface-variant">{detail.node.title}</p>}
+            {detail.node.school && <p className="mt-1.5 text-label leading-4 text-on-surface-variant">{detail.node.school}</p>}
             {detail.node.type === "student" && detail.node.score > 0 && (
               <p className="mt-1.5 text-label">{t("盲评分：{v}", { v: detail.node.score })}</p>
             )}

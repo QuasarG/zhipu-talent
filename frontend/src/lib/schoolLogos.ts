@@ -123,6 +123,37 @@ const SCHOOL_LOGO_CODES: Record<string, string> = {
 
 const BASE = import.meta.env.BASE_URL;
 
+// 用户补充的校徽；精确名称优先，避免把港科大广州等独立校区误匹配到本部。
+const ADDED_LOGOS: Record<string, string> = {
+  "CISPA亥姆霍兹信息安全中心": "CISPA.svg",
+  "Carnegie Mellon University": "CMU.png",
+  "Griffith University": "Griffith.svg",
+  "Nanyang Technological University": "NTU.png",
+  "National University of Singapore": "NUS.png",
+  "Northeastern University": "Northeastern.png",
+  "Singapore Management University": "SMU.svg",
+  "Stanford University": "Stanford.png",
+  "University of California, Los Angeles (UCLA)": "UCLA.png",
+  "University of California, San Diego": "UCSD.svg",
+  "University of Cambridge": "Cambridge.svg",
+  "University of Oulu": "Oulu.svg",
+  "University of Southampton": "Southampton.svg",
+  "伦敦大学学院": "UCL.svg",
+  "合肥工业大学": "HFUT.png",
+  "天津大学": "Tianjin.png",
+  "巴伊兰大学（Bar-Ilan University）": "BarIlan.svg",
+  "悉尼大学": "Sydney.svg",
+  "武汉理工大学": "WHUT.png",
+  "浙江理工大学": "ZSTU.png",
+  "温莎大学": "Windsor.svg",
+  "香港城市大学": "CityU.svg",
+  "香港大学": "HKU.svg",
+  "香港浸会大学 Hong Kong Baptist University": "HKBU.svg",
+  "香港理工大学": "PolyU.png",
+  "香港科技大学": "HKUST.svg",
+  "香港科技大学（广州）": "HKUSTGZ.png",
+};
+
 // 常见中文 ↔ 英文/缩写别名（命中其一即取该 code）。
 // 维护时把同一所学校的中文名、英文名、缩写都映射到同一个 code。
 const ALIASES: Record<string, string> = {
@@ -172,6 +203,7 @@ const ALIASES: Record<string, string> = {
 export function getSchoolLogo(org: string): string | null {
   const name = (org || "").trim();
   if (!name) return null;
+  if (ADDED_LOGOS[name]) return `${BASE}school-logos/${ADDED_LOGOS[name]}`;
   // 1. 中文精确命中
   const direct = SCHOOL_LOGO_CODES[name];
   if (direct) return `${BASE}school-logos/${direct}.svg`;

@@ -1,6 +1,6 @@
-# 奖学金图谱缺少的校徽
+# 奖学金图谱校徽补齐记录
 
-2026-09-29 依据生产申请资料中的学校名称、人工确认的别名，以及当前 `frontend/public/school-logos/` 素材核对。人数是当时的申请记录数。下表的 27 个展示名称没有可用校徽；补充 SVG 后，还需在 `frontend/src/lib/schoolLogos.ts` 添加精确映射。
+2026-09-29 依据生产申请资料核对的 27 个缺失名称，现已使用用户提供的素材补齐，文件纳入 `frontend/public/school-logos/`，名称映射在 `frontend/src/lib/schoolLogos.ts`。人数是核对时的申请记录数。
 
 | 学校或机构展示名 | 申请人数 |
 |---|---:|
