@@ -5,14 +5,15 @@ import { getSchoolLogo } from "@/lib/schoolLogos";
 import { useI18n } from "@/lib/i18n";
 
 interface Props {
-  persons: PersonBrief[];
+  persons?: PersonBrief[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   /** group_id → 分组名（图谱分组节点用） */
-  groupName: (groupId: string | null) => string;
+  groupName?: (groupId: string | null) => string;
+  graph?: { nodes: { id: string; type: "student" | "advisor" | "school"; label: string; school?: string }[]; edges: GEdge[] };
 }
 
-type NodeType = "person" | "school" | "group";
+type NodeType = "person" | "school" | "group" | "student" | "advisor";
 interface GNode {
   id: string; type: NodeType; label: string; tag: string;
   x: number; y: number; vx: number; vy: number;
@@ -25,6 +26,7 @@ interface Palette {
   schools: string[]; group: string; edge: string; label: string; labelStrong: string;
   avatarBg: string; avatarText: string; personFill: string; ring: string; direction: string;
 }
+const EMPTY_PERSONS: PersonBrief[] = [];
 
 const SCHOOL_TOKENS = [
   "--color-track-agent", "--color-track-safety", "--color-track-ai_infra",
@@ -133,7 +135,31 @@ function buildGraph(persons: PersonBrief[], w: number, h: number, pal: Palette, 
   return { nodes, edges };
 }
 
-export default function RelationGraph({ persons, selectedId, onSelect, groupName }: Props) {
+function buildScholarshipGraph(graph: NonNullable<Props["graph"]>, w: number, h: number, pal: Palette) {
+  const schoolColors = new Map<string, string>();
+  const colorOf = (school: string) => {
+    if (!schoolColors.has(school)) schoolColors.set(school, pal.schools[schoolColors.size % pal.schools.length]);
+    return schoolColors.get(school)!;
+  };
+  const nodes: GNode[] = graph.nodes.map((n) => {
+    let hash = 2166136261;
+    for (const char of n.id) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    const angle = ((hash >>> 0) % 360) * Math.PI / 180;
+    const radius = 0.35 + (((hash >>> 8) & 255) / 255) * 0.65;
+    const spread = n.type === "school" ? 0.44 : n.type === "advisor" ? 0.3 : 0.38;
+    return {
+      id: n.id, type: n.type, label: n.label, tag: n.school || "",
+      x: w / 2 + Math.cos(angle) * Math.min(320, w * spread) * radius,
+      y: h / 2 + Math.sin(angle) * Math.min(230, h * spread) * radius,
+      vx: 0, vy: 0,
+      radius: n.type === "school" ? 18 : n.type === "advisor" ? 15 : 12,
+      color: n.type === "school" ? colorOf(n.label) : n.type === "advisor" ? pal.group : colorOf(n.school || n.label),
+    };
+  });
+  return { nodes, edges: graph.edges };
+}
+
+export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onSelect, groupName, graph }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nodesRef = useRef<GNode[]>([]);
@@ -145,6 +171,7 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
     node: null, panning: false, lastX: 0, lastY: 0,
   });
   const selectedRef = useRef<string | null>(null);
+  const graphModeRef = useRef(false);
   const fitRef = useRef(0);
   const fitViewRef = useRef<() => void>(() => {});
   const [stats, setStats] = useState({ persons: 0, schools: 0, tracks: 0 });
@@ -162,12 +189,17 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
   useEffect(() => {
     selectedRef.current = selectedId;
   }, [selectedId]);
+  useEffect(() => {
+    graphModeRef.current = !!graph;
+  }, [graph]);
 
   // persons 变化时重建图数据
   useEffect(() => {
     if (!palRef.current) palRef.current = readPalette();
     const { w, h } = sizeRef.current;
-    const { nodes, edges } = buildGraph(persons, w || 600, h || 400, palRef.current, groupName);
+    const { nodes, edges } = graph
+      ? buildScholarshipGraph(graph, w || 600, h || 400, palRef.current)
+      : buildGraph(persons, w || 600, h || 400, palRef.current, groupName ?? (() => ""));
     nodesRef.current = nodes;
     edgesRef.current = edges;
     setStats({
@@ -177,7 +209,7 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
     });
     // 等布局稳定后自动 fit 视图
     fitRef.current = 200;
-  }, [persons]);
+  }, [persons, graph]);
 
   // 模拟循环 + 交互，只挂一次
   useEffect(() => {
@@ -242,7 +274,7 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
     const drawNode = (n: GNode, isSelected: boolean) => {
       const pal = palRef.current!;
       const r = n.radius;
-      if (n.type === "person") {
+      if (n.type === "person" || n.type === "student") {
         // 姓氏头像：与列表同款圆形首字
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
@@ -256,14 +288,14 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText((tRef.current(n.label) || "?").charAt(0), n.x, n.y + 1);
-      } else if (n.type === "group") {
+      } else if (n.type === "group" || n.type === "advisor") {
         // 分组：选中态风格高亮——白底圆 + primary 外环（间隙双环），不随选中降透明度
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
         ctx.fillStyle = pal.personFill;
         ctx.fill();
         ctx.lineWidth = 3;
-        ctx.strokeStyle = pal.ring;
+        ctx.strokeStyle = n.type === "advisor" ? n.color : pal.ring;
         ctx.stroke();
       } else {
         const logo = schoolLogoImage(n.label);
@@ -327,7 +359,7 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
         if (!a || !b) return;
         const isGroupEdge = a.type === "group" || b.type === "group";
         const dimmed = sel && !isGroupEdge && a.id !== sel && b.id !== sel;
-        ctx.globalAlpha = dimmed ? 0.25 : 1;
+        ctx.globalAlpha = dimmed ? 0.25 : graphModeRef.current && !sel && (a.type === "student" || b.type === "student") ? 0.28 : 1;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -340,19 +372,19 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
       nodesRef.current.forEach((n) => {
         const isSelected = n.id === sel;
         const dimmed = sel && !isSelected && !isRelated(n, sel) && n.type !== "group";
-        ctx.globalAlpha = dimmed ? 0.4 : 1;
+        ctx.globalAlpha = dimmed ? 0.4 : graphModeRef.current && !sel && n.type === "student" ? 0.45 : 1;
         drawNode(n, isSelected);
         // 人名 + 学校标签（最高学历学校）；分组标签恒用强色
         ctx.fillStyle = n.type === "group" || isSelected ? pal.labelStrong : pal.label;
-        ctx.font = n.type === "person"
+        ctx.font = n.type === "person" || n.type === "student"
           ? '600 12px "Montserrat", "MiSans", sans-serif'
           : n.type === "group"
             ? '700 12px "Montserrat", "MiSans", sans-serif'
             : '500 10px "Montserrat", "MiSans", sans-serif';
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillText(tRef.current(n.label), n.x, n.y + n.radius + 4);
-        if (n.type === "person" && n.tag) {
+        if (!graphModeRef.current || scale > 0.65 || isSelected) ctx.fillText(tRef.current(n.label), n.x, n.y + n.radius + 4);
+        if ((n.type === "person" || n.type === "student") && n.tag && (!graphModeRef.current || scale > 0.8 || isSelected)) {
           ctx.font = '400 10px "Montserrat", "MiSans", sans-serif';
           ctx.fillStyle = pal.label;
           ctx.fillText(n.tag, n.x, n.y + n.radius + 20);
@@ -376,7 +408,7 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
       });
       const bw = maxX - minX || 1, bh = maxY - minY || 1;
       const pad = 60;
-      const scale = Math.max(0.3, Math.min(1.5, Math.min((w - pad * 2) / bw, (h - pad * 2) / bh)));
+      const scale = Math.max(graphModeRef.current ? 0.08 : 0.3, Math.min(1.5, Math.min((w - pad * 2) / bw, (h - pad * 2) / bh)));
       viewRef.current = {
         scale,
         offsetX: w / 2 - (minX + bw / 2) * scale,
@@ -418,7 +450,7 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
       const d = dragRef.current;
       if (node) {
         d.node = node;
-        if (node.type === "person") onSelectRef.current(node.id);
+        if (graphModeRef.current || node.type === "person") onSelectRef.current(node.id);
       } else {
         d.panning = true;
       }
@@ -444,7 +476,7 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       const v = viewRef.current;
-      v.scale = Math.max(0.3, Math.min(3, v.scale * delta));
+      v.scale = Math.max(graphModeRef.current ? 0.08 : 0.3, Math.min(3, v.scale * delta));
     };
 
     canvas.addEventListener("mousedown", onDown);
@@ -470,7 +502,7 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
 
   const zoom = (f: number) => {
     const v = viewRef.current;
-    v.scale = Math.max(0.3, Math.min(3, v.scale * f));
+    v.scale = Math.max(graph ? 0.08 : 0.3, Math.min(3, v.scale * f));
   };
   const reset = () => fitViewRef.current();
   const toggleFullscreen = () => {
@@ -479,11 +511,15 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
   };
 
   return (
-    <div ref={wrapRef} className="md3-card relative w-full max-w-full min-w-0 min-h-0 overflow-hidden">
+    <div ref={wrapRef} className={`md3-card relative w-full max-w-full min-w-0 overflow-hidden ${graph ? "h-full min-h-[360px]" : "min-h-0"}`}>
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing" />
 
       {/* 图例 */}
       <div className="absolute top-3 left-3 rounded-md border border-outline-variant bg-surface-lowest px-3 py-2 flex flex-col gap-1.5 text-label text-on-surface-variant pointer-events-none">
+        {graph ? <>
+          <div>{t("学校")} · {t("导师")} · {t("学生")}</div>
+          <div>{t("点击节点查看关联，拖动或滚轮探索全图")}</div>
+        </> : <>
         <div className="flex items-center gap-1.5">
           {SCHOOL_TOKENS.slice(0, 5).map((t) => (
             <span key={t} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: `var(${t})` }} />
@@ -498,12 +534,19 @@ export default function RelationGraph({ persons, selectedId, onSelect, groupName
           <span className="w-5 border-t border-outline" />
           <span>{t("连线 = 教育经历 / Track")}</span>
         </div>
+        </>}
       </div>
 
       {/* 底部控制条 */}
       <div className="absolute bottom-3 inset-x-3 flex items-center justify-between pointer-events-none">
         <span className="text-label text-on-surface-variant">
-          {t("当前显示 {persons} 位人才 · {schools} 所学校 · {tracks} 个 Track", { persons: stats.persons, schools: stats.schools, tracks: stats.tracks })}
+          {graph
+            ? t("学校 {schools} · 导师 {advisors} · 学生 {students}", {
+              schools: graph.nodes.filter((n) => n.type === "school").length,
+              advisors: graph.nodes.filter((n) => n.type === "advisor").length,
+              students: graph.nodes.filter((n) => n.type === "student").length,
+            })
+            : t("当前显示 {persons} 位人才 · {schools} 所学校 · {tracks} 个 Track", { persons: stats.persons, schools: stats.schools, tracks: stats.tracks })}
         </span>
         <div className="flex items-center rounded-full border border-outline-variant bg-surface-lowest pointer-events-auto">
           <IconButton icon="remove" size={18} onClick={() => zoom(0.8)} title={t("缩小")} />
