@@ -168,6 +168,12 @@ def build_config_blueprint(env_path: Path | None = None) -> Blueprint:
 
     @bp.put("/api/config")
     def config_update():
+        # 写服务器配置是管理员权限；评审账户在鉴权中间件已拦，这里再兜底一道
+        from agi_talent_radar.web.auth import ROLE_REVIEWER, current_user, user_role
+
+        user = current_user()
+        if user is not None and user_role(user) == ROLE_REVIEWER:
+            return jsonify({"detail": "评审账户不能修改服务器配置。"}), 403
         body = request.get_json(silent=True) or {}
         if not isinstance(body, dict):
             return jsonify({"detail": "请求体必须是 JSON 对象。"}), 400

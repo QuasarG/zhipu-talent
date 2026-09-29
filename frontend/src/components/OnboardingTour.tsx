@@ -1,8 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 
-const STORAGE_KEY = "zhipu_talent.onboarding.v1";
+// v2：组件大改后引导整体重写（旧版步骤已对不上当前 UI），老用户也重新看一遍。
+// 按角色分键存储：管理员与评审账户各自记忆"已看过"，互不影响。
+const STORAGE_KEY_PREFIX = "zhipu_talent.onboarding.v2";
+
+const storageKey = (role: string) => `${STORAGE_KEY_PREFIX}.${role}`;
 
 /** 引导步骤定义：selector 定位高亮元素，route 切换路由，title/desc 展示文案 */
 interface TourStep {
@@ -13,80 +17,139 @@ interface TourStep {
   placement?: "right" | "bottom" | "top" | "left";
 }
 
-const STEPS: TourStep[] = [
+/** 管理员引导：六个模块按当前 UI 逐一介绍 */
+const ADMIN_STEPS: TourStep[] = [
   {
     selector: '[data-tour="nav"]',
     title: "导航栏",
-    desc: "这是主要功能入口，包含人才评估、人才问答、人才库和设置。下面逐一介绍每个模块。",
+    desc: "平台共六个模块：人才库、人才评估、人才问答、JD 池、奖学金和设置。下面逐一介绍。",
     placement: "right",
   },
   {
     selector: '[data-tour="nav-pool"]',
     route: "/",
     title: "人才库",
-    desc: "所有评估入库的人才都在这里。关系图谱可视化人才网络，列表视图查看评分排序，右侧详情栏看完整档案和简历版本对比。",
+    desc: "统一档案、来源追踪与关系发现。导入的简历评估入库后都在这里，可切换图谱/列表视图，右侧详情栏查看完整档案。",
     placement: "right",
   },
   {
     selector: '[data-tour="nav-talent-evaluation"]',
     route: "/talent-evaluation/admission",
     title: "人才评估",
-    desc: "统一评估入口：左侧是候选人文件夹，可导入简历；选中文件夹查看简历，展开岗位子项查看该配对的面试准入报告与运行过程。",
+    desc: "面试准入工作台：左侧是候选人文件夹，选中后展开岗位子项，查看该候选人×岗位配对的准入报告与 Agent 运行轨迹。",
     placement: "right",
   },
   {
     selector: '[data-tour="nav-chat"]',
     route: "/chat",
     title: "人才问答",
-    desc: "输入姓名即可让 AI Agent 自动检索人才库、查论文、查舆情，生成调查报告。上下文取决于调用的模型。",
+    desc: "输入姓名或问题，Agent 库内优先检索、必要时联网查论文与舆情，生成带引用的调查报告。",
     placement: "right",
   },
   {
     selector: "[data-chat-input]",
     route: "/chat",
     title: "问答输入框",
-    desc: "回到问答页——在这里输入问题。Agent 会预告每一步操作，工具调用卡片实时弹出，回答带引用角标。",
+    desc: "在这里输入问题。Agent 会预告每一步操作，工具调用卡片实时弹出，回答带引用角标。",
     placement: "top",
   },
   {
     selector: '[data-tour="help-btn"]',
-    route: "/",
+    route: "/chat",
     title: "使用说明",
-    desc: "随时点击查看 Agent 工作原理、工具列表和权限说明。",
+    desc: "问答页左侧栏底部的「使用说明」：查看 Agent 工作原理、工具列表和权限说明。",
+    placement: "right",
+  },
+  {
+    selector: '[data-tour="nav-jd"]',
+    route: "/jd-pool",
+    title: "JD 池",
+    desc: "JD 入池即生成岗位评估卡；是否参与评估由每次批次显式选择。",
+    placement: "right",
+  },
+  {
+    selector: '[data-tour="nav-scholarship"]',
+    route: "/scholarship",
+    title: "奖学金初筛",
+    desc: "申请资料工作台：飞书问卷自动同步，左侧申请人列表，右侧查看材料、评分明细与舆情核验。",
     placement: "right",
   },
   {
     selector: '[data-tour="nav-settings"]',
     route: "/settings",
     title: "设置",
-    desc: "在这里可以查看后端服务的运行状态，以及配置相关外部服务的 API Key（只可修改，不可读取已保存的值）。首次使用前请确保各服务 Key 已配置。",
+    desc: "查看后端服务运行状态，配置外部服务 API Key（只可修改，不可读取已保存的值）。",
     placement: "right",
   },
   {
     selector: "",
     title: "开始使用",
-    desc: "引导结束！有问题随时点左下角「使用说明」。祝使用愉快～",
+    desc: "引导结束！祝使用愉快～",
     placement: "top",
   },
 ];
 
-export function hasSeenOnboarding(): boolean {
+/** 评审账户引导：只有奖学金与设置两个入口，围绕评审流程介绍 */
+const REVIEWER_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="nav"]',
+    title: "导航栏",
+    desc: "评审账户只有两个入口：奖学金和设置。下面逐一介绍。",
+    placement: "right",
+  },
+  {
+    selector: '[data-tour="nav-scholarship"]',
+    route: "/scholarship",
+    title: "奖学金初筛",
+    desc: "评审主工作台：左侧是申请人列表，支持搜索与状态筛选；右侧查看选中申请人的详情。飞书问卷提交后会自动出现在列表里。",
+    placement: "right",
+  },
+  {
+    selector: '[data-tour="scholarship-views"]',
+    route: "/scholarship",
+    title: "三种视图",
+    desc: "「申请资料」看档案与评分概览，「材料预览」阅读论文等原件，「评估与核验」查看评分明细、Agent 运行轨迹与舆情核验结果。",
+    placement: "bottom",
+  },
+  {
+    selector: '[data-tour="scholarship-list"]',
+    route: "/scholarship",
+    title: "申请人列表",
+    desc: "按状态筛选要处理的申请：待评估 → 评分 → 定稿。点击任意申请人，在右侧开始评审。",
+    placement: "right",
+  },
+  {
+    selector: '[data-tour="nav-settings"]',
+    route: "/settings",
+    title: "设置",
+    desc: "切换界面主题、查看各服务运行状态。",
+    placement: "right",
+  },
+  {
+    selector: "",
+    title: "开始使用",
+    desc: "引导结束！祝评审顺利～",
+    placement: "top",
+  },
+];
+
+export function hasSeenOnboarding(role: string): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) === "done";
+    return localStorage.getItem(storageKey(role)) === "done";
   } catch {
     return false;
   }
 }
 
-export function resetOnboarding(): void {
+export function resetOnboarding(role: string): void {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey(role));
   } catch {
     /* ignore */
   }
 }
 
-export default function OnboardingTour() {
+export default function OnboardingTour({ role }: { role: string }) {
   const [active, setActive] = useState(false);
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -94,32 +157,33 @@ export default function OnboardingTour() {
   const navigate = useNavigate();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { t } = useI18n();
+  const steps = useMemo(() => (role === "reviewer" ? REVIEWER_STEPS : ADMIN_STEPS), [role]);
 
   const finish = useCallback(() => {
     setActive(false);
     setStep(0);
     setBubbleVisible(false);
     try {
-      localStorage.setItem(STORAGE_KEY, "done");
+      localStorage.setItem(storageKey(role), "done");
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [role]);
 
-  // 首次访问自动启动
+  // 首次访问（本角色）自动启动
   useEffect(() => {
-    if (!hasSeenOnboarding()) {
+    if (!hasSeenOnboarding(role)) {
       timerRef.current = setTimeout(() => setActive(true), 600);
     }
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [role]);
 
   // 步骤变化时：切路由 + 先隐藏气泡 → 延迟定位高亮框 → 气泡淡入
   useEffect(() => {
     if (!active) return;
-    const s = STEPS[step];
+    const s = steps[step];
 
     // 1. 立即隐藏气泡（让高亮框先移动）
     setBubbleVisible(false);
@@ -156,25 +220,25 @@ export default function OnboardingTour() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [step, active, navigate]);
+  }, [step, active, navigate, steps]);
 
   // 窗口大小变化时重新定位
   useEffect(() => {
     if (!active) return;
     const handler = () => {
-      const s = STEPS[step];
+      const s = steps[step];
       if (!s.selector) return;
       const el = document.querySelector(s.selector);
       if (el) setRect(el.getBoundingClientRect());
     };
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
-  }, [step, active]);
+  }, [step, active, steps]);
 
   if (!active) return null;
 
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+  const current = steps[step];
+  const isLast = step === steps.length - 1;
   const hasTarget = rect !== null;
 
   // 气泡定位
@@ -242,7 +306,7 @@ export default function OnboardingTour() {
         <div className="flex items-center gap-2">
           <span className="text-title font-bold text-on-surface">{t(current.title)}</span>
           <span className="ml-auto text-label text-on-surface-variant">
-            {step + 1} / {STEPS.length}
+            {step + 1} / {steps.length}
           </span>
         </div>
         <p className="text-body-sm text-on-surface-variant leading-relaxed">{t(current.desc)}</p>

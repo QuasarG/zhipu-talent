@@ -143,22 +143,37 @@ export default {
   "问答输入框": "Q&A Input Box",
   "设置": "Settings",
   "开始使用": "Get Started",
-  "这是主要功能入口，包含人才问答、简历评估、人才库和设置。下面逐一介绍每个模块。":
-    "This is the main entry point, with Talent Q&A, Resume Screening, Talent Pool, and Settings. Let's walk through each module.",
-  "输入姓名即可让 AI Agent 自动检索人才库、查论文、查舆情，生成调查报告。上下文取决于调用的模型。":
-    "Type a name and the AI agent automatically searches the Talent Pool, papers, and reputation to build an investigation report. Context length depends on the model in use (currently GLM-5.3-Flash[1M]).",
-  "导入 PDF/图片简历，自动结构化解析、论文核验、AI 多维度评估打分。左侧导入，中间看简历，右侧看评估进度和结果。":
-    "Import PDF/image resumes for automatic structured parsing, publication verification, and AI scoring across dimensions. Import on the left, view the resume in the center, track progress and results on the right.",
-  "所有评估入库的人才都在这里。关系图谱可视化人才网络，列表视图查看评分排序，右侧详情栏看完整档案和简历版本对比。":
-    "Every screened candidate lives here. The graph view visualizes your talent network, the list view sorts by score, and the detail pane shows full profiles and resume version diffs.",
-  "回到问答页——在这里输入问题。Agent 会预告每一步操作，工具调用卡片实时弹出，回答带引用角标。":
-    "Back to the Q&A page — type your question here. The Agent announces each step, tool cards pop up live, and answers carry citation markers.",
-  "随时点击查看 Agent 工作原理、工具列表和权限说明。":
-    "Click anytime to see how the Agent works, its tool list, and permission details.",
-  "在这里可以查看后端服务的运行状态，以及配置相关外部服务的 API Key（只可修改，不可读取已保存的值）。首次使用前请确保各服务 Key 已配置。":
-    "Check backend service status and configure API keys for external services (keys can be updated, but saved values cannot be read back). Make sure all keys are configured before first use.",
-  "引导结束！有问题随时点左下角「使用说明」。祝使用愉快～":
-    "That's the tour! Click \"User Guide\" at the bottom left anytime you need help. Enjoy!",
+  "平台共六个模块：人才库、人才评估、人才问答、JD 池、奖学金和设置。下面逐一介绍。":
+    "Six modules in total: Talent Pool, Talent Evaluation, Talent Q&A, JD Pool, Scholarship, and Settings. Let's walk through each one.",
+  "统一档案、来源追踪与关系发现。导入的简历评估入库后都在这里，可切换图谱/列表视图，右侧详情栏查看完整档案。":
+    "Unified profiles, source tracking, and relationship discovery. Every imported resume lands here after screening — switch between graph and list views, with the full profile in the detail pane on the right.",
+  "面试准入工作台：左侧是候选人文件夹，选中后展开岗位子项，查看该候选人×岗位配对的准入报告与 Agent 运行轨迹。":
+    "The interview admission workbench: candidate folders on the left; pick one and expand a job sub-item to see the admission report and agent run trace for that candidate×job pair.",
+  "输入姓名或问题，Agent 库内优先检索、必要时联网查论文与舆情，生成带引用的调查报告。":
+    "Type a name or question — the agent searches the Talent Pool first, then goes online for papers and reputation when needed, producing a cited investigation report.",
+  "在这里输入问题。Agent 会预告每一步操作，工具调用卡片实时弹出，回答带引用角标。":
+    "Type your question here. The agent announces each step, tool-call cards pop up live, and answers carry citation markers.",
+  "问答页左侧栏底部的「使用说明」：查看 Agent 工作原理、工具列表和权限说明。":
+    "\"User Guide\" at the bottom of the Q&A sidebar: how the agent works, its tool list, and permission details.",
+  "JD 入池即生成岗位评估卡；是否参与评估由每次批次显式选择。":
+    "A job entry generates its assessment card on arrival; whether it joins an evaluation is chosen explicitly per batch.",
+  "申请资料工作台：飞书问卷自动同步，左侧申请人列表，右侧查看材料、评分明细与舆情核验。":
+    "The application workbench: Feishu form submissions sync in automatically; applicant list on the left, materials, scoring details, and reputation checks on the right.",
+  "查看后端服务运行状态，配置外部服务 API Key（只可修改，不可读取已保存的值）。":
+    "Check backend service status and configure external service API keys (keys can be updated, but saved values cannot be read back).",
+  "引导结束！祝使用愉快～": "That's the tour! Enjoy!",
+  "评审账户只有两个入口：奖学金和设置。下面逐一介绍。":
+    "A reviewer account has exactly two entries: Scholarship and Settings. Let's walk through them.",
+  "评审主工作台：左侧是申请人列表，支持搜索与状态筛选；右侧查看选中申请人的详情。飞书问卷提交后会自动出现在列表里。":
+    "The main review workbench: applicant list with search and status filters on the left, selected applicant's details on the right. Feishu form submissions appear in the list automatically.",
+  "三种视图": "Three Views",
+  "「申请资料」看档案与评分概览，「材料预览」阅读论文等原件，「评估与核验」查看评分明细、Agent 运行轨迹与舆情核验结果。":
+    "\"Application\" shows the profile and score overview, \"Materials\" reads the original papers, and \"Evaluation\" shows scoring details, agent traces, and reputation checks.",
+  "申请人列表": "Applicant List",
+  "按状态筛选要处理的申请：待评估 → 评分 → 定稿。点击任意申请人，在右侧开始评审。":
+    "Filter applications by status: pending → scored → finalized. Click any applicant to start reviewing on the right.",
+  "切换界面主题、查看各服务运行状态。": "Switch the UI theme and check service status.",
+  "引导结束！祝评审顺利～": "That's the tour! Happy reviewing!",
   "上一步": "Back",
   "跳过": "Skip",
   "完成": "Done",

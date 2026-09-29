@@ -138,15 +138,17 @@ export default function Scholarship() {
         subtitle={t("申请资料工作台 · 飞书问卷同步")}
         right={
           <>
-            <SegmentedButtons
-              value={view}
-              onChange={setView}
-              options={[
-                { value: "overview", label: t("申请资料"), icon: "badge" },
-                { value: "materials", label: t("材料预览"), icon: "description" },
-                { value: "assessment", label: t("评估与核验"), icon: "fact_check" },
-              ]}
-            />
+            <span data-tour="scholarship-views" className="inline-flex">
+              <SegmentedButtons
+                value={view}
+                onChange={setView}
+                options={[
+                  { value: "overview", label: t("申请资料"), icon: "badge" },
+                  { value: "materials", label: t("材料预览"), icon: "description" },
+                  { value: "assessment", label: t("评估与核验"), icon: "fact_check" },
+                ]}
+              />
+            </span>
             <IconButton icon="refresh" variant="outlined" onClick={refreshAll} title={t("刷新")} />
             <Button icon="person_add" onClick={() => setShowAdd(true)}>{t("添加申请人")}</Button>
           </>
@@ -165,7 +167,7 @@ export default function Scholarship() {
 
       <div className="app-workspace-frame grid w-full max-w-full grid-cols-1 gap-3 min-w-0 min-h-0 overflow-y-auto xl:grid-cols-[288px_minmax(0,1fr)] xl:overflow-hidden">
         {/* 左：申请列表 */}
-        <Card variant="filled" className="min-h-0 min-w-0 flex flex-col overflow-hidden">
+        <Card variant="filled" data-tour="scholarship-list" className="min-h-0 min-w-0 flex flex-col overflow-hidden">
           <div className="p-3 pb-2 flex flex-col gap-2.5 border-b border-outline-variant">
             <SearchField value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("搜索姓名 / 学校 / 方向")} />
             <div className="flex flex-wrap gap-1">

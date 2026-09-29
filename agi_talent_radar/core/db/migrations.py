@@ -21,7 +21,7 @@ from agi_talent_radar.core.db.repository import _replace_evaluation_details
 logger = logging.getLogger(__name__)
 
 
-LATEST_SCHEMA_VERSION = 32
+LATEST_SCHEMA_VERSION = 33
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -400,6 +400,14 @@ def ensure_schema(engine) -> None:
             engine,
             32,
             "phase 32: append-only agent collaboration event stream (agent-collab/v1)",
+        )
+    if current_version < 33:
+        # users.role：admin=全功能，reviewer=仅奖学金+设置（API 与导航按角色过滤）
+        _migrate_user_roles(engine)
+        _record_version(
+            engine,
+            33,
+            "phase 33: users.role (admin/reviewer) for role-scoped API access and navigation",
         )
     if current_version < 27:
         existing = {c["name"] for c in inspect(engine).get_columns("scholarship_materials")}
@@ -936,6 +944,22 @@ def _migrate_talent_groups(engine) -> None:
     persons_columns = {c["name"] for c in inspector.get_columns("persons")}
     if "group_id" not in persons_columns:
         _add_columns(engine, "persons", ["group_id VARCHAR(36)"])
+
+
+def _migrate_user_roles(engine) -> None:
+    """v33：users 加 role 列（老库 ALTER，新库由 create_all 自动带列），存量账号回填 admin。"""
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns("users")}
+    if "role" not in columns:
+        # SQLite/MySQL 兼容：NOT NULL 列必须带默认值，加列即回填
+        _add_columns(engine, "users", ["role VARCHAR(16) NOT NULL DEFAULT 'admin'"])
+    else:
+        with engine.begin() as connection:
+            connection.execute(
+                text("UPDATE users SET role = 'admin' WHERE role IS NULL OR role = ''")
+            )
 
 
 def _migrate_users_and_conversation_owner(engine) -> None:

@@ -14,6 +14,7 @@ export default {
   "当前：{mode}，点击切换": "Current: {mode}, click to switch",
   "切换主题": "Switch theme",
   "外部服务 Key、Base URL 与模型配置": "External service keys, base URLs, and model configuration",
+  "界面主题与服务状态": "Appearance and service status",
   "加载中…": "Loading…",
   "服务状态": "Service Status",
   "必需": "Required",

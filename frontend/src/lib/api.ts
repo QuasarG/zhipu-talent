@@ -391,7 +391,7 @@ export const api = {
       }),
     logout: () => fetchJSON("/api/auth/logout", { method: "POST" }),
     status: () =>
-      fetchJSON<{ authenticated: boolean; user: { id: string; username: string; display_name: string } | null }>(
+      fetchJSON<{ authenticated: boolean; user: { id: string; username: string; display_name: string; role: string } | null }>(
         "/api/auth/status"
       ),
   },

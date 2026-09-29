@@ -60,7 +60,9 @@ function isSensitive(v: ConfigValue): v is SensitiveValue {
   return v !== null && typeof v === "object" && "configured" in v;
 }
 
-export default function Settings() {
+export default function Settings({ role }: { role?: string }) {
+  // 评审账户只能看外观与服务状态：外部 Key 编辑是管理员功能（后端 PUT 也会 403）
+  const canManageServer = role !== "reviewer";
   // health=null 表示检测进行中；config={} 表示配置读取中——都不挡页面，
   // 卡片先渲染骨架，结果回来后逐卡片无缝定格
   const [health, setHealth] = useState<HealthReport | null>(null);
@@ -150,7 +152,7 @@ export default function Settings() {
 
   return (
     <div>
-      <PageToolbar title={t("设置")} subtitle={t("外部服务 Key、Base URL 与模型配置")} />
+      <PageToolbar title={t("设置")} subtitle={canManageServer ? t("外部服务 Key、Base URL 与模型配置") : t("界面主题与服务状态")} />
       <div className="flex flex-col gap-6">
           {/* 外观 */}
           <section>
@@ -226,7 +228,8 @@ export default function Settings() {
             </div>
           </section>
 
-          {/* 外部服务 Key */}
+          {/* 外部服务 Key（管理员） */}
+          {canManageServer && (
           <section>
             <h2 className="text-title-lg mb-3">{t("外部服务 Key")}</h2>
             {saveMsg && (
@@ -356,15 +359,19 @@ export default function Settings() {
               })}
             </div>
           </section>
+          )}
 
-          {/* 其他 */}
+          {/* 其他：重看当前角色的新手引导（管理员回人才库，评审回奖学金） */}
           <section>
             <h2 className="text-title-lg mb-3">{t("其他")}</h2>
             <div className="flex gap-3">
               <Button
                 variant="outlined"
                 icon="school"
-                onClick={() => { resetOnboarding(); window.location.href = "/"; }}
+                onClick={() => {
+                  resetOnboarding(role || "admin");
+                  window.location.href = role === "reviewer" ? "/scholarship" : "/";
+                }}
               >
                 {t("重新查看新手引导")}
               </Button>

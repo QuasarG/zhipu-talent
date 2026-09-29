@@ -2,8 +2,12 @@
 
 约束（与决策记录 §2.6 对齐）：
 
-- 平台是内部工具，使用一个密码完成访问鉴权。
+- 平台是内部工具，使用账号密码完成访问鉴权。
 - 鉴权成功后获得平台全部信息与功能权限，不做字段级过滤。
+- 角色只有两档：admin（默认，全功能）与 reviewer（奖学金评审账户，
+  只能用奖学金、通知与设置（只读配置）相关的 API；其余 /api/* 返回 403）。
+  页面本身不做服务端区分（SPA 同一外壳），可见范围由前端按角色裁剪，
+  API 层的 403 才是真正的安全边界。
 - 除登录接口和健康检查外，所有页面、后端 API 和 SSE 流都必须鉴权。
 - 访问密码从环境变量读取，不得写入前端或提交到仓库。
 - 登录成功后使用服务端签名的会话 Cookie，支持会话过期和主动退出。
@@ -31,6 +35,9 @@ SESSION_KEY_AUTHED = "authed_at"
 SESSION_KEY_EXPIRES = "auth_expires_at"
 SESSION_KEY_USER_ID = "user_id"
 DEFAULT_SESSION_TTL_SECONDS = 8 * 3600  # 8 小时
+
+ROLE_ADMIN = "admin"
+ROLE_REVIEWER = "reviewer"
 
 
 def _read_session_secret() -> str:
@@ -140,6 +147,12 @@ def require_auth_page(view: Callable) -> Callable:
     return wrapper
 
 
+def user_role(user) -> str:
+    """读取用户角色；老数据/未知值一律按 admin 处理（fail-open 只面向既有账号）。"""
+    role = getattr(user, "role", None)
+    return role if role in (ROLE_ADMIN, ROLE_REVIEWER) else ROLE_ADMIN
+
+
 # 不需要鉴权的路径前缀（白名单）。
 PUBLIC_PATHS = frozenset({"/login", "/api/auth/login", "/api/auth/status", "/health"})
 # 前缀白名单：只读分享页与其公开数据 API（凭随机 token 自证，不走会话）
@@ -151,6 +164,23 @@ PUBLIC_PREFIXES = (
     "/api/scholarship/materials-file/",
 )
 
+# reviewer 可用的 API 前缀：奖学金全流程 + 通知中心 + 会话自身。
+# 设置页只读配置走 /api/config*（GET），写配置（PUT）不放行。
+REVIEWER_ALLOWED_API_PREFIXES = (
+    "/api/auth",
+    "/api/scholarship",
+    "/api/notifications",
+)
+
+
+def _reviewer_api_allowed(path: str) -> bool:
+    if path.startswith(REVIEWER_ALLOWED_API_PREFIXES):
+        return True
+    # 设置页展示脱敏配置与审计记录：只读放行，写操作由 config_update 再拦一道
+    if path.startswith("/api/config") and request.method in ("GET", "HEAD", "OPTIONS"):
+        return True
+    return False
+
 
 def install_auth_middleware(app) -> None:
     """在 Flask app 上注册统一鉴权 before_request。
@@ -158,7 +188,8 @@ def install_auth_middleware(app) -> None:
     - 白名单路径放行；
     - API 路径（/api/...）未鉴权返回 401 JSON；
     - 其他页面未鉴权跳转 /login；
-    - SSE 流（/api/.../evaluate 等）同样要求鉴权。
+    - SSE 流（/api/.../evaluate 等）同样要求鉴权；
+    - reviewer 角色只放行奖学金/通知/会话与只读配置 API，其余 /api/* 返回 403。
     """
 
     @app.before_request
@@ -167,15 +198,31 @@ def install_auth_middleware(app) -> None:
         # 白名单
         if path in PUBLIC_PATHS or path.startswith(("/static/",) + PUBLIC_PREFIXES):
             return None
-        if is_authenticated():
-            return None
-        # 未鉴权
-        accept = request.headers.get("Accept", "")
-        if path.startswith("/api/"):
-            return jsonify({"detail": "未鉴权，请先登录。"}), 401
-        if "text/html" in accept or request.method == "GET":
-            return redirect("/login")
-        return jsonify({"detail": "未鉴权。"}), 401
+        user = current_user() if is_authenticated() else None
+        if user is None:
+            # 未鉴权
+            accept = request.headers.get("Accept", "")
+            if path.startswith("/api/"):
+                return jsonify({"detail": "未鉴权，请先登录。"}), 401
+            if "text/html" in accept or request.method == "GET":
+                return redirect("/login")
+            return jsonify({"detail": "未鉴权。"}), 401
+        # 已鉴权：reviewer 的 API 访问范围收窄（页面不区分，SPA 外壳统一）
+        if user_role(user) == ROLE_REVIEWER and path.startswith("/api/") and not _reviewer_api_allowed(path):
+            return jsonify({"detail": "评审账户无权访问该功能。"}), 403
+        return None
+
+
+def _user_payload(user) -> dict | None:
+    """login/status 共用的用户信息（含角色，前端据此裁剪导航与路由）。"""
+    if user is None:
+        return None
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": user_role(user),
+    }
 
 
 def build_auth_blueprint() -> Blueprint:
@@ -188,13 +235,7 @@ def build_auth_blueprint() -> Blueprint:
         username = str(body.get("username", ""))
         password = str(body.get("password", ""))
         if login(username, password):
-            user = current_user()
-            return jsonify({
-                "authenticated": True,
-                "user": {"id": user.id, "username": user.username, "display_name": user.display_name}
-                if user
-                else None,
-            })
+            return jsonify({"authenticated": True, "user": _user_payload(current_user())})
         return jsonify({"detail": "用户名或密码错误。"}), 401
 
     @bp.post("/api/auth/logout")
@@ -206,12 +247,7 @@ def build_auth_blueprint() -> Blueprint:
     def auth_status():
         authed = is_authenticated()
         user = current_user() if authed else None
-        return jsonify({
-            "authenticated": authed,
-            "user": {"id": user.id, "username": user.username, "display_name": user.display_name}
-            if user
-            else None,
-        })
+        return jsonify({"authenticated": authed, "user": _user_payload(user)})
 
     @bp.get("/login")
     def login_page():
@@ -279,6 +315,9 @@ def configure_app_session(app) -> None:
 __all__ = [
     "AUTH_BP_NAME",
     "PUBLIC_PATHS",
+    "ROLE_ADMIN",
+    "ROLE_REVIEWER",
+    "user_role",
     "is_authenticated",
     "current_user",
     "login",

@@ -18,13 +18,15 @@ interface NavItem {
   label: string;
   /** 高亮匹配前缀（用于一个入口覆盖多个子路由，如人才评估的 admission/capability） */
   matchPrefix?: string;
+  /** 仅管理员可见（评审账户只剩奖学金与设置） */
+  adminOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
-  { to: "/", icon: "groups", label: "人才库" },
-  { to: "/talent-evaluation/admission", icon: "fact_check", label: "人才评估", matchPrefix: "/talent-evaluation" },
-  { to: "/chat", icon: "forum", label: "人才问答" },
-  { to: "/jd-pool", icon: "work", label: "JD 池" },
+  { to: "/", icon: "groups", label: "人才库", adminOnly: true },
+  { to: "/talent-evaluation/admission", icon: "fact_check", label: "人才评估", matchPrefix: "/talent-evaluation", adminOnly: true },
+  { to: "/chat", icon: "forum", label: "人才问答", adminOnly: true },
+  { to: "/jd-pool", icon: "work", label: "JD 池", adminOnly: true },
   { to: "/scholarship", icon: "workspace_premium", label: "奖学金" },
   { to: "/settings", icon: "settings", label: "设置" },
 ];
@@ -32,10 +34,11 @@ const navItems: NavItem[] = [
 const FEEDBACK_URL = "https://zhipu-ai.feishu.cn/share/base/form/shrcnBnsxfWPAOZW1yP12PA9RGg";
 
 /** MD3 Navigation Rail：80px 全高，active = pill 指示器 */
-export default function NavRail({ username }: { username?: string }) {
+export default function NavRail({ username, role }: { username?: string; role?: string }) {
   const { t, lang } = useI18n();
   const { resolved } = useTheme();
   const location = useLocation();
+  const items = role === "reviewer" ? navItems.filter((item) => !item.adminOnly) : navItems;
   const logoSrc =
     lang === "en"
       ? resolved === "dark"
@@ -56,8 +59,8 @@ export default function NavRail({ username }: { username?: string }) {
 
       {/* 导航项 */}
       <ul className="flex flex-col gap-3 flex-1 w-full items-center">
-        {navItems.map(({ to, icon, label, matchPrefix }) => {
-          const tourKey = to === "/" ? "nav-pool" : to === "/talent-evaluation/admission" ? "nav-talent-evaluation" : to === "/chat" ? "nav-chat" : to === "/scholarship" ? "nav-scholarship" : "nav-settings";
+        {items.map(({ to, icon, label, matchPrefix }) => {
+          const tourKey = to === "/" ? "nav-pool" : to === "/talent-evaluation/admission" ? "nav-talent-evaluation" : to === "/chat" ? "nav-chat" : to === "/jd-pool" ? "nav-jd" : to === "/scholarship" ? "nav-scholarship" : "nav-settings";
           return (
           <li key={to} className="w-full flex justify-center">
             <NavLink

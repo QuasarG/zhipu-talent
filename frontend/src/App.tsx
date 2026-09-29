@@ -33,8 +33,10 @@ function EvaluationRedirect({ to }: { to: string }) {
   return <Navigate to={focus ? `${to}?focus=${encodeURIComponent(focus)}` : to} replace />;
 }
 
+type CurrentUser = { id: string; username: string; display_name: string; role: string };
+
 function App() {
-  const [currentUser, setCurrentUser] = useState<{ id: string; username: string; display_name: string } | null | undefined>(undefined);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null | undefined>(undefined);
   const { t } = useI18n();
 
   useEffect(() => {
@@ -69,12 +71,22 @@ function App() {
     return <Login onLogin={() => api.auth.status().then((d) => setCurrentUser(d.user))} />;
   }
 
+  // 评审账户：只开放奖学金与设置，其余地址（含兜底 /）统一回到奖学金
+  const isReviewer = currentUser.role === "reviewer";
+
   return (
     <BrowserRouter>
       <div className="flex min-h-screen">
-        <NavRail username={currentUser.display_name || currentUser.username} />
+        <NavRail username={currentUser.display_name || currentUser.username} role={currentUser.role} />
         <main className="flex-1 min-w-0 px-6 pb-6">
           <Suspense fallback={<RouteFallback />}>
+          {isReviewer ? (
+          <Routes>
+            <Route path="/scholarship" element={<Scholarship />} />
+            <Route path="/settings" element={<Settings role={currentUser.role} />} />
+            <Route path="*" element={<Navigate to="/scholarship" replace />} />
+          </Routes>
+          ) : (
           <Routes>
             <Route path="/" element={<TalentPool />} />
             {/* 统一"人才评估"外壳：当前只承载面试准入 */}
@@ -89,13 +101,15 @@ function App() {
             <Route path="/talent-pool/:personId" element={<TalentProfile />} />
             <Route path="/jd-pool" element={<JdPool />} />
             <Route path="/scholarship" element={<Scholarship />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/settings" element={<Settings role={currentUser.role} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          )}
           </Suspense>
         </main>
       </div>
-      <OnboardingTour />
+      {/* 新手引导按角色区分步骤（管理员六模块 / 评审仅奖学金+设置） */}
+      <OnboardingTour role={currentUser.role} />
     </BrowserRouter>
   );
 }

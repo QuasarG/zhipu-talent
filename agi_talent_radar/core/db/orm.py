@@ -923,7 +923,7 @@ class ChatMessageORM(Base):
 
 
 class UserORM(Base):
-    """平台账号：仅用于会话隔离，不开放注册。"""
+    """平台账号：仅用于会话隔离，不开放注册。role：admin=全功能，reviewer=仅奖学金+设置。"""
 
     __tablename__ = "users"
 
@@ -931,6 +931,7 @@ class UserORM(Base):
     username = Column(String(64), nullable=False, unique=True, index=True)
     password_hash = Column(String(256), nullable=False)
     display_name = Column(String(64), default="")
+    role = Column(String(16), nullable=False, default="admin", server_default="admin")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
