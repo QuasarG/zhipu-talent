@@ -118,6 +118,7 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
         # 材料多的人（如 19 份）不会没读完就被掐；真耗尽时注入强制收尾指令再给最后机会。
         max_rounds = min(60, MAX_ROUNDS + len(materials))
         forced_final = False
+        empty_rounds = 0
         for round_no in range(max_rounds):
             # 双流对齐问答 SSE 协议：reasoning→thinking_delta（思考卡）、content→answer_delta（正文）。
             # 两类 buffer 职责严格分离：emit_pending 只管发增量（发完即清），
@@ -203,7 +204,16 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
                 s.pop("_open", None)
             tool_calls = result.get("tool_calls") or []
             if not trace_acc["answer"] and not trace_acc["thinking"] and not tool_calls:
-                break
+                # 空响应≠完成（正常收尾必须走 submit_scores）。多数是瞬时模型故障，
+                # 催一次继续；连续 3 轮全空才判失败，防死循环。
+                empty_rounds += 1
+                if empty_rounds >= 3:
+                    break
+                messages.append({"role": "user", "content": (
+                    "上一轮没有返回内容。请继续评审流程：读完剩余材料后"
+                    "调用 submit_scores 提交评分。")})
+                continue
+            empty_rounds = 0
             messages.append({
                 "role": "assistant",
                 "content": result.get("text") or "",
