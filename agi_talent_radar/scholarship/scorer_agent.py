@@ -303,7 +303,11 @@ def _finalize(evaluation: ScholarshipEvaluationORM, ctx: ScorerContext, segments
     evaluation.highlights = final["highlights"]
     evaluation.risks = final["risks"]
     evaluation.verified_papers = final["verified_papers"]
-    evaluation.special_sections = final["special_sections"]
+    # agent 有时漏写特别栏目 title，兜底防止前端渲染空标题
+    evaluation.special_sections = [
+        {**s, "title": str(s.get("title") or "").strip() or "特别亮点"}
+        for s in final["special_sections"]
+    ]
     evaluation.fetched_pages = final["fetched_pages"]
     evaluation.config_version = config_version()
     evaluation.status = "completed"
