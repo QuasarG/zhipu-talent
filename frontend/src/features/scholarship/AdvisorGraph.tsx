@@ -10,10 +10,37 @@ interface GraphPayload { nodes: GNodeData[]; edges: GEdgeData[]; counts: { stude
 
 interface SimNode { id: string; type: string; label: string; title: string; score: number; x: number; y: number; vx: number; vy: number }
 
-const TYPE_META: Record<string, { color: string; r: number; name: string }> = {
-  student: { color: "var(--color-primary)", r: 7, name: "学生" },
-  advisor: { color: "var(--color-warning)", r: 9, name: "导师" },
-  school: { color: "var(--color-tertiary)", r: 11, name: "学校" },
+// Canvas 不认 CSS 变量：同人才库 RelationGraph，从根元素 getComputedStyle 解析成真实色值
+interface Palette {
+  student: string; advisor: string; school: string;
+  edge: string; label: string; labelStrong: string; focus: string;
+}
+let paletteCache: { at: number; pal: Palette } | null = null;
+function readPalette(): Palette {
+  const css = getComputedStyle(document.documentElement);
+  const t = (n: string, fb: string) => css.getPropertyValue(n).trim() || fb;
+  return {
+    student: t("--color-primary", "#006A6B"),
+    advisor: t("--color-warning", "#B58F00"),
+    school: t("--color-tertiary", "#6750A4"),
+    edge: t("--color-outline-variant", "#BEC9C8"),
+    label: t("--color-on-surface-variant", "#3F4948"),
+    labelStrong: t("--color-on-surface", "#161D1D"),
+    focus: t("--color-on-surface", "#161D1D"),
+  };
+}
+function palette(): Palette {
+  const now = performance.now();
+  if (!paletteCache || now - paletteCache.at > 1000) {
+    paletteCache = { at: now, pal: readPalette() };  // 1s 缓存：主题切换后自动跟上，又不用每帧强制重排
+  }
+  return paletteCache.pal;
+}
+
+const TYPE_META: Record<string, { token: keyof Palette; r: number; name: string }> = {
+  student: { token: "student", r: 7, name: "学生" },
+  advisor: { token: "advisor", r: 9, name: "导师" },
+  school: { token: "school", r: 11, name: "学校" },
 };
 
 /** 师生知识图谱：简单力导向（斥力+边弹簧+中心引力），Canvas 渲染，点选高亮邻域 */
@@ -120,13 +147,14 @@ export default function AdvisorGraph() {
           return !!ns && sim.nodes.some((n) => n.id === id && ns.has(sim.nodes.indexOf(n)));
         };
         // 边
+        const pal = palette();
         ctx.lineWidth = 1;
         for (const e of sim.edges) {
           const a = sim.nodes[e.a], b = sim.nodes[e.b];
           const active = !focus || a.id === focus || b.id === focus;
           const hit = searchHit && (searchHit.includes(a.id) || searchHit.includes(b.id));
-          ctx.strokeStyle = active || hit ? "var(--color-outline)" : "transparent";
-          ctx.globalAlpha = active ? (hit ? 0.95 : 0.55) : 0.08;
+          ctx.strokeStyle = pal.edge;
+          ctx.globalAlpha = active ? (hit ? 0.95 : 0.5) : 0.07;
           ctx.beginPath();
           ctx.moveTo(ox + a.x * scale, oy + a.y * scale);
           ctx.lineTo(ox + b.x * scale, oy + b.y * scale);
@@ -139,19 +167,20 @@ export default function AdvisorGraph() {
           const px = ox + n.x * scale, py = oy + n.y * scale;
           if (px < -40 || py < -40 || px > w + 40 || py > h + 40) continue;
           const dimmed = (focus && !inFocus(n.id)) && !(searchHit && searchHit.includes(n.id));
+          const highlighted = n.id === selected || n.id === hover || (searchHit && searchHit.includes(n.id));
           ctx.globalAlpha = dimmed ? 0.15 : 1;
           ctx.beginPath();
           ctx.arc(px, py, meta.r * Math.max(0.8, scale), 0, Math.PI * 2);
-          ctx.fillStyle = meta.color;
+          ctx.fillStyle = pal[meta.token];
           ctx.fill();
-          if (n.id === selected || n.id === hover || (searchHit && searchHit.includes(n.id))) {
+          if (highlighted) {
             ctx.lineWidth = 2.5;
-            ctx.strokeStyle = "var(--color-on-surface)";
+            ctx.strokeStyle = pal.focus;
             ctx.stroke();
           }
           if (showLabels && (scale > 0.75 || n.type !== "student")) {
             ctx.font = `${Math.max(9, 11 * scale)}px system-ui`;
-            ctx.fillStyle = "var(--color-on-surface)";
+            ctx.fillStyle = highlighted ? pal.labelStrong : pal.label;
             ctx.textAlign = "center";
             const text = n.label.length > 14 ? n.label.slice(0, 13) + "…" : n.label;
             ctx.fillText(text, px, py + meta.r * Math.max(0.8, scale) + 12);
@@ -261,7 +290,7 @@ export default function AdvisorGraph() {
         <div className="absolute bottom-3 left-3 flex gap-3 rounded-full bg-surface-lowest/90 px-3 py-1.5 text-label text-on-surface-variant shadow-sm">
           {Object.entries(TYPE_META).map(([k, m]) => (
             <span key={k} className="flex items-center gap-1.5">
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: palette()[m.token] }} />
               {t(m.name)}
             </span>
           ))}
@@ -270,7 +299,7 @@ export default function AdvisorGraph() {
         {detail && (
           <div className="absolute top-3 right-3 w-64 rounded-lg border border-outline-variant bg-surface-lowest p-3 shadow-lg">
             <div className="flex items-center gap-2">
-              <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: TYPE_META[detail.node.type]?.color }} />
+              <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: palette()[(TYPE_META[detail.node.type] ?? TYPE_META.student).token] }} />
               <span className="min-w-0 flex-1 truncate text-title font-bold">{detail.node.label}</span>
               <button className="cursor-pointer text-on-surface-variant hover:text-on-surface" onClick={() => setSelected(null)}>✕</button>
             </div>
