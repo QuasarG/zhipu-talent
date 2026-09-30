@@ -61,7 +61,10 @@ def _system_prompt(app: ScholarshipApplicationORM, ctx: ScorerContext) -> str:
 # 工作方式
 0. 表达要求：每次调用工具前，先用一两句话说明「为什么调它、想从里面确认什么」。
    这些说明会展示给评审老师，写清楚目的与预期，不要沉默地连续调用。
-1. 先 list_files 盘点全部材料；逐一 read_file（分页读完关键材料；图片/视频会自动转译为文字描述）。
+1. 先 list_files 盘点全部材料；逐一阅读全部**有意义的**材料（简历/申请表/论文/代码/成果证明，
+   分页读完关键材料；图片/视频会自动转译为文字描述）。列表中 form 标为「系统文件」的
+   （.DS_Store 等）无需阅读；某个文件读不到内容时说明一句原因并跳过即可——
+   读不到 ≠ 失败，不要换页或反复重试，更不要因此推迟提交。
 2. 核心产出 claim（论文/奖项/系统）走证据分级瀑布：
    verify_paper 查到 → verified；
    未查到 → 读佐证原文，完整可信 → supported；
@@ -69,7 +72,7 @@ def _system_prompt(app: ScholarshipApplicationORM, ctx: ScorerContext) -> str:
 3. 材料中若出现申请人个人网站/项目主页/GitHub 等链接，用 web_fetch 抓取正文——
    自述信息（项目介绍、Star 数、获奖列表）以页面实际内容为准，抓取结果同时会展示给评审老师。
 4. 简要 web_search 申请人方向与导师的公开负面信息（学术不端/撤稿/争议），发现记入 reputation_findings。
-5. 全部材料读过、证据定级完成后 submit_scores。提交内容除各维度分数理由外，还包括：
+5. 全部有意义的材料读过、证据定级完成后 submit_scores（系统文件除外）。提交内容除各维度分数理由外，还包括：
    - 每维度的 highlights[]（亮点）与 anomalies[]（疑点）——疑点仅提出供人工复核，你无权判定取消资格；
    - verified_papers[]：评审过程中 verify_paper 查证过的论文（含 venue/年份/引用/doi/similar），
      材料里附了原文 PDF 的标注 has_pdf 和 pdf_file_id；
@@ -250,7 +253,9 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
             if round_no >= max_rounds - 2 and ctx.final is None and not forced_final:
                 forced_final = True
                 ctx.force_submit = True
-                unread = [m.filename for m in ctx.materials if m.id not in ctx.read_ids]
+                from agi_talent_radar.scholarship.scorer_tools import _is_junk_file
+                unread = [m.filename for m in ctx.materials
+                          if m.id not in ctx.read_ids and not _is_junk_file(m)]
                 note = "工具预算即将耗尽。请立即基于已收集的信息调用 submit_scores 提交评分，不要再调用任何其他工具。"
                 if unread:
                     note += f"（未读材料：{('、'.join(unread[:5]))}{'等' if len(unread) > 5 else ''}，按已读内容评估并在理由中注明材料未读完）"

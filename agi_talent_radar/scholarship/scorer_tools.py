@@ -22,6 +22,16 @@ from agi_talent_radar.scholarship.scoring import DIMENSIONS, EVIDENCE_LEVELS
 
 logger = logging.getLogger(__name__)
 
+# 系统/元数据垃圾文件（macOS .DS_Store、Windows Thumbs.db、Office 临时锁 ~$ 等）：
+# 没有评审价值也不可阅读。列表标注「系统文件」、read 短路、提交闸门排除，
+# 避免机械的「读完才能提交」要求把 agent 困在垃圾文件上空转。
+_JUNK_FILENAMES = {".ds_store", "thumbs.db", "desktop.ini", ".localized"}
+
+
+def _is_junk_file(m) -> bool:
+    base = (m.filename or "").strip().lower().rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    return base in _JUNK_FILENAMES or base.startswith("._") or base.startswith("~$")
+
 # 视觉转译模型：实测该 key 上 GLM-5.3-Flash 可用（驼峰名 1214 不存在），可 env 覆盖
 _VISION_MODEL = os.getenv("SCORER_VISION_MODEL", "GLM-5.3-Flash")
 PAGE_CHARS = 4000          # read_file 文本分页
@@ -66,17 +76,20 @@ def _scrub(text: str, ctx: ScorerContext) -> str:
 
 
 def _fmt_material(m) -> dict[str, Any]:
-    suffix = _suffix(m.filename or "")
-    if suffix in _VIDEO_SUFFIXES:
-        form = "视频"
-    elif suffix in _IMAGE_SUFFIXES:
-        form = "图片"
-    elif suffix == ".docx":
-        form = "文档(docx)"
-    elif suffix == ".pdf":
-        form = "PDF"
+    if _is_junk_file(m):
+        form = "系统文件（无需阅读）"
     else:
-        form = "文本"
+        suffix = _suffix(m.filename or "")
+        if suffix in _VIDEO_SUFFIXES:
+            form = "视频"
+        elif suffix in _IMAGE_SUFFIXES:
+            form = "图片"
+        elif suffix == ".docx":
+            form = "文档(docx)"
+        elif suffix == ".pdf":
+            form = "PDF"
+        else:
+            form = "文本"
     return {
         "file_id": m.id,
         "kind": m.kind,               # form/resume/letter/achievement
@@ -437,6 +450,13 @@ def _tool_read_file(ctx: ScorerContext, args: dict[str, Any]) -> dict[str, Any]:
     if m is None:
         return {"summary": f"文件 {file_id} 不存在", "detail": {"error": "file_id 不在 list_files 结果里"}}
     ctx.read_ids.add(file_id)
+    if _is_junk_file(m):
+        # 系统垃圾文件：短路返回并计入已读，别让 agent 在不可读文件上空转
+        return {
+            "summary": f"{m.filename}：系统文件，无需阅读",
+            "detail": {"kind": m.kind, "filename": m.filename,
+                       "note": "系统元数据文件（如 .DS_Store），无评审价值，已自动计入已读，请直接跳过"},
+        }
     suffix = _suffix(m.filename or "")
     page = int(args.get("page") or 0)
     raw = _lazy_material_text(ctx, m)
@@ -459,7 +479,13 @@ def _tool_read_file(ctx: ScorerContext, args: dict[str, Any]) -> dict[str, Any]:
     start = page * PAGE_CHARS
     chunk = text[start:start + PAGE_CHARS]
     if not chunk:
-        return {"summary": f"{m.filename} 第 {page} 页为空", "detail": {"kind": m.kind, "filename": m.filename, "text": ""}}
+        # 空内容是终态：明确告知已计入已读、不要换页重试（否则 agent 会在
+        # .DS_Store/损坏文件上反复尝试同一份文件）
+        return {
+            "summary": f"{m.filename} 无可提取文本（已计入已读）",
+            "detail": {"kind": m.kind, "filename": m.filename, "text": "",
+                       "note": "该文件没有可读文本（系统/二进制/损坏文件），直接跳过即可，不要换页或重试"},
+        }
     return {
         "summary": f"{m.filename} 第 {page + 1} 页（{len(chunk)} 字）",
         "detail": {
@@ -633,7 +659,8 @@ def _validate_final(ctx: ScorerContext, data: dict[str, Any]) -> str:
     missing = [d["key"] for d in DIMENSIONS if d["key"] not in by_key]
     if missing:
         return f"缺少维度：{', '.join(missing)}"
-    unread = [m.filename for m in ctx.materials if m.id not in ctx.read_ids]
+    unread = [m.filename for m in ctx.materials
+              if m.id not in ctx.read_ids and not _is_junk_file(m)]
     if unread and not ctx.force_submit:
         return "以下材料尚未读取，读完才能提交：" + "、".join(unread[:6]) + ("等" if len(unread) > 6 else "")
     return ""
