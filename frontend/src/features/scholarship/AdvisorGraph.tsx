@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import Icon from "@/components/ui/Icon";
@@ -25,6 +26,7 @@ const typeName = { school: "学校", advisor: "导师", student: "学生" };
 
 export default function AdvisorGraph() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [payload, setPayload] = useState<GraphPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
@@ -132,6 +134,12 @@ export default function AdvisorGraph() {
               {t(typeName[node.type])} · {node.label}
             </button>)}
           </div>
+          {selectedNode.type === "student" && (
+            <Button variant="tonal" icon="open_in_new" className="mt-2 h-8 w-full justify-center px-3 text-label"
+              onClick={() => navigate(`/scholarship?applicant=${encodeURIComponent(selectedNode.id.replace(/^student:/, ""))}`)}>
+              {t("打开申请人详情")}
+            </Button>
+          )}
         </div>}
         {loading && <div className="absolute inset-0 flex items-center justify-center bg-surface-lowest/60 text-body-sm">{t("加载中…")}</div>}
       </div>

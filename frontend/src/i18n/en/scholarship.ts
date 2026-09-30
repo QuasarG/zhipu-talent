@@ -195,4 +195,5 @@ export default {
   "舆情发现": "Reputation Findings",
   "邮箱": "Email",
   "电话": "Phone",
-}
+  "打开申请人详情": "Open Applicant Details",
+};

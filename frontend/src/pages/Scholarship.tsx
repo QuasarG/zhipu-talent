@@ -1,5 +1,6 @@
 // 奖学金模块重构：单页外壳 = 左申请列表 + 右详情（对齐人才库/人才评估布局）
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { ScholarshipApplication } from "@/lib/types";
@@ -64,6 +65,16 @@ export default function Scholarship() {
   useEffect(() => {
     if ((view as string) === "graph") setView("overview");
   }, [view, setView]);
+
+  // 图谱页深链：/scholarship?applicant=<id> 直接选中该申请人（选中即自动拉详情）
+  const location = useLocation();
+  const navigate = useNavigate();
+  const applicantParam = new URLSearchParams(location.search).get("applicant");
+  useEffect(() => {
+    if (!applicantParam) return;
+    setSelectedId(applicantParam);
+    navigate("/scholarship", { replace: true }); // 消费掉参数，避免刷新反复选中
+  }, [applicantParam, setSelectedId, navigate]);
 
   const load = useCallback(async () => {
     try {
