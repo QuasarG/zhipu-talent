@@ -170,6 +170,7 @@ ADVISOR_ALIASES = {
     "刘勋颖（Xunying Liu，港中文）": "Xunying Liu",
     "HENG Pheng Ann（香港中文大学）": "HENG Pheng Ann",
     "Wang Dakuo（美国东北大学，d.wang@northeastern.edu）": "Wang Dakuo",
+    "王亦洲（北京大学，yizhou.wang@pku.edu.cn）": "王亦洲",
 }
 
 
@@ -364,6 +365,7 @@ ADVISOR_SCHOOLS: dict[str, str] = {
     "Xinchao Wang": "National University of Singapore",
     "Zhu Hongyuan": "新加坡 A*STAR IAIC",
     "Erran Li": "AWS AI Labs",
+    "王亦洲": "北京大学",
     "HENG Pheng Ann": "香港中文大学",
     "邹磊": "北京大学",
     "邹逸雄": "华中科技大学",
