@@ -269,7 +269,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
       tracks: nodes.filter((n) => n.type === "group").length,
     });
     // 等布局稳定后自动 fit 视图
-    fitRef.current = 200;
+    fitRef.current = 75; // 帧数阈值按 30fps 上限校准（≈2.5s，等力布局稳定后自动 fit）
   }, [persons, graph]);
 
   // 模拟循环 + 交互，只挂一次
@@ -489,14 +489,22 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
     fitViewRef.current = fitView;
 
     let raf = 0;
-    const loop = () => {
+    // 帧率上限 30fps：力模拟是每帧 O(n²)（500+ 节点 ≈ 15 万次配对）+ 全量重绘，
+    // 高刷屏（165Hz）下 rAF 满帧率跑会把单核 CPU 打满。rAF 仍按显示器频率注册
+    //（不可见标签页照常被浏览器节流到近 0），不足 33ms 的帧直接跳过不重绘。
+    const FRAME_INTERVAL_MS = 1000 / 30;
+    let lastFrameTs = 0;
+    const loop = (ts?: number) => {
+      raf = requestAnimationFrame(loop);
+      const now = ts ?? performance.now();
+      if (now - lastFrameTs < FRAME_INTERVAL_MS) return;
+      lastFrameTs = now;
       simulate();
       if (fitRef.current > 0) {
         fitRef.current -= 1;
         if (fitRef.current === 0) fitView();
       }
       draw();
-      raf = requestAnimationFrame(loop);
     };
     loop();
 
