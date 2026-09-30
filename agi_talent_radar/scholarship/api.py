@@ -706,11 +706,12 @@ def build_scholarship_blueprint() -> Blueprint:
             def split_schools(raw: str) -> list[str]:
                 """「A；B」双校串拆成独立学校（联合培养/双学位是两所学校两条边），
                 各自过 canonical_school 去重；不再产出拼接节点（此前「香港理工大学；
-                华南理工大学」整串当一个学校，前端 logo 子串匹配后视觉上两校合一）。"""
+                华南理工大学」整串当一个学校，前端 logo 子串匹配后视觉上两校合一）。
+                「&」「和」同为并列分隔符（中科院自动化所&智源、自动化所和中关村学院）。"""
                 import re as _re
 
                 parts = []
-                for seg in _re.split(r"[；;、，,/／|｜]", raw or ""):
+                for seg in _re.split(r"[；;、，,/／|｜&和]", raw or ""):
                     name = canonical_school(seg.strip())
                     if name and name not in parts:
                         parts.append(name)
