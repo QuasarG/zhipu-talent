@@ -21,7 +21,7 @@ from agi_talent_radar.core.db.repository import _replace_evaluation_details
 logger = logging.getLogger(__name__)
 
 
-LATEST_SCHEMA_VERSION = 34
+LATEST_SCHEMA_VERSION = 35
 LEGACY_EVALUATION_COLUMNS = {
     "dimension_scores",
     "evidence",
@@ -416,6 +416,14 @@ def ensure_schema(engine) -> None:
             engine,
             34,
             "phase 34: scholarship_evaluations v3 (verified_papers/special_sections/fetched_pages)",
+        )
+    if current_version < 35:
+        # 师生图谱模型修正：导师唯一从属学校（不再经学生间接挂校）
+        _ensure_advisor_school_columns(engine)
+        _record_version(
+            engine,
+            35,
+            "phase 35: advisors.school (single affiliation per advisor, verified vs letters)",
         )
     if current_version < 27:
         existing = {c["name"] for c in inspect(engine).get_columns("scholarship_materials")}
@@ -985,6 +993,25 @@ def _ensure_eval_v3_columns(engine) -> None:
         missing.append("fetched_pages JSON NULL")
     if missing:
         _add_columns(engine, "scholarship_evaluations", missing)
+
+
+def _ensure_advisor_school_columns(engine) -> None:
+    """v35：advisors 加唯一学校归属三列。school 由人工核验映射（graph_identity.
+    ADVISOR_SCHOOLS）+ 申请表 title 解析回填；source: verified=人工看过推荐信原件，
+    title=申请表快照解析；confidence: high/medium/low。"""
+    inspector = inspect(engine)
+    if "advisors" not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns("advisors")}
+    missing = []
+    if "school" not in columns:
+        missing.append("school VARCHAR(192) NOT NULL DEFAULT ''")
+    if "school_source" not in columns:
+        missing.append("school_source VARCHAR(16) NOT NULL DEFAULT ''")
+    if "school_confidence" not in columns:
+        missing.append("school_confidence VARCHAR(16) NOT NULL DEFAULT ''")
+    if missing:
+        _add_columns(engine, "advisors", missing)
 
 
 def _migrate_users_and_conversation_owner(engine) -> None:

@@ -672,7 +672,14 @@ def build_scholarship_blueprint() -> Blueprint:
 
     @bp.get("/api/scholarship/advisor-graph")
     def advisor_graph():
-        """学校 → 导师 → 学生三级图谱；别名按人工清单归并。"""
+        """学校 → 导师/学生 → 师生三级图谱；别名按人工清单归并。
+
+        拓扑模型（修正后）：
+        - 导师「从属」唯一学校（advisors.school，人工核验推荐信原件后写入），
+          一条从属边；不再经学生间接挂校，跨校推荐只体现在师生边上；
+        - 学生「就读」自己的学校（申请表 school，联合培养各一条）；
+        - 师生边保留 source（application=申请表自述 / letter=推荐信表佐证）。
+        """
         from agi_talent_radar.core.db.orm import AdvisorORM, AdvisorStudentLinkORM, ScholarshipEvaluationORM
         from agi_talent_radar.scholarship.graph_identity import canonical_advisor, canonical_school
 
@@ -709,6 +716,12 @@ def build_scholarship_blueprint() -> Blueprint:
                         parts.append(name)
                 return parts
 
+            def ensure_school(name: str) -> str:
+                school_id = f"school:{name}"
+                if school_id not in nodes:
+                    nodes[school_id] = {"id": school_id, "type": "school", "label": name}
+                return school_id
+
             for link, advisor, app in links:
                 student_id = f"student:{app.id}"
                 school_parts = split_schools(app.school)
@@ -724,28 +737,41 @@ def build_scholarship_blueprint() -> Blueprint:
                 advisor_name = canonical_advisor(advisor.name)
                 advisor_id = f"advisor:{advisor_name}"
                 clean_title = advisor.title if advisor.name == advisor_name and len(advisor.title or "") <= 100 and "；" not in (advisor.title or "") else ""
+                advisor_school = canonical_school((advisor.school or "").strip())
                 if advisor_id not in nodes:
                     nodes[advisor_id] = {
                         "id": advisor_id, "type": "advisor",
                         "label": advisor_name,
                         "title": clean_title,
+                        "school": advisor_school,
+                        "school_source": advisor.school_source or "",
+                        "school_confidence": advisor.school_confidence or "",
                     }
-                elif clean_title and not nodes[advisor_id]["title"]:
-                    nodes[advisor_id]["title"] = clean_title
+                else:
+                    if clean_title and not nodes[advisor_id]["title"]:
+                        nodes[advisor_id]["title"] = clean_title
+                    if advisor_school and not nodes[advisor_id]["school"]:
+                        nodes[advisor_id]["school"] = advisor_school
+                # 师生边：letter=推荐信佐证（含跨校推荐），application=申请表自述
                 edges.setdefault((student_id, advisor_id), {
                     "from": student_id, "to": advisor_id,
                     "source": link.source, "confidence": link.confidence,
                 })
-                # 同一导师可连接多个学校、多个学生；学生也可连接多位导师。
-                # 双校串拆分后每所学校各建一条边。
+                # 学生就读边：学生挂自己的学校（联合培养每所学校一条）
                 for school in school_parts:
-                    school_id = f"school:{school}"
-                    if school_id not in nodes:
-                        nodes[school_id] = {"id": school_id, "type": "school", "label": school}
-                    edges.setdefault((school_id, advisor_id), {
-                        "from": school_id, "to": advisor_id,
-                        "source": "application", "confidence": "high",
+                    edges.setdefault((ensure_school(school), student_id), {
+                        "from": f"school:{school}", "to": student_id,
+                        "source": "enrollment", "confidence": "high",
                     })
+                # 导师从属边：只挂导师自己的唯一学校，绝不跟学生学校走。
+                # 归属确实无法核验的极少数挂「归属待核验」占位节点，醒目待人工。
+                aff_school = advisor_school or "归属待核验"
+                aff_source = "advisor_affiliation" if advisor_school else "unverified"
+                edges.setdefault((ensure_school(aff_school), advisor_id), {
+                    "from": f"school:{aff_school}", "to": advisor_id,
+                    "source": aff_source,
+                    "confidence": (advisor.school_confidence or "high") if advisor_school else "low",
+                })
             return jsonify({
                 "nodes": list(nodes.values()),
                 "edges": list(edges.values()),

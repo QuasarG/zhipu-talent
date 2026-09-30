@@ -1,4 +1,5 @@
 """人工核对的师生图谱别名。只合并已确认指向同一实体的写法。"""
+import re
 
 SCHOOL_ALIASES = {
     "Hong Kong Polytechnic University": "香港理工大学",
@@ -130,6 +131,234 @@ ADVISOR_ALIASES = {
     "黄民烈（清华大学，aihuang@tsinghua.edu.cn）": "黄民烈",
     "黄超（Chao Huang，chaohuang75@gmail.com）": "黄超",
     "黄超（Chao Huang）": "黄超",
+    "张马": "张马路",
+    "路": "张马路",
+    "张马路（电子科技大学）": "张马路",
+    "Fan Wenqi": "范文琦",
+    "FAN Wenqi": "范文琦",
+    "Li Qing": "李青",
+    "季铮锋（清华大学，jizhengfeng@tsinghua.edu.cn）": "季铮锋",
+}
+
+
+# 人工逐封核验推荐信原件后的导师唯一学校归属（一导师一校；兼职取主要单位）。
+# 键为 canonical_advisor 后的导师名。优先级高于申请表 title 自动解析。
+ADVISOR_SCHOOLS: dict[str, str] = {
+    "Bryan Hooi": "National University of Singapore",
+    "Cai Wei（SMU，合作导师）": "Southern Methodist University",
+    "Chen Change Loy": "Nanyang Technological University",
+    "Chenfanfu Jiang": "University of California, Los Angeles",
+    "Eyal Kaplan": "Bar-Ilan University",
+    "Haoyu Chen": "University of Oulu",
+    "Hao Zhang": "University of California, San Diego",
+    "Jiaheng Zhang": "National University of Singapore",
+    "Jure Leskovec": "Stanford University",
+    "Lizi Liao": "Singapore Management University",
+    "Mihaela van der Schaar": "University of Cambridge",
+    "Ming Zhang": "北京大学",
+    "Omer Offen": "Brandeis University",
+    "Qiang Xu": "香港中文大学",
+    "Reynold Cheng": "香港大学",
+    "Richard Peng": "Carnegie Mellon University",
+    "See-Kiong Ng": "National University of Singapore",
+    "Tajana Šimunić Rosing": "University of California, San Diego",
+    "Tat-Seng Chua": "National University of Singapore",
+    "Wang Dakuo": "Northeastern University",
+    "Wei Dong": "Nanyang Technological University",
+    "XiaoFeng Wang": "Nanyang Technological University",
+    "Xinchao WANG": "National University of Singapore",
+    "Xunying Liu": "香港中文大学",
+    "Yang Zhang": "CISPA Helmholtz Center for Information Security",
+    "Yejin Choi": "Stanford University",
+    "Yin Yang": "University of Utah",
+    "Yuan Xie": "香港科技大学",
+    "Zhang Hanwang": "Nanyang Technological University",
+    "Zhanxing Zhu": "University of Southampton",
+    "Zhiyong Wang": "悉尼大学",
+    "丁宁": "清华大学",
+    "丁辉": "首都师范大学",
+    "东昱晓": "清华大学",
+    "严骏驰": "上海交通大学",
+    "乔宇": "上海人工智能实验室",
+    "于红波 Hongbo Yu": "清华大学",
+    "仉尚航": "北京大学",
+    "付彦伟": "复旦大学",
+    "付章杰": "南京信息工程大学",
+    "任炬": "清华大学",
+    "伍楷舜": "香港科技大学（广州）",
+    "傅红波": "香港科技大学",
+    "冯福利": "中国科学技术大学",
+    "刘元玮": "香港大学",
+    "刘勇攀": "清华大学",
+    "刘华平": "清华大学",
+    "刘博": "合肥工业大学",
+    "刘同亮": "悉尼大学",
+    "刘奕群": "清华大学",
+    "刘子纬": "Nanyang Technological University",
+    "刘康": "中国科学院自动化研究所",
+    "刘强（中科院自动化所）": "中国科学院自动化研究所",
+    "刘永进": "清华大学",
+    "刘洋": "清华大学",
+    "刘知远": "清华大学",
+    "卢暾": "复旦大学",
+    "司鑫": "东南大学",
+    "吴晔": "北京师范大学",
+    "吴超": "南京理工大学",
+    "周晓禹（北京师范大学）": "北京师范大学",
+    "周煊赫": "上海交通大学",
+    "喻纯": "清华大学",
+    "孙广宇": "北京大学",
+    "孙栩": "北京大学",
+    "孟高峰": "中国科学院自动化研究所",
+    "季铮锋": "清华大学",
+    "安竹林": "中国科学院计算技术研究所",
+    "宋子恺": "华中科技大学",
+    "宋明黎": "浙江大学",
+    "尉寅玮": "山东大学",
+    "尚媛园": "首都师范大学",
+    "崔斌": "北京大学",
+    "崔曙光": "香港中文大学（深圳）",
+    "常军涛": "哈尔滨工业大学",
+    "应明生": "清华大学",
+    "康嘉文": "广东工业大学",
+    "康国梁": "北京航空航天大学",
+    "张伟楠": "上海交通大学",
+    "张冬瑜": "大连理工大学",
+    "张奇": "复旦大学",
+    "张宁": "University of Windsor",
+    "张宁豫": "浙江大学",
+    "张宸": "上海交通大学",
+    "张小平": "清华大学",
+    "张岳": "西湖大学",
+    "张岸": "中国科学技术大学",
+    "张成奇": "香港理工大学",
+    "张敏": "清华大学",
+    "张松海": "清华大学",
+    "张海君": "北京科技大学",
+    "张狂": "哈尔滨工业大学",
+    "张铭": "北京大学",
+    "张马路": "电子科技大学",
+    "张马路（电子科技大学）": "电子科技大学",
+    "彭木根": "北京邮电大学",
+    "徐君": "中国人民大学",
+    "徐振礼": "上海交通大学",
+    "慈玉生": "哈尔滨工业大学",
+    "操晓春": "中山大学",
+    "施柏鑫": "北京大学",
+    "曹艺馨": "复旦大学",
+    "曾文军": "宁波东方理工大学",
+    "朱军": "清华大学",
+    "朱磊": "同济大学",
+    "朱靖波": "东北大学",
+    "李勇": "清华大学",
+    "李启正": "浙江理工大学",
+    "李国良": "清华大学",
+    "李建欣": "北京航空航天大学",
+    "李影": "北京大学",
+    "李文斌": "南京大学",
+    "李昊昂": "香港科技大学（广州）",
+    "李森": "香港科技大学",
+    "李玉华": "华中科技大学",
+    "李祖超": "武汉大学",
+    "李素建": "北京大学",
+    "李青": "香港理工大学",
+    "李鸿升": "香港中文大学",
+    "杨余久": "清华大学",
+    "杨智勇": "中国科学院大学",
+    "林宙辰": "北京大学",
+    "桂杰": "东南大学",
+    "汪云海": "中国人民大学",
+    "汪军": "University College London",
+    "汪玉": "清华大学",
+    "沈春华": "浙江大学",
+    "洪亮": "武汉大学",
+    "洪日昌": "合肥工业大学",
+    "潘世瑞": "Griffith University",
+    "潘旭东": "复旦大学",
+    "潘玲": "香港科技大学",
+    "熊欢": "哈尔滨工业大学",
+    "熊辉": "香港科技大学（广州）",
+    "熊辉（香港科技大学，xionghui@ust.hk；23:11来信为网盘链接无法访问，推荐信以学生申请表上传版本为准）": "香港科技大学（广州）",
+    "王亮": "中国科学院自动化研究所",
+    "王传杰": "哈尔滨工业大学",
+    "王宏宁": "清华大学",
+    "王平安 Pheng Ann Heng": "香港中文大学",
+    "王建勇": "清华大学",
+    "王志春": "北京师范大学",
+    "王杰新": "华南理工大学",
+    "王树徽": "中国科学院计算技术研究所",
+    "王浩": "香港科技大学（广州）",
+    "王瑞": "上海交通大学",
+    "王翔": "中国科学技术大学",
+    "王贺升": "上海交通大学",
+    "王金桥": "中国科学院自动化研究所",
+    "王钰": "上海交通大学",
+    "王钺": "清华大学",
+    "石川": "北京邮电大学",
+    "秦浩桐（Haotong Qin，香港理工大学）": "香港理工大学",
+    "程建": "电子科技大学",
+    "程明明": "厦门大学",
+    "纪荣嵘": "厦门大学",
+    "罗平": "香港大学",
+    "聂礼强": "哈尔滨工业大学（深圳）",
+    "聂礼强（哈工大深圳，nieliqiang@gmail.com）": "哈尔滨工业大学（深圳）",
+    "胡文波": "合肥工业大学",
+    "胡晓林": "清华大学",
+    "舒继武": "清华大学",
+    "艾清遥（清华大学，aiqy@tsinghua.edu.cn）": "清华大学",
+    "苏权科": "香港科技大学（广州）",
+    "范举": "中国人民大学",
+    "范文琦": "香港理工大学",
+    "范肇心": "北京航空航天大学",
+    "董力": "微软亚洲研究院",
+    "董豪": "北京大学",
+    "蔡毅": "华南理工大学",
+    "薛巍": "清华大学",
+    "裘捷中": "中国科学院杭州医学研究所",
+    "裴丹": "清华大学",
+    "裴剑锋": "北京大学",
+    "许倩倩": "中国科学院计算技术研究所",
+    "许小可": "北京师范大学",
+    "许斌": "清华大学",
+    "许杰": "香港中文大学（深圳）",
+    "谭铁牛": "中国科学院自动化研究所",
+    "赵俊峰": "北京大学",
+    "赵军": "中国科学院自动化研究所",
+    "赵恒爽": "香港大学",
+    "赵鉴": "北京中关村学院",
+    "赵鑫": "中国人民大学",
+    "连德富": "中国科学技术大学",
+    "邱锡鹏": "复旦大学",
+    "邹磊": "北京大学",
+    "邹逸雄": "华中科技大学",
+    "郑伟龙": "上海交通大学",
+    "郝建业": "天津大学",
+    "郭嘉丰": "中国科学院计算技术研究所",
+    "鄂维南": "上海交通大学",
+    "金琴": "中国人民大学",
+    "金鑫": "宁波东方理工大学",
+    "钱彦旻": "上海交通大学",
+    "陈为": "浙江大学",
+    "陈亚雄": "武汉理工大学",
+    "陈华钧": "浙江大学",
+    "陈建鑫": "清华大学",
+    "陈挺": "清华大学",
+    "陈昊": "浙江大学",
+    "陶大程": "Nanyang Technological University",
+    "韩波": "香港浸会大学",
+    "韩达": "中国科学院杭州医学研究所",
+    "颜维峰（复旦大学）": "复旦大学",
+    "饶安逸": "香港科技大学",
+    "马剑竹（清华大学）": "清华大学",
+    "马志明": "中国科学院数学与系统科学研究院",
+    "高林": "中国科学院计算技术研究所",
+    "高飞飞": "清华大学",
+    "黄庆明": "中国科学院大学",
+    "黄民烈": "清华大学",
+    "黄群": "北京大学",
+    "黄萱菁": "复旦大学",
+    "黄超": "香港大学",
+    "黄高": "清华大学",
 }
 
 
@@ -139,3 +368,69 @@ def canonical_school(name: str) -> str:
 
 def canonical_advisor(name: str) -> str:
     return ADVISOR_ALIASES.get((name or "").strip(), (name or "").strip())
+
+
+# 申请表 title 自动解析用的学校词典（回填新导师时的兜底；人工核验表优先）。
+# 命中规则：在文本中位置最早的命中优先，同位置取更长词条。
+_SCHOOL_DICT = (
+    "哈尔滨工业大学（深圳）", "香港科技大学（广州）", "香港中文大学（深圳）",
+    "中国科学院计算技术研究所", "中国科学院自动化研究所", "中国科学院软件研究所",
+    "中国科学院杭州医学研究所", "中国科学院深圳先进技术研究院",
+    "北京智源人工智能研究院", "上海人工智能实验室", "上海创智学院",
+    "北京大学前沿交叉学科研究院", "蒙特利尔学习算法研究所",
+    "清华大学", "北京大学", "中国人民大学", "复旦大学", "上海交通大学", "浙江大学",
+    "南京大学", "中国科学技术大学", "哈尔滨工业大学", "西安交通大学", "华中科技大学",
+    "武汉大学", "中山大学", "四川大学", "南开大学", "天津大学", "东南大学",
+    "同济大学", "北京航空航天大学", "北京理工大学", "北京师范大学", "北京邮电大学",
+    "北京科技大学", "大连理工大学", "吉林大学", "山东大学", "厦门大学", "华南理工大学",
+    "电子科技大学", "华东师范大学", "南京理工大学", "南京信息工程大学",
+    "合肥工业大学", "武汉理工大学", "浙江理工大学", "广东工业大学", "首都师范大学",
+    "南方科技大学", "上海科技大学", "西湖大学", "香港大学", "香港中文大学",
+    "香港科技大学", "香港理工大学", "香港城市大学", "香港浸会大学", "澳门大学",
+    "中国科学院大学", "国防科技大学", "西北工业大学", "湖南大学", "重庆大学",
+    "兰州大学", "东北大学", "华东理工大学", "苏州大学", "深圳大学", "暨南大学",
+    "温莎大学", "巴伊兰大学", "奥斯陆大学", "南洋理工大学", "新加坡国立大学",
+)
+
+
+def guess_school_from_title(title: str, advisor_name: str = "") -> str:
+    """从申请表「导师单位/职务」快照解析导师所属学校。
+
+    多导师拼接（「；」分段）时先定位含本导师姓名的分段，避免把同段其他导师的
+    单位安到本导师头上。命中优先级：学校词典（中文表 + SCHOOL_ALIASES 英文键，
+    文本中最早命中优先、同位置取更长词条）> 中科院研究所模式 > 中文「大学」
+    模式 > 英文 University/Institute。结果过 canonical_school 规范化。
+    解析不出返回空串（交由推荐信核验或人工补录）。
+    """
+    text = (title or "").strip()
+    if not text:
+        return ""
+    if advisor_name and advisor_name in text:
+        for seg in _split_multi(text):
+            if advisor_name in seg:
+                text = seg
+                break
+    best_pos, best = len(text), ""
+    for name in _SCHOOL_DICT + tuple(SCHOOL_ALIASES):
+        pos = text.find(name)
+        if 0 <= pos < best_pos or (pos == best_pos and len(name) > len(best)):
+            best_pos, best = pos, name
+    if best:
+        return canonical_school(best)
+    m = re.search(r"中国科学院[\u4e00-\u9fa5]{2,10}(?:研究所|研究院|学院)", text)
+    if m:
+        return m.group(0)
+    m = re.search(r"[\u4e00-\u9fa5]{2,12}大学", text)
+    if m:
+        return m.group(0)
+    m = re.search(
+        r"\b(?:The )?[A-Z][A-Za-z&,'.\-]*(?: [A-Z][A-Za-z&,'.\-]*)*?"
+        r" (?:University|Institute)\b(?: of [A-Z][A-Za-z]+)?", text)
+    if m:
+        return m.group(0).strip()
+    return ""
+
+
+def _split_multi(text: str) -> list[str]:
+    import re as _re
+    return [s for s in _re.split(r"[；;]", text) if s.strip()] or [text]

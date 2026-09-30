@@ -1169,6 +1169,11 @@ class AdvisorORM(Base):
     id = Column(String(36), primary_key=True)
     name = Column(String(128), nullable=False, index=True)
     title = Column(String(256), default="")            # 单位/职务（申请表「导师单位/职务」快照）
+    # 唯一学校归属：导师先从属一所学校，再由师生边连接学生（跨校推荐只体现在师生边上）。
+    # 回填优先级：graph_identity.ADVISOR_SCHOOLS 人工核验 > 申请表 title 解析。
+    school = Column(String(192), default="")
+    school_source = Column(String(16), default="")     # verified=人工核验过推荐信原件 / title=申请表解析
+    school_confidence = Column(String(16), default="")  # high / medium / low
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

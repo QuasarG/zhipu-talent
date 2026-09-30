@@ -7,6 +7,7 @@ from agi_talent_radar.scholarship.graph_identity import (
     SCHOOL_ALIASES,
     canonical_advisor,
     canonical_school,
+    guess_school_from_title,
 )
 
 
@@ -33,3 +34,18 @@ class TestGraphIdentity(unittest.TestCase):
     def test_alias_targets_are_final_labels(self):
         self.assertFalse(set(SCHOOL_ALIASES.values()) & set(SCHOOL_ALIASES))
         self.assertFalse(set(ADVISOR_ALIASES.values()) & set(ADVISOR_ALIASES))
+
+    def test_guess_school_picks_own_segment_in_multi_advisor_title(self):
+        # 多导师拼接：只取本导师分段的学校，不得张冠李戴
+        title = "聂礼强，哈尔滨工业大学（深圳）教授、信息学部主任；尉寅玮，山东大学软件学院教授、副院长"
+        self.assertEqual(guess_school_from_title(title, "尉寅玮"), "山东大学")
+        self.assertEqual(guess_school_from_title(title, "聂礼强"), "哈尔滨工业大学（深圳）")
+
+    def test_guess_school_cas_institute_and_fallbacks(self):
+        self.assertEqual(
+            guess_school_from_title("许倩倩，中国科学院计算技术研究所研究员", "许倩倩"),
+            "中国科学院计算技术研究所")
+        self.assertEqual(guess_school_from_title("张小平，清华大学信息化工作办公室主任", "张小平"), "清华大学")
+        # 快照里没有学校信息 → 空串（交由人工核验/推荐信补录）
+        self.assertEqual(guess_school_from_title("朱靖波，教授", "朱靖波"), "")
+        self.assertEqual(guess_school_from_title("", "张三"), "")
