@@ -1,6 +1,5 @@
-<svg width="154" height="157" viewBox="0 0 154 157" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g filter="url(#filter0_d_185_139)">
-<rect width="128" height="128" transform="translate(13)" fill="white"/>
+<svg width="31.5" height="31.5" viewBox="25.0 48.0 31.5 31.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g>
 <path d="M54.5439 63.7837C54.6861 71.2105 48.3865 77.8113 40.3195 77.5696C33.2461 77.357 26.8251 71.4425 27.0036 63.4059C27.164 56.188 33.1902 49.9649 40.8807 50.0001C48.3634 50.0354 54.663 56.256 54.5439 63.7837ZM40.7799 77.1153C48.2189 76.9963 53.9402 71.2725 54.086 64.0946C54.2427 56.3726 48.2116 50.6051 41.0605 50.4812C33.4053 50.3476 27.4835 56.3568 27.4774 63.763C27.4713 71.2044 33.3336 76.995 40.7799 77.1153Z" fill="#89030A"/>
 <path d="M30.4037 68.7325L31.0135 67.9526L31.1847 68.2964L30.7778 68.7713L31.4034 68.7361L31.5722 69.075L30.5762 69.0811L29.9433 69.9022L29.772 69.5573L30.1996 69.0483L29.5339 69.0787L29.3687 68.7483L30.4037 68.7325Z" fill="#89030A"/>
 <path d="M31.7472 69.3325L31.9306 69.6192L30.3904 70.6019L30.2069 70.3152L31.7472 69.3325Z" fill="#89030A"/>
@@ -73,15 +72,4 @@
 <path d="M121.652 73.126H120.706V72.5575H123.251V73.126H122.309V75.7511H121.652V73.126Z" fill="#89030A"/>
 <path d="M125.29 75.7511V74.5606L124.131 72.5575H124.935L125.619 73.9338L126.25 72.5575H127L125.947 74.5606V75.7511H125.29Z" fill="#89030A"/>
 </g>
-<defs>
-<filter id="filter0_d_185_139" x="0" y="0" width="154" height="157" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-<feFlood flood-opacity="0" result="BackgroundImageFix"/>
-<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
-<feOffset dy="16"/>
-<feGaussianBlur stdDeviation="6.5"/>
-<feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.03 0"/>
-<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_185_139"/>
-<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_185_139" result="shape"/>
-</filter>
-</defs>
 </svg>
