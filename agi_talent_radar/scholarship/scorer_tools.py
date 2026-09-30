@@ -56,11 +56,46 @@ class ScorerContext:
         self.final: dict[str, Any] | None = None
         self.force_submit = False  # 预算耗尽强制收尾时置 True，豁免「必须读完」校验
         self.read_ids: set[int] = set()
+        # 入库数据存在重复镜像副本（同一文件多个 id）。「读完才能提交」若按 id 记账，
+        # agent 读每组一份后其余副本永远「未读」→ 提交被反复驳回（郦洋 127 份材料
+        # 空转 60 轮的根因）。按内容指纹等价分组：读一份 = 全组已读。
+        self.file_keys: dict[int, str] = {}
+        self.dup_of: dict[int, int] = {}
+        seen: dict[str, int] = {}
+        for m in materials:
+            key = _content_key(m)
+            self.file_keys[m.id] = key
+            first = seen.setdefault(key, m.id)
+            if first != m.id:
+                self.dup_of[m.id] = first
+        self.read_keys: set[str] = set()
         # 转译缓存（入库不再抽文本，全部延迟到评估时）：文字层按材料缓存；视觉转译按材料缓存
         self.text_cache: dict[int, str] = {}
         self.vision_cache: dict[int, str] = {}
         # web_fetch 抓取过的页面（url/title/summary，已脱敏）——随评分统一落库
         self.fetched_pages: list[dict[str, Any]] = []
+
+    def mark_read(self, m) -> None:
+        self.read_ids.add(m.id)
+        self.read_keys.add(self.file_keys.get(m.id, f"id:{m.id}"))
+
+    def is_read(self, m) -> bool:
+        return m.id in self.read_ids or self.file_keys.get(m.id) in self.read_keys
+
+
+def _content_key(m) -> str:
+    """内容指纹：磁盘文件取 (大小, 首64KB md5)；无原始文件退回 (文件名, 提取文本长度)。"""
+    path = (m.file_path or "").strip()
+    try:
+        if path and os.path.isfile(path):
+            import hashlib
+
+            with open(path, "rb") as fp:
+                head = fp.read(65536)
+            return f"{os.path.getsize(path)}:{hashlib.md5(head).hexdigest()}"
+    except OSError:  # noqa: BLE001
+        pass
+    return f"name:{(m.filename or '').strip().lower()}:{len(m.raw_text or '')}"
 
 
 def _suffix(filename: str) -> str:
@@ -75,7 +110,7 @@ def _scrub(text: str, ctx: ScorerContext) -> str:
     return out
 
 
-def _fmt_material(m) -> dict[str, Any]:
+def _fmt_material(ctx: "ScorerContext", m) -> dict[str, Any]:
     if _is_junk_file(m):
         form = "系统文件（无需阅读）"
     else:
@@ -96,6 +131,8 @@ def _fmt_material(m) -> dict[str, Any]:
         "filename": m.filename,
         "form": form,
         "chars": len(m.raw_text or ""),
+        # 同内容重复镜像：读 file_id 那份即可，本份跳过
+        **({"duplicate_of": ctx.dup_of[m.id]} if ctx.dup_of.get(m.id) else {}),
     }
 
 
@@ -389,8 +426,9 @@ def _submit_schema() -> dict[str, Any]:
 def execute_tool(ctx: ScorerContext, name: str, args: dict[str, Any]) -> dict[str, Any]:
     """执行一个工具，返回 {summary, detail}（detail 截断后喂回 LLM）。"""
     if name == "list_files":
-        files = [_fmt_material(m) for m in ctx.materials]
-        return {"summary": f"{len(files)} 份材料", "detail": {"files": files}}
+        files = [_fmt_material(ctx, m) for m in ctx.materials]
+        return {"summary": f"{len(files)} 份材料（含 {len(ctx.dup_of)} 份重复镜像，读每组一份即可）",
+                "detail": {"files": files}}
     if name == "read_file":
         return _tool_read_file(ctx, args)
     if name == "verify_paper":
@@ -449,7 +487,7 @@ def _tool_read_file(ctx: ScorerContext, args: dict[str, Any]) -> dict[str, Any]:
     m = next((x for x in ctx.materials if x.id == file_id), None)
     if m is None:
         return {"summary": f"文件 {file_id} 不存在", "detail": {"error": "file_id 不在 list_files 结果里"}}
-    ctx.read_ids.add(file_id)
+    ctx.mark_read(m)
     if _is_junk_file(m):
         # 系统垃圾文件：短路返回并计入已读，别让 agent 在不可读文件上空转
         return {
@@ -660,7 +698,7 @@ def _validate_final(ctx: ScorerContext, data: dict[str, Any]) -> str:
     if missing:
         return f"缺少维度：{', '.join(missing)}"
     unread = [m.filename for m in ctx.materials
-              if m.id not in ctx.read_ids and not _is_junk_file(m)]
+              if not ctx.is_read(m) and not _is_junk_file(m)]
     if unread and not ctx.force_submit:
         return "以下材料尚未读取，读完才能提交：" + "、".join(unread[:6]) + ("等" if len(unread) > 6 else "")
     return ""

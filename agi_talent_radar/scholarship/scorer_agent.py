@@ -63,8 +63,9 @@ def _system_prompt(app: ScholarshipApplicationORM, ctx: ScorerContext) -> str:
    这些说明会展示给评审老师，写清楚目的与预期，不要沉默地连续调用。
 1. 先 list_files 盘点全部材料；逐一阅读全部**有意义的**材料（简历/申请表/论文/代码/成果证明，
    分页读完关键材料；图片/视频会自动转译为文字描述）。列表中 form 标为「系统文件」的
-   （.DS_Store 等）无需阅读；某个文件读不到内容时说明一句原因并跳过即可——
-   读不到 ≠ 失败，不要换页或反复重试，更不要因此推迟提交。
+   （.DS_Store 等）无需阅读；带 duplicate_of 的重复镜像跳过（读 file_id 指向的那份即可）；
+   某个文件读不到内容时说明一句原因并跳过即可——读不到 ≠ 失败，不要换页或反复重试，
+   更不要因此推迟提交。
 2. 核心产出 claim（论文/奖项/系统）走证据分级瀑布：
    verify_paper 查到 → verified；
    未查到 → 读佐证原文，完整可信 → supported；
@@ -255,7 +256,7 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
                 ctx.force_submit = True
                 from agi_talent_radar.scholarship.scorer_tools import _is_junk_file
                 unread = [m.filename for m in ctx.materials
-                          if m.id not in ctx.read_ids and not _is_junk_file(m)]
+                          if not ctx.is_read(m) and not _is_junk_file(m)]
                 note = "工具预算即将耗尽。请立即基于已收集的信息调用 submit_scores 提交评分，不要再调用任何其他工具。"
                 if unread:
                     note += f"（未读材料：{('、'.join(unread[:5]))}{'等' if len(unread) > 5 else ''}，按已读内容评估并在理由中注明材料未读完）"

@@ -574,7 +574,9 @@ def build_scholarship_blueprint() -> Blueprint:
             evaluation = (
                 session.query(ScholarshipEvaluationORM)
                 .filter(ScholarshipEvaluationORM.application_id == app_id)
-                .order_by(ScholarshipEvaluationORM.created_at.desc())
+                # 按 id 倒序：id 单调递增且走主键索引；created_at 排序会因 trace
+                # 大 JSON 触发 MySQL Out of sort memory（1038）
+                .order_by(ScholarshipEvaluationORM.id.desc())
                 .first()
             )
             if evaluation is None:
