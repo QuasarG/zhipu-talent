@@ -749,13 +749,15 @@ def build_scholarship_blueprint() -> Blueprint:
 
             def split_schools(raw: str) -> list[str]:
                 """双校/多校串拆成独立学校，各自过 canonical_school 去重。
-                分隔符：；;、，,/／|｜&和，以及「中文 空格 中文」边界
-                （「计算技术研究所 中国科学院大学」是两所；英文校名内的空格不受影响）。
+                分隔符：；、，/｜&和（全角）＋「中文 空格 中文」边界。
+                注意不含半角逗号——"University of California, Los Angeles"
+                "The Chinese University of Hong Kong, Shenzhen" 里的是校名合法标点，
+                拆开会产生碎片节点、还会让港中深错误归并成香港中文大学。
                 不做归并——中科院各所、国科大等保持各自独立节点。"""
                 import re as _re
 
                 parts = []
-                for seg in _re.split(r"[；;、，,/／|｜&和]", raw or ""):
+                for seg in _re.split(r"[；;、，/／|｜&和]", raw or ""):
                     for sub in _re.split(r"(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])", seg.strip()):
                         name = canonical_school(sub.strip())
                         if name and name not in parts:

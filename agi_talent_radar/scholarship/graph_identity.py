@@ -10,6 +10,13 @@ SCHOOL_ALIASES = {
     "University of Windsor": "温莎大学",
     "Bar-Ilan University": "巴伊兰大学",
     "巴伊兰大学（Bar-Ilan University）": "巴伊兰大学",
+    "香港科技大学(广州)": "香港科技大学（广州）",
+    "香港浸会大学 Hong Kong Baptist University": "香港浸会大学",
+    "上海创智学院（国家人工智能学院）": "上海创智学院",
+    "University of California, Los Angeles (UCLA)": "University of California, Los Angeles",
+    # 院系/研究中心级碎片归并到大学（张金禄「北京大学计算机学院，前沿计算研究中心（CFCS）」）
+    "北京大学计算机学院": "北京大学",
+    "前沿计算研究中心（CFCS）": "北京大学",
     "The Chinese University of Hong Kong": "香港中文大学",
     "The Chinese University of Hong Kong, Shenzhen": "香港中文大学（深圳）",
     "The University of Hong Kong": "香港大学",
