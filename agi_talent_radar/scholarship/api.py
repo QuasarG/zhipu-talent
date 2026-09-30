@@ -541,7 +541,14 @@ def build_scholarship_blueprint() -> Blueprint:
 
         def generate():
             while True:
-                item = events.get()
+                try:
+                    item = events.get(timeout=15)
+                except queue.Empty:
+                    # SSE 注释行心跳：工具执行/LLM 重试的静默期可能长达数分钟，
+                    # nginx 900s 静默超时与前端 120s 流看门狗都会掐连接；
+                    # 注释行被前端 parseSSE 忽略，仅保活
+                    yield ": ping\n\n"
+                    continue
                 if item is None:
                     break
                 yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
