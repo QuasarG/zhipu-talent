@@ -81,16 +81,39 @@ def _norm_name(name: str) -> str:
 
 
 def _student_keys(raw: str) -> list[str]:
-    """学生姓名的候选归并键：整名 + 括号注记分段。
+    """学生姓名的候选归并键：整名 + 括号注记分段 + 拉丁名排序字符兜底。
 
     推荐信表常见「崔晨航（Cui Chenghang）」「Ziyu Lin（林子瑜）」写法，
     整名精确匹配会漏；拆出括号内分段后中文注册名即可命中。
+    拉丁名再兜底一个「字符排序键」，吸收名/姓顺序与逗号差异
+    （Ekkanat Tanchavalit ↔ TANCHAVALIT EKKANAT、Guoxin Chen ↔ CHEN, GUOXIN）。
     """
     keys = [_norm_name(raw)]
     for seg in re.split(r"[（）()]", raw or ""):
         if seg.strip():
             keys.append(_norm_name(seg))
+    sorted_key = _latin_sorted_key(raw)
+    if sorted_key:
+        keys.append(sorted_key)
     return [k for k in dict.fromkeys(keys) if k]
+
+
+def _latin_sorted_key(s: str) -> str:
+    norm = _norm_name(s)
+    return "".join(sorted(norm)) if re.search(r"[a-z]", norm) else ""
+
+
+def _applicant_keys(name: str) -> list[str]:
+    """申请人姓名的候选归并键：整名 + 去括号注记 + 中文前缀。
+
+    注册名常带昵称/英文名注记：「Menglin (Gigi) Zhao」「李晓琦 Xiaoqi Li」，
+    推荐信表写「Menglin Zhao」「李晓琦」，需拆键命中。
+    """
+    keys = [_norm_name(name), _norm_name(re.sub(r"[（(][^（）()]*[）)]", "", name))]
+    m = re.match(r"([\u4e00-\u9fa5]{2,})", name or "")
+    if m:
+        keys.append(_norm_name(m.group(1)))
+    return [k for k in dict.fromkeys(keys) if len(k) >= 2]
 
 
 def _match_student(apps_by_name: dict, raw: str):
@@ -172,10 +195,17 @@ def main() -> int:
                 n_app_links += 1
 
         # ② 推荐信表：佐证（学生按姓名+括号分段匹配；同名多档按学校字样消歧，失败跳过）
+        # 索引同时收中文名与英文名（申请表两列都有；推荐信表常写英文/拼音名）
         apps_by_name: dict[str, list[ScholarshipApplicationORM]] = {}
         for app in apps:
-            if app.name:
-                apps_by_name.setdefault(_norm_name(app.name), []).append(app)
+            for key in _applicant_keys(app.name or ""):
+                apps_by_name.setdefault(key, []).append(app)
+            name_en = (getattr(app, "name_en", "") or "").strip()
+            if name_en:
+                apps_by_name.setdefault(_norm_name(name_en), []).append(app)
+                en_sorted = _latin_sorted_key(name_en)
+                if en_sorted:
+                    apps_by_name.setdefault(en_sorted, []).append(app)
 
         n_letter_links, n_letter_skipped = 0, 0
         for rec in letter_records:

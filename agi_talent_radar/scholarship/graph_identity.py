@@ -161,6 +161,15 @@ ADVISOR_ALIASES = {
     "谢源（Yuan Xie，香港科技大学）": "Yuan Xie",
     "邱锡鹏（复旦大学）": "邱锡鹏",
     "刘子纬（Ziwei Liu，南洋理工大学，ziwei.liu@ntu.edu.sg）": "刘子纬",
+    "Chenfanfu Jiang（UCLA，cffjiang@ucla.edu）": "Chenfanfu Jiang",
+    "Yin Yang（Kahlert School，yangzzzy@gmail.com）": "Yin Yang",
+    "Qiang Xu（港中文，注册导师）": "Qiang Xu",
+    "Bryan Hooi Kuen-Yew": "Bryan Hooi",
+    "Erran Li（AWS AI Labs / Columbia）": "Erran Li",
+    "Zhiyong Wang（悉尼大学）": "Zhiyong Wang",
+    "刘勋颖（Xunying Liu，港中文）": "Xunying Liu",
+    "HENG Pheng Ann（香港中文大学）": "HENG Pheng Ann",
+    "Wang Dakuo（美国东北大学，d.wang@northeastern.edu）": "Wang Dakuo",
 }
 
 
@@ -354,6 +363,8 @@ ADVISOR_SCHOOLS: dict[str, str] = {
     "邱锡鹏": "复旦大学",
     "Xinchao Wang": "National University of Singapore",
     "Zhu Hongyuan": "新加坡 A*STAR IAIC",
+    "Erran Li": "AWS AI Labs",
+    "HENG Pheng Ann": "香港中文大学",
     "邹磊": "北京大学",
     "邹逸雄": "华中科技大学",
     "郑伟龙": "上海交通大学",
