@@ -74,6 +74,45 @@ def _norm_name(name: str) -> str:
     return re.sub(r"[\s,.\-·']+", "", name).lower()
 
 
+def _student_keys(raw: str) -> list[str]:
+    """学生姓名的候选归并键：整名 + 括号注记分段。
+
+    推荐信表常见「崔晨航（Cui Chenghang）」「Ziyu Lin（林子瑜）」写法，
+    整名精确匹配会漏；拆出括号内分段后中文注册名即可命中。
+    """
+    keys = [_norm_name(raw)]
+    for seg in re.split(r"[（）()]", raw or ""):
+        if seg.strip():
+            keys.append(_norm_name(seg))
+    return [k for k in dict.fromkeys(keys) if k]
+
+
+def _match_student(apps_by_name: dict, raw: str):
+    """按候选键匹配学生档案；同名多档时用括号内的学校字样消歧。
+
+    返回 (application, note)；note=ok / school_hint / ambiguous / missing。
+    """
+    candidates: list = []
+    for key in _student_keys(raw):
+        found = apps_by_name.get(key, [])
+        if found:
+            candidates = found
+            break
+    if not candidates:
+        return None, "missing"
+    if len(candidates) == 1:
+        return candidates[0], "ok"
+    # 同名多档：括号分段若恰有一份档案 school 含该字样，则消歧成功
+    for seg in re.split(r"[（）()，,]", raw or ""):
+        seg = seg.strip()
+        if not seg:
+            continue
+        hits = [a for a in candidates if seg in (a.school or "")]
+        if len(hits) == 1:
+            return hits[0], "school_hint"
+    return None, "ambiguous"
+
+
 def main() -> int:
     init_db()
     headers = _feishu_headers()
@@ -126,7 +165,7 @@ def main() -> int:
                     note=(app.school or "")[:120]))
                 n_app_links += 1
 
-        # ② 推荐信表：佐证（学生按姓名匹配；同名多档按学校字样消歧，失败 low+跳过）
+        # ② 推荐信表：佐证（学生按姓名+括号分段匹配；同名多档按学校字样消歧，失败跳过）
         apps_by_name: dict[str, list[ScholarshipApplicationORM]] = {}
         for app in apps:
             if app.name:
@@ -139,15 +178,9 @@ def main() -> int:
             student_name = _text(f.get("被推荐学生"))
             if not advisor_name or not student_name:
                 continue
-            candidates = apps_by_name.get(_norm_name(student_name), [])
-            if not candidates:
-                n_letter_skipped += 1
-                continue
-            target = None
-            if len(candidates) == 1:
-                target = candidates[0]
-            else:
-                # 同名消歧：推荐信无学校字段，跳过记 low 待人工（防错链）
+            target, note = _match_student(apps_by_name, student_name)
+            if target is None:
+                # ambiguous=同名且括号无学校提示；missing=纯英文名对应中文注册名等
                 n_letter_skipped += 1
                 continue
             advisor = get_or_create_advisor(advisor_name)
@@ -161,7 +194,7 @@ def main() -> int:
                     advisor_id=advisor.id, application_id=target.id,
                     student_name=(target.name or "")[:128],
                     source="letter", confidence="high",
-                    note="推荐信表佐证"))
+                    note=("推荐信表佐证" if note == "ok" else "推荐信表佐证（括号学校提示消歧）")))
                 n_letter_links += 1
 
         # 清掉没有任何 link 的孤儿导师（重跑时上轮残留）
