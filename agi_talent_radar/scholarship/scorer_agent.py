@@ -22,6 +22,7 @@ from agi_talent_radar.scholarship.anonymize import anonymize_text
 from agi_talent_radar.scholarship.scorer_tools import (
     MAX_ROUNDS,
     TOOL_RESULT_MAX_CHARS,
+    LIST_RESULT_MAX_CHARS,
     ScorerContext,
     execute_tool,
     tools_schema,
@@ -242,7 +243,9 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
                 save_trace()
                 messages.append({
                     "role": "tool", "tool_call_id": tc["id"],
-                    "content": detail[:TOOL_RESULT_MAX_CHARS],
+                    # list_files 专属大上限：材料清单截断会让模型拿不到尾部
+                    # file_id 而瞎猜编号空转（李毅阳案），其余工具维持 6000
+                    "content": detail[:(LIST_RESULT_MAX_CHARS if tc["name"] == "list_files" else TOOL_RESULT_MAX_CHARS)],
                 })
                 if ctx.final is not None:
                     submitted = True

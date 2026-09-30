@@ -36,6 +36,7 @@ def _is_junk_file(m) -> bool:
 _VISION_MODEL = os.getenv("SCORER_VISION_MODEL", "GLM-5.3-Flash")
 PAGE_CHARS = 4000          # read_file 文本分页
 TOOL_RESULT_MAX_CHARS = 6000
+LIST_RESULT_MAX_CHARS = 24000   # list_files 专属：长列表截断会让 model 瞎猜 file_id，必须给全
 MAX_ROUNDS = 20
 
 # 多模态格式：read_file 走视觉转译
@@ -110,30 +111,25 @@ def _scrub(text: str, ctx: ScorerContext) -> str:
     return out
 
 
-def _fmt_material(ctx: "ScorerContext", m) -> dict[str, Any]:
+def _material_line(ctx: "ScorerContext", m) -> str:
+    """材料清单紧凑单行：id|形态|文件名|字数[|dup→file_id][|系统文件]。
+    list_files 输出以行为单位返回给模型——JSON 对象格式太长会被
+    TOOL_RESULT_MAX_CHARS 截断，模型看不到尾部材料的 file_id 就开始瞎猜编号。"""
+    dup = f"|dup→{ctx.dup_of[m.id]}" if ctx.dup_of.get(m.id) else ""
     if _is_junk_file(m):
-        form = "系统文件（无需阅读）"
+        return f"{m.id}|系统文件|{m.filename}|0|无需阅读{dup}"
+    suffix = _suffix(m.filename or "")
+    if suffix in _VIDEO_SUFFIXES:
+        form = "视频"
+    elif suffix in _IMAGE_SUFFIXES:
+        form = "图片"
+    elif suffix == ".docx":
+        form = "docx"
+    elif suffix == ".pdf":
+        form = "PDF"
     else:
-        suffix = _suffix(m.filename or "")
-        if suffix in _VIDEO_SUFFIXES:
-            form = "视频"
-        elif suffix in _IMAGE_SUFFIXES:
-            form = "图片"
-        elif suffix == ".docx":
-            form = "文档(docx)"
-        elif suffix == ".pdf":
-            form = "PDF"
-        else:
-            form = "文本"
-    return {
-        "file_id": m.id,
-        "kind": m.kind,               # form/resume/letter/achievement
-        "filename": m.filename,
-        "form": form,
-        "chars": len(m.raw_text or ""),
-        # 同内容重复镜像：读 file_id 那份即可，本份跳过
-        **({"duplicate_of": ctx.dup_of[m.id]} if ctx.dup_of.get(m.id) else {}),
-    }
+        form = "文本"
+    return f"{m.id}|{m.kind}|{form}|{m.filename}|{len(m.raw_text or '')}字{dup}"
 
 
 def _vision_describe(path: str, filename: str, ctx: ScorerContext) -> str:
@@ -426,9 +422,25 @@ def _submit_schema() -> dict[str, Any]:
 def execute_tool(ctx: ScorerContext, name: str, args: dict[str, Any]) -> dict[str, Any]:
     """执行一个工具，返回 {summary, detail}（detail 截断后喂回 LLM）。"""
     if name == "list_files":
-        files = [_fmt_material(ctx, m) for m in ctx.materials]
-        return {"summary": f"{len(files)} 份材料（含 {len(ctx.dup_of)} 份重复镜像，读每组一份即可）",
-                "detail": {"files": files}}
+        n_dup = len(ctx.dup_of)
+        lines = [
+            "id|类别|形态|文件名|字数[|dup→原id=重复镜像读原id即可][|无需阅读=系统文件跳过]",
+        ]
+        budget = LIST_RESULT_MAX_CHARS
+        omitted = 0
+        for m in ctx.materials:
+            line = _material_line(ctx, m)
+            if len(line) + 1 > budget:
+                omitted += 1
+                continue
+            lines.append(line)
+            budget -= len(line) + 1
+        if omitted:
+            lines.append(f"……（另有 {omitted} 份超出输出上限未列出）")
+        return {
+            "summary": f"{len(ctx.materials)} 份材料（{n_dup} 份重复镜像读原id即可）",
+            "detail": {"files_text": "\n".join(lines)},
+        }
     if name == "read_file":
         return _tool_read_file(ctx, args)
     if name == "verify_paper":
