@@ -61,7 +61,7 @@ export default function NavRail({ username, role }: { username?: string; role?: 
       {/* 导航项 */}
       <ul className="flex flex-col gap-3 flex-1 w-full items-center">
         {items.map(({ to, icon, label, matchPrefix }) => {
-          const tourKey = to === "/" ? "nav-pool" : to === "/talent-evaluation/admission" ? "nav-talent-evaluation" : to === "/chat" ? "nav-chat" : to === "/jd-pool" ? "nav-jd" : to === "/scholarship" ? "nav-scholarship" : "nav-settings";
+          const tourKey = to === "/" ? "nav-pool" : to === "/talent-evaluation/admission" ? "nav-talent-evaluation" : to === "/chat" ? "nav-chat" : to === "/jd-pool" ? "nav-jd" : to === "/scholarship" ? "nav-scholarship" : to === "/scholarship/graph" ? "nav-scholarship-graph" : "nav-settings";
           return (
           <li key={to} className="w-full flex justify-center">
             <NavLink

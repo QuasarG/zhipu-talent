@@ -143,8 +143,19 @@ export default {
   "问答输入框": "Q&A Input Box",
   "设置": "Settings",
   "开始使用": "Get Started",
-  "平台共六个模块：人才库、人才评估、人才问答、JD 池、奖学金和设置。下面逐一介绍。":
-    "Six modules in total: Talent Pool, Talent Evaluation, Talent Q&A, JD Pool, Scholarship, and Settings. Let's walk through each one.",
+  "平台共七个模块：人才库、人才评估、人才问答、JD 池、奖学金、师生图谱和设置。下面逐一介绍。":
+    "Seven modules in total: Talent Pool, Talent Evaluation, Talent Q&A, JD Pool, Scholarship, Advisor Graph, and Settings. Let's walk through each one.",
+  "申请资料工作台：飞书问卷自动同步，左侧申请人列表，右侧「申请资料 / 材料预览 / 评估与核验」三个视图——评分圆环、论文核验（带 DOI 与原文直达）、亮点与异常点都在评估视图里。":
+    "The application workbench: Feishu form submissions sync in automatically; applicant list on the left, with three views on the right — Application / Materials / Evaluation. Score rings, paper verification (with DOI links and one-click originals), highlights, and anomalies all live in the Evaluation view.",
+  "师生图谱": "Advisor Graph",
+  "学校-导师-学生关系网络：导师固定从属一所学校（逐封核验过推荐信原件），学生挂在就读学校；跨校推荐直接体现为跨越学校簇的师生连线。支持搜索与按类型筛选，点击节点查看关联。":
+    "A school–advisor–student network: each advisor is pinned to exactly one school (verified letter-by-letter against the original recommendation letters), and students attach to their own school. Cross-school recommendations show up as advisor–student edges crossing school clusters. Search and filter by type; click a node to see its relations.",
+  "评审账户的入口：奖学金、师生图谱和设置。下面逐一介绍。":
+    "A reviewer account has three entries: Scholarship, Advisor Graph, and Settings. Let's walk through them.",
+  "「申请资料」看档案与评分概览，「材料预览」阅读论文等原件，「评估与核验」查看评分圆环、论文核验（DOI 与原文直达）、亮点/异常点与 Agent 运行轨迹——异常点仅是 Agent 提出的疑点，判定由人工完成。":
+    "\"Application\" shows the profile and score overview, \"Materials\" reads the original papers, and \"Evaluation\" shows score rings, paper verification (DOIs and originals), highlights/anomalies, and the agent trace — anomalies are only suspected issues raised by the agent; judgment stays with human reviewers.",
+  "学校-导师-学生关系网络：导师固定从属一所学校，学生挂在本校；推荐人来自外校时，连线会跨越学校簇，一眼识别跨校推荐。支持搜索、按类型筛选，点击节点查看关联。":
+    "The school–advisor–student network: advisors belong to exactly one school, students to their own. When a recommender is from another school, the edge crosses school clusters — making cross-school recommendations easy to spot. Search, filter by type, and click nodes to explore.",
   "统一档案、来源追踪与关系发现。导入的简历评估入库后都在这里，可切换图谱/列表视图，右侧详情栏查看完整档案。":
     "Unified profiles, source tracking, and relationship discovery. Every imported resume lands here after screening — switch between graph and list views, with the full profile in the detail pane on the right.",
   "面试准入工作台：左侧是候选人文件夹，选中后展开岗位子项，查看该候选人×岗位配对的准入报告与 Agent 运行轨迹。":

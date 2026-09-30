@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 
-// v2：组件大改后引导整体重写（旧版步骤已对不上当前 UI），老用户也重新看一遍。
+// v3：师生图谱升级为独立页面（/scholarship/graph，导航独立入口），
+// 奖学金页视图收敛为三个，引导整体重写；存储键随之换版，两角色都重新看一遍。
 // 按角色分键存储：管理员与评审账户各自记忆"已看过"，互不影响。
-const STORAGE_KEY_PREFIX = "zhipu_talent.onboarding.v2";
+const STORAGE_KEY_PREFIX = "zhipu_talent.onboarding.v3";
 
 const storageKey = (role: string) => `${STORAGE_KEY_PREFIX}.${role}`;
 
@@ -17,12 +18,12 @@ interface TourStep {
   placement?: "right" | "bottom" | "top" | "left";
 }
 
-/** 管理员引导：六个模块按当前 UI 逐一介绍 */
+/** 管理员引导：各模块按当前 UI 逐一介绍 */
 const ADMIN_STEPS: TourStep[] = [
   {
     selector: '[data-tour="nav"]',
     title: "导航栏",
-    desc: "平台共六个模块：人才库、人才评估、人才问答、JD 池、奖学金和设置。下面逐一介绍。",
+    desc: "平台共七个模块：人才库、人才评估、人才问答、JD 池、奖学金、师生图谱和设置。下面逐一介绍。",
     placement: "right",
   },
   {
@@ -71,7 +72,14 @@ const ADMIN_STEPS: TourStep[] = [
     selector: '[data-tour="nav-scholarship"]',
     route: "/scholarship",
     title: "奖学金初筛",
-    desc: "申请资料工作台：飞书问卷自动同步，左侧申请人列表，右侧查看材料、评分明细与舆情核验。",
+    desc: "申请资料工作台：飞书问卷自动同步，左侧申请人列表，右侧「申请资料 / 材料预览 / 评估与核验」三个视图——评分圆环、论文核验（带 DOI 与原文直达）、亮点与异常点都在评估视图里。",
+    placement: "right",
+  },
+  {
+    selector: '[data-tour="nav-scholarship-graph"]',
+    route: "/scholarship/graph",
+    title: "师生图谱",
+    desc: "学校-导师-学生关系网络：导师固定从属一所学校（逐封核验过推荐信原件），学生挂在就读学校；跨校推荐直接体现为跨越学校簇的师生连线。支持搜索与按类型筛选，点击节点查看关联。",
     placement: "right",
   },
   {
@@ -89,12 +97,12 @@ const ADMIN_STEPS: TourStep[] = [
   },
 ];
 
-/** 评审账户引导：只有奖学金与设置两个入口，围绕评审流程介绍 */
+/** 评审账户引导：奖学金（三视图）+ 师生图谱 + 设置，围绕评审流程介绍 */
 const REVIEWER_STEPS: TourStep[] = [
   {
     selector: '[data-tour="nav"]',
     title: "导航栏",
-    desc: "评审账户只有两个入口：奖学金和设置。下面逐一介绍。",
+    desc: "评审账户的入口：奖学金、师生图谱和设置。下面逐一介绍。",
     placement: "right",
   },
   {
@@ -107,9 +115,16 @@ const REVIEWER_STEPS: TourStep[] = [
   {
     selector: '[data-tour="scholarship-views"]',
     route: "/scholarship",
-    title: "四种视图",
-    desc: "「申请资料」看档案与评分概览，「材料预览」阅读论文等原件，「评估与核验」查看评分圆环、论文核验与 Agent 运行轨迹，「师生图谱」浏览学校-导师-学生关系网络。",
+    title: "三种视图",
+    desc: "「申请资料」看档案与评分概览，「材料预览」阅读论文等原件，「评估与核验」查看评分圆环、论文核验（DOI 与原文直达）、亮点/异常点与 Agent 运行轨迹——异常点仅是 Agent 提出的疑点，判定由人工完成。",
     placement: "bottom",
+  },
+  {
+    selector: '[data-tour="nav-scholarship-graph"]',
+    route: "/scholarship/graph",
+    title: "师生图谱",
+    desc: "学校-导师-学生关系网络：导师固定从属一所学校，学生挂在本校；推荐人来自外校时，连线会跨越学校簇，一眼识别跨校推荐。支持搜索、按类型筛选，点击节点查看关联。",
+    placement: "right",
   },
   {
     selector: '[data-tour="scholarship-list"]',
