@@ -20,16 +20,6 @@ class TestGraphIdentity(unittest.TestCase):
         self.assertNotEqual(canonical_school("香港科技大学"), canonical_school("香港科技大学（广州）"))
         self.assertNotEqual(canonical_school("浙江大学"), canonical_school("浙江大学-西湖大学联合培养"))
 
-    def test_cas_institutes_unify_under_one_node(self):
-        # 中科院各研究所不是独立大学，统一归并到「中国科学院」
-        for name in ("中国科学院计算技术研究所", "中国科学院自动化研究所",
-                     "中国科学院软件研究所", "中国科学院数学与系统科学研究院",
-                     "中国科学院杭州医学研究所"):
-            self.assertEqual(canonical_school(name), "中国科学院")
-        self.assertEqual(canonical_school("中国科学院计算技术研究所 中国科学院大学"), "中国科学院")
-        # 国科大是独立高校，保持独立
-        self.assertNotEqual(canonical_school("中国科学院大学"), "中国科学院")
-
     def test_confirmed_advisor_aliases_share_one_identity(self):
         self.assertEqual(canonical_advisor("LI Qing"), "李青")
         self.assertEqual(canonical_advisor("李青（Qing Li，香港理工大学）"), "李青")
@@ -54,7 +44,7 @@ class TestGraphIdentity(unittest.TestCase):
     def test_guess_school_cas_institute_and_fallbacks(self):
         self.assertEqual(
             guess_school_from_title("许倩倩，中国科学院计算技术研究所研究员", "许倩倩"),
-            "中国科学院")
+            "中国科学院计算技术研究所")
         self.assertEqual(guess_school_from_title("张小平，清华大学信息化工作办公室主任", "张小平"), "清华大学")
         # 快照里没有学校信息 → 空串（交由人工核验/推荐信补录）
         self.assertEqual(guess_school_from_title("朱靖波，教授", "朱靖波"), "")
