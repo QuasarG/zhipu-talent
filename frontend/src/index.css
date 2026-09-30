@@ -76,11 +76,13 @@
   src: url("./assets/fonts/MiSans-Bold.woff2") format("woff2");
 }
 
-/* HYWenHei（汉仪文黑 Extended）：中文标题展示字体（Regular 400，GB2312+拉丁子集 woff2） */
+/* HYWenHei（汉仪文黑 Extended）：中文标题展示字体（GB2312+拉丁子集 woff2）。
+   原字体仅单一字重且字形偏粗，声明为覆盖全部字重区间：
+   标题/导航请求的 600 直接用原生字形，避免浏览器再叠加合成加粗（粗上加粗） */
 @font-face {
   font-family: "HYWenHei";
   font-style: normal;
-  font-weight: 400;
+  font-weight: 100 900;
   font-display: swap;
   src: url("./assets/fonts/HYWenHei-Extended.woff2") format("woff2");
 }
