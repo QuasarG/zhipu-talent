@@ -199,19 +199,22 @@ const ALIASES: Record<string, string> = {
   "Nanjing University of Aeronautics and Astronautics": "NUAA", "NUAA": "NUAA",
 };
 
-/** 按机构名找校徽 URL：精确 → 英文别名 → 中文核心包含三级匹配 */
+/** 按机构名找校徽 URL：精确 → 英文别名 → 中文核心包含三级匹配。
+ *  双校串（如「香港理工大学；华南理工大学」）取第一段匹配主校校徽，
+ *  防止包含匹配把整串错配到某所学校的校徽（视觉上两校合一）。 */
 export function getSchoolLogo(org: string): string | null {
   const name = (org || "").trim();
   if (!name) return null;
-  if (ADDED_LOGOS[name]) return `${BASE}school-logos/${ADDED_LOGOS[name]}`;
+  const primary = name.split(/[；;、，,/／|｜]/)[0].trim() || name;
+  if (ADDED_LOGOS[primary]) return `${BASE}school-logos/${ADDED_LOGOS[primary]}`;
   // 1. 中文精确命中
-  const direct = SCHOOL_LOGO_CODES[name];
+  const direct = SCHOOL_LOGO_CODES[primary];
   if (direct) return `${BASE}school-logos/${direct}.svg`;
   // 2. 英文/缩写别名（整名或忽略大小写精确命中）
-  const alias = ALIASES[name] || ALIASES[name.toLowerCase()];
+  const alias = ALIASES[primary] || ALIASES[primary.toLowerCase()];
   if (alias) return `${BASE}school-logos/${alias}.svg`;
   // 3. 英文别名包含匹配（如 "Nanjing University of Aeronautics..." 含 Nanjing University）
-  const lname = name.toLowerCase();
+  const lname = primary.toLowerCase();
   for (const [key, code] of Object.entries(ALIASES)) {
     if (key.length >= 4 && (lname.includes(key.toLowerCase()) || key.toLowerCase().includes(lname))) {
       return `${BASE}school-logos/${code}.svg`;
@@ -219,7 +222,7 @@ export function getSchoolLogo(org: string): string | null {
   }
   // 4. 中文核心包含匹配（如"南开大学计算机学院"命中"南开大学"）
   for (const [school, code] of Object.entries(SCHOOL_LOGO_CODES)) {
-    if (school.length >= 2 && (name.includes(school) || school.includes(name))) {
+    if (school.length >= 2 && (primary.includes(school) || school.includes(primary))) {
       return `${BASE}school-logos/${code}.svg`;
     }
   }

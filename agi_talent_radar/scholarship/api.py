@@ -695,14 +695,30 @@ def build_scholarship_blueprint() -> Blueprint:
             )
             nodes: dict[str, dict] = {}
             edges: dict[tuple[str, str], dict] = {}
+
+            def split_schools(raw: str) -> list[str]:
+                """「A；B」双校串拆成独立学校（联合培养/双学位是两所学校两条边），
+                各自过 canonical_school 去重；不再产出拼接节点（此前「香港理工大学；
+                华南理工大学」整串当一个学校，前端 logo 子串匹配后视觉上两校合一）。"""
+                import re as _re
+
+                parts = []
+                for seg in _re.split(r"[；;、，,/／|｜]", raw or ""):
+                    name = canonical_school(seg.strip())
+                    if name and name not in parts:
+                        parts.append(name)
+                return parts
+
             for link, advisor, app in links:
                 student_id = f"student:{app.id}"
+                school_parts = split_schools(app.school)
                 if student_id not in nodes:
                     nodes[student_id] = {
                         "id": student_id, "type": "student",
                         "label": app.name or "（未署名）",
                         "score": score_by_app.get(app.id, 0.0),
-                        "school": canonical_school(app.school),
+                        "school": school_parts[0] if school_parts else "",
+                        "schools": school_parts,
                         "status": app.status,
                     }
                 advisor_name = canonical_advisor(advisor.name)
@@ -721,8 +737,8 @@ def build_scholarship_blueprint() -> Blueprint:
                     "source": link.source, "confidence": link.confidence,
                 })
                 # 同一导师可连接多个学校、多个学生；学生也可连接多位导师。
-                school = canonical_school(app.school)
-                if school:
+                # 双校串拆分后每所学校各建一条边。
+                for school in school_parts:
                     school_id = f"school:{school}"
                     if school_id not in nodes:
                         nodes[school_id] = {"id": school_id, "type": "school", "label": school}
