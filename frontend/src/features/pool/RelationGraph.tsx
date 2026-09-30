@@ -240,7 +240,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
   const tRef = useRef(t);
   // Canvas 字体绘制不会触发 webfont 下载，先显式加载斜月体
   useEffect(() => {
-    void document.fonts?.load('600 16px "Smiley Moon"');
+    void document.fonts?.load('600 16px "HYWenHei"');
   }, []);
 
   useEffect(() => {
@@ -348,7 +348,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
           ctx.stroke();
         }
         ctx.fillStyle = pal.avatarText;
-        ctx.font = `600 ${Math.round(r * 0.85)}px "Smiley Moon", "MiSans", sans-serif`;
+        ctx.font = `600 ${Math.round(r * 0.85)}px "HYWenHei", "MiSans", sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText((tRef.current(n.label) || "?").charAt(0), n.x, n.y + 1);
@@ -391,7 +391,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
           ctx.lineWidth = emphasized ? 3 : 1.5;
           ctx.stroke();
           ctx.fillStyle = n.color;
-          ctx.font = `600 ${Math.round(r * 0.8)}px "Smiley Moon", "MiSans", sans-serif`;
+          ctx.font = `600 ${Math.round(r * 0.8)}px "HYWenHei", "MiSans", sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText((n.label || "?").charAt(0), n.x, n.y + 1);
