@@ -421,7 +421,8 @@ export default function ScholarshipPane({
       role: "assistant",
       content: { segments: traceToChatSegments(latestEval?.trace ?? []) },
       citations: EMPTY_CITATIONS,
-      status: "completed",
+      // 评估还在跑（轮询回放）时保持 running 态：转圈不消失，用户知道没结束
+      status: latestEval?.status === "running" ? "running" : "completed",
       created_at: latestEval?.created_at ?? new Date().toISOString(),
     };
   }, [liveTrace, latestEval]);

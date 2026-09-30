@@ -551,7 +551,11 @@ def build_scholarship_blueprint() -> Blueprint:
                 payload = _eval_to_dict(evaluation)
             yield f"data: {json.dumps({'type': 'done', 'payload': payload}, ensure_ascii=False)}\n\n"
 
-        return Response(stream_with_context(generate()), mimetype="text/event-stream")
+        response = Response(stream_with_context(generate()), mimetype="text/event-stream")
+        # SSE 不许被任何代理/缓冲层攒批（面试评估与问答端点同款头，缺了会整流憋到连接关闭）
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["X-Accel-Buffering"] = "no"
+        return response
 
     # ---- 材料原件预览 / 下载（浏览器原生渲染 PDF/图片；docx 走下载） ----
     _PREVIEW_MIME = {

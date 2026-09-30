@@ -1,5 +1,5 @@
 // 奖学金模块重构：单页外壳 = 左申请列表 + 右详情（对齐人才库/人才评估布局）
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { ScholarshipApplication } from "@/lib/types";
@@ -104,6 +104,23 @@ export default function Scholarship() {
     void load();
     refreshDetail();
   }, [load, refreshDetail]);
+
+  // 评估进行中自动轮询：别的入口（批量/其他会话）触发的评估在本页没有 SSE 连接，
+  // 而 trace 边跑边落库，轮询 detail 即可让过程页实时生长；结束时刷一次列表（状态/分数已变）
+  const hasRunningEval = (detail?.evaluations ?? []).some((e) => e.status === "running");
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    if (!hasRunningEval) {
+      if (wasRunningRef.current) {
+        wasRunningRef.current = false;
+        refreshAll();
+      }
+      return;
+    }
+    wasRunningRef.current = true;
+    const timer = window.setInterval(refreshDetail, 2500);
+    return () => window.clearInterval(timer);
+  }, [hasRunningEval, refreshDetail, refreshAll]);
 
   // 选择失效清理（申请人被删除）
   useEffect(() => {
