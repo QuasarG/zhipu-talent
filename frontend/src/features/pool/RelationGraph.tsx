@@ -364,6 +364,8 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
       } else {
         const logo = schoolLogoImage(n.label);
         const schoolColor = crestColor(n.label);
+        // 未选中任何节点时，学校节点默认按选中级强调（描边加粗 + 外圈光晕 + 强色标签）
+        const emphasized = isSelected || (graphModeRef.current && !selectedRef.current);
         if (logo) {
           // 有校徽：白底圆裁剪后贴图
           ctx.save();
@@ -377,7 +379,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
           ctx.beginPath();
           ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
           ctx.strokeStyle = schoolColor ? shade(schoolColor, 0) : n.color;
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = emphasized ? 3 : 1.5;
           ctx.stroke();
         } else {
           // 无校徽：和姓氏头像同款的圆形占位，用学校首字 + 学校色
@@ -386,7 +388,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
           ctx.fillStyle = pal.personFill;
           ctx.fill();
           ctx.strokeStyle = n.color;
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = emphasized ? 3 : 1.5;
           ctx.stroke();
           ctx.fillStyle = n.color;
           ctx.font = `600 ${Math.round(r * 0.8)}px "Smiley Moon", "MiSans", sans-serif`;
@@ -398,7 +400,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
       if (isSelected || (graphModeRef.current && !selectedRef.current && n.type === "school")) {
         ctx.beginPath();
         ctx.arc(n.x, n.y, r + 6, 0, Math.PI * 2);
-        ctx.globalAlpha = isSelected ? 0.4 : 0.3;
+        ctx.globalAlpha = 0.4;
         const schoolColor = n.type === "school" ? crestColor(n.label) : null;
         ctx.strokeStyle = schoolColor ? shade(schoolColor, 0) : pal.ring;
         ctx.lineWidth = 2;
@@ -441,12 +443,15 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
         ctx.globalAlpha = dimmed ? 0.4 : graphModeRef.current && !sel ? n.type === "student" ? 0.34 : n.type === "advisor" ? 0.65 : 1 : 1;
         drawNode(n, isSelected);
         // 人名 + 学校标签（最高学历学校）；分组标签恒用强色
-        ctx.fillStyle = n.type === "group" || isSelected ? pal.labelStrong : pal.label;
+        const schoolDefault = graphModeRef.current && !sel && n.type === "school";
+        ctx.fillStyle = n.type === "group" || isSelected || schoolDefault ? pal.labelStrong : pal.label;
         ctx.font = n.type === "person" || n.type === "student"
           ? '600 12px "Montserrat", "MiSans", sans-serif'
           : n.type === "group"
             ? '700 12px "Montserrat", "MiSans", sans-serif'
-            : '500 10px "Montserrat", "MiSans", sans-serif';
+            : schoolDefault
+              ? '600 11px "Montserrat", "MiSans", sans-serif'
+              : '500 10px "Montserrat", "MiSans", sans-serif';
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         if (!graphModeRef.current || scale > 0.65 || isSelected) ctx.fillText(tRef.current(n.label), n.x, n.y + n.radius + 4);

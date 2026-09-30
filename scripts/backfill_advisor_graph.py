@@ -29,6 +29,12 @@ from agi_talent_radar.scholarship.graph_identity import canonical_advisor
 
 LETTER_TABLE_ID = "tbl6bjudNeN4ezGW"  # 已经邮件收到的导师推荐信
 
+# 人工确认不建链的推荐信表记录 (推荐人原文, 被推荐学生原文) → 原因。
+# 用户核实高剑雄仅付彦伟提供推荐信；表内该行「推荐人」栏误写为颜维峰。
+EXCLUDED_LETTER_LINKS: set[tuple[str, str]] = {
+    ("颜维峰（复旦大学）", "高剑雄"),
+}
+
 
 def _feishu_headers() -> dict:
     req = urllib.request.Request(
@@ -177,6 +183,8 @@ def main() -> int:
             advisor_name = _text(f.get("推荐人"))
             student_name = _text(f.get("被推荐学生"))
             if not advisor_name or not student_name:
+                continue
+            if (advisor_name, student_name) in EXCLUDED_LETTER_LINKS:
                 continue
             target, note = _match_student(apps_by_name, student_name)
             if target is None:
