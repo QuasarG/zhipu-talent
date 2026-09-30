@@ -235,6 +235,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
   const graphModeRef = useRef(false);
   const fitRef = useRef(0);
   const fitViewRef = useRef<() => void>(() => {});
+  const wakeRef = useRef<() => void>(() => {});
   const [stats, setStats] = useState({ persons: 0, schools: 0, tracks: 0 });
   const { t } = useI18n();
   const tRef = useRef(t);
@@ -249,6 +250,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
 
   useEffect(() => {
     selectedRef.current = selectedId;
+    wakeRef.current();
   }, [selectedId]);
   useEffect(() => {
     graphModeRef.current = !!graph;
@@ -262,6 +264,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
       ? buildScholarshipGraph(graph, w || 600, h || 400, palRef.current)
       : buildGraph(persons, w || 600, h || 400, palRef.current, groupName ?? (() => ""));
     nodesRef.current = nodes;
+    wakeRef.current();
     edgesRef.current = edges;
     setStats({
       persons: nodes.filter((n) => n.type === "person").length,
@@ -286,6 +289,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
       sizeRef.current = { w: wrap.clientWidth, h: wrap.clientHeight };
       canvas.width = wrap.clientWidth * dpr;
       canvas.height = wrap.clientHeight * dpr;
+      wakeRef.current();
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -318,13 +322,17 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
         b.vx -= (dx / dist) * f; b.vy -= (dy / dist) * f;
       });
       const drag = dragRef.current.node;
+      let maxSpeed = 0;
       nodes.forEach((n) => {
         if (n === drag) return;
         n.vx += (w / 2 - n.x) * CENTER;
         n.vy += (h / 2 - n.y) * CENTER;
         n.vx *= DAMPING; n.vy *= DAMPING;
         n.x += n.vx; n.y += n.vy;
+        const speed = Math.abs(n.vx) + Math.abs(n.vy);
+        if (speed > maxSpeed) maxSpeed = speed;
       });
+      return maxSpeed;
     };
 
     const isRelated = (n: GNode, target: string) =>
@@ -489,24 +497,41 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
     fitViewRef.current = fitView;
 
     let raf = 0;
+    let running = false;
+    let settledFrames = 0;
     // 帧率上限 30fps：力模拟是每帧 O(n²)（500+ 节点 ≈ 15 万次配对）+ 全量重绘，
-    // 高刷屏（165Hz）下 rAF 满帧率跑会把单核 CPU 打满。rAF 仍按显示器频率注册
-    //（不可见标签页照常被浏览器节流到近 0），不足 33ms 的帧直接跳过不重绘。
+    // 任何刷新率下都有界；rAF 按显示器频率注册（不可见标签页浏览器照常节流）。
     const FRAME_INTERVAL_MS = 1000 / 30;
     let lastFrameTs = 0;
+    // 沉降休眠：布局稳定（全网最大速度连续低于阈值）后彻底停转 rAF，稳态 CPU≈0；
+    // 拖拽/缩放/点选/窗口变化/数据刷新时 wake() 唤醒。与显示器参数无关。
+    const SETTLE_SPEED = 0.08;
+    const SETTLE_FRAMES = 30;
     const loop = (ts?: number) => {
       raf = requestAnimationFrame(loop);
       const now = ts ?? performance.now();
       if (now - lastFrameTs < FRAME_INTERVAL_MS) return;
       lastFrameTs = now;
-      simulate();
+      const maxSpeed = simulate();
       if (fitRef.current > 0) {
         fitRef.current -= 1;
         if (fitRef.current === 0) fitView();
       }
       draw();
+      if (dragRef.current.node || maxSpeed > SETTLE_SPEED) settledFrames = 0;
+      else if (++settledFrames >= SETTLE_FRAMES) {
+        cancelAnimationFrame(raf);
+        running = false;
+      }
     };
-    loop();
+    wakeRef.current = () => {
+      settledFrames = 0;
+      if (running) return;
+      running = true;
+      lastFrameTs = 0;
+      raf = requestAnimationFrame(loop);
+    };
+    wakeRef.current();
 
     const getPos = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
@@ -525,6 +550,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
     };
 
     const onDown = (e: MouseEvent) => {
+      wakeRef.current();
       const node = hitTest(getPos(e));
       const d = dragRef.current;
       if (node) {
@@ -537,6 +563,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
     };
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current;
+      if (d.node || d.panning) wakeRef.current(); // 拖节点/平移期间保持唤醒（平移不产生节点速度）
       if (d.node) {
         const pos = getPos(e);
         d.node.x = pos.x; d.node.y = pos.y;
@@ -553,6 +580,7 @@ export default function RelationGraph({ persons = EMPTY_PERSONS, selectedId, onS
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      wakeRef.current();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       const v = viewRef.current;
       const rect = canvas.getBoundingClientRect();
