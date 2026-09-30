@@ -557,6 +557,37 @@ def build_scholarship_blueprint() -> Blueprint:
         response.headers["X-Accel-Buffering"] = "no"
         return response
 
+    @bp.get("/api/scholarship/applications/<app_id>/evaluations/running")
+    def running_eval_trace(app_id: str):
+        """running 评估的轻量增量轮询端点：?after=N 只返回第 N 段起的 trace 段。
+
+        供前端亚秒级轮询平滑渲染过程文字（整档 detail 太重）。trace 段内容
+        幂等覆盖式增长（末段反复被写全），调用方下次应传 count-1 以重拉末段。
+        status 字段携带最新状态，翻转后前端停轮询并做一次完整刷新。"""
+        from agi_talent_radar.core.db.orm import ScholarshipEvaluationORM
+
+        after = request.args.get("after", 0, type=int) or 0
+        with get_session() as session:
+            app = session.get(ScholarshipApplicationORM, app_id)
+            if not app:
+                return jsonify({"detail": "申请人不存在"}), 404
+            evaluation = (
+                session.query(ScholarshipEvaluationORM)
+                .filter(ScholarshipEvaluationORM.application_id == app_id)
+                .order_by(ScholarshipEvaluationORM.created_at.desc())
+                .first()
+            )
+            if evaluation is None:
+                return jsonify({"detail": "尚无评估记录"}), 404
+            segments = evaluation.trace or []
+            start = max(0, min(after, len(segments)))
+            return jsonify({
+                "id": evaluation.id,
+                "status": evaluation.status,
+                "count": len(segments),
+                "segments": segments[start:],
+            })
+
     # ---- 材料原件预览 / 下载（浏览器原生渲染 PDF/图片；docx 走下载） ----
     _PREVIEW_MIME = {
         # 文档

@@ -306,6 +306,12 @@ export const api = {
     /** 评分 agent SSE 流：tool_start/tool_end/final/done（done 载最新评估快照） */
     evaluateStream: (id: string) =>
       authedFetch(`/api/scholarship/applications/${id}/evaluate`, { method: "POST" }),
+    /** running 评估轻量增量轮询（亚秒级，段级平滑流式；末段幂等增长，下次传 count-1） */
+    runningTrace: (id: string, after = 0) =>
+      fetchJSON<{
+        id: number; status: string; count: number;
+        segments: unknown[];
+      }>(`/api/scholarship/applications/${id}/evaluations/running?after=${after}`),
   },
   // ---- 人才材料包（一人一 zip，双 agent 解析进档）----
   talentBundle: {

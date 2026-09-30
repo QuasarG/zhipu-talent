@@ -402,7 +402,44 @@ export default function ScholarshipPane({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [liveTrace, setLiveTrace] = useState<ChatSegment[] | null>(null);
   const latestEval = app?.evaluations?.[app.evaluations.length - 1];
-  /** 评估过程页渲染源：live 流式时直接是 applyEvent 维护的消息；回放时由 trace 转换 */
+  // 外部触发的 running 评估：本页没有 SSE 连接，600ms 增量轮询轻量端点，
+  // 让过程文字平滑流式（整档 detail 2.5s 一刷太顿、也太重）。
+  // trace 段幂等覆盖增长：末段每次重拉，acc 按 after 截断后拼接。
+  const hasRunningEval = !liveTrace && app?.evaluations?.some((e) => e.status === "running");
+  const [polledTrace, setPolledTrace] = useState<ScorerTraceSegment[] | null>(null);
+  useEffect(() => {
+    if (!hasRunningEval || !app) {
+      setPolledTrace(null);
+      return;
+    }
+    const appId = app.id;
+    let alive = true;
+    let after = 0;
+    let acc: ScorerTraceSegment[] = [];
+    const tick = async () => {
+      try {
+        const r = await api.scholarship.runningTrace(appId, after);
+        if (!alive) return;
+        // 线上包络（thinking/tool/text/final 联合）由 traceToChatSegments 内部判别
+        acc = acc.slice(0, after).concat(r.segments as ScorerTraceSegment[]);
+        after = Math.max(0, r.count - 1);
+        setPolledTrace([...acc]);
+        if (r.status !== "running") {
+          alive = false; // 结束：停轮询，拉最终快照（分数/维度/trace 定稿）
+          onRefresh();
+        }
+      } catch { /* 网络抖动，下轮继续 */ }
+    };
+    const timer = window.setInterval(tick, 600);
+    void tick();
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+    // onRefresh 由父级 useCallback 稳定；app.evaluations 引用变化不重置轮询游标
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasRunningEval, app?.id]);
+  /** 评估过程页渲染源：live 流式 > 外部轮询 > 完成后的 trace 回放 */
   const processMessage: ChatMessage = useMemo(() => {
     if (liveTrace) {
       return {
@@ -415,6 +452,17 @@ export default function ScholarshipPane({
         created_at: new Date().toISOString(),
       };
     }
+    if (polledTrace?.length) {
+      return {
+        id: `scoring-poll-${app?.id ?? ""}`,
+        conversation_id: "",
+        role: "assistant",
+        content: { segments: traceToChatSegments(polledTrace) },
+        citations: EMPTY_CITATIONS,
+        status: "running",
+        created_at: latestEval?.created_at ?? new Date().toISOString(),
+      };
+    }
     return {
       id: `trace-${latestEval?.id ?? "none"}`,
       conversation_id: "",
@@ -425,7 +473,7 @@ export default function ScholarshipPane({
       status: latestEval?.status === "running" ? "running" : "completed",
       created_at: latestEval?.created_at ?? new Date().toISOString(),
     };
-  }, [liveTrace, latestEval]);
+  }, [liveTrace, polledTrace, latestEval]);
   // 过程容器自动滚底：仅当用户本就贴在底部时跟随；上翻阅读即放手（否则每 token 被拽回=无法滚动）
   const processRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -463,10 +511,10 @@ export default function ScholarshipPane({
   useEffect(() => {
     // 流式期间贴底跟随（用户上翻超过阈值即停止拽底）
     const el = processRef.current;
-    if (liveTrace && el && stickToBottomRef.current) {
+    if ((liveTrace || polledTrace) && el && stickToBottomRef.current) {
       el.scrollTo(0, el.scrollHeight);
     }
-  }, [liveTrace]);
+  }, [liveTrace, polledTrace]);
 
   const runAction = async (action: string, fn: () => Promise<void>) => {
     if (busyAction) return;
