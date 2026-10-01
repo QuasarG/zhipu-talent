@@ -37,8 +37,8 @@ def make_session(username: str, password: str) -> requests.Session:
     return s
 
 
-def evaluate_one(session: requests.Session, app_id: str, name: str) -> tuple[str, str]:
-    """跑一个人的评估，返回 (app_id, 结果描述)。SSE 逐行读到 done/error。"""
+def evaluate_one(session: requests.Session, app_id: str, name: str) -> str:
+    """跑一个人的评估，返回结果描述。SSE 逐行读到 done/error。"""
     started = time.time()
     try:
         with session.post(
@@ -46,9 +46,9 @@ def evaluate_one(session: requests.Session, app_id: str, name: str) -> tuple[str
             stream=True, timeout=(10, 180),
         ) as r:
             if r.status_code == 409:
-                return app_id, "SKIP:已有评估在跑"
+                return "SKIP:已有评估在跑"
             if r.status_code != 200:
-                return app_id, f"FAIL:HTTP {r.status_code}"
+                return f"FAIL:HTTP {r.status_code}"
             for line in r.iter_lines(decode_unicode=True):
                 if not line or not line.startswith("data: "):
                     continue
@@ -59,12 +59,12 @@ def evaluate_one(session: requests.Session, app_id: str, name: str) -> tuple[str
                 etype = ev.get("type")
                 if etype == "done":
                     score = (ev.get("payload") or {}).get("blind_score")
-                    return app_id, f"OK:{score}分({time.time() - started:.0f}s)"
+                    return f"OK:{score}分({time.time() - started:.0f}s)"
                 if etype == "error":
-                    return app_id, f"FAIL:{str((ev.get('payload') or {}).get('message'))[:120]}"
-            return app_id, "FAIL:流意外结束"
+                    return f"FAIL:{str((ev.get('payload') or {}).get('message'))[:120]}"
+            return "FAIL:流意外结束"
     except requests.RequestException as exc:
-        return app_id, f"FAIL:{str(exc)[:120]}({time.time() - started:.0f}s)"
+        return f"FAIL:{str(exc)[:120]}({time.time() - started:.0f}s)"
 
 
 def main() -> int:
