@@ -291,20 +291,23 @@ def run_scorer_agent(session, app: ScholarshipApplicationORM, evaluation: Schola
 def _finalize(evaluation: ScholarshipEvaluationORM, ctx: ScorerContext, segments: list[dict[str, Any]]) -> None:
     final = ctx.final
     spec_by_key = {d["key"]: d for d in DIMENSIONS}
-    dims = []
+    dedup: dict[str, dict] = {}
     for d in final["dimensions"]:
         spec = spec_by_key.get(str(d.get("key")))
         if not spec:
             continue
         hi = float(spec["max_points"])
-        dims.append({
+        # 同 key 重复条目后写覆盖（模型偶发在末尾附第二条疑点汇总，会把
+        # 真实分数挤成脏行——冯伟伦案：integrity 4.5 与 0.0 并存）
+        dedup[str(d.get("key"))] = {
             **spec,
             "score": max(0.0, min(hi, float(d.get("score") or 0))),
             "reason": str(d.get("reason") or ""),
             "evidence_level": str(d.get("evidence_level") or ""),
             "highlights": [str(x) for x in (d.get("highlights") or [])],
             "anomalies": [str(x) for x in (d.get("anomalies") or [])],
-        })
+        }
+    dims = list(dedup.values())
     # v3 权重制：维度分即实得分（0..max_points），总分直接加总
     blind = round(sum(d["score"] for d in dims), 1)
     evaluation.dimensions = dims
